@@ -53,7 +53,7 @@ if ($stmt !== false) {
 // Dinamis Nama Perusahaan (Plant 1 / Plant 2)
 $companyName = "PT. IMC TEKNO INDONESIA";
 if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
-    $companyName = "PT. IMC TEKNO INDONESIA PLANT 2";
+    $companyName = "PT. IMC TEKNO INDONESIA PLANT 1";
 }
 ?>
 

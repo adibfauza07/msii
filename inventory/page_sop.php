@@ -404,34 +404,34 @@ while($r=sqlsrv_fetch_array($qL)) {
                     <?php endif; ?>
                 </div>
             </div>
-            
             <div class="card shadow-sm">
-    <div class="card-header bg-white fw-bold py-2 border-bottom">LAPORAN</div>
-    <div class="card-body p-2">
-        <div class="list-group list-group-flush small">
-            <a href="inventory/report_tag_list.php?sop=<?php echo $ref; ?>" target="_blank" class="list-group-item list-group-item-action py-2">
-                <i class="bi bi-file-earmark-text me-2 text-primary"></i> Tag List (Detail)
-            </a>
-            
-<?php 
-                        // Cek apakah ID sudah ada (Kalau mode BARU, matikan link)
-                        $linkDisabled = empty($dataHeader['SOP_ID']) ? 'disabled' : '';
-                        $idSop = $dataHeader['SOP_ID'];
+                <div class="card-header bg-white fw-bold py-2 border-bottom">LAPORAN</div>
+                <div class="card-body p-2">
+                    <div class="list-group list-group-flush small">
+                        <?php 
+                        // Cegah klik tombol kalau belum ada ID (sedang mode BARU)
+                        $linkDisabled = empty($currentID) ? 'disabled text-muted' : '';
                         ?>
 
+                       <a href="report_tag_list.php?sop=<?php echo $currentID; ?>" target="_blank" class="list-group-item list-group-item-action py-2">
+                            <i class="bi bi-card-list me-2 text-primary"></i> <b>Tag List Detail</b>
+                        </a>
+                        
+                        <a href="report_tag_summary.php?sop=<?php echo $currentID; ?>" target="_blank" class="list-group-item list-group-item-action py-2 <?php echo $linkDisabled; ?>">
+                            <i class="bi bi-table me-2 text-success"></i> <b>Tag Summary By Item</b>
+                        </a>
 
-            <a href="report_tag_summary.php?sop=<?php echo $idSop; ?>" target="_blank" class="list-group-item list-group-item-action py-2 <?php echo $linkDisabled; ?>">
-                <i class="bi bi-table me-2 text-success"></i> Tag Summary By Item
-            </a>
-            
-            <a href="#" class="list-group-item list-group-item-action py-2 disabled text-muted">
-                <i class="bi bi-arrow-left-right me-2"></i> SOP Conversion
-            </a>
-        </div>
-    </div>
-</div>
-        </div>
-    </div>
+                        <a href="#" class="list-group-item list-group-item-action py-2 disabled text-muted">
+                            <i class="bi bi-calculator me-2"></i> Var. Before Adjust
+                        </a>
+                        
+                        <a href="#" class="list-group-item list-group-item-action py-2 disabled text-muted">
+                            <i class="bi bi-arrow-left-right me-2"></i> SOP Conversion
+                        </a>
+                    </div>
+                </div>
+            </div>
+            </div>
 </form>
 
 <?php if ($isEntry): ?>
