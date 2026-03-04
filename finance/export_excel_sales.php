@@ -1,17 +1,32 @@
 <?php
-// export_excel_sales.php
-session_start();
 require_once '../config/database_aging.php';
 
-// 1. Header agar dibaca sebagai File Excel
-$filename = "Aging_Sales_" . date('Ymd') . ".xls";
-header("Content-Type: application/vnd.ms-excel");
-header("Content-Disposition: attachment; filename=\"$filename\"");
-header("Pragma: no-cache"); 
-header("Expires: 0");
+// Nama File saat didownload
+header("Content-type: application/vnd-ms-excel");
+header("Content-Disposition: attachment; filename=Aging_Sales_" . date('Ymd_His') . ".xls");
 
-// 2. Query Data (Sama persis dengan Aging_Sales.php)
-// Pastikan filternya sesuai kebutuhan (misal: hanya yang belum lunas)
+// --- MENANGKAP PARAMETER FILTER DARI URL ---
+$filter_cust = isset($_GET['cust']) ? $_GET['cust'] : '';
+$filter_inv  = isset($_GET['inv'])  ? $_GET['inv']  : '';
+$filter_kat  = isset($_GET['kat'])  ? $_GET['kat']  : '';
+
+$where_add = "";
+$params = array();
+
+if ($filter_cust !== '') {
+    $where_add .= " AND S.CUST_COMP = ? ";
+    $params[] = $filter_cust;
+}
+if ($filter_inv !== '') {
+    $where_add .= " AND T.invoice_number LIKE ? ";
+    $params[] = "%" . $filter_inv . "%";
+}
+if ($filter_kat !== '') {
+    $where_add .= " AND K.SalesName = ? ";
+    $params[] = $filter_kat;
+}
+
+// Query Utama
 $sql = "SELECT T.id_sales, S.CUST_COMP, T.invoice_date, T.invoice_number, 
                T.faktur_pajak, T.curr_code, T.amount, T.due_date, B.AccountName, 
                K.SalesName, DATEDIFF(day, GETDATE(), T.due_date) as sisa_hari
@@ -19,48 +34,65 @@ $sql = "SELECT T.id_sales, S.CUST_COMP, T.invoice_date, T.invoice_number,
         LEFT JOIN CUST S ON T.CUST_ID = S.CUST_ID
         LEFT JOIN MasterBiayaSales B ON T.id_biaya = B.id_biaya
         LEFT JOIN MasterKategoriSales K ON T.id_kategori_sales = K.id_kategori_sales
-        WHERE T.is_paid = 0
+        WHERE T.is_paid = 0 " . $where_add . " 
         ORDER BY T.due_date ASC";
 
-$query = sqlsrv_query($conn, $sql);
+$query = sqlsrv_query($conn, $sql, $params);
 if ($query === false) { die(print_r(sqlsrv_errors(), true)); }
 ?>
 
-<table border="1">
-    <thead>
-        <tr style="background-color:#f2f2f2; font-weight:bold;">
-            <th>No.</th>
-            <th>Customer</th>
-            <th>Tgl Invoice</th>
-            <th>No. Invoice</th>
-            <th>Faktur Pajak</th>
-            <th>Mata Uang</th>
-            <th>Total Amount</th>
-            <th>Jatuh Tempo</th>
-            <th>Kategori</th>
-            <th>Status</th>
-        </tr>
-    </thead>
-    <tbody>
-        <?php 
-        $no = 1;
-        while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)): 
-            $sisa = (int)$row['sisa_hari'];
-            $status = ($sisa <= 0) ? "OVERDUE ($sisa Hari)" : "$sisa Hari lagi";
-            $color = ($sisa <= 0) ? "red" : "black";
-        ?>
-        <tr>
-            <td style="text-align:center;"><?= $no++ ?></td>
-            <td><?= htmlspecialchars($row['CUST_COMP']) ?></td>
-            <td><?= ($row['invoice_date']) ? $row['invoice_date']->format('d/m/Y') : '-' ?></td>
-            <td style="text-align:left;"><?= htmlspecialchars($row['invoice_number']) ?></td>
-            <td style="text-align:left;"><?= htmlspecialchars($row['faktur_pajak']) ?></td>
-            <td style="text-align:center;"><?= $row['curr_code'] ?></td>
-            <td style="text-align:right;" x:num><?= $row['amount'] ?></td> 
-            <td><?= ($row['due_date']) ? $row['due_date']->format('d/m/Y') : '-' ?></td>
-            <td><?= htmlspecialchars($row['SalesName']) ?></td>
-            <td style="color:<?= $color ?>; font-weight:bold;"><?= $status ?></td>
-        </tr>
-        <?php endwhile; ?>
-    </tbody>
-</table>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Export Data Sales</title>
+</head>
+<body>
+    <h3>DATA AGING SALES (CUSTOMER)</h3>
+    <table border="1">
+        <thead>
+            <tr style="background-color:#f2f2f2;">
+                <th>No.</th>
+                <th>Customer</th>
+                <th>Tgl Invoice</th>
+                <th>No. Invoice</th>
+                <th>Faktur Pajak</th>
+                <th>Mata Uang</th>
+                <th>Total Amount</th>
+                <th>Jatuh Tempo</th>
+                <th>Biaya (AR)</th>
+                <th>Kategori</th>
+                <th>Status (Sisa Hari)</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php 
+            $no = 1;
+            while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)): 
+                $sisa = (int)$row['sisa_hari'];
+                
+                // FORMAT TANGGAL: 01-Sep-26
+                $tgl_inv = ($row['invoice_date']) ? $row['invoice_date']->format('d-M-y') : '-';
+                $tgl_due = ($row['due_date']) ? $row['due_date']->format('d-M-y') : '-';
+            ?>
+            <tr>
+                <td align="center"><?= $no++ ?></td>
+                <td><?= htmlspecialchars($row['CUST_COMP']) ?></td>
+                <td align="center"><?= $tgl_inv ?></td>
+                
+                <td style="mso-number-format:'\@';"><?= htmlspecialchars($row['invoice_number']) ?></td>
+                <td style="mso-number-format:'\@';"><?= htmlspecialchars($row['faktur_pajak']) ?></td>
+                
+                <td align="center"><?= $row['curr_code'] ?></td>
+                <td align="right"><?= number_format($row['amount'], 2) ?></td>
+                <td align="center"><?= $tgl_due ?></td>
+                <td><?= htmlspecialchars($row['AccountName']) ?></td>
+                <td><?= htmlspecialchars($row['SalesName']) ?></td>
+                <td align="center">
+                    <?= ($sisa <= 0) ? "OVERDUE" : $sisa . " Hari lagi" ?>
+                </td>
+            </tr>
+            <?php endwhile; ?>
+        </tbody>
+    </table>
+</body>
+</html>
