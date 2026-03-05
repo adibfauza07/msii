@@ -178,6 +178,13 @@
       </div>
 
       <div class="col">
+        <a href="mtn/login.php" class="card-division">
+          <div class="icon-box bg-mtn"><i class="bi bi-wrench-adjustable"></i></div>
+          <span class="division-name">Maintenance</span>
+        </a>
+      </div>
+
+      <div class="col">
         <a href="marketing/dashboard_marketing.php" class="card-division">
           <div class="icon-box bg-marketing"><i class="bi bi-megaphone"></i></div>
           <span class="division-name">Marketing</span>
@@ -227,9 +234,9 @@
       </div>
 
       <div class="col">
-        <a href="mtn/login.php" class="card-division">
-          <div class="icon-box bg-mtn"><i class="bi bi-wrench-adjustable"></i></div>
-          <span class="division-name">Maintenance</span>
+        <a href="warehouse/login.php" class="card-division">
+          <div class="icon-box bg-warehouse"><i class="bi bi-truck"></i></div>
+          <span class="division-name">Warehouse</span>
         </a>
       </div>
 
