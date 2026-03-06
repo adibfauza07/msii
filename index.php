@@ -136,6 +136,7 @@
     .bg-qc { background: linear-gradient(135deg, #06b6d4, #22d3ee); box-shadow: 0 15px 30px -10px rgba(6, 182, 212, 0.5); }
     .bg-mtn { background: linear-gradient(135deg, #f97316, #fb923c); box-shadow: 0 15px 30px -10px rgba(249, 115, 22, 0.5); }
 
+    
     footer {
       margin-top: auto;
       padding: 2rem 0;
