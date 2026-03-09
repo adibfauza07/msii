@@ -42,9 +42,8 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
     $items    = isset($_POST['item_code']) ? $_POST['item_code'] : [];
     $qtys     = isset($_POST['item_qty']) ? $_POST['item_qty'] : [];
 
-    if (empty($supCode)) {
-        echo "<script>alert('Gagal: Supplier belum dipilih!');</script>";
-    } elseif (count($items) == 0) {
+// Validasi Supplier Dihapus (sekarang boleh kosong)
+    if (count($items) == 0) {
         echo "<script>alert('Gagal: Belum ada barang!');</script>";
     } else {
         sqlsrv_begin_transaction($conn);
@@ -454,6 +453,7 @@ $(document).ready(function() {
         $('#inputQty').focus(); 
     });
 
+// 4. TOMBOL TAMBAH BARANG
     $('#btnTambahRow').click(function() {
         var kode = $('#inputBarang').val();
         var nama = $('#inputBarang option:selected').text();
@@ -484,8 +484,24 @@ $(document).ready(function() {
         </tr>`;
         
         $('#tabelDetail tbody').append(html);
-        $('#inputBarang').val(null).trigger('change');
-        $('#inputQty').val(1);
+        
+        // --- PERUBAHAN ADA DI SINI ---
+        $('#inputBarang').val(null).trigger('change'); // Kosongkan dropdown
+        $('#inputQty').val(1); // Kembalikan qty ke 1
+        
+        // TRIK MAGIC: Langsung otomatis fokus dan buka dropdown Cari Barang lagi!
+        setTimeout(function() {
+            $('#inputBarang').select2('open');
+        }, 100); 
+    });
+
+    // --- TAMBAHAN BARU: TEKAN ENTER DI KOLOM QTY ---
+    // Jadi nggak perlu capek-capek klik tombol "+ Tambah" pakai mouse
+    $('#inputQty').on('keypress', function(e) {
+        if (e.which == 13) { // 13 adalah kode tombol Enter
+            e.preventDefault(); // Cegah form ke-submit secara tidak sengaja
+            $('#btnTambahRow').click(); // Jalankan fungsi tombol tambah
+        }
     });
 
     $(document).on('click', '.btn-hapus-row', function() { $(this).closest('tr').remove(); });

@@ -10,7 +10,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Inventory System Plant 1</title>
+    <title>Inventory System</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">

@@ -10,17 +10,31 @@ require_once __DIR__ . '/../config/database_p1.php';
 if (isset($_POST['btnHapus'])) {
     $idToDelete = $_POST['hapus_id'];
     if ($idToDelete) {
-        // Cek dulu apakah barang sudah dipakai di transaksi? (Opsional, biar aman)
-        // $cek = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM INV_TRAN WHERE ITEM_CODE=?", array($idToDelete));
-        // if(sqlsrv_has_rows($cek)) { echo "<script>alert('Gagal! Barang sudah dipakai transaksi.');</script>"; } else { ... }
+        // CEK 1: Apakah barang sudah dipakai di Transaksi?
+        $cekTrans = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM INV_TRAN WHERE ITEM_CODE=?", array($idToDelete));
+        $isUsedTrans = ($cekTrans && sqlsrv_fetch_array($cekTrans));
 
-        $sqlDel = "DELETE FROM ITEMS WHERE ITEM_CODE = ?";
-        $stmtDel = sqlsrv_query($conn, $sqlDel, array($idToDelete));
-        
-        if ($stmtDel) {
-            echo "<script>alert('Barang $idToDelete Berhasil Dihapus!'); window.location.href='?page=master';</script>";
+        // CEK 2: Apakah barang sudah dipakai di Stock Opname (TAGS)?
+        $cekTags = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM TAGS WHERE ITEM_CODE=?", array($idToDelete));
+        $isUsedTags = ($cekTags && sqlsrv_fetch_array($cekTags));
+
+        // JIKA BARANG SUDAH DIPAKAI, TOLAK PENGHAPUSAN
+        if ($isUsedTrans || $isUsedTags) {
+            echo "<div class='alert alert-danger mx-3 mt-3 fw-bold'>
+                    <i class='bi bi-x-circle'></i> GAGAL MENGHAPUS: Barang '{$idToDelete}' tidak bisa dihapus karena sudah dipakai dalam data Transaksi atau Stock Opname!
+                  </div>";
         } else {
-            echo "<script>alert('Gagal Hapus: ".print_r(sqlsrv_errors(), true)."');</script>";
+            // JIKA AMAN, LANJUTKAN PENGHAPUSAN
+            $sqlDel = "DELETE FROM ITEMS WHERE ITEM_CODE = ?";
+            $stmtDel = sqlsrv_query($conn, $sqlDel, array($idToDelete));
+            
+            if ($stmtDel) {
+                echo "<script>alert('Barang {$idToDelete} Berhasil Dihapus secara permanen!'); window.location.href='?page=master';</script>";
+            } else {
+                // Tampilkan error DB ke layar html agar Javascript tidak rusak
+                $err = htmlspecialchars(print_r(sqlsrv_errors(), true));
+                echo "<div class='alert alert-danger mx-3 mt-3'><b>Gagal Hapus (Database Error):</b><br><pre>{$err}</pre></div>";
+            }
         }
     }
 }
