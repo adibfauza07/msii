@@ -198,14 +198,17 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
                     <td colspan="6" class="loc-header text-left"><?= htmlspecialchars($location) ?></td>
                 </tr>
 
-                <?php foreach ($items as $row): 
-                    $item_code = trim($row['ITEM']);
-                    $item_name = trim($row['ITEM_NAME']);
-                    $item_cur  = trim($row['ITEM_CUR']);
+<?php foreach ($items as $row): 
+                    // Perbaikan: Cek apakah nama kolomnya ITEM atau ITEM_CODE
+                    $item_code = isset($row['ITEM']) ? trim($row['ITEM']) : (isset($row['ITEM_CODE']) ? trim($row['ITEM_CODE']) : '-');
                     
-                    $bal  = (float)$row['BBAL'];
-                    $tag  = (float)$row['TTAG'];
-                    $cost = (float)$row['ITEM_COST'];
+                    // Gunakan pengecekan (isset) agar aman dari error Notice
+                    $item_name = isset($row['ITEM_NAME']) ? trim($row['ITEM_NAME']) : '-';
+                    $item_cur  = isset($row['ITEM_CUR']) ? trim($row['ITEM_CUR']) : '';
+                    
+                    $bal  = isset($row['BBAL']) ? (float)$row['BBAL'] : 0;
+                    $tag  = isset($row['TTAG']) ? (float)$row['TTAG'] : 0;
+                    $cost = isset($row['ITEM_COST']) ? (float)$row['ITEM_COST'] : 0;
                     
                     $diff = $tag - $bal; 
                     
