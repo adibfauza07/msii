@@ -6,6 +6,7 @@ if (!isset($_SESSION['db_user'])) { header("Location: login.php"); exit(); }
 require_once __DIR__ . '/../config/database_p1.php';
 $page = isset($_GET['page']) ? $_GET['page'] : 'home';
 ?>
+
 <!DOCTYPE html>
 <html lang="id">
 <head>

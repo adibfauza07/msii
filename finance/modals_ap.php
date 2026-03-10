@@ -179,7 +179,7 @@
                         </div>
                         <div class="col-md-12">
     <label class="small fw-bold">Deskripsi / Keterangan</label>
-    <textarea name="deskripsi" id="edit_deskripsi" class="form-control shadow-sm" rows="2"></textarea>
+    <textarea name="deskripsi" id="edit_deskripsi" class="form-control shadow-sm" rows="2" placeholder="Tulis keterangan invoice di sini..."></textarea>
 </div>
 
                         <div class="col-md-12 mt-3">

@@ -13,6 +13,8 @@ if (isset($_POST['update_ap'])) {
     $faktur       = $_POST['faktur_pajak'];
     $id_biaya     = $_POST['id_biaya'];
     $id_kat_ap    = $_POST['id_supplier_cat'];
+
+    $deskripsi    = isset($_POST['deskripsi']) ? $_POST['deskripsi'] : NULL;
     
     // Logika Paid: 1 jika dicentang, 0 jika tidak
     $is_paid      = isset($_POST['is_paid']) ? 1 : 0;

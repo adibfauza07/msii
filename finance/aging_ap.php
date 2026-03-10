@@ -176,7 +176,7 @@ $(document).ready(function() {
     var table = $('#tabelAgingAP').DataTable({
         "pageLength": 10,
         "dom": 'lrtip', 
-        "order": [[10, "asc"]]
+        "order": [[11, "asc"]]
     });
 
     $('.select2-filter').select2({ theme: 'bootstrap-5', width: '100%' });

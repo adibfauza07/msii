@@ -421,9 +421,9 @@ while($r=sqlsrv_fetch_array($qL)) {
                             <i class="bi bi-table me-2 text-success"></i> <b>Tag Summary By Item</b>
                         </a>
 
-                        <a href="#" class="list-group-item list-group-item-action py-2 disabled text-muted">
-                            <i class="bi bi-calculator me-2"></i> Var. Before Adjust
-                        </a>
+                        <a href="report_var_before.php?id=<?php echo $currentID; ?>" target="_blank" class="list-group-item list-group-item-action py-2">
+    <i class="bi bi-calculator me-2"></i> <b>Variance Before Adjust</b> 
+</a>
                         
                         <a href="#" class="list-group-item list-group-item-action py-2 disabled text-muted">
                             <i class="bi bi-arrow-left-right me-2"></i> SOP Conversion

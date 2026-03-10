@@ -16,6 +16,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id_kategori    = $_POST['id_supplier_cat'];
     $id_biaya       = !empty($_POST['id_biaya']) ? $_POST['id_biaya'] : null;
     $is_paid        = isset($_POST['is_paid']) ? 1 : 0;
+    
+    // VARIABEL DESKRIPSI (YANG SEBELUMNYA HILANG)
+    $deskripsi      = isset($_POST['deskripsi']) ? $_POST['deskripsi'] : NULL;
 
     // 2. LOGIKA UPDATE
     if ($act == 'update') {
@@ -31,12 +34,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 curr_code = ?, 
                 id_supplier_cat = ?, 
                 id_biaya = ?, 
-                is_paid = ?
+                is_paid = ?,
+                deskripsi = ? 
                 WHERE id_ap = ?";
         
         $params = array(
             $sup_id, $invoice_number, $faktur_pajak, $invoice_date, $due_date, 
-            $amount, $curr_code, $id_kategori, $id_biaya, $is_paid, $id_ap
+            $amount, $curr_code, $id_kategori, $id_biaya, $is_paid, $deskripsi, $id_ap
         );
 
         $stmt = sqlsrv_query($conn, $sql, $params);
@@ -51,12 +55,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // 3. LOGIKA INSERT (INPUT BARU)
     else if ($act == 'insert') {
         $sql = "INSERT INTO TRANS_AP 
-                (SUP_ID, invoice_number, faktur_pajak, invoice_date, due_date, amount, curr_code, id_supplier_cat, id_biaya, is_paid)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                (SUP_ID, invoice_number, faktur_pajak, invoice_date, due_date, amount, curr_code, id_supplier_cat, id_biaya, is_paid, deskripsi)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         $params = array(
             $sup_id, $invoice_number, $faktur_pajak, $invoice_date, $due_date, 
-            $amount, $curr_code, $id_kategori, $id_biaya, 0
+            $amount, $curr_code, $id_kategori, $id_biaya, 0, $deskripsi
         );
 
         $stmt = sqlsrv_query($conn, $sql, $params);
