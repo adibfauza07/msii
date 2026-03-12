@@ -94,7 +94,7 @@ if (isset($_POST['btnSimpan']) || isset($_POST['btnUpdate'])) {
 }
 
 // ==================================================================================
-// BAGIAN 2: LOGIKA NAVIGASI & VIEW
+// BAGIAN 2: LOGIKA NAVIGASI & VIEW (SUDAH DIPERBAIKI)
 // ==================================================================================
 
 $mode = isset($_GET['mode']) ? $_GET['mode'] : 'view';
@@ -109,13 +109,16 @@ $data = [
 
 // Jika Mode View/Edit, Ambil Data dari DB
 if ($mode != 'new') {
-    // Jika tidak ada ID, ambil barang pertama (Top 1 ASC)
-    if (!$currentID) {
-        $qFirst = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS ORDER BY ITEM_CODE ASC");
-        if ($rFirst = sqlsrv_fetch_array($qFirst)) $currentID = $rFirst['ITEM_CODE'];
+    // FIX: Jika tidak ada ID, ambil barang pertama (ABAIKAN KODE BARANG YANG KOSONG)
+    if (empty($currentID)) {
+        $qFirst = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_CODE IS NOT NULL AND ITEM_CODE <> '' ORDER BY ITEM_CODE ASC");
+        if ($rFirst = sqlsrv_fetch_array($qFirst)) {
+            $currentID = trim($rFirst['ITEM_CODE']);
+        }
     }
 
-    if ($currentID) {
+    // FIX: Gunakan pengecekan ketat agar string kosong tidak membatalkan query
+    if ($currentID !== null && $currentID !== '') {
         $qData = sqlsrv_query($conn, "SELECT * FROM ITEMS WHERE ITEM_CODE = ?", array($currentID));
         if ($rData = sqlsrv_fetch_array($qData, SQLSRV_FETCH_ASSOC)) {
             $data = $rData;
@@ -123,14 +126,30 @@ if ($mode != 'new') {
     }
 }
 
-// Navigasi Next/Prev (Berdasarkan String Kode Barang)
+// Navigasi Next/Prev (FIX: Abaikan data kosong di database)
 $prevID = $nextID = $firstID = $lastID = null;
-if (!$isEntry && $currentID) {
-    $qP = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_CODE < ? ORDER BY ITEM_CODE DESC", array($currentID)); if($r=sqlsrv_fetch_array($qP)) $prevID=$r['ITEM_CODE'];
-    $qN = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_CODE > ? ORDER BY ITEM_CODE ASC", array($currentID)); if($r=sqlsrv_fetch_array($qN)) $nextID=$r['ITEM_CODE'];
-    $qF = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS ORDER BY ITEM_CODE ASC"); if($r=sqlsrv_fetch_array($qF)) $firstID=$r['ITEM_CODE'];
-    $qL = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS ORDER BY ITEM_CODE DESC"); if($r=sqlsrv_fetch_array($qL)) $lastID=$r['ITEM_CODE'];
+if (!$isEntry && $currentID !== null && $currentID !== '') {
+    $qP = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_CODE < ? AND ITEM_CODE <> '' ORDER BY ITEM_CODE DESC", array($currentID)); 
+    if($r=sqlsrv_fetch_array($qP)) $prevID=$r['ITEM_CODE'];
+    
+    $qN = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_CODE > ? AND ITEM_CODE <> '' ORDER BY ITEM_CODE ASC", array($currentID)); 
+    if($r=sqlsrv_fetch_array($qN)) $nextID=$r['ITEM_CODE'];
+    
+    $qF = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_CODE <> '' ORDER BY ITEM_CODE ASC"); 
+    if($r=sqlsrv_fetch_array($qF)) $firstID=$r['ITEM_CODE'];
+    
+    $qL = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_CODE <> '' ORDER BY ITEM_CODE DESC"); 
+    if($r=sqlsrv_fetch_array($qL)) $lastID=$r['ITEM_CODE'];
 }
+
+// Data Dropdown Tipe Barang
+$optItty = "";
+$qItty = sqlsrv_query($conn, "SELECT ITTY_CODE, ITTY_DESC FROM ITTY ORDER BY ITTY_CODE ASC");
+while($r=sqlsrv_fetch_array($qItty)) {
+    $sel = ($data['ITTY_CODE'] == $r['ITTY_CODE']) ? 'selected' : '';
+    $optItty .= "<option value='{$r['ITTY_CODE']}' $sel>{$r['ITTY_CODE']} - {$r['ITTY_DESC']}</option>";
+}
+
 
 // Data Dropdown Tipe Barang
 $optItty = "";

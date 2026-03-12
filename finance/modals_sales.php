@@ -185,3 +185,28 @@
         </form>
     </div>
 </div>
+<div class="modal fade" id="modalKategoriSales" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <form action="save_kategori_sales.php" method="POST">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title fw-bold"><i class="bi bi-tags-fill"></i> TAMBAH KATEGORI SALES BARU</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="small fw-bold">Kode Kategori <span class="text-danger">*</span></label>
+                        <input type="text" name="kode_kategori" class="form-control shadow-sm" required placeholder="Contoh: S01 atau 43111">
+                    </div>
+                    <div class="mb-3">
+                        <label class="small fw-bold">Nama Kategori <span class="text-danger">*</span></label>
+                        <input type="text" name="nama_kategori" class="form-control shadow-sm" required placeholder="Contoh: SALES EXPORT">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="submit" name="save_kategori" class="btn btn-info fw-bold text-white shadow-sm">SIMPAN KATEGORI</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>

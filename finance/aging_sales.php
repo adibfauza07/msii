@@ -38,13 +38,18 @@ $query = q($sql);
     <div class="d-flex justify-content-between mb-4">
         <h4 class="fw-bold">AGING SALES (CUSTOMER)</h4>
         
-        <div class="btn-group">
-            <a href="export_excel_sales.php"  target="_blank" class="btn btn-success shadow-sm fw-bold me-1">
+       <div class="btn-group">
+            <a href="export_excel_sales.php" id="btnExportExcel" target="_blank" class="btn btn-success shadow-sm fw-bold me-1">
                 <i class="bi bi-file-earmark-excel"></i> EXCEL
             </a>
-            <a href="print_aging_sales.php" target="_blank" class="btn btn-danger shadow-sm fw-bold me-1">
+            <a href="print_aging_sales.php" id="btnExportPdf" target="_blank" class="btn btn-danger shadow-sm fw-bold me-1">
                 <i class="bi bi-printer"></i> PDF
             </a>
+            
+            <button class="btn btn-info shadow-sm fw-bold me-1 text-white" data-bs-toggle="modal" data-bs-target="#modalKategoriSales">
+                <i class="bi bi-tags-fill"></i> + KATEGORI
+            </button>
+
             <button class="btn btn-primary shadow-sm fw-bold" data-bs-toggle="modal" data-bs-target="#modalInputSales">
                 <i class="bi bi-plus-lg"></i> INPUT INVOICE BARU
             </button>

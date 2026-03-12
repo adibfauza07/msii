@@ -244,7 +244,10 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
                     <td class="text-right"><?= ($usd_amount != 0) ? number_format($usd_amount, 2) : '-' ?></td>
                 </tr>
                 <?php endforeach; ?>
+                
 
+
+                
                 <tr class="subtotal-row">
                     <td colspan="4"></td>
                     <td class="text-right">SUBTOTAL <?= htmlspecialchars($location) ?></td>
