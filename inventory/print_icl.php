@@ -308,7 +308,7 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
         </table>
 
         <div class="footer-no">
-            FM.CO.01-41 (Revisi 5 : Tgl.1 Mar 23)
+            FM.CO.01-41 (Revisi 5 : Tgl.17 Mar 26)
         </div>
 
     </div>
