@@ -18,7 +18,7 @@ if ($qHead === false || !($rHead = sqlsrv_fetch_array($qHead, SQLSRV_FETCH_ASSOC
     die("Error: Data transaksi tidak ditemukan.");
 }
 
-// Format Tanggal (Sesuai gambar: 14-February-2023)
+// Format Tanggal (Sesuai gambar: 11-March-2026)
 $tranDate = ($rHead['TRAN_DATE'] instanceof DateTime) ? $rHead['TRAN_DATE']->format('d-F-Y') : $rHead['TRAN_DATE'];
 $supplier = isset($rHead['SUP_COMP']) ? $rHead['SUP_COMP'] : '';
 
@@ -42,23 +42,24 @@ if ($qDet === false) {
 }
 
 $dataDetail = [];
+$totalQty = 0; // Variabel untuk menghitung Grand Total
 while ($row = sqlsrv_fetch_array($qDet, SQLSRV_FETCH_ASSOC)) {
-    // Logika Pengganti COALESCE di SQL (Dijalankan dengan aman di PHP)
     $row['ITEM_CODE'] = !empty($row['MASTER_CODE']) ? $row['MASTER_CODE'] : (!empty($row['TRAN_CODE']) ? $row['TRAN_CODE'] : '???');
     $row['ITEM_NAME'] = !empty($row['MASTER_NAME']) ? $row['MASTER_NAME'] : (!empty($row['TRAN_REMARK']) ? $row['TRAN_REMARK'] : '');
     $row['ITEM_UNIT'] = !empty($row['MASTER_UNIT']) ? $row['MASTER_UNIT'] : '';
     
+    $totalQty += (float)$row['IT_QTY']; // Hitung Total Qty
     $dataDetail[] = $row;
 }
 // =========================================================================
 
-// Nama & Alamat Perusahaan berdasarkan Session (Plant 1 atau Plant 2)
+// Nama & Alamat Perusahaan disesuaikan persis dengan gambar referensi
 $companyName = "PT. IMC TEKNO INDONESIA PLANT 1";
-$companyAddress = "Kawasan Industri Mitra Karawang<br>ST-1 Blok A-III Lot No. 15E - 15F Dangdeur Bungursari<br>Kab. Purwakarta Jawa Barat 41181<br>Phone (0264) 351441";
+$companyAddress = "Kawasan Industri Mitra Karawang<br>Blok A-III No. 15E Dangdeur Bungursari<br>Kab. Purwakarta, Jawa Barat 41181<br>Phone : (0264)351440";
 
 if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
     $companyName = "PT. IMC TEKNO INDONESIA PLANT 2";
-    $companyAddress = "Kawasan Industri Kota Bukit Indah<br>ST-1 Blok A-III Lot No. 15E- 15F Dangdeur Bungursari<br>Kab. Purwakarta Jawa Barat 41181<br>Phone (0264) 351441";
+    $companyAddress = "Kawasan Industri Kota Bukit Indah<br>Blok A-III No. 15E Dangdeur Bungursari<br>Kab. Purwakarta, Jawa Barat 41181<br>Phone : (0264)351440";
 }
 ?>
 
@@ -68,10 +69,10 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
     <meta charset="UTF-8">
     <title>ICL Otomatis - <?php echo $rHead['TRAN_DOC']; ?></title>
     <style>
-        /* RESET & DASAR */
+        /* RESET & DASAR: Menggunakan Arial agar persis seperti gambar target */
         body { 
-            font-family: 'Times New Roman', Times, serif; 
-            font-size: 13px; 
+            font-family: Arial, Helvetica, sans-serif; 
+            font-size: 11px; 
             color: #000; 
             padding: 20px; 
             background: #f0f0f0; 
@@ -83,7 +84,7 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
             width: 210mm; /* Lebar A4 Portrait */
             min-height: 140mm; 
             margin: 0 auto;
-            padding: 20px;
+            padding: 15px 20px;
             box-sizing: border-box;
         }
 
@@ -92,84 +93,78 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
-        .kop-surat { line-height: 1.2; }
-        .company-name { font-size: 14px; font-weight: bold; letter-spacing: 0.5px;}
-        .doc-title { font-size: 15px; font-weight: bold; margin-top: 2px; margin-bottom: 2px;}
-        .company-addr { font-size: 12px; }
+        .company-name { 
+            font-size: 13px; 
+            font-weight: bold; 
+            text-decoration: underline; 
+            margin-bottom: 2px;
+        }
+        .doc-title { 
+            font-size: 13px; 
+            font-weight: bold; 
+            margin-bottom: 2px;
+        }
+        .company-addr { 
+            font-size: 10px; 
+            line-height: 1.1; 
+            color: #333;
+        }
 
         /* KOTAK TTD KANAN ATAS */
         .sign-box {
             border-collapse: collapse;
-            font-size: 11px;
+            font-size: 9px;
             text-align: center;
         }
         .sign-box th, .sign-box td {
             border: 1px solid #000;
-            padding: 3px;
-            width: 80px;
+            padding: 2px;
+            width: 70px;
         }
-        .sign-box th { font-weight: bold; }
-        .sign-box td { height: 40px; } /* Ruang ttd kosong */
+        .sign-box td { height: 35px; }
 
         /* META INFO (Tanggal, Supplier, Dokumen) */
         .meta-table {
             width: 100%;
-            font-size: 13px;
+            font-size: 11px;
             font-weight: bold;
             margin-bottom: 5px;
         }
-        .meta-table td { padding: 2px 0; vertical-align: top;}
-        .col-left-label { width: 10%; }
-        .col-left-colon { width: 2%; }
-        .col-left-val { width: 45%; }
-        
-        .col-right-label { width: 12%; }
-        .col-right-colon { width: 2%; }
-        .col-right-val { width: 29%; }
+        .meta-table td { padding: 1px 0; vertical-align: top;}
 
         /* TABEL UTAMA ICL */
         .icl-table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 12px;
-            margin-bottom: 10px;
+            font-size: 11px;
+            margin-bottom: 5px;
         }
         .icl-table th, .icl-table td {
             border: 1px solid #000;
-            padding: 4px;
+            padding: 2px 4px; /* Padding tipis agar compact */
         }
         .icl-table th {
             font-weight: bold;
             text-align: center;
             vertical-align: middle;
-            text-transform: uppercase;
+            font-size: 10px; /* Font header sedikit lebih kecil */
         }
         
-        /* Ukuran Kolom Tabel */
-        .c-code { width: 15%; text-align: left; }
-        .c-name { width: 33%; text-align: left; }
-        .c-unit { width: 5%; text-align: center; }
-        .c-qty { width: 8%; text-align: center; }
-        .c-judg { width: 12%; text-align: center; }
-        .c-ok-hold { width: 6%; text-align: center; }
-        .c-prob { width: 10%; text-align: left; }
-        .c-rec { width: 17%; text-align: left; }
-
-        /* LEGEND BAWAH */
-        .legend-container {
-            display: flex;
-            justify-content: space-between;
-            font-size: 12px;
-            margin-top: 10px;
-            line-height: 1.4;
+        /* LEGEND BAWAH (Menggunakan Table agar rata rapi) */
+        .legend-table {
+            width: 100%;
+            font-size: 10px;
+            border-collapse: collapse;
+            line-height: 1.2;
+            margin-top: 5px;
         }
-        .legend-col { width: 30%; }
+        .legend-table td { padding: 1px 0; vertical-align: top; }
         
         .footer-no {
-            margin-top: 30px;
-            font-size: 12px;
+            margin-top: 15px;
+            font-size: 11px;
         }
 
         /* PRINT SETTINGS */
@@ -195,7 +190,7 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
     <div class="page-container">
         
         <div class="header-container">
-            <div class="kop-surat">
+            <div>
                 <div class="company-name"><?php echo $companyName; ?></div>
                 <div class="doc-title">INCOMING CHECK LIST</div>
                 <div class="company-addr"><?php echo $companyAddress; ?></div>
@@ -216,48 +211,45 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
 
         <table class="meta-table">
             <tr>
-                <td class="col-left-label">Date</td>
-                <td class="col-left-colon">:</td>
-                <td class="col-left-val"><?php echo $tranDate; ?></td>
-                
-                <td class="col-right-label"></td>
-                <td class="col-right-colon"></td>
-                <td class="col-right-val"></td>
+                <td style="width: 8%;">Date</td>
+                <td style="width: 2%;">:</td>
+                <td style="width: 45%; font-weight: normal;"><?php echo $tranDate; ?></td>
+                <td style="width: 12%;"></td>
+                <td style="width: 2%;"></td>
+                <td style="width: 31%;"></td>
             </tr>
             <tr>
-                <td class="col-left-label">Supplier</td>
-                <td class="col-left-colon">:</td>
-                <td class="col-left-val"><?php echo $supplier; ?></td>
-                
-                <td class="col-right-label">ICL Number</td>
-                <td class="col-right-colon">:</td>
-                <td class="col-right-val"><?php echo $rHead['TRAN_DOC']; ?></td>
+                <td>Supplier</td>
+                <td>:</td>
+                <td style="font-weight: normal;"><?php echo $supplier; ?></td>
+                <td>ICL Number</td>
+                <td>:</td>
+                <td style="font-weight: normal;"><?php echo $rHead['TRAN_DOC']; ?></td>
             </tr>
             <tr>
-                <td class="col-left-label">Dept</td>
-                <td class="col-left-colon">:</td>
-                <td class="col-left-val">PPIC</td>
-                
-                <td class="col-right-label">DO Number</td>
-                <td class="col-right-colon">:</td>
-                <td class="col-right-val"></td>
+                <td>Dept</td>
+                <td>:</td>
+                <td style="font-weight: normal;">PPIC</td>
+                <td>DO Number</td>
+                <td>:</td>
+                <td style="font-weight: normal;"><?php echo isset($rHead['TRAN_REM']) ? $rHead['TRAN_REM'] : ''; ?></td>
             </tr>
         </table>
 
         <table class="icl-table">
             <thead>
                 <tr>
-                    <th rowspan="2" class="c-code">CODE</th>
-                    <th rowspan="2" class="c-name">NAME</th>
-                    <th rowspan="2" class="c-unit">UNIT</th>
-                    <th rowspan="2" class="c-qty">Incoming<br>QTY</th>
-                    <th colspan="2" class="c-judg">JUDGEMENT</th>
-                    <th rowspan="2" class="c-prob">PROBLEM</th>
-                    <th rowspan="2" class="c-rec">RECOMENDATION</th>
+                    <th rowspan="2" style="width: 12%;">CODE</th>
+                    <th rowspan="2" style="width: 35%;">NAME</th>
+                    <th rowspan="2" style="width: 5%;">UNIT</th>
+                    <th rowspan="2" style="width: 10%;">Incoming<br>QTY</th>
+                    <th colspan="2" style="width: 10%;">JUDGEMENT</th>
+                    <th rowspan="2" style="width: 14%;">PROBLEM</th>
+                    <th rowspan="2" style="width: 14%;">RECOMENDATION</th>
                 </tr>
                 <tr>
-                    <th class="c-ok-hold">OK</th>
-                    <th class="c-ok-hold">HOLD</th>
+                    <th style="width: 5%;">OK</th>
+                    <th style="width: 5%;">HOLD</th>
                 </tr>
             </thead>
             <tbody>
@@ -266,55 +258,54 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
                     echo "<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>";
                 } else {
                     foreach ($dataDetail as $row) {
-                        $qty = (floor($row['IT_QTY']) == $row['IT_QTY']) ? number_format($row['IT_QTY'], 0) : number_format($row['IT_QTY'], 2);
+                        // Format Qty dengan koma ribuan dan 2 desimal (Contoh: 4,800.00)
+                        $qty = number_format($row['IT_QTY'], 2, '.', ',');
+                        
                         echo "<tr>
                                 <td>{$row['ITEM_CODE']}</td>
                                 <td>{$row['ITEM_NAME']}</td>
-                                <td style='text-align: center;'>{$row['ITEM_UNIT']}</td>
-                                <td style='text-align: center;'>{$qty}</td>
+                                <td style='text-align: center; text-transform: capitalize;'>{$row['ITEM_UNIT']}</td>
+                                <td style='text-align: right;'>{$qty}</td>
                                 <td></td> <td></td> <td></td> <td></td> </tr>";
                     }
                 }
-                
-                // Beri 1 baris kosong sebagai penyeimbang
-                echo "<tr>
-                        <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
-                      </tr>";
                 ?>
             </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="3" style="text-align: right; font-weight: bold; border: 1px solid #000; padding: 2px 4px;">TOTAL :</td>
+                    <td style="text-align: right; border: 1px solid #000; padding: 2px 4px;"><?php echo number_format($totalQty, 2, '.', ','); ?></td>
+                    <td colspan="4" style="border: 1px solid #000;"></td>
+                </tr>
+            </tfoot>
         </table>
 
-        <div class="legend-container">
-            <div class="legend-col" style="width: 25%;">
-                <table style="width:100%; font-size:12px;">
-                    <tr><td width="30%">White</td><td width="5%">:</td><td>Acc + Finnace</td></tr>
-                    <tr><td>Yellow</td><td>:</td><td>Purchasing</td></tr>
-                </table>
-            </div>
-            
-            <div class="legend-col" style="width: 25%;">
-                <table style="width:100%; font-size:12px;">
-                    <tr><td width="30%">Green</td><td width="5%">:</td><td>Checker</td></tr>
-                    <tr><td>Blue</td><td>:</td><td>Receiver</td></tr>
-                </table>
-            </div>
-            
-            <div class="legend-col" style="width: 25%;">
-                <table style="width:100%; font-size:12px;">
-                    <tr><td width="15%">R</td><td width="5%">:</td><td>Raw Material</td></tr>
-                    <tr><td>V</td><td>:</td><td>Vendor</td></tr>
-                    <tr><td>P</td><td>:</td><td>Packing</td></tr>
-                </table>
-            </div>
-            
-            <div class="legend-col" style="width: 25%;">
-                <table style="width:100%; font-size:12px;">
-                    <tr><td width="15%">M</td><td width="5%">:</td><td>Machine</td></tr>
-                    <tr><td>A</td><td>:</td><td>ATK</td></tr>
-                    <tr><td>O</td><td>:</td><td>Other</td></tr>
-                </table>
-            </div>
-        </div>
+        <table class="legend-table">
+            <tr>
+                <td style="width: 6%;">White</td>
+                <td style="width: 16%;">: Acc + Finnace</td>
+                <td style="width: 6%;">Green</td>
+                <td style="width: 16%;">: Checker</td>
+                <td style="width: 16%;">R : Raw Material</td>
+                <td style="width: 16%;">M : Machine</td>
+            </tr>
+            <tr>
+                <td>Yellow</td>
+                <td>: Purchasing</td>
+                <td>Pink</td>
+                <td>: Receiver</td>
+                <td>V : Vendor</td>
+                <td>A : ATK</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td>P : Packing</td>
+                <td>O : Other</td>
+            </tr>
+        </table>
 
         <div class="footer-no">
             FM.CO.01-41 (Revisi 5 : Tgl.1 Mar 23)

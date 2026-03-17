@@ -97,8 +97,8 @@ if (isset($_POST['btnMasuk'])) {
             <div class="mb-3">
                 <label class="form-label small fw-bold text-muted">PILIH LOKASI (DATABASE)</label>
                 <select name="plant" class="form-select shadow-sm border-primary" required>
-                    <option value="p1">PLANT 1 (192.168.0.4)</option>
-                    <option value="p2">PLANT 2 (192.168.0.9)</option>
+                    <option value="p1">PLANT 1</option>
+                    <option value="p2">PLANT 2</option>
                 </select>
             </div>
 
