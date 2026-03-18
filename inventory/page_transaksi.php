@@ -33,11 +33,16 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
     $isUpdate = isset($_POST['btnUpdateTransaksi']);
     $currentID = $_POST['hapus_id'];
 
-    $tranDoc  = $_POST['TRAN_DOC'];
+$tranDoc  = $_POST['TRAN_DOC'];
     $tranDate = $_POST['TRAN_DATE'];
     $trtyCode = $_POST['TRTY_CODE'];
     $supCode  = $_POST['SUP_CODE'];
     $remark   = $_POST['TRAN_REM'];
+    
+    // PERBAIKAN: Jika Supplier kosong, ubah jadi NULL agar lolos Foreign Key Database
+    if ($supCode === "") {
+        $supCode = null;
+    }
     
     $items    = isset($_POST['item_code']) ? $_POST['item_code'] : [];
     $qtys     = isset($_POST['item_qty']) ? $_POST['item_qty'] : [];
@@ -48,6 +53,15 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
     } else {
         sqlsrv_begin_transaction($conn);
         try {
+
+                        if (!$isUpdate && $trtyCode != '14') {
+                $cekDoc = sqlsrv_query($conn, "SELECT TOP 1 TRAN_DOC FROM TRANS WHERE TRAN_DOC = ?", array($tranDoc));
+                if ($cekDoc && sqlsrv_fetch_array($cekDoc)) {
+                    throw new Exception("No. Dokumen '{$tranDoc}' sudah dipakai! Silakan ganti No. Dokumen di atas atau klik tombol + BARU.");
+                }
+            };
+
+
             if ($isUpdate) {
                 $sqlHead = "UPDATE TRANS SET TRAN_DATE=?, TRTY_CODE=?, SUP_CODE=?, TRAN_REM=? WHERE TRAN_ID=?";
                 $paramsHead = array($tranDate, $trtyCode, $supCode, $remark, $currentID);
@@ -55,6 +69,8 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
                 
                 if (!sqlsrv_query($conn, "DELETE FROM INV_TRAN WHERE TRAN_ID=?", array($currentID))) throw new Exception("Gagal Reset Detail");
                 $targetID = $currentID;
+
+
 
             } else {
                 $sqlHead = "INSERT INTO TRANS (TRAN_DOC, TRAN_DATE, TRTY_CODE, SUP_CODE, TRAN_REM, TRAN_ADATE) 
@@ -277,7 +293,7 @@ while($r=sqlsrv_fetch_array($qT)) {
                         </div>
                         <div class="col-6 col-lg-2">
                             <label class="small fw-bold">Qty</label>
-                            <input type="number" id="inputQty" class="form-control form-control-sm" value="1">
+                            <input type="number" id="inputQty" class="form-control form-control-sm" value="0">
                         </div>
                         <div class="col-6 col-lg-2">
                             <label class="small fw-bold">Unit</label>
