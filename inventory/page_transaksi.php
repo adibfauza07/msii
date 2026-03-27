@@ -293,7 +293,7 @@ while($r=sqlsrv_fetch_array($qT)) {
                         </div>
                         <div class="col-6 col-lg-2">
                             <label class="small fw-bold">Qty</label>
-                            <input type="number" id="inputQty" class="form-control form-control-sm" value="0">
+                            <input type="number" id="inputQty" class="form-control form-control-sm" value="" placeholder="0">
                         </div>
                         <div class="col-6 col-lg-2">
                             <label class="small fw-bold">Unit</label>
@@ -407,7 +407,7 @@ while($r=sqlsrv_fetch_array($qT)) {
 
                         if ($currentID && ($trty == '08' || $trty == '09')) {
                             $clsPart = ""; 
-                            $lnkPart = "print_part_slip.php?id=$currentID";
+                            $lnkPart = "print_slip_physical.php?id=$currentID";
                         }
 
                         $href_icl = ($currentID) ? "print_icl.php?id=$currentID" : '#';
@@ -503,7 +503,7 @@ $(document).ready(function() {
         
         // --- PERUBAHAN ADA DI SINI ---
         $('#inputBarang').val(null).trigger('change'); // Kosongkan dropdown
-        $('#inputQty').val(1); // Kembalikan qty ke 1
+        $('#inputQty').val(''); // Kembalikan qty ke 1
         
         // TRIK MAGIC: Langsung otomatis fokus dan buka dropdown Cari Barang lagi!
         setTimeout(function() {
