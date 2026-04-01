@@ -1,6 +1,15 @@
 <?php
 require_once 'pcis_functions.php';
 
+$id_edit = isset($_GET['id']) ? $_GET['id'] : 0;
+$dataEdit = null;
+
+if ($id_edit > 0) {
+    // Ambil data lama untuk diedit
+    $qData = q("SELECT * FROM PROSES_CHANGE WHERE CONTROL_ID = ?", array($id_edit));
+    $dataEdit = sqlsrv_fetch_array($qData, SQLSRV_FETCH_ASSOC);
+}
+
 // Load Data Awal
 $qDept = q("SELECT DEP_CODE, DEP_NAME FROM DEPT WHERE DEP_CODE IN ('MS','PE','PC','MK','PD','QC','MA','PU') ORDER BY DEP_NAME");
 $qCust = q("SELECT CUST_ID, CUST_COMP FROM CUST ORDER BY CUST_COMP");
@@ -165,7 +174,7 @@ $qStatus = q("SELECT STATUS FROM PROSES_STATUS");
                         <div class="row g-3">
                             <div class="col-6">
                                 <label class="x-small fw-bold text-white-50">PREPARED BY</label>
-                                <input type="text" name="prepared" class="form-control form-control-sm bg-transparent text-white" value="<?php echo $_SESSION['erp_user']; ?>">
+                                <input type="text" name="prepared" class="form-control form-control-sm bg-transparent text-white" value="" placeholder="...">
                             </div>
                             <div class="col-6">
                                 <label class="x-small fw-bold text-white-50">STATUS</label>
