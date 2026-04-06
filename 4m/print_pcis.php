@@ -52,7 +52,7 @@ function fTgl($date) {
 
         /* Footer / Approval */
         .footer-table { width: 100%; border-collapse: collapse; margin-top: -1px; }
-        .footer-table td { border: 1px solid #000; padding: 5px; text-align: center; height: 60px; }
+        .footer-table td { border: 1px solid #000; padding: 5px; text-align: center; height: 20px; }
         
         @media print {
             .no-print { display: none; }
@@ -162,7 +162,7 @@ function fTgl($date) {
                 <td width="20%">PREPARED</td><td width="20%">CHECKED</td><td width="20%">APPROVED</td>
                 <td width="20%">CHECKED</td><td width="20%">APPROVED</td>
             </tr>
-            <tr>
+            <tr style="height: 80px;">
                 <td><br><br><?php echo $d['IMC_PREPARED']; ?></td>
                 <td><br><br><?php echo $d['IMC_CHECKED']; ?></td>
                 <td><br><br><?php echo $d['IMC_APROVE']; ?></td>

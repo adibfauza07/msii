@@ -1,6 +1,6 @@
 <?php
 // 1. CEK SESI & MIDDLEWARE
-require_once __DIR__ . '/../middleware/Auth.php'; // Proteksi Login
+
 require_once __DIR__ . '/../config/database.php'; // Koneksi DB & Fungsi q()
 
 $page = isset($_GET['page']) ? $_GET['page'] : 'home';

@@ -27,7 +27,7 @@ if (isset($_POST['btnLog'])) {
         $_SESSION['erp_user'] = $u;
         $_SESSION['erp_pass'] = $p;
         $_SESSION['server_sql'] = $s;
-        $_SESSION['last_activity'] = time();
+
         
         header("Location: dashboard_4m.php");
         exit();
