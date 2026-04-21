@@ -67,7 +67,7 @@ $data = sqlsrv_query($conn, $sql);
     <input type="text" name="part_no" id="part_no" class="form-control" readonly>
 
     <label>Part Name / Description</label>
-    <input type="text" name="part_name" id="part_name" class="form-control" readonly>
+    <input type="text" name="part_name" id="part_name" class="form-control" required>
 
     <label>Qty (pcs)</label>
     <input type="number" name="qty" id="qty" class="form-control" required>

@@ -428,6 +428,30 @@ while($r=sqlsrv_fetch_array($qT)) {
                     </div>
                 </div>
             </div>
+            <div class="card mt-3 shadow-sm">
+                <div class="card-header bg-secondary text-white text-center fw-bold py-1">
+                    <i class="bi bi-funnel-fill"></i> REKAP LIST ICL
+                </div>
+                <div class="card-body p-2 bg-light">
+                    
+                        <div class="row g-2">
+                            <div class="col-12">
+                            <label class="small fw-bold">Dari Tanggal (Opsional):</label>
+                            <input type="date" id="icl_start_date" class="form-control form-control-sm">
+                        </div>
+                        <div class="col-12">
+                            <label class="small fw-bold">Sampai Tanggal (Opsional):</label>
+                            <input type="date" id="icl_end_date" class="form-control form-control-sm">
+                        </div>
+                            <div class="col-12 mt-2">
+                                <button type="button" id="btnTampilIcl" class="btn btn-primary btn-sm w-100 fw-bold border">
+                                <i class="bi bi-list-ol"></i> TAMPILKAN LIST
+                            </button>
+                            </div>
+                        </div>
+                   
+                </div>
+            </div>
             
         </div>
     </div>
@@ -467,6 +491,16 @@ $(document).ready(function() {
         var unitAsli = data.unit || 'Pcs'; 
         $('#inputUnit').val(unitAsli);
         $('#inputQty').focus(); 
+    });
+
+    // FUNGSI KLIK TOMBOL REKAP ICL
+// FUNGSI KLIK TOMBOL REKAP ICL (BEBAS TANGGAL)
+    $('#btnTampilIcl').click(function() {
+        var start = $('#icl_start_date').val();
+        var end   = $('#icl_end_date').val();
+        
+        // Langsung buka tab baru, meskipun tanggal kosong
+        window.open('print_icl_list.php?start_date=' + start + '&end_date=' + end, '_blank');
     });
 
 // 4. TOMBOL TAMBAH BARANG
