@@ -11,13 +11,14 @@ $data_status = [];
 if (!empty($start_date)) {
     // 1. FORMAT TANGGAL KE STRING AGAR SQL SERVER PAHAM
     // SP RPT_BC_INOUT membutuhkan @STARTDATE DATETIME
-    $formatted_date = date('Y-m-d 00:00:00', strtotime($start_date));
-    
-    $sql = "{call RPT_BC_INOUT(?, ?)}";
-    $params = array(
-        array($formatted_date, SQLSRV_PARAM_IN),
-        array($period, SQLSRV_PARAM_IN)
-    );
+    // Tetap kirimkan sebagai string tanggal yang valid
+$formatted_date = date('Y-m-d', strtotime($start_date)); 
+
+$sql = "{call RPT_BC_INOUT(?, ?)}";
+$params = array(
+    array($formatted_date, SQLSRV_PARAM_IN), // Kirim sebagai string tanggal
+    array((int)$period, SQLSRV_PARAM_IN)      // Periode dikirim sebagai integer
+);
     
     $stmt = sqlsrv_query($conn, $sql, $params);
 

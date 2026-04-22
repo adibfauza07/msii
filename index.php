@@ -193,6 +193,13 @@
       </div>
 
       <div class="col">
+    <a href="ordering_p2/dashboard.php" class="card-division">
+        <div class="icon-box bg-production"><i class="bi bi-cart-check"></i></div>
+        <span class="division-name">Ordering Plant 2</span>
+    </a>
+</div>
+
+      <div class="col">
         <a href="ppic/dashboard_ppic.php" class="card-division">
           <div class="icon-box bg-ppic"><i class="bi bi-calendar3"></i></div>
           <span class="division-name">PPIC</span>

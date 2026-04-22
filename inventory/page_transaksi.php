@@ -1,6 +1,12 @@
 <?php
 require_once __DIR__ . '/../config/database_p1.php';
 
+// CEK AKTIF PLANT (Apakah Plant 1 atau Plant 2)
+$isPlant1 = true;
+if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
+    $isPlant1 = false;
+}
+
 // ==================================================================================
 // BAGIAN 1: PROSES DATA (POST)
 // ==================================================================================
@@ -33,51 +39,53 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
     $isUpdate = isset($_POST['btnUpdateTransaksi']);
     $currentID = $_POST['hapus_id'];
 
-$tranDoc  = $_POST['TRAN_DOC'];
-    $tranDate = $_POST['TRAN_DATE'];
-    $trtyCode = $_POST['TRTY_CODE'];
-    $supCode  = $_POST['SUP_CODE'];
-    $remark   = $_POST['TRAN_REM'];
+    $tranDoc   = $_POST['TRAN_DOC'];
+    $tranDate  = $_POST['TRAN_ADATE'];  // Transaction Date
+    $tranADate = $_POST['TRAN_DATE']; // Input Date
+    $trtyCode  = $_POST['TRTY_CODE'];
+    $supCode   = $_POST['SUP_CODE'];
+    $remark    = $_POST['TRAN_REM'];
     
-    // PERBAIKAN: Jika Supplier kosong, ubah jadi NULL agar lolos Foreign Key Database
+    // --- VARIABEL UNTUK BEA CUKAI (Aman jika kosong/tidak dikirim dari form Plant 2) ---
+    $jenisBC  = isset($_POST['JENIS_BC']) ? $_POST['JENIS_BC'] : null;
+    $nomorBC  = isset($_POST['NOMOR_BC']) ? $_POST['NOMOR_BC'] : null;
+    
     if ($supCode === "") {
         $supCode = null;
     }
-    
+
     $items    = isset($_POST['item_code']) ? $_POST['item_code'] : [];
     $qtys     = isset($_POST['item_qty']) ? $_POST['item_qty'] : [];
 
-// Validasi Supplier Dihapus (sekarang boleh kosong)
     if (count($items) == 0) {
         echo "<script>alert('Gagal: Belum ada barang!');</script>";
     } else {
         sqlsrv_begin_transaction($conn);
         try {
-
-                        if (!$isUpdate && $trtyCode != '14') {
+            // Cek Duplikat Dokumen
+            if (!$isUpdate && $trtyCode != '14') {
                 $cekDoc = sqlsrv_query($conn, "SELECT TOP 1 TRAN_DOC FROM TRANS WHERE TRAN_DOC = ?", array($tranDoc));
                 if ($cekDoc && sqlsrv_fetch_array($cekDoc)) {
-                    throw new Exception("No. Dokumen '{$tranDoc}' sudah dipakai! Silakan ganti No. Dokumen di atas atau klik tombol + BARU.");
+                    throw new Exception("No. Dokumen '{$tranDoc}' sudah dipakai! Silakan ganti No. Dokumen atau klik + BARU.");
                 }
-            };
-
+            }
 
             if ($isUpdate) {
-                $sqlHead = "UPDATE TRANS SET TRAN_DATE=?, TRTY_CODE=?, SUP_CODE=?, TRAN_REM=? WHERE TRAN_ID=?";
-                $paramsHead = array($tranDate, $trtyCode, $supCode, $remark, $currentID);
-                if (!sqlsrv_query($conn, $sqlHead, $paramsHead)) throw new Exception("Gagal Update Header");
+                // --- UPDATE HEADER ---
+                $sqlHead = "UPDATE TRANS SET TRAN_DATE=?, TRTY_CODE=?, SUP_CODE=?, TRAN_REM=?, JENIS_BC=?, NOMOR_BC=?, TRAN_ADATE=? WHERE TRAN_ID=?";
+                $paramsHead = array($tranDate, $trtyCode, $supCode, $remark, $jenisBC, $nomorBC, $tranADate, $currentID);
+                if (!sqlsrv_query($conn, $sqlHead, $paramsHead)) throw new Exception("Gagal Update Header: " . print_r(sqlsrv_errors(), true));
                 
                 if (!sqlsrv_query($conn, "DELETE FROM INV_TRAN WHERE TRAN_ID=?", array($currentID))) throw new Exception("Gagal Reset Detail");
                 $targetID = $currentID;
 
-
-
             } else {
-                $sqlHead = "INSERT INTO TRANS (TRAN_DOC, TRAN_DATE, TRTY_CODE, SUP_CODE, TRAN_REM, TRAN_ADATE) 
-                            VALUES (?, ?, ?, ?, ?, GETDATE()); 
+                // --- INSERT HEADER ---
+                $sqlHead = "INSERT INTO TRANS (TRAN_DOC, TRAN_DATE, TRTY_CODE, SUP_CODE, TRAN_REM, JENIS_BC, NOMOR_BC, TRAN_ADATE) 
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?); 
                             SELECT SCOPE_IDENTITY() AS ID";
                 
-                $paramsHead = array($tranDoc, $tranDate, $trtyCode, $supCode, $remark);
+                $paramsHead = array($tranDoc, $tranDate, $trtyCode, $supCode, $remark, $jenisBC, $nomorBC, $tranADate);
                 $stmtHead = sqlsrv_query($conn, $sqlHead, $paramsHead);
                 
                 if ($stmtHead === false) throw new Exception("Gagal Simpan Header: " . print_r(sqlsrv_errors(), true));
@@ -117,7 +125,7 @@ $tranDoc  = $_POST['TRAN_DOC'];
 }
 
 // ==================================================================================
-// BAGIAN 2: LOGIKA FETCH DATA (DENGAN ERROR TRAPPING)
+// BAGIAN 2: LOGIKA FETCH DATA
 // ==================================================================================
 
 $mode = isset($_GET['mode']) ? $_GET['mode'] : 'view'; 
@@ -125,34 +133,41 @@ $currentID = isset($_GET['id']) ? $_GET['id'] : null;
 $isEntry = ($mode == 'new' || $mode == 'edit');
 
 $dataHeader = [
-    'TRAN_ID' => '', 'TRAN_DOC' => 'AUTO', 'TRAN_DATE' => date('Y-m-d'), 
-    'TRTY_CODE' => '', 'SUP_CODE' => '', 'TRAN_REM' => ''
+    'TRAN_ID' => '', 'TRAN_DOC' => 'AUTO', 'TRAN_DATE' => date('Y-m-d'), 'TRAN_ADATE' => date('Y-m-d'), 
+    'TRTY_CODE' => '', 'SUP_CODE' => '', 'TRAN_REM' => '', 'JENIS_BC' => '', 'NOMOR_BC' => ''
 ];
 $dataDetail = [];
 
 if ($mode == 'new') {
     $dataHeader['TRAN_DOC'] = "TR-" . date('ymd-His'); 
 } else {
-    // Cari Data Terakhir jika tidak ada ID
     if (!$currentID) {
         $qLast = sqlsrv_query($conn, "SELECT TOP 1 TRAN_ID FROM TRANS ORDER BY TRAN_ID DESC");
         if ($qLast === false) die("<div class='alert alert-danger m-3'><b>Error Query TRANS (Last ID):</b><br>".print_r(sqlsrv_errors(), true)."</div>");
         if ($rLast = sqlsrv_fetch_array($qLast)) $currentID = $rLast['TRAN_ID'];
     }
 
-    // Load Data Berdasarkan ID
     if ($currentID) {
         $qHead = sqlsrv_query($conn, "SELECT * FROM TRANS WHERE TRAN_ID = ?", array($currentID));
         if ($qHead === false) die("<div class='alert alert-danger m-3'><b>Error Query TRANS (Header):</b><br>".print_r(sqlsrv_errors(), true)."</div>");
         
         if ($rHead = sqlsrv_fetch_array($qHead, SQLSRV_FETCH_ASSOC)) {
             $dataHeader = $rHead;
+            
+            if (!isset($dataHeader['JENIS_BC'])) $dataHeader['JENIS_BC'] = '';
+            if (!isset($dataHeader['NOMOR_BC'])) $dataHeader['NOMOR_BC'] = '';
+
+            // Format Tanggal
             if (isset($dataHeader['TRAN_DATE']) && $dataHeader['TRAN_DATE'] instanceof DateTime) {
                 $dataHeader['TRAN_DATE'] = $dataHeader['TRAN_DATE']->format('Y-m-d');
             }
+            if (isset($dataHeader['TRAN_ADATE']) && $dataHeader['TRAN_ADATE'] instanceof DateTime) {
+                $dataHeader['TRAN_ADATE'] = $dataHeader['TRAN_ADATE']->format('Y-m-d');
+            } else if (empty($dataHeader['TRAN_ADATE'])) {
+                $dataHeader['TRAN_ADATE'] = date('Y-m-d');
+            }
         }
 
-        // Ambil Detail
         $sqlDetail = "SELECT T.IT_LINENO, T.IT_QTY, 
                              COALESCE(NULLIF(I.ITEM_CODE, ''), NULLIF(T.ITEM_CODE, ''), '???') as ITEM_CODE,
                              COALESCE(NULLIF(I.ITEM_NAME, ''), NULLIF(T.TRAN_REMARK, ''), '(Barang Tidak Dikenal)') as ITEM_NAME,
@@ -171,35 +186,23 @@ if ($mode == 'new') {
     }
 }
 
-// Navigasi (Aman dari Fatal Error)
 $prevID = $nextID = $firstID = $lastID = null;
 if (!$isEntry && $currentID) {
-    $qP = sqlsrv_query($conn, "SELECT TOP 1 TRAN_ID FROM TRANS WHERE TRAN_ID < ? ORDER BY TRAN_ID DESC", array($currentID)); 
-    if($qP && $r=sqlsrv_fetch_array($qP)) $prevID = $r['TRAN_ID'];
-    
-    $qN = sqlsrv_query($conn, "SELECT TOP 1 TRAN_ID FROM TRANS WHERE TRAN_ID > ? ORDER BY TRAN_ID ASC", array($currentID)); 
-    if($qN && $r=sqlsrv_fetch_array($qN)) $nextID = $r['TRAN_ID'];
-    
-    $qF = sqlsrv_query($conn, "SELECT TOP 1 TRAN_ID FROM TRANS ORDER BY TRAN_ID ASC"); 
-    if($qF && $r=sqlsrv_fetch_array($qF)) $firstID = $r['TRAN_ID'];
-    
-    $qL = sqlsrv_query($conn, "SELECT TOP 1 TRAN_ID FROM TRANS ORDER BY TRAN_ID DESC"); 
-    if($qL && $r=sqlsrv_fetch_array($qL)) $lastID = $r['TRAN_ID'];
+    $qP = sqlsrv_query($conn, "SELECT TOP 1 TRAN_ID FROM TRANS WHERE TRAN_ID < ? ORDER BY TRAN_ID DESC", array($currentID)); if($qP && $r=sqlsrv_fetch_array($qP)) $prevID = $r['TRAN_ID'];
+    $qN = sqlsrv_query($conn, "SELECT TOP 1 TRAN_ID FROM TRANS WHERE TRAN_ID > ? ORDER BY TRAN_ID ASC", array($currentID)); if($qN && $r=sqlsrv_fetch_array($qN)) $nextID = $r['TRAN_ID'];
+    $qF = sqlsrv_query($conn, "SELECT TOP 1 TRAN_ID FROM TRANS ORDER BY TRAN_ID ASC"); if($qF && $r=sqlsrv_fetch_array($qF)) $firstID = $r['TRAN_ID'];
+    $qL = sqlsrv_query($conn, "SELECT TOP 1 TRAN_ID FROM TRANS ORDER BY TRAN_ID DESC"); if($qL && $r=sqlsrv_fetch_array($qL)) $lastID = $r['TRAN_ID'];
 }
 
-// Load List Supplier
 $optSup = ""; 
 $qS = sqlsrv_query($conn, "SELECT SUP_CODE, SUP_COMP FROM SUPPLIER ORDER BY SUP_COMP ASC");
-if ($qS === false) die("<div class='alert alert-danger m-3'><b>Error Query SUPPLIER:</b><br>".print_r(sqlsrv_errors(), true)."</div>");
 while($r=sqlsrv_fetch_array($qS)) { 
     $s = ($dataHeader['SUP_CODE'] == $r['SUP_CODE']) ? 'selected' : ''; 
     $optSup .= "<option value='{$r['SUP_CODE']}' $s>{$r['SUP_COMP']}</option>"; 
 }
 
-// Load List Transaksi Type (TRTY)
 $optTrty = ""; 
 $qT = sqlsrv_query($conn, "SELECT TRTY_CODE, TRTY_DESC FROM TRTY ORDER BY TRTY_CODE ASC");
-if ($qT === false) die("<div class='alert alert-danger m-3'><b>Error Query TRTY:</b><br>".print_r(sqlsrv_errors(), true)."</div>");
 while($r=sqlsrv_fetch_array($qT)) { 
     $s = ($dataHeader['TRTY_CODE'] == $r['TRTY_CODE']) ? 'selected' : ''; 
     $optTrty .= "<option value='{$r['TRTY_CODE']}' $s>{$r['TRTY_CODE']} - {$r['TRTY_DESC']}</option>"; 
@@ -269,15 +272,45 @@ while($r=sqlsrv_fetch_array($qT)) {
                                 <?php echo $optSup; ?>
                             </select>
                         </div>
-                        <div class="col-6 col-md-3">
-                            <label class="small fw-bold">Tanggal</label>
+
+                        <div class="col-6 col-md-3 col-lg-2">
+                            <label class="small fw-bold">Input Date</label>
+                            <input type="date" class="form-control form-control-sm" name="TRAN_ADATE" 
+                                   value="<?php echo $dataHeader['TRAN_ADATE']; ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
+                        </div>
+                        <div class="col-6 col-md-3 col-lg-2">
+                            <label class="small fw-bold">Trans. Date</label>
                             <input type="date" class="form-control form-control-sm" name="TRAN_DATE" 
                                    value="<?php echo $dataHeader['TRAN_DATE']; ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
                         </div>
-                        <div class="col-12 col-md-9">
+                        
+                        <?php if ($isPlant1): ?>
+                            <div class="col-6 col-md-3 col-lg-2">
+                                <label class="small fw-bold">Tipe BC</label>
+                                <select class="form-select form-select-sm" name="JENIS_BC" <?php echo !$isEntry ? 'disabled' : ''; ?>>
+                                    <option value="">- Non BC -</option>
+                                    <option value="BC 2.3" <?php echo ($dataHeader['JENIS_BC']=='BC 2.3')?'selected':''; ?>>BC 2.3</option>
+                                    <option value="BC 2.5" <?php echo ($dataHeader['JENIS_BC']=='BC 2.5')?'selected':''; ?>>BC 2.5</option>
+                                    <option value="BC 2.6.1" <?php echo ($dataHeader['JENIS_BC']=='BC 2.6.1')?'selected':''; ?>>BC 2.6.1</option>
+                                    <option value="BC 2.6.2" <?php echo ($dataHeader['JENIS_BC']=='BC 2.6.2')?'selected':''; ?>>BC 2.6.2</option>
+                                    <option value="BC 2.7" <?php echo ($dataHeader['JENIS_BC']=='BC 2.7')?'selected':''; ?>>BC 2.7</option>
+                                    <option value="BC 3.0" <?php echo ($dataHeader['JENIS_BC']=='BC 3.0')?'selected':''; ?>>BC 3.0</option>
+                                    <option value="BC 4.0" <?php echo ($dataHeader['JENIS_BC']=='BC 4.0')?'selected':''; ?>>BC 4.0</option>
+                                </select>
+                            </div>
+                            <div class="col-6 col-md-3 col-lg-3">
+                                <label class="small fw-bold">Nomor BC</label>
+                                <input type="text" class="form-control form-control-sm" name="NOMOR_BC" placeholder="Ketik No BC..."
+                                       value="<?php echo htmlspecialchars($dataHeader['NOMOR_BC']); ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
+                            </div>
+                            <div class="col-12 col-lg-3">
+                        <?php else: ?>
+                            <div class="col-12 col-md-6 col-lg-8">
+                        <?php endif; ?>
+                        
                             <label class="small fw-bold">Keterangan</label>
                             <input type="text" class="form-control form-control-sm" name="TRAN_REM" 
-                                   value="<?php echo $dataHeader['TRAN_REM']; ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
+                                   value="<?php echo htmlspecialchars($dataHeader['TRAN_REM']); ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
                         </div>
                     </div>
                 </div>
@@ -293,7 +326,7 @@ while($r=sqlsrv_fetch_array($qT)) {
                         </div>
                         <div class="col-6 col-lg-2">
                             <label class="small fw-bold">Qty</label>
-                            <input type="number" id="inputQty" class="form-control form-control-sm" value="" placeholder="0">
+                            <input type="number" id="inputQty" class="form-control form-control-sm" value="0">
                         </div>
                         <div class="col-6 col-lg-2">
                             <label class="small fw-bold">Unit</label>
@@ -428,14 +461,14 @@ while($r=sqlsrv_fetch_array($qT)) {
                     </div>
                 </div>
             </div>
+
             <div class="card mt-3 shadow-sm">
                 <div class="card-header bg-secondary text-white text-center fw-bold py-1">
                     <i class="bi bi-funnel-fill"></i> REKAP LIST ICL
                 </div>
                 <div class="card-body p-2 bg-light">
-                    
-                        <div class="row g-2">
-                            <div class="col-12">
+                    <div class="row g-2">
+                        <div class="col-12">
                             <label class="small fw-bold">Dari Tanggal (Opsional):</label>
                             <input type="date" id="icl_start_date" class="form-control form-control-sm">
                         </div>
@@ -443,13 +476,12 @@ while($r=sqlsrv_fetch_array($qT)) {
                             <label class="small fw-bold">Sampai Tanggal (Opsional):</label>
                             <input type="date" id="icl_end_date" class="form-control form-control-sm">
                         </div>
-                            <div class="col-12 mt-2">
-                                <button type="button" id="btnTampilIcl" class="btn btn-primary btn-sm w-100 fw-bold border">
+                        <div class="col-12 mt-2">
+                            <button type="button" id="btnTampilIcl" class="btn btn-primary btn-sm w-100 fw-bold border">
                                 <i class="bi bi-list-ol"></i> TAMPILKAN LIST
                             </button>
-                            </div>
                         </div>
-                   
+                    </div>
                 </div>
             </div>
             
@@ -493,17 +525,6 @@ $(document).ready(function() {
         $('#inputQty').focus(); 
     });
 
-    // FUNGSI KLIK TOMBOL REKAP ICL
-// FUNGSI KLIK TOMBOL REKAP ICL (BEBAS TANGGAL)
-    $('#btnTampilIcl').click(function() {
-        var start = $('#icl_start_date').val();
-        var end   = $('#icl_end_date').val();
-        
-        // Langsung buka tab baru, meskipun tanggal kosong
-        window.open('print_icl_list.php?start_date=' + start + '&end_date=' + end, '_blank');
-    });
-
-// 4. TOMBOL TAMBAH BARANG
     $('#btnTambahRow').click(function() {
         var kode = $('#inputBarang').val();
         var nama = $('#inputBarang option:selected').text();
@@ -535,29 +556,27 @@ $(document).ready(function() {
         
         $('#tabelDetail tbody').append(html);
         
-        // --- PERUBAHAN ADA DI SINI ---
-        $('#inputBarang').val(null).trigger('change'); // Kosongkan dropdown
-        $('#inputQty').val(''); // Kembalikan qty ke 1
+        $('#inputBarang').val(null).trigger('change');
+        $('#inputQty').val(0);
         
-        // TRIK MAGIC: Langsung otomatis fokus dan buka dropdown Cari Barang lagi!
         setTimeout(function() {
             $('#inputBarang').select2('open');
         }, 100); 
     });
 
-    // --- TAMBAHAN BARU: TEKAN ENTER DI KOLOM QTY ---
-    // Jadi nggak perlu capek-capek klik tombol "+ Tambah" pakai mouse
     $('#inputQty').on('keypress', function(e) {
-        if (e.which == 13) { // 13 adalah kode tombol Enter
-            e.preventDefault(); // Cegah form ke-submit secara tidak sengaja
-            $('#btnTambahRow').click(); // Jalankan fungsi tombol tambah
+        if (e.which == 13) { 
+            e.preventDefault(); 
+            $('#btnTambahRow').click(); 
         }
     });
 
     $(document).on('click', '.btn-hapus-row', function() { $(this).closest('tr').remove(); });
+    
     $(document).on('dblclick', '.cell-qty', function() {
         var $td = $(this); $td.find('.txt-qty').addClass('d-none'); $td.find('.input-qty-edit').removeClass('d-none').focus().select(); $td.closest('tr').find('.btn-save-row').removeClass('d-none');
     });
+    
     $(document).on('click', '.btn-save-row', function() {
         var $row = $(this).closest('tr');
         var $tdQty = $row.find('.cell-qty');
@@ -567,6 +586,14 @@ $(document).ready(function() {
         $tdQty.find('.input-qty-edit').addClass('d-none');
         $(this).addClass('d-none');
     });
+    
     $(document).on('keypress', '.input-qty-edit', function(e) { if(e.which == 13) { e.preventDefault(); $(this).closest('tr').find('.btn-save-row').click(); } });
+
+    // FUNGSI KLIK TOMBOL REKAP ICL
+    $('#btnTampilIcl').click(function() {
+        var start = $('#icl_start_date').val();
+        var end   = $('#icl_end_date').val();
+        window.open('print_icl_list.php?start_date=' + start + '&end_date=' + end, '_blank');
+    });
 });
 </script>
