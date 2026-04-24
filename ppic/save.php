@@ -70,6 +70,8 @@ $row  = sqlsrv_fetch_array($last, SQLSRV_FETCH_ASSOC);
 
 $id = $row['id'];
 
-header("Location: print_label.php?id=".$id);
+// Tambahkan parameter lot ke dalam URL agar bisa dibaca oleh print_label.php
+// Tambahkan parameter tgl ke dalam URL
+header("Location: print_label.php?id=".$id."&lot=".urlencode($lot)."&tgl=".$tanggal);
 exit;
 ?>

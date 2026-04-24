@@ -1,23 +1,29 @@
 <?php
 require_once __DIR__ . '/../config/database_p1.php';
 
-// CEK AKTIF PLANT (Apakah Plant 1 atau Plant 2)
+// CEK AKTIF PLANT
 $isPlant1 = true;
 if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
     $isPlant1 = false;
 }
 
+$TABEL_BC = "BC_TRANS"; 
+
 // ==================================================================================
 // BAGIAN 1: PROSES DATA (POST)
 // ==================================================================================
 
-// A. HAPUS TRANSAKSI
 if (isset($_POST['btnHapusTransaksi'])) {
     $idToDelete = $_POST['hapus_id'];
     if ($idToDelete) {
         sqlsrv_begin_transaction($conn);
         try {
             sqlsrv_query($conn, "DELETE FROM INV_TRAN WHERE TRAN_ID = ?", array($idToDelete));
+            
+            if ($isPlant1) {
+                sqlsrv_query($conn, "DELETE FROM $TABEL_BC WHERE TRAN_ID = ?", array($idToDelete));
+            }
+            
             $stmtDel = sqlsrv_query($conn, "DELETE FROM TRANS WHERE TRAN_ID = ?", array($idToDelete));
             
             if ($stmtDel) {
@@ -33,26 +39,20 @@ if (isset($_POST['btnHapusTransaksi'])) {
     }
 }
 
-// B. PROSES SIMPAN BARU (INSERT) & UPDATE
 if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) {
     
     $isUpdate = isset($_POST['btnUpdateTransaksi']);
     $currentID = $_POST['hapus_id'];
 
-    $tranDoc   = $_POST['TRAN_DOC'];
-    $tranDate  = $_POST['TRAN_ADATE'];  // Transaction Date
-    $tranADate = $_POST['TRAN_DATE']; // Input Date
+    // VARIABEL UMUM (P1 & P2)
+    $tranDoc   = substr(trim($_POST['TRAN_DOC']), 0, 30);
+    $tranDate  = $_POST['TRAN_DATE'];   // Input Date
+    $tranADate = $_POST['TRAN_ADATE'];  // Trans. Date
     $trtyCode  = $_POST['TRTY_CODE'];
     $supCode   = $_POST['SUP_CODE'];
-    $remark    = $_POST['TRAN_REM'];
+    $remark    = substr(trim($_POST['TRAN_REM']), 0, 50);
     
-    // --- VARIABEL UNTUK BEA CUKAI (Aman jika kosong/tidak dikirim dari form Plant 2) ---
-    $jenisBC  = isset($_POST['JENIS_BC']) ? $_POST['JENIS_BC'] : null;
-    $nomorBC  = isset($_POST['NOMOR_BC']) ? $_POST['NOMOR_BC'] : null;
-    
-    if ($supCode === "") {
-        $supCode = null;
-    }
+    if ($supCode === "") $supCode = null;
 
     $items    = isset($_POST['item_code']) ? $_POST['item_code'] : [];
     $qtys     = isset($_POST['item_qty']) ? $_POST['item_qty'] : [];
@@ -62,54 +62,84 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
     } else {
         sqlsrv_begin_transaction($conn);
         try {
-            // Cek Duplikat Dokumen
+            // CEK DUPLIKAT DOKUMEN
             if (!$isUpdate && $trtyCode != '14') {
                 $cekDoc = sqlsrv_query($conn, "SELECT TOP 1 TRAN_DOC FROM TRANS WHERE TRAN_DOC = ?", array($tranDoc));
                 if ($cekDoc && sqlsrv_fetch_array($cekDoc)) {
-                    throw new Exception("No. Dokumen '{$tranDoc}' sudah dipakai! Silakan ganti No. Dokumen atau klik + BARU.");
+                    throw new Exception("No. Dokumen '{$tranDoc}' sudah dipakai! Silakan ganti No. Dokumen.");
                 }
             }
 
-            if ($isUpdate) {
-                // --- UPDATE HEADER ---
-                $sqlHead = "UPDATE TRANS SET TRAN_DATE=?, TRTY_CODE=?, SUP_CODE=?, TRAN_REM=?, JENIS_BC=?, NOMOR_BC=?, TRAN_ADATE=? WHERE TRAN_ID=?";
-                $paramsHead = array($tranDate, $trtyCode, $supCode, $remark, $jenisBC, $nomorBC, $tranADate, $currentID);
-                if (!sqlsrv_query($conn, $sqlHead, $paramsHead)) throw new Exception("Gagal Update Header: " . print_r(sqlsrv_errors(), true));
-                
-                if (!sqlsrv_query($conn, "DELETE FROM INV_TRAN WHERE TRAN_ID=?", array($currentID))) throw new Exception("Gagal Reset Detail");
-                $targetID = $currentID;
+            // ===================================================================
+            // BLOK LOGIKA SIMPAN KHUSUS PLANT 1
+            // ===================================================================
+            if ($isPlant1) {
+                $jenisBC   = isset($_POST['JENIS_BC']) ? $_POST['JENIS_BC'] : '';
+                $nomorBC   = isset($_POST['NOMOR_BC']) ? substr(trim($_POST['NOMOR_BC']), 0, 50) : '';
 
-            } else {
-                // --- INSERT HEADER ---
-                $sqlHead = "INSERT INTO TRANS (TRAN_DOC, TRAN_DATE, TRTY_CODE, SUP_CODE, TRAN_REM, JENIS_BC, NOMOR_BC, TRAN_ADATE) 
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?); 
-                            SELECT SCOPE_IDENTITY() AS ID";
-                
-                $paramsHead = array($tranDoc, $tranDate, $trtyCode, $supCode, $remark, $jenisBC, $nomorBC, $tranADate);
-                $stmtHead = sqlsrv_query($conn, $sqlHead, $paramsHead);
-                
-                if ($stmtHead === false) throw new Exception("Gagal Simpan Header: " . print_r(sqlsrv_errors(), true));
+                if ($isUpdate) {
+                    $sqlHead = "UPDATE TRANS SET TRAN_DATE=?, TRTY_CODE=?, SUP_CODE=?, TRAN_REM=?, TRAN_ADATE=? WHERE TRAN_ID=?";
+                    $paramsHead = array($tranDate, $trtyCode, $supCode, $remark, $tranADate, $currentID);
+                    $stmtHead = sqlsrv_query($conn, $sqlHead, $paramsHead);
+                    if ($stmtHead === false) throw new Exception("Gagal Update Header (P1):\n" . print_r(sqlsrv_errors(), true));
+                    
+                    sqlsrv_query($conn, "DELETE FROM $TABEL_BC WHERE TRAN_ID=?", array($currentID));
+                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (TRAN_ID, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($currentID, $jenisBC, $nomorBC));
+                    if ($stmtBC === false) throw new Exception("Gagal Update Tabel BC:\n" . print_r(sqlsrv_errors(), true));
 
-                sqlsrv_next_result($stmtHead); 
-                $rowID = sqlsrv_fetch_array($stmtHead);
-                
-                if(!$rowID || !isset($rowID['ID'])) throw new Exception("Gagal mengambil ID Transaksi Baru");
-                $targetID = $rowID['ID'];
+                    $targetID = $currentID;
+                } else {
+                    $sqlHead = "INSERT INTO TRANS (TRAN_DOC, TRAN_DATE, TRTY_CODE, SUP_CODE, TRAN_REM, TRAN_ADATE) VALUES (?, ?, ?, ?, ?, ?); SELECT SCOPE_IDENTITY() AS ID";
+                    $paramsHead = array($tranDoc, $tranDate, $trtyCode, $supCode, $remark, $tranADate);
+                    $stmtHead = sqlsrv_query($conn, $sqlHead, $paramsHead);
+                    if ($stmtHead === false) throw new Exception("Gagal Insert Header (P1):\n" . print_r(sqlsrv_errors(), true));
+
+                    sqlsrv_next_result($stmtHead); 
+                    $rowID = sqlsrv_fetch_array($stmtHead);
+                    $targetID = $rowID['ID'];
+
+                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (TRAN_ID, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($targetID, $jenisBC, $nomorBC));
+                    if ($stmtBC === false) throw new Exception("Gagal Insert Tabel BC:\n" . print_r(sqlsrv_errors(), true));
+                }
+            } 
+            // ===================================================================
+            // BLOK LOGIKA SIMPAN KHUSUS PLANT 2 (BERSIH DARI BC)
+            // ===================================================================
+            else {
+                if ($isUpdate) {
+                    $sqlHead = "UPDATE TRANS SET TRAN_DATE=?, TRTY_CODE=?, SUP_CODE=?, TRAN_REM=?, TRAN_ADATE=? WHERE TRAN_ID=?";
+                    $paramsHead = array($tranDate, $trtyCode, $supCode, $remark, $tranADate, $currentID);
+                    $stmtHead = sqlsrv_query($conn, $sqlHead, $paramsHead);
+                    if ($stmtHead === false) throw new Exception("Gagal Update Header (P2):\n" . print_r(sqlsrv_errors(), true));
+                    
+                    $targetID = $currentID;
+                } else {
+                    $sqlHead = "INSERT INTO TRANS (TRAN_DOC, TRAN_DATE, TRTY_CODE, SUP_CODE, TRAN_REM, TRAN_ADATE) VALUES (?, ?, ?, ?, ?, ?); SELECT SCOPE_IDENTITY() AS ID";
+                    $paramsHead = array($tranDoc, $tranDate, $trtyCode, $supCode, $remark, $tranADate);
+                    $stmtHead = sqlsrv_query($conn, $sqlHead, $paramsHead);
+                    if ($stmtHead === false) throw new Exception("Gagal Insert Header (P2):\n" . print_r(sqlsrv_errors(), true));
+
+                    sqlsrv_next_result($stmtHead); 
+                    $rowID = sqlsrv_fetch_array($stmtHead);
+                    $targetID = $rowID['ID'];
+                }
             }
 
-            $sqlDet = "INSERT INTO INV_TRAN (TRAN_ID, ITEM_ID, ITEM_CODE, IT_QTY, IT_LINENO, TRAN_REMARK, ST_CODE) 
-                       VALUES (?, ?, ?, ?, ?, ?, 'OK')";
-            
+            // --- INSERT DETAIL BARANG ---
+            if ($isUpdate) {
+                $stmtDelDet = sqlsrv_query($conn, "DELETE FROM INV_TRAN WHERE TRAN_ID=?", array($targetID));
+                if ($stmtDelDet === false) throw new Exception("Gagal Reset Detail INV_TRAN");
+            }
+
+            $sqlDet = "INSERT INTO INV_TRAN (TRAN_ID, ITEM_ID, ITEM_CODE, IT_QTY, IT_LINENO, TRAN_REMARK, ST_CODE) VALUES (?, ?, ?, ?, ?, ?, 'OK')";
             $lineNo = 1;
             foreach ($items as $index => $code) {
-                $qty = $qtys[$index];
-                
                 $qCek = sqlsrv_query($conn, "SELECT TOP 1 ITEM_ID FROM ITEMS WHERE ITEM_CODE = ?", array($code));
                 $rCek = sqlsrv_fetch_array($qCek);
                 $itemID = $rCek ? $rCek['ITEM_ID'] : 0;
 
-                $paramsDet = array($targetID, $itemID, $code, $qty, $lineNo, $remark);
-                if (!sqlsrv_query($conn, $sqlDet, $paramsDet)) throw new Exception("Gagal Simpan Item $code");
+                $stmtDet = sqlsrv_query($conn, $sqlDet, array($targetID, $itemID, $code, $qtys[$index], $lineNo, $remark));
+                if ($stmtDet === false) throw new Exception("Gagal Insert Detail baris $lineNo:\n" . print_r(sqlsrv_errors(), true));
                 $lineNo++;
             }
 
@@ -119,7 +149,15 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
 
         } catch (Exception $e) {
             sqlsrv_rollback($conn);
-            echo "<div class='alert alert-danger'><b>System Error:</b> " . $e->getMessage() . "</div>";
+            $errorString = $e->getMessage();
+            echo "<div class='container mt-3'>
+                    <div class='alert alert-danger shadow' style='border: 2px solid red;'>
+                        <h4 class='alert-heading text-danger fw-bold'><i class='bi bi-exclamation-triangle-fill'></i> 🚨 TERJADI ERROR DATABASE 🚨</h4>
+                        <hr>
+                        <p class='mb-1 fw-bold'>Detail Pesan Error dari SQL Server:</p>
+                        <textarea class='form-control bg-white text-dark' rows='8' style='font-family: monospace; font-size: 13px;' readonly>" . htmlspecialchars($errorString) . "</textarea>
+                    </div>
+                  </div>";
         }
     }
 }
@@ -143,29 +181,29 @@ if ($mode == 'new') {
 } else {
     if (!$currentID) {
         $qLast = sqlsrv_query($conn, "SELECT TOP 1 TRAN_ID FROM TRANS ORDER BY TRAN_ID DESC");
-        if ($qLast === false) die("<div class='alert alert-danger m-3'><b>Error Query TRANS (Last ID):</b><br>".print_r(sqlsrv_errors(), true)."</div>");
-        if ($rLast = sqlsrv_fetch_array($qLast)) $currentID = $rLast['TRAN_ID'];
+        if ($qLast && $rLast = sqlsrv_fetch_array($qLast)) $currentID = $rLast['TRAN_ID'];
     }
 
     if ($currentID) {
-        $qHead = sqlsrv_query($conn, "SELECT * FROM TRANS WHERE TRAN_ID = ?", array($currentID));
-        if ($qHead === false) die("<div class='alert alert-danger m-3'><b>Error Query TRANS (Header):</b><br>".print_r(sqlsrv_errors(), true)."</div>");
+        // FETCH DATA (P1 MENGGUNAKAN JOIN, P2 NORMAL)
+        if ($isPlant1) {
+            $sqlHead = "SELECT T.*, B.JENIS_BC, B.NOMOR_BC 
+                        FROM TRANS T 
+                        LEFT JOIN $TABEL_BC B ON T.TRAN_ID = B.TRAN_ID 
+                        WHERE T.TRAN_ID = ?";
+        } else {
+            $sqlHead = "SELECT * FROM TRANS WHERE TRAN_ID = ?";
+        }
         
-        if ($rHead = sqlsrv_fetch_array($qHead, SQLSRV_FETCH_ASSOC)) {
+        $qHead = sqlsrv_query($conn, $sqlHead, array($currentID));
+        if ($qHead && $rHead = sqlsrv_fetch_array($qHead, SQLSRV_FETCH_ASSOC)) {
             $dataHeader = $rHead;
-            
             if (!isset($dataHeader['JENIS_BC'])) $dataHeader['JENIS_BC'] = '';
             if (!isset($dataHeader['NOMOR_BC'])) $dataHeader['NOMOR_BC'] = '';
 
-            // Format Tanggal
-            if (isset($dataHeader['TRAN_DATE']) && $dataHeader['TRAN_DATE'] instanceof DateTime) {
-                $dataHeader['TRAN_DATE'] = $dataHeader['TRAN_DATE']->format('Y-m-d');
-            }
-            if (isset($dataHeader['TRAN_ADATE']) && $dataHeader['TRAN_ADATE'] instanceof DateTime) {
-                $dataHeader['TRAN_ADATE'] = $dataHeader['TRAN_ADATE']->format('Y-m-d');
-            } else if (empty($dataHeader['TRAN_ADATE'])) {
-                $dataHeader['TRAN_ADATE'] = date('Y-m-d');
-            }
+            if (isset($dataHeader['TRAN_DATE']) && $dataHeader['TRAN_DATE'] instanceof DateTime) $dataHeader['TRAN_DATE'] = $dataHeader['TRAN_DATE']->format('Y-m-d');
+            if (isset($dataHeader['TRAN_ADATE']) && $dataHeader['TRAN_ADATE'] instanceof DateTime) $dataHeader['TRAN_ADATE'] = $dataHeader['TRAN_ADATE']->format('Y-m-d');
+            else if (empty($dataHeader['TRAN_ADATE'])) $dataHeader['TRAN_ADATE'] = date('Y-m-d');
         }
 
         $sqlDetail = "SELECT T.IT_LINENO, T.IT_QTY, 
@@ -178,10 +216,10 @@ if ($mode == 'new') {
                       ORDER BY T.IT_LINENO ASC";
 
         $qDet = sqlsrv_query($conn, $sqlDetail, array($currentID));
-        if ($qDet === false) die("<div class='alert alert-danger m-3'><b>Error Query INV_TRAN (Detail):</b><br>".print_r(sqlsrv_errors(), true)."</div>");
-        
-        while ($rDet = sqlsrv_fetch_array($qDet, SQLSRV_FETCH_ASSOC)) {
-            $dataDetail[] = $rDet;
+        if ($qDet) {
+            while ($rDet = sqlsrv_fetch_array($qDet, SQLSRV_FETCH_ASSOC)) {
+                $dataDetail[] = $rDet;
+            }
         }
     }
 }
@@ -196,14 +234,14 @@ if (!$isEntry && $currentID) {
 
 $optSup = ""; 
 $qS = sqlsrv_query($conn, "SELECT SUP_CODE, SUP_COMP FROM SUPPLIER ORDER BY SUP_COMP ASC");
-while($r=sqlsrv_fetch_array($qS)) { 
+while($qS && $r=sqlsrv_fetch_array($qS)) { 
     $s = ($dataHeader['SUP_CODE'] == $r['SUP_CODE']) ? 'selected' : ''; 
     $optSup .= "<option value='{$r['SUP_CODE']}' $s>{$r['SUP_COMP']}</option>"; 
 }
 
 $optTrty = ""; 
 $qT = sqlsrv_query($conn, "SELECT TRTY_CODE, TRTY_DESC FROM TRTY ORDER BY TRTY_CODE ASC");
-while($r=sqlsrv_fetch_array($qT)) { 
+while($qT && $r=sqlsrv_fetch_array($qT)) { 
     $s = ($dataHeader['TRTY_CODE'] == $r['TRTY_CODE']) ? 'selected' : ''; 
     $optTrty .= "<option value='{$r['TRTY_CODE']}' $s>{$r['TRTY_CODE']} - {$r['TRTY_DESC']}</option>"; 
 }
@@ -256,7 +294,7 @@ while($r=sqlsrv_fetch_array($qT)) {
                     <div class="row g-2">
                         <div class="col-12 col-md-4 col-lg-3">
                             <label class="small fw-bold">No. Dokumen</label>
-                            <input type="text" class="form-control form-control-sm fw-bold text-primary" name="TRAN_DOC" 
+                            <input type="text" class="form-control form-control-sm fw-bold text-primary" name="TRAN_DOC" maxlength="30"
                                    value="<?php echo $dataHeader['TRAN_DOC']; ?>" required>
                         </div>
                         <div class="col-12 col-md-4 col-lg-3">
@@ -274,19 +312,19 @@ while($r=sqlsrv_fetch_array($qT)) {
                         </div>
 
                         <div class="col-6 col-md-3 col-lg-2">
-                            <label class="small fw-bold">Input Date</label>
-                            <input type="date" class="form-control form-control-sm" name="TRAN_ADATE" 
-                                   value="<?php echo $dataHeader['TRAN_ADATE']; ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
+                            <label class="small fw-bold text-danger">Input Date</label>
+                            <input type="date" class="form-control form-control-sm bg-white" name="TRAN_DATE" 
+                                   value="<?php echo $dataHeader['TRAN_DATE']; ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
                         </div>
                         <div class="col-6 col-md-3 col-lg-2">
                             <label class="small fw-bold">Trans. Date</label>
-                            <input type="date" class="form-control form-control-sm" name="TRAN_DATE" 
-                                   value="<?php echo $dataHeader['TRAN_DATE']; ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
+                            <input type="date" class="form-control form-control-sm" name="TRAN_ADATE" 
+                                   value="<?php echo $dataHeader['TRAN_ADATE']; ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
                         </div>
                         
                         <?php if ($isPlant1): ?>
                             <div class="col-6 col-md-3 col-lg-2">
-                                <label class="small fw-bold">Tipe BC</label>
+                                <label class="small fw-bold text-primary">Tipe BC</label>
                                 <select class="form-select form-select-sm" name="JENIS_BC" <?php echo !$isEntry ? 'disabled' : ''; ?>>
                                     <option value="">- Non BC -</option>
                                     <option value="BC 2.3" <?php echo ($dataHeader['JENIS_BC']=='BC 2.3')?'selected':''; ?>>BC 2.3</option>
@@ -299,17 +337,18 @@ while($r=sqlsrv_fetch_array($qT)) {
                                 </select>
                             </div>
                             <div class="col-6 col-md-3 col-lg-3">
-                                <label class="small fw-bold">Nomor BC</label>
-                                <input type="text" class="form-control form-control-sm" name="NOMOR_BC" placeholder="Ketik No BC..."
+                                <label class="small fw-bold text-primary">Nomor BC</label>
+                                <input type="text" class="form-control form-control-sm" name="NOMOR_BC" placeholder="Ketik No BC..." maxlength="50"
                                        value="<?php echo htmlspecialchars($dataHeader['NOMOR_BC']); ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
                             </div>
+                            
                             <div class="col-12 col-lg-3">
                         <?php else: ?>
                             <div class="col-12 col-md-6 col-lg-8">
                         <?php endif; ?>
                         
-                            <label class="small fw-bold">Keterangan</label>
-                            <input type="text" class="form-control form-control-sm" name="TRAN_REM" 
+                            <label class="small fw-bold">Keterangan (Max 50 Char)</label>
+                            <input type="text" class="form-control form-control-sm" name="TRAN_REM" maxlength="50"
                                    value="<?php echo htmlspecialchars($dataHeader['TRAN_REM']); ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
                         </div>
                     </div>
@@ -326,7 +365,7 @@ while($r=sqlsrv_fetch_array($qT)) {
                         </div>
                         <div class="col-6 col-lg-2">
                             <label class="small fw-bold">Qty</label>
-                            <input type="number" id="inputQty" class="form-control form-control-sm" value="0">
+                            <input type="number" id="inputQty" class="form-control form-control-sm" value="">
                         </div>
                         <div class="col-6 col-lg-2">
                             <label class="small fw-bold">Unit</label>

@@ -47,6 +47,10 @@ $sql = "SELECT * FROM barcode_showa WHERE id = ?";
 // 1. Ambil ID dari URL
 //===========================
 $id = $_GET['id'];
+$lot = isset($_GET['lot']) ? $_GET['lot'] : ""; // Menangkap lot dari URL
+// Menangkap parameter 'tgl' dari URL
+// Jika tanggal di URL kosong atau tidak ada, berikan tanda strip (-) atau tanggal hari ini
+$tgl = (isset($_GET['tgl']) && $_GET['tgl'] !== "") ? $_GET['tgl'] : "";
 
 // ambil data dari database
 $sql = "SELECT * FROM barcode_showa WHERE id = ?";
@@ -59,9 +63,8 @@ $part_no    = $row['part_no'];
 $part_desc  = $row['part_name'];
 $qty        = (int)$row['qty_polibag'];
 
-// LOT (boleh kosong)
-$lot = isset($_GET['lot']) ? $_GET['lot'] : "";
-
+// Jika lot di URL kosong atau tidak ada, ganti dengan tanda strip (-)
+$lot = (isset($_GET['lot']) && $_GET['lot'] !== "") ? $_GET['lot'] : "";
 
 //===========================
 // 2. SETTING PDF
@@ -99,105 +102,68 @@ $qrText = $part_no;
 //===========================
 // 3. FUNGSI GAMBAR LABEL
 //===========================
-function drawLabel($pdf, $x, $y, $w, $h, $qrText, $part_no, $part_desc, $qty, $lot)
+function drawLabel($pdf, $x, $y, $w, $h, $qrText, $part_no, $part_desc, $qty, $lot, $tgl)
 {
-    // --- [FIX MULAI DARI SINI] ---
-    
-    // 1. Paksa Warna Garis jadi Hitam Pekat
+    // 1. Setting Garis Border
     $pdf->SetDrawColor(0, 0, 0); 
-
-    // 2. Paksa Ketebalan Garis (0.3mm atau 0.4mm sudah cukup tebal & jelas)
-    // Jika tidak di-set, TCPDF kadang meresetnya jadi sangat tipis setelah loop pertama
     $pdf->SetLineWidth(0.4); 
-
-    // 3. Gambar BORDER LUAR dengan parameter 'D' (Draw) agar eksplisit
     $pdf->Rect($x, $y, $w, $h, 'D');
 
-    // 4. HEADER GARIS
-    // Kita set ulang ketebalan kalau-kalau ingin memastikan, tapi di atas sudah cukup.
+    // 2. Header
     $headerH = 8;
     $pdf->Line($x, $y + $headerH, $x + $w, $y + $headerH);
-    
-    // --- [FIX SELESAI] ---
-
-
-    // HEADER TEKS
     $pdf->SetFont('helvetica','B',7);
     $pdf->SetXY($x, $y + 1);
     $pdf->Cell($w, 3, 'V03800', 0, 2, 'C');
     $pdf->Cell($w, 3, 'IMC TEKNO INDONESIA PT.', 0, 0, 'C');
 
-    // QR CODE
-    $qrSize = 20;
+    // 3. QR Code & Garis Vertikal Pemisah
+    $qrSize = 18;
     $qrX = $x + 3;
-    $qrY = $y + $headerH + 4;
-
+    $qrY = $y + $headerH + 3;
     $pdf->write2DBarcode($qrText, 'QRCODE,H', $qrX, $qrY, $qrSize, $qrSize, [], 'N');
 
-    // GARIS VERTIKAL
     $lineX = $qrX + $qrSize + 2;
     $pdf->Line($lineX, $y + $headerH, $lineX, $y + $h);
 
-    // AREA TEKS
-    $textX = $lineX + 4;
-    $textY = $y + $headerH + 1;
-    $lineH = 4;
+    // 4. Area Teks Utama
+    $textX = $lineX + 3;
+    $currentY = $y + $headerH + 1; // Mulai tepat di bawah header
+    $lineGap = 4;
 
-    // Part No
-    $pdf->SetFont('helvetica','',9);
-    $pdf->SetXY($textX, $textY);
-    $pdf->Cell(0, $lineH, 'Part No', 0, 2, 'L');
-
-    $pdf->SetFont('helvetica','B',12);
-    $pdf->Cell(0, $lineH + 1, $part_no, 0, 2, 'L');
-
-    // ================================
-    // PART DESCRIPTION + LOT PRODUKSI
-    // ================================
-    // Simpan posisi baris Part Description
-    $descY = $pdf->GetY();
-
-    // PART DESCRIPTION LABEL
+    // --- Baris Part No ---
     $pdf->SetFont('helvetica','',8);
-    $pdf->SetXY($textX, $descY);
-    $pdf->Cell(0, $lineH, 'Part Description        Lot Produksi', 0, 2, 'L');
-
-    // POSISI TEPAT SETELAH LABEL "Part Description"
-    $descValueY = $pdf->GetY();
-
-    // Tampilkan nilai Part Description
-    $pdf->SetFont('helvetica','B',10);
-    $pdf->SetXY($textX, $descValueY);
-    $pdf->Cell(40, $lineH, $part_desc, 0, 0, 'L');
-
-   // ================================
-    // LOT PRODUKSI (HARUS SEJAJAR DENGAN PART DESCRIPTION)
-    // ================================
-    $lotX = $textX + 45-15;   // geser kiri 15mm
-    $pdf->SetXY($lotX, $descValueY);
-    $pdf->Cell(40, $lineH, '', 0, 2, 'L');
-
-    // Value Lot
-    $pdf->SetXY($lotX, $pdf->GetY());
-    $pdf->Cell(40, $lineH, $lot, 0, 2, 'L');
-
-    // ===========================================
-    // TANGGAL (ADA → nilai boleh kosong)
-    // ===========================================
-    $pdf->SetXY($lotX, $pdf->GetY() - 1);
-    $pdf->Cell(0, $lineH, '', 0, 2, 'L');
-
-    
-
-    // ================================
-    // QTY — dinaikkan agar jelas
-    // ================================
-    $pdf->SetFont('helvetica','',9);
-    $pdf->SetXY($textX, $pdf->GetY() - 5);
-    $pdf->Cell(0, $lineH, 'QTY                      Tanggal', 0, 2, 'L');
-
+    $pdf->SetXY($textX, $currentY);
+    $pdf->Cell(0, 3, 'Part No', 0, 2, 'L');
     $pdf->SetFont('helvetica','B',11);
-    $pdf->Cell(0, $lineH + 2, number_format($qty, 0, '', '') . ' pcs', 0, 2, 'L');
+    $pdf->Cell(0, 5, $part_no, 0, 2, 'L');
+
+    // --- Baris Part Description & Lot Produksi ---
+    $currentY = $pdf->GetY() + 1;
+    $pdf->SetFont('helvetica','',7);
+    $pdf->SetXY($textX, $currentY);
+    $pdf->Cell(35, 3, 'Part Description', 0, 0, 'L');
+    $pdf->Cell(0, 3, 'Lot Produksi', 0, 1, 'L');
+
+    $pdf->SetFont('helvetica','B',9);
+    $pdf->SetX($textX);
+    $pdf->Cell(35, 4, $part_desc, 0, 0, 'L');
+    $pdf->Cell(0, 4, $lot, 0, 1, 'L'); // Mencetak variabel $lot
+
+    // --- Baris QTY & Tanggal ---
+    $currentY = $pdf->GetY() + 1;
+    $pdf->SetFont('helvetica','',7);
+    $pdf->SetXY($textX, $currentY);
+    $pdf->Cell(35, 3, 'QTY', 0, 0, 'L');
+    $pdf->Cell(0, 3, 'Tanggal', 0, 1, 'L');
+
+// --- Baris QTY & Tanggal ---
+// ... (kode sebelumnya) ...
+
+$pdf->SetFont('helvetica','B',10);
+$pdf->SetX($textX);
+$pdf->Cell(35, 5, number_format($qty, 0, '', '') . ' pcs', 0, 0, 'L');
+$pdf->Cell(0, 5, $tgl, 0, 0, 'L'); // Sekarang menggunakan variabel manual dari input
 }
 
 
@@ -218,7 +184,8 @@ for($r = 0; $r < $rows; $r++){
             $part_no,
             $part_desc,
             $qty,
-            $lot
+            $lot,
+            $tgl // Tambahkan ini agar variabel tgl masuk ke fungsi
         );
     }
 }
