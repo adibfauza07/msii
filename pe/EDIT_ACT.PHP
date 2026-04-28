@@ -1,5 +1,5 @@
 <?php
-require_once "../config/database.php";
+require_once __DIR__ . '/../config/database_p1.php';
 
 $id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 

@@ -1,5 +1,5 @@
 <?php
-require_once '../config/database.php';
+require_once __DIR__ . '/../config/database_p1.php';
 $term = isset($_GET['term']) ? $_GET['term'] : '';
 
 $data = [];

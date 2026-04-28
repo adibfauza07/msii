@@ -1,5 +1,5 @@
 <?php
-require_once '../config/database.php';
+require_once __DIR__ . '/../config/database_p1.php';
 header('Content-Type: application/json');
 
 $term = isset($_GET['term']) ? $_GET['term'] : '';

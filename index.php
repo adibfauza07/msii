@@ -221,7 +221,7 @@
       </div>
 
       <div class="col">
-        <a href="pe/dashboard_pe.php" class="card-division">
+        <a href="pe/login.php" class="card-division">
           <div class="icon-box bg-pe"><i class="bi bi-lightbulb"></i></div>
           <span class="division-name">PE</span>
         </a>

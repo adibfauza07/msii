@@ -1,248 +1,270 @@
 <?php
-require_once '../config/database.php';
+// 1. Proteksi Halaman & Role (Pastikan path folder MiddleWare sudah benar)
+require_once 'MiddleWare/Auth.php'; 
+// require_once 'MiddleWare/RoleCheck.php'; // Aktifkan jika RoleCheck sudah fix
 
-/* ===========================================================
-   HAPUS DATA TRIAL + HAPUS ACT
-   =========================================================== */
+// 2. Koneksi Database
+require_once '../config/database_p1.php';
+
+// 3. FIX ERROR PHP 5.6: Gunakan isset() untuk parameter GET
+$start = isset($_GET['start']) ? $_GET['start'] : date('Y-m-01');
+$end   = isset($_GET['end']) ? $_GET['end'] : date('Y-m-t'); // Y-m-t untuk tanggal terakhir di bulan ini
+
+// 4. Logika Hapus Data (Delete)
 if (isset($_GET['delete'])) {
-
     $del = intval($_GET['delete']);
-
-    // Hapus ACT (Actual Weight) dulu (foreign key)
-    $sqlAct = "DELETE FROM TRIAL_PE_WPart_ACT WHERE TRIAL_CODE = ?";
-    sqlsrv_query($conn, $sqlAct, array($del));
-
-    // Hapus foto kalau ada
-    $sqlFoto = "SELECT foto FROM TRIAL_PE WHERE TRIAL_CODE = ?";
-    $resFoto = sqlsrv_query($conn, $sqlFoto, array($del));
-    if ($resFoto && ($r = sqlsrv_fetch_array($resFoto, SQLSRV_FETCH_ASSOC))) {
-        if (!empty($r['foto'])) {
-            $path = "../assets/foto_trial/" . $r['foto'];
-            if (file_exists($path)) unlink($path);
-        }
-    }
-
-    // Hapus main data
-    $sqlMain = "DELETE FROM TRIAL_PE WHERE TRIAL_CODE = ?";
-    $stmtDel = sqlsrv_query($conn, $sqlMain, array($del));
+    // Hapus child/detail data terlebih dahulu (Foreign Key)
+    sqlsrv_query($conn, "DELETE FROM TRIAL_PE_DETAIL WHERE TRIAL_CODE = ?", array($del));
+    sqlsrv_query($conn, "DELETE FROM Trial_PE_WPart_ACT WHERE Trial_CODE = ?", array($del));
+    // Hapus master data
+    $stmtDel = sqlsrv_query($conn, "DELETE FROM TRIAL_PE2 WHERE TRIAL_CODE = ?", array($del));
 
     if ($stmtDel) {
         echo "<script>alert('Data trial berhasil dihapus!'); window.location='dashboard_pe.php';</script>";
         exit;
-    } else {
-        echo "<pre>Gagal hapus data:\n" . print_r(sqlsrv_errors(), true) . "</pre>";
-        exit;
     }
 }
-
-
-// === Ambil daftar customer untuk dropdown ===
-$custList = [];
-$sqlCust = "SELECT DISTINCT CUST_ID, CUST_COMP FROM CUST ORDER BY CUST_COMP";
-$resCust = sqlsrv_query($conn, $sqlCust);
-if ($resCust) {
-    while ($r = sqlsrv_fetch_array($resCust, SQLSRV_FETCH_ASSOC)) {
-        $custList[] = $r;
-    }
-}
-
-// === Parameter filter ===
-$start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01');
-$end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
-$cust_id    = isset($_GET['cust_id']) ? $_GET['cust_id'] : '';
-
-// === Query utama ===
-$sql = "
-SELECT 
-    T.TRIAL_CODE, T.DATE, T.PART_CODE, T.CUST_ID, T.QUANTITY_TRIAL, T.TRIAL_REASON, T.TRIAL_TIMES, 
-    T.MAT_USING, T.MAT_DRYING_TIME, T.MOLD_SET_UP, T.MOLD_SET_DOWN, T.TRIAL_DURATION, 
-    T.QE_COMMENT, T.PE_COMMENT, T.JUDGE_ID, T.PIC, T.WEIGHT_RUNNER, T.PREPARED, T.CHECKED, T.APPROVED,
-    T.QTY_OK, T.QTY_NG, T.CYCLE_TIME_ACT, T.MAC_NO, T.JENIS_ID, T.TONAGE, 
-    T.CORRECTIVE_ACTION, T.ANALYSYS, T.foto,
-    C.CUST_COMP, J.JENIS_TRIAL, JD.JUDGE_TRIAL
-FROM TRIAL_PE T
-LEFT JOIN CUST C ON C.CUST_ID = T.CUST_ID
-LEFT JOIN TRIAL_PE_JENIS J ON J.ID = T.JENIS_ID
-LEFT JOIN JUDGE_TRIAL JD ON JD.ID = T.JUDGE_ID
-WHERE T.DATE BETWEEN ? AND ?";
-$params = [$start_date, $end_date];
-
-if (!empty($cust_id)) {
-    $sql .= " AND T.CUST_ID = ?";
-    $params[] = $cust_id;
-}
-$sql .= " ORDER BY T.DATE DESC";
-
-$stmt = sqlsrv_query($conn, $sql, $params);
 ?>
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8">
-<title>Dashboard Product Engineering</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link href="../assets/bootstrap.min.css" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-<style>
-body { background-color: #f7f9fc; font-family: "Segoe UI", Arial, sans-serif; }
-h3 { color: #4a3ce5; font-weight: 700; }
-.table thead { background: #4a3ce5; color: white; }
-.table-hover tbody tr:hover { background-color: #eef1ff; }
-.card { border: none; border-radius: 1rem; box-shadow: 0 3px 10px rgba(0,0,0,0.1); }
-</style>
-<script>
-function confirmDelete(code) {
-  if (confirm("Yakin ingin menghapus data trial: " + code + " ?")) {
-    window.location = "dashboard_pe.php?delete=" + code;
-  }
-}
-</script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PE Dashboard - Trial Report</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    
+    <style>
+        /* ==============================================================
+           GLOBAL & SIDEBAR STYLES (Sesuai Dashboard Inventory)
+           ============================================================== */
+        body { 
+            background-color: #f4f7f6; /* Warna background lebih lembut */
+            font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            overflow-x: hidden; 
+        }
+        
+        #sidebar {
+            width: 250px; height: 100vh; background: #1f2a36; color: white;
+            position: fixed; top: 0; left: 0; z-index: 1050;
+            display: flex; flex-direction: column;
+            box-shadow: 3px 0 10px rgba(0,0,0,0.2);
+        }
+
+        #sidebar .brand {
+            padding: 22px 20px; font-size: 18px; font-weight: 700;
+            background: #1a232d; text-align: center; letter-spacing: 1px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .nav-link {
+            color: #aab0b6; padding: 12px 20px; font-size: 14.5px;
+            border-left: 4px solid transparent; transition: 0.3s;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            background: #2c3e50; color: #fff !important;
+            border-left-color: #3498db;
+        }
+
+        .nav-link i { margin-right: 10px; font-size: 1.1rem; }
+
+        .menu-label {
+            padding: 20px 20px 8px 20px; font-size: 11px;
+            text-transform: uppercase; color: #5b6e80; font-weight: 800;
+            letter-spacing: 1px;
+        }
+
+        .sidebar-footer {
+            margin-top: auto; padding: 15px 20px;
+            background: #161e27; border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        /* ==============================================================
+           CONTENT AREA & CARDS (Dipercantik)
+           ============================================================== */
+        #content { 
+            padding-left: 250px; /* Lebar sidebar */
+            transition: all 0.3s;
+        }
+
+        .top-header {
+            background: white; padding: 15px 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+        }
+
+        .card-custom {
+            border: none; border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            background: white; margin-bottom: 25px;
+        }
+
+        /* Tampilan Form Filter */
+        .filter-label { font-size: 0.85rem; font-weight: 700; color: #6c757d; text-transform: uppercase; margin-bottom: 5px; }
+        .form-control { border-radius: 8px; border: 1px solid #ced4da; padding: 10px 15px; }
+        .form-control:focus { box-shadow: 0 0 0 0.25rem rgba(52,152,219,0.25); border-color: #3498db; }
+        .btn-custom { border-radius: 8px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.5px; }
+
+        /* Desain Tabel Premium */
+        .table-wrapper { border-radius: 12px; overflow: hidden; }
+        .table { margin-bottom: 0; }
+        .table thead th {
+            background-color: #1f2a36; color: #ffffff;
+            font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px;
+            padding: 15px; border: none; font-weight: 600; vertical-align: middle;
+        }
+        .table tbody td {
+            padding: 15px; vertical-align: middle;
+            border-bottom: 1px solid #f0f2f5; font-size: 0.95rem; color: #495057;
+        }
+        .table tbody tr:hover { background-color: #f8f9fa; }
+    </style>
 </head>
 <body>
-<div class="container-fluid py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h3><i class="bi bi-kanban"></i> Dashboard Product Engineering</h3>
-    <div>
-      <a href="input_trial_pe.php" class="btn btn-primary me-2">
-        <i class="bi bi-plus-circle"></i> Tambah Trial Baru
-      </a>
-      <a href="export_trial_pe.php?start_date=<?= $start_date ?>&end_date=<?= $end_date ?>&cust_id=<?= $cust_id ?>" class="btn btn-success">
-        <i class="bi bi-file-earmark-excel"></i> Export Excel
-      </a>
-    </div>
-  </div>
 
-  <!-- Filter -->
-  <div class="card p-3 mb-4">
-    <form class="row g-3 align-items-end" method="get">
-      <div class="col-md-3">
-        <label class="form-label">Dari Tanggal</label>
-        <input type="date" name="start_date" value="<?php echo $start_date; ?>" class="form-control">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label">Sampai Tanggal</label>
-        <input type="date" name="end_date" value="<?php echo $end_date; ?>" class="form-control">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label">Customer</label>
-        <select name="cust_id" class="form-select">
-          <option value="">-- Semua Customer --</option>
-          <?php foreach ($custList as $c): ?>
-            <option value="<?= $c['CUST_ID'] ?>" <?= ($c['CUST_ID']==$cust_id)?'selected':'' ?>>
-              <?= htmlspecialchars($c['CUST_COMP']) ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-      <div class="col-md-2">
-        <button type="submit" class="btn btn-success w-100">
-          <i class="bi bi-search"></i> Filter
-        </button>
-      </div>
-      <div class="col-md-1">
-        <a href="dashboard_pe.php" class="btn btn-secondary w-100"><i class="bi bi-arrow-repeat"></i></a>
-      </div>
-    </form>
-  </div>
+<div class="d-flex w-100">
 
-  <!-- Tabel -->
-  <div class="card p-4">
-    <div class="table-responsive">
-      <table class="table table-bordered table-hover table-striped align-middle small">
-        <thead class="text-center">
-          <tr>
-            <th>No</th>
-            <th>Tanggal</th>
-            <th>Kode Trial</th>
-            <th>Part Code</th>
-            <th>Customer</th>
-            <th>Qty</th>
-            <th>Trial Reason</th>
-            <th>Trial Ke</th>
-            <th>Material</th>
-            <th>Drying Time</th>
-            <th>Mold Setup</th>
-            <th>Mold Down</th>
-            <th>Duration</th>
-            <th>QE Comment</th>
-            <th>PE Comment</th>
-            <th>Judge</th>
-            <th>PIC</th>
-            <th>Runner</th>
-            <th>Prepared</th>
-            <th>Checked</th>
-            <th>Approved</th>
-            <th>Qty OK</th>
-            <th>Qty NG</th>
-            <th>Cycle Time</th>
-            <th>No Mesin</th>
-            <th>Jenis Trial</th>
-            <th>Tonnage</th>
-            <th>Corrective Action</th>
-            <th>Analisis</th>
-            <th>Foto</th>
-            <th>Aksi</th>
-          </tr>
-        </thead>
-        <tbody>
-          <?php
-          $no = 1;
-          if ($stmt && sqlsrv_has_rows($stmt)) {
-              while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-                  $fotoPath = !empty($row['foto']) ? "../assets/foto_trial/" . $row['foto'] : "";
-                  echo "<tr>";
-                  echo "<td class='text-center'>{$no}</td>";
-                  echo "<td>" . ($row['DATE'] ? date_format($row['DATE'], 'Y-m-d') : '') . "</td>";
-                  echo "<td>{$row['TRIAL_CODE']}</td>";
-                  echo "<td>{$row['PART_CODE']}</td>";
-                  echo "<td>{$row['CUST_COMP']}</td>";
-                  echo "<td>{$row['QUANTITY_TRIAL']}</td>";
-                  echo "<td>{$row['TRIAL_REASON']}</td>";
-                  echo "<td>{$row['TRIAL_TIMES']}</td>";
-                  echo "<td>{$row['MAT_USING']}</td>";
-                  echo "<td>{$row['MAT_DRYING_TIME']}</td>";
-                  echo "<td>{$row['MOLD_SET_UP']}</td>";
-                  echo "<td>{$row['MOLD_SET_DOWN']}</td>";
-                  echo "<td>{$row['TRIAL_DURATION']}</td>";
-                  echo "<td>{$row['QE_COMMENT']}</td>";
-                  echo "<td>{$row['PE_COMMENT']}</td>";
-                  echo "<td>{$row['JUDGE_TRIAL']}</td>";
-                  echo "<td>{$row['PIC']}</td>";
-                  echo "<td>{$row['WEIGHT_RUNNER']}</td>";
-                  echo "<td>{$row['PREPARED']}</td>";
-                  echo "<td>{$row['CHECKED']}</td>";
-                  echo "<td>{$row['APPROVED']}</td>";
-                  echo "<td>{$row['QTY_OK']}</td>";
-                  echo "<td>{$row['QTY_NG']}</td>";
-                  echo "<td>{$row['CYCLE_TIME_ACT']}</td>";
-                  echo "<td>{$row['MAC_NO']}</td>";
-                  echo "<td>{$row['JENIS_TRIAL']}</td>";
-                  echo "<td>{$row['TONAGE']}</td>";
-                  echo "<td>{$row['CORRECTIVE_ACTION']}</td>";
-                  echo "<td>{$row['ANALYSYS']}</td>";
+    <?php include 'includes/sidebar.php'; ?>
 
-                  if ($fotoPath && file_exists($fotoPath)) {
-                      echo "<td class='text-center'><a href='{$fotoPath}' target='_blank'><img src='{$fotoPath}' width='60' height='60' class='rounded shadow-sm'></a></td>";
-                  } else {
-                      echo "<td class='text-center text-muted'>-</td>";
-                  }
+    <div id="content" class="w-100">
+        
+        <div class="top-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0 fw-bold text-dark" style="letter-spacing: -0.5px;">
+                <i class="bi bi-speedometer2 text-primary me-2"></i> Dashboard Trial Report
+            </h4>
+            <div class="text-muted small">
+                <i class="bi bi-calendar3"></i> <?= date('d F Y') ?>
+            </div>
+        </div>
 
-                  echo "<td class='text-center'>
-                          <a href='edit_trial_pe.php?code={$row['TRIAL_CODE']}' class='btn btn-warning btn-sm me-1'><i class='bi bi-pencil'></i></a>
-                          <a href='report_trial_pe_pdf.php?code={$row['TRIAL_CODE']}' target='_blank' class='btn btn-danger btn-sm me-1'><i class='bi bi-file-earmark-pdf'></i></a>
-                          <button class='btn btn-danger btn-sm' onclick=\"confirmDelete('{$row['TRIAL_CODE']}')\"><i class='bi bi-trash'></i></button>
-                        </td>";
-                  echo "</tr>";
-                  $no++;
-              }
-          } else {
-              echo "<tr><td colspan='30' class='text-center text-danger'>Tidak ada data trial untuk filter ini</td></tr>";
-          }
-          ?>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
+        <div class="container-fluid px-4">
+            
+            <div class="card-custom p-4">
+                <form method="GET" class="row g-3 align-items-end">
+                    <div class="col-md-3">
+                        <label class="filter-label">Tanggal Awal</label>
+                        <input type="date" name="start" class="form-control" value="<?= htmlspecialchars($start) ?>">
+                    </div>
+                    <div class="col-md-3">
+                        <label class="filter-label">Tanggal Akhir</label>
+                        <input type="date" name="end" class="form-control" value="<?= htmlspecialchars($end) ?>">
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100 btn-custom">
+                            <i class="bi bi-search me-1"></i> Filter Data
+                        </button>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <a href="input_trial_pe.php" class="btn btn-success btn-custom shadow-sm">
+                            <i class="bi bi-plus-circle me-1"></i> Buat Trial Baru
+                        </a>
+                    </div>
+                </form>
+            </div>
+
+            <div class="card-custom table-wrapper">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle" id="tableTrial">
+                        <thead class="text-center">
+                            <tr>
+                                <th width="10%">NO. TRIAL</th>
+                                <th width="12%">TANGGAL</th>
+                                <th width="20%">PART NAME</th>
+                                <th width="15%">CUSTOMER</th>
+                                <th width="12%">OPERATION</th>
+                                <th width="15%">JUDGE</th>
+                                <th width="16%">AKSI</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            // Query Join ke Master Data (Menggunakan Tabel TRIAL_PE2 Sesuai Permintaan Sebelumnya)
+                            // Jika kamu belum membuat TRIAL_PE2, ubah kembali ke TRIAL_PE
+                            $sql = "SELECT T.*, I.ITEM_NAME, C.CUST_COMP, J.JUDGE_TRIAL 
+                                    FROM TRIAL_PE2 T
+                                    LEFT JOIN ITEMS I ON T.PART_CODE = I.ITEM_CODE
+                                    LEFT JOIN CUST C ON T.CUST_ID = C.CUST_ID
+                                    LEFT JOIN JUDGE_TRIAL J ON T.JUDGE_ID = J.ID
+                                    WHERE T.DATE BETWEEN ? AND ?
+                                    ORDER BY T.TRIAL_CODE DESC";
+                            
+                            $stmt = sqlsrv_query($conn, $sql, array($start, $end));
+                            
+                            if ($stmt === false) {
+                                echo "<tr><td colspan='7' class='text-center text-danger py-4'>Error Database: " . print_r(sqlsrv_errors(), true) . "</td></tr>";
+                            } else {
+                                $hasData = false;
+                                while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+                                    $hasData = true;
+                                    
+                                    // Format Tanggal yang Aman
+                                    $tgl = '-';
+                                    if ($row['DATE'] instanceof DateTime) {
+                                        $tgl = $row['DATE']->format('d M Y');
+                                    } elseif (!empty($row['DATE'])) {
+                                        $tgl = date('d M Y', strtotime($row['DATE']));
+                                    }
+                                    
+                                    // Warna Badge Judgment (Pill Style)
+                                    $badge = 'bg-secondary';
+                                    $judge_text = $row['JUDGE_TRIAL'] ? $row['JUDGE_TRIAL'] : 'BELUM JUDGE';
+                                    if (stripos($judge_text, 'OK') !== false) $badge = 'bg-success';
+                                    elseif (stripos($judge_text, 'NG') !== false) $badge = 'bg-danger';
+                                    elseif (stripos($judge_text, 'RE') !== false) $badge = 'bg-warning text-dark';
+                                    
+                                    echo "<tr>
+                                            <td class='text-center fw-bold text-primary'>#{$row['TRIAL_CODE']}</td>
+                                            <td class='text-center'>{$tgl}</td>
+                                            <td class='fw-semibold'>{$row['ITEM_NAME']}</td>
+                                            <td>{$row['CUST_COMP']}</td>
+                                            <td class='text-center'>".($row['OPERATION'] ? $row['OPERATION'] : '-')."</td>
+                                            <td class='text-center'><span class='badge rounded-pill px-3 py-2 {$badge}'>{$judge_text}</span></td>
+                                            <td class='text-center'>
+                                                <a href='input_trial_pe.php?mode=load&code={$row['TRIAL_CODE']}' class='btn btn-sm btn-outline-primary me-1' title='Edit'><i class='bi bi-pencil-square'></i> Edit</a>
+                                                <a href='?delete={$row['TRIAL_CODE']}' class='btn btn-sm btn-outline-danger' title='Hapus' onclick='return confirm(\"Yakin ingin menghapus data Trial Code {$row['TRIAL_CODE']}?\")'><i class='bi bi-trash'></i></a>
+                                            </td>
+                                          </tr>";
+                                }
+                                if (!$hasData) {
+                                    echo "<tr>
+                                            <td colspan='7' class='text-center text-muted py-5'>
+                                                <i class='bi bi-folder-x fs-1 d-block mb-2 text-secondary'></i>
+                                                Belum ada data Trial pada rentang tanggal tersebut.
+                                            </td>
+                                          </tr>";
+                                }
+                            }
+                            ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div> </div> </div> 
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js">
+
+        </script>
+        <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    $('#tableTrial').DataTable({
+        "pageLength": 10,           // Batas 10 data per halaman
+        "ordering": false,          // Biarkan urutan sesuai tanggal dari Database
+        "lengthChange": false,      // Hilangkan pilihan "Show X entries" agar bersih
+        "language": {
+            "search": "Cari Cepat:",
+            "info": "Menampilkan _START_ sampai _END_ dari _TOTAL_ data Trial",
+            "paginate": {
+                "next": "Selanjutnya",
+                "previous": "Sebelumnya"
+            }
+        }
+    });
+});
+</script>
 </body>
 </html>

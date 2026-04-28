@@ -86,9 +86,11 @@ $data = sqlsrv_query($conn, $sql);
 <div class="container">
       
 <div class="form-card">
-<a href="dashboard_ppic.php" class="btn btn-secondary shadow-sm mb-3">
-    <i class="fa fa-arrow-left"></i> ← Kembali ke Menu
-</a>
+<div class="mb-3">
+    <a href="dashboard_ppic.php" class="btn btn-primary btn-sm shadow-sm border-1 border-secondary">
+        <i class="fa fa-arrow-left"></i> ← Kembali ke Menu
+    </a>
+</div>
     <div class="form-header">
         <h3>Input Barcode Showa</h3>
         </div>

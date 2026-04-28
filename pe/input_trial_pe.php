@@ -1,19 +1,17 @@
 <?php
-require_once '../config/database.php';
+require_once 'MiddleWare/Auth.php'; 
+// require_once 'MiddleWare/RoleCheck.php';
+require_once __DIR__ . '/../config/database_p1.php';
 
 // === Ambil data jenis trial ===
 $jenis_list = [];
 $resJenis = sqlsrv_query($conn, "SELECT ID, JENIS_TRIAL FROM TRIAL_PE_JENIS ORDER BY JENIS_TRIAL");
-while ($row = sqlsrv_fetch_array($resJenis, SQLSRV_FETCH_ASSOC)) {
-    $jenis_list[] = $row;
-}
+if($resJenis) while ($row = sqlsrv_fetch_array($resJenis, SQLSRV_FETCH_ASSOC)) { $jenis_list[] = $row; }
 
 // === Ambil data Judge Trial ===
 $judge_list = [];
 $resJudge = sqlsrv_query($conn, "SELECT ID, JUDGE_TRIAL FROM JUDGE_TRIAL ORDER BY JUDGE_TRIAL");
-while ($row = sqlsrv_fetch_array($resJudge, SQLSRV_FETCH_ASSOC)) {
-    $judge_list[] = $row;
-}
+if($resJudge) while ($row = sqlsrv_fetch_array($resJudge, SQLSRV_FETCH_ASSOC)) { $judge_list[] = $row; }
 
 // === Auto-generate TRIAL_CODE (integer) ===
 $resLast = sqlsrv_query($conn, "SELECT TOP 1 TRIAL_CODE FROM TRIAL_PE ORDER BY TRIAL_CODE DESC");
@@ -23,444 +21,414 @@ if ($resLast && ($last = sqlsrv_fetch_array($resLast, SQLSRV_FETCH_ASSOC))) {
 }
 $autoTrialCode = $nextNum;
 
+// === Fungsi Upload Foto Khusus ===
+function uploadFoto($inputName) {
+    if (!empty($_FILES[$inputName]['name'])) {
+        $dir = "../assets/foto_trial/";
+        if (!is_dir($dir)) mkdir($dir, 0777, true);
+        $name = time() . "_" . preg_replace('/[^A-Za-z0-9_\.-]/', '_', basename($_FILES[$inputName]['name']));
+        move_uploaded_file($_FILES[$inputName]['tmp_name'], $dir . $name);
+        return $name;
+    }
+    return null;
+}
+
 // === Simpan data TRIAL_PE ===
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
-    function val($k, $d = "") {
-        return isset($_POST[$k]) ? $_POST[$k] : $d;
-    }
+    function val($k, $d = "") { return isset($_POST[$k]) ? $_POST[$k] : $d; }
 
-    /* =============== UPLOAD FOTO (OPSIONAL) ==================== */
-    $foto_name = null;
-    if (!empty($_FILES['foto']['name'])) {
-        $dir = "../assets/foto_trial/";
-        if (!is_dir($dir)) mkdir($dir, 0777, true);
+    /* =============== UPLOAD 4 FOTO ==================== */
+    $foto_name = uploadFoto('foto'); // Foto Part
+    $foto_mat  = uploadFoto('foto_material');
+    $foto_core = uploadFoto('foto_mold_core');
+    $foto_cavity = uploadFoto('foto_mold_cavity');
 
-        $foto_name = time() . "_" . basename($_FILES['foto']['name']);
-        move_uploaded_file($_FILES['foto']['tmp_name'], $dir . $foto_name);
-    }
-
-    /* ============================================================
-       Ambil CUST_ID & MAT_USING (MAT_ID INT) dari MASTER berdasarkan PART_CODE
-    ============================================================ */
     $part_code = val('PART_CODE');
 
-    $sqlMaster = "
-        SELECT TOP 1
-            icvt.CUST_ID,
-            std.MAT_CODE,
-            mat.ITEM_ID AS MAT_ID
-        FROM ITEM_CUST_VIEW_TRIAL icvt
-        INNER JOIN TRIAL_PE_STD std ON std.ITEM_CODE = icvt.PART_CODE
-        INNER JOIN ITEMS mat ON mat.ITEM_CODE = std.MAT_CODE
-        WHERE icvt.PART_CODE = ?
-    ";
-
+    // Ambil Data Master
+    $sqlMaster = "SELECT TOP 1 icvt.CUST_ID, std.MAT_CODE, mat.ITEM_ID AS MAT_ID
+                  FROM ITEM_CUST_VIEW_TRIAL icvt
+                  INNER JOIN TRIAL_PE_STD std ON std.ITEM_CODE = icvt.PART_CODE
+                  INNER JOIN ITEMS mat ON mat.ITEM_CODE = std.MAT_CODE
+                  WHERE icvt.PART_CODE = ?";
     $stmtM = sqlsrv_query($conn, $sqlMaster, array($part_code));
-    $master = sqlsrv_fetch_array($stmtM, SQLSRV_FETCH_ASSOC);
+    $master = $stmtM ? sqlsrv_fetch_array($stmtM, SQLSRV_FETCH_ASSOC) : null;
 
-    // Jika tidak ketemu, fallback ke POST (tetapi tetap INT)
     $cust_id   = $master ? intval($master['CUST_ID']) : intval(val('CUST_ID'));
     $mat_id    = $master ? intval($master['MAT_ID'])  : intval(val('MAT_USING'));
 
     /* ============================================================
-       SIAP INSERT — TANPA TRIAL_CODE karena IDENTITY
+       INSERT DATA - TERMASUK KOLOM NEW FORMAT REPORT
     ============================================================ */
-
     $sql = "INSERT INTO TRIAL_PE (
-        DATE, 
-        PART_CODE, 
-        CUST_ID, 
-        QUANTITY_TRIAL, 
-        TRIAL_REASON, 
-        TRIAL_TIMES,
-        MAT_USING, 
-        MAT_DRYING_TIME, 
-        MOLD_SET_UP, 
-        MOLD_SET_DOWN, 
-        TRIAL_DURATION,
-        QE_COMMENT, 
-        PE_COMMENT, 
-        JUDGE_ID, 
-        PIC, 
-        WEIGHT_RUNNER, 
-        PREPARED,
-        CHECKED, 
-        APPROVED, 
-        QTY_OK, 
-        QTY_NG, 
-        CYCLE_TIME_ACT, 
-        MAC_NO, 
-        JENIS_ID,
-        TONAGE, 
-        CORRECTIVE_ACTION, 
-        ANALYSYS, 
-        foto
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        DATE, PART_CODE, CUST_ID, QUANTITY_TRIAL, TRIAL_REASON, TRIAL_TIMES,
+        MAT_USING, MAT_DRYING_TIME, MOLD_SET_UP, MOLD_SET_DOWN, TRIAL_DURATION,
+        QE_COMMENT, PE_COMMENT, JUDGE_ID, PIC, WEIGHT_RUNNER, PREPARED,
+        CHECKED, APPROVED, QTY_OK, QTY_NG, CYCLE_TIME_ACT, MAC_NO, JENIS_ID,
+        TONAGE, CORRECTIVE_ACTION, ANALYSYS, foto, 
+        OPERATION, REGRIND_PCT, CHK_BURRY, CHK_VOID, CHK_SHORTMOLD, CHK_WELDLINE, 
+        CHK_BURNING, CHK_SINKMARK, CHK_DENTED, CHK_SILVER, CHK_SCRATCH, 
+        foto_material, foto_mold_core, foto_mold_cavity
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
     $params = [
-        val('DATE'),                        // 1
-        $part_code,                         // 2 PART_CODE
-        $cust_id,                           // 3 CUST_ID INT
-        floatval(val('QUANTITY_TRIAL')),    // 4
-        val('TRIAL_REASON'),                // 5
-        val('TRIAL_TIMES'),                 // 6
-        $mat_id,                            // 7 MAT_USING = MAT_ID (INT)
-        intval(val('MAT_DRYING_TIME')),     // 8
-        intval(val('MOLD_SET_UP')),         // 9
-        intval(val('MOLD_SET_DOWN')),       // 10
-        val('TRIAL_DURATION'),              // 11
-        val('QE_COMMENT'),                  // 12
-        val('PE_COMMENT'),                  // 13
-        intval(val('JUDGE_ID')),            // 14
-        val('PIC'),                         // 15
-        floatval(val('WEIGHT_RUNNER')),     // 16
-        val('PREPARED'),                    // 17
-        val('CHECKED'),                     // 18
-        val('APPROVED'),                    // 19
-        intval(val('QTY_OK')),              // 20
-        intval(val('QTY_NG')),              // 21
-        floatval(val('CYCLE_TIME_ACT')),    // 22
-        intval(val('MAC_NO')),              // 23
-        intval(val('JENIS_ID')),            // 24
-        intval(val('TONAGE')),              // 25
-        val('CORRECTIVE_ACTION'),           // 26
-        val('ANALYSYS'),                    // 27
-        $foto_name                          // 28
+        val('DATE'), $part_code, $cust_id, floatval(val('QUANTITY_TRIAL')), val('TRIAL_REASON'), val('TRIAL_TIMES'),
+        $mat_id, intval(val('MAT_DRYING_TIME')), intval(val('MOLD_SET_UP')), intval(val('MOLD_SET_DOWN')), val('TRIAL_DURATION'),
+        val('QE_COMMENT'), val('PE_COMMENT'), intval(val('JUDGE_ID')), val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'),
+        val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), intval(val('JENIS_ID')),
+        intval(val('TONAGE')), val('CORRECTIVE_ACTION'), val('ANALYSYS'), $foto_name,
+        // Kolom Baru
+        val('OPERATION'), floatval(val('REGRIND_PCT')), val('CHK_BURRY','V'), val('CHK_VOID','V'), val('CHK_SHORTMOLD','V'), val('CHK_WELDLINE','V'),
+        val('CHK_BURNING','V'), val('CHK_SINKMARK','V'), val('CHK_DENTED','V'), val('CHK_SILVER','V'), val('CHK_SCRATCH','V'),
+        $foto_mat, $foto_core, $foto_cavity
     ];
 
     $stmt = sqlsrv_query($conn, $sql, $params);
 
-    $stmt = sqlsrv_query($conn, $sql, $params);
-
-if ($stmt) {
-
-    // Ambil kode trial dari form dan pastikan integer
-    $trialCode = intval($_POST['TRIAL_CODE']);
-
-    echo "<script>
-        alert('Data trial berhasil disimpan!');
-        window.location='input_trial_pe.php?code={$trialCode}';
-    </script>";
-    exit;
-} 
-else {
-    echo "<pre>Gagal menyimpan data trial:\n" . print_r(sqlsrv_errors(), true) . "</pre>";
-}
-
+    if ($stmt) {
+        $trialCode = intval($_POST['TRIAL_CODE']);
+        echo "<script>alert('Data trial berhasil disimpan!'); window.location='input_trial_pe.php?code={$trialCode}';</script>";
+        exit;
+    } else {
+        echo "<pre>Gagal menyimpan data trial:\n" . print_r(sqlsrv_errors(), true) . "</pre>";
+    }
 }
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
-<meta charset="UTF-8">
-<title>Input Trial Produk PE</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link href="../assets/bootstrap.min.css" rel="stylesheet">
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
-<link href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<style>
-body { background:#f7f9fc; font-family:"Segoe UI",Arial,sans-serif;}
-.card { border:none; border-radius:1rem; box-shadow:0 3px 10px rgba(0,0,0,0.1);}
-label { font-weight:500;}
-button:disabled { opacity:.5; cursor:not-allowed; }
-/* inline edit */
-#ACT_TABLE td.editable { cursor:pointer; }
-#ACT_TABLE td.editable input {
-    width:100%;
-    border:none;
-    padding:2px 4px;
-    font-size:0.875rem;
-}
-</style>
+    <meta charset="UTF-8">
+    <title>Input Trial Produk - PE System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <link href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css" rel="stylesheet">
+    
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <style>
+        body { background-color: #f4f7f6; font-family: "Segoe UI", Roboto, Arial, sans-serif; overflow-x: hidden; }
+        
+        /* Sidebar Styling Sesuai Dashboard */
+        #sidebar {
+            width: 250px; height: 100vh; background: #1f2a36; color: white;
+            position: fixed; top: 0; left: 0; z-index: 1050;
+            display: flex; flex-direction: column; box-shadow: 3px 0 10px rgba(0,0,0,0.2);
+        }
+        #sidebar .brand { padding: 22px 20px; font-size: 18px; font-weight: 700; background: #1a232d; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .nav-link { color: #aab0b6; padding: 12px 20px; font-size: 14.5px; border-left: 4px solid transparent; transition: 0.3s; }
+        .nav-link:hover, .nav-link.active { background: #2c3e50; color: #fff !important; border-left-color: #3498db; }
+        .nav-link i { margin-right: 10px; font-size: 1.1rem; }
+        .menu-label { padding: 20px 20px 8px 20px; font-size: 11px; text-transform: uppercase; color: #5b6e80; font-weight: 800; letter-spacing: 1px; }
+        .sidebar-footer { margin-top: auto; padding: 15px 20px; background: #161e27; border-top: 1px solid rgba(255,255,255,0.05); }
+        
+        #content { padding-left: 250px; transition: all 0.3s; }
+        .top-header { background: white; padding: 15px 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 25px; }
+
+        /* Card Custom Elegan */
+        .card-custom { border: none; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.04); background: white; margin-bottom: 25px; overflow: hidden; }
+        .card-header-custom { background: #f8f9fa; padding: 15px 20px; border-bottom: 1px solid #eef0f3; font-weight: 700; color: #1f2a36; display: flex; align-items: center; }
+        .card-header-custom i { color: #3498db; margin-right: 10px; font-size: 1.2rem; }
+        
+        /* Form Styling */
+        label { font-weight: 600; color: #495057; font-size: 0.85rem; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;}
+        .form-control, .form-select { border-radius: 8px; border: 1px solid #ced4da; padding: 10px 15px; font-size: 0.95rem;}
+        .form-control:focus, .form-select:focus { box-shadow: 0 0 0 0.25rem rgba(52,152,219,0.25); border-color: #3498db; }
+        .form-control[readonly] { background-color: #f8f9fa; border-color: #e9ecef; }
+        
+        /* ACT Grid Styling */
+        .table-act th { background: #1f2a36; color: white; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; border:none;}
+        #ACT_TABLE td.editable { cursor:pointer; background: #fffbe6; font-weight: bold;}
+        #ACT_TABLE td.editable:hover { background: #fff3cd; }
+        #ACT_TABLE td.editable input { width:100%; border:1px solid #3498db; border-radius:4px; padding:4px 8px; font-size:0.9rem; }
+        
+        /* Nav Control Bawah */
+        .btn-nav { border-radius: 8px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.5px; }
+        .floating-action { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 -4px 15px rgba(0,0,0,0.05); position: sticky; bottom: 20px; z-index: 100;}
+    </style>
 </head>
 <body>
-<div class="container py-4">
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h3>Form Input Trial Produk (Product Engineering)</h3>
-    <a href="dashboard_pe.php" class="btn btn-outline-secondary btn-sm">Kembali</a>
-  </div>
 
-  <form method="POST" enctype="multipart/form-data">
-    <input type="hidden" id="CURRENT_CODE">
+<div class="d-flex w-100">
+    <?php include 'includes/sidebar.php'; ?>
 
-    <div class="card p-4 mb-3">
-      <div class="row g-3">
-
-        <!-- ===================== FORM KIRI ====================== -->
-        <div class="col-md-8">
-          <div class="row g-3">
-
-            <div class="col-md-6">
-              <label>Kode Trial</label>
-              <input type="text" name="TRIAL_CODE" id="TRIAL_CODE" class="form-control" readonly value="<?= $autoTrialCode ?>">
-            </div>
-
-            <div class="col-md-6">
-              <label>Tanggal</label>
-              <input type="date" name="DATE" class="form-control">
-            </div>
-
-            <div class="col-md-6">
-              <label>Kode Part</label>
-              <input type="text" name="PART_CODE" id="PART_CODE" class="form-control" autocomplete="off">
-            </div>
-
-            <div class="col-md-6">
-              <label>Nama Part</label>
-              <input type="text" id="PART_NAME" class="form-control" readonly>
-            </div>
-
-            <div class="col-md-6">
-              <label>Customer</label>
-              <input type="text" id="CUST_COMP" class="form-control" readonly>
-              <input type="hidden" name="CUST_ID" id="CUST_ID">
-            </div>
-
-            <div class="col-md-6">
-              <label>Material</label>
-              <input type="hidden" name="MAT_USING" id="MAT_USING">
-              <input type="text" id="MAT_NAME" class="form-control" readonly>
-            </div>
-
-            <div class="col-md-6">
-              <label>Qty Trial</label>
-              <input type="number" name="QUANTITY_TRIAL" class="form-control">
-            </div>
-
-            <div class="col-md-6">
-              <label>Alasan Trial</label>
-              <input type="text" name="TRIAL_REASON" class="form-control">
-            </div>
-
-            <div class="col-md-3">
-              <label>Trial Ke</label>
-              <input type="number" name="TRIAL_TIMES" class="form-control">
-            </div>
-
-            <div class="col-md-3">
-              <label>Drying Time</label>
-              <input type="number" name="MAT_DRYING_TIME" class="form-control">
-            </div>
-
-            <div class="col-md-3">
-              <label>Mold Set Up</label>
-              <input type="number" name="MOLD_SET_UP" class="form-control">
-            </div>
-
-            <div class="col-md-3">
-              <label>Mold Set Down</label>
-              <input type="number" name="MOLD_SET_DOWN" class="form-control">
-            </div>
-
-            <div class="col-md-4">
-              <label>Durasi Trial</label>
-              <input type="text" name="TRIAL_DURATION" class="form-control">
-            </div>
-
-            <div class="col-md-4">
-              <label>Cycle Time Actual</label>
-              <input type="text" name="CYCLE_TIME_ACT" class="form-control">
-            </div>
-
-            <div class="col-md-4">
-              <label>No Mesin</label>
-              <input type="text" name="MAC_NO" class="form-control">
-            </div>
-
-            <div class="col-md-6">
-              <label>QE Comment</label>
-              <textarea name="QE_COMMENT" class="form-control"></textarea>
-            </div>
-
-            <div class="col-md-6">
-              <label>PE Comment</label>
-              <textarea name="PE_COMMENT" class="form-control"></textarea>
-            </div>
-
-            <div class="col-md-3">
-              <label>PIC</label>
-              <input type="text" name="PIC" class="form-control">
-            </div>
-
-            <div class="col-md-3">
-              <label>Weight Runner</label>
-              <input type="text" name="WEIGHT_RUNNER" class="form-control">
-            </div>
-
-            <div class="col-md-3">
-              <label>Prepared By</label>
-              <input type="text" name="PREPARED" class="form-control">
-            </div>
-
-            <div class="col-md-3">
-              <label>Checked By</label>
-              <input type="text" name="CHECKED" class="form-control">
-            </div>
-
-            <div class="col-md-3">
-              <label>Approved By</label>
-              <input type="text" name="APPROVED" class="form-control">
-            </div>
-
-            <div class="col-md-3">
-              <label>Qty OK</label>
-              <input type="number" name="QTY_OK" class="form-control">
-            </div>
-
-            <div class="col-md-3">
-              <label>Qty NG</label>
-              <input type="number" name="QTY_NG" class="form-control">
-            </div>
-
-            <div class="col-md-3">
-              <label>Tonnage</label>
-              <input type="text" name="TONAGE" class="form-control">
-            </div>
-
-            <div class="col-md-6">
-              <label>Corrective Action</label>
-              <textarea name="CORRECTIVE_ACTION" class="form-control"></textarea>
-            </div>
-
-            <div class="col-md-6">
-              <label>Analisis</label>
-              <textarea name="ANALYSYS" class="form-control"></textarea>
-            </div>
-
-            <div class="col-md-6">
-              <label>Jenis Trial</label>
-              <select name="JENIS_ID" class="form-select">
-                <option value="">-- Pilih Jenis Trial --</option>
-                <?php foreach($jenis_list as $j){ echo "<option value='{$j['ID']}'>{$j['JENIS_TRIAL']}</option>"; } ?>
-              </select>
-            </div>
-
-            <div class="col-md-6">
-              <label>Judge</label>
-              <select name="JUDGE_ID" class="form-select">
-                <option value="">-- Pilih Hasil Trial --</option>
-                <?php foreach($judge_list as $j) echo "<option value='{$j['ID']}'>{$j['JUDGE_TRIAL']}</option>"; ?>
-              </select>
-            </div>
-
-            <div class="col-md-6">
-              <label>Upload Foto</label>
-              <input type="file" name="foto" class="form-control" accept="image/*">
-            </div>
-
-          </div>
+    <div id="content" class="w-100 pb-5">
+        
+        <div class="top-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0 fw-bold text-dark"><i class="bi bi-file-earmark-plus text-primary me-2"></i> Input Data Trial Baru</h4>
+            <a href="dashboard_pe.php" class="btn btn-outline-secondary btn-sm fw-bold"><i class="bi bi-arrow-left"></i> Kembali</a>
         </div>
 
-        <!-- ================= PANEL STD + ACT GRID KANAN ================== -->
-        <div class="col-md-4">
+        <div class="container-fluid px-4">
+            <form method="POST" enctype="multipart/form-data" id="trialForm">
+                <input type="hidden" id="CURRENT_CODE">
 
-          <!-- STD -->
-          <div class="card p-3 mb-3" style="background:#eef5ff;">
-            <h5>Standard Parameter (STD)</h5>
+                <div class="row">
+                    <div class="col-lg-8">
 
-            <div class="mb-2">
-              <label>Weight Part STD</label>
-              <input type="text" id="STD_WEIGHT_PART" class="form-control" readonly>
-            </div>
+                        <div class="card-custom">
+                            <div class="card-header-custom"><i class="bi bi-info-square"></i> Informasi Part & Material</div>
+                            <div class="card-body p-4">
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label>Kode Trial (Auto)</label>
+                                        <input type="text" name="TRIAL_CODE" id="TRIAL_CODE" class="form-control fw-bold text-primary" readonly value="<?= $autoTrialCode ?>">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label>Tanggal</label>
+                                        <input type="date" name="DATE" class="form-control" required value="<?= date('Y-m-d') ?>">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label>Trial Ke</label>
+                                        <input type="number" name="TRIAL_TIMES" class="form-control" placeholder="1">
+                                    </div>
 
-            <div class="mb-2">
-              <label>Weight Runner STD</label>
-              <input type="text" id="STD_WEIGHT_RUNNER" class="form-control" readonly>
-            </div>
+                                    <div class="col-md-4">
+                                        <label>Kode Part</label>
+                                        <input type="text" name="PART_CODE" id="PART_CODE" class="form-control border-primary" autocomplete="off" placeholder="Ketik Part Code..." required>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label>Nama Part</label>
+                                        <input type="text" id="PART_NAME" class="form-control" readonly>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label>Customer</label>
+                                        <input type="text" id="CUST_COMP" class="form-control" readonly>
+                                        <input type="hidden" name="CUST_ID" id="CUST_ID">
+                                    </div>
 
-            <div class="mb-2">
-              <label>Cycle Time STD</label>
-              <input type="text" id="STD_CYCLE_TIME" class="form-control" readonly>
-            </div>
+                                    <div class="col-md-8">
+                                        <label>Material Menggunakan</label>
+                                        <input type="hidden" name="MAT_USING" id="MAT_USING">
+                                        <input type="text" id="MAT_NAME" class="form-control" readonly>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label>Regrind Material (%)</label>
+                                        <div class="input-group">
+                                            <input type="number" step="0.1" name="REGRIND_PCT" class="form-control" value="0">
+                                            <span class="input-group-text">%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
-            <div class="mb-2">
-              <label>Tonnage STD</label>
-              <input type="text" id="STD_TONAGE" class="form-control" readonly>
-            </div>
+                        <div class="card-custom">
+                            <div class="card-header-custom"><i class="bi bi-sliders"></i> Parameter Kondisi Mesin</div>
+                            <div class="card-body p-4">
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label>Operation Method</label>
+                                        <select name="OPERATION" class="form-select">
+                                            <option value="AUTO ROBOT">AUTO ROBOT</option>
+                                            <option value="MANUAL">MANUAL</option>
+                                            <option value="SEMI AUTO">SEMI AUTO</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label>No Mesin / Tonnage</label>
+                                        <div class="input-group">
+                                            <input type="text" name="MAC_NO" class="form-control" placeholder="No Mac">
+                                            <input type="text" name="TONAGE" class="form-control" placeholder="Ton">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label>Cycle Time Actual (Sec)</label>
+                                        <input type="text" name="CYCLE_TIME_ACT" class="form-control">
+                                    </div>
 
-            <div class="mb-2">
-              <label>Cavity STD</label>
-              <input type="text" id="STD_CAVITY" class="form-control" readonly>
-            </div>
-          </div>
+                                    <div class="col-md-3">
+                                        <label>Drying Time (Min)</label>
+                                        <input type="number" name="MAT_DRYING_TIME" class="form-control">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label>Mold Set Up (Min)</label>
+                                        <input type="number" name="MOLD_SET_UP" class="form-control">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label>Mold Set Down (Min)</label>
+                                        <input type="number" name="MOLD_SET_DOWN" class="form-control">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label>Durasi Trial (Min)</label>
+                                        <input type="text" name="TRIAL_DURATION" class="form-control">
+                                    </div>
+                                    
+                                    <div class="col-md-4">
+                                        <label>Qty Trial (Shots)</label>
+                                        <input type="number" name="QUANTITY_TRIAL" class="form-control">
+                                    </div>
+                                    <div class="col-md-8">
+                                        <label>Alasan Trial</label>
+                                        <input type="text" name="TRIAL_REASON" class="form-control">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
-          <!-- ACT GRID INLINE -->
-          <div class="card p-3" style="background:#e8fff1;">
-            <h5>Actual Parameter (ACT)</h5>
+                        <div class="card-custom">
+                            <div class="card-header-custom bg-info text-white border-0"><i class="bi bi-shield-check text-white"></i> Quality Appearance & Judgment</div>
+                            <div class="card-body p-4">
+                                <h6 class="fw-bold mb-3">APPEARANCE CHECK (V = OK, X = NG)</h6>
+                                <div class="row g-2 text-center align-items-end mb-4">
+                                    <?php 
+                                    $checks = [
+                                        'CHK_BURRY'=>'Burry', 'CHK_VOID'=>'Void', 'CHK_SHORTMOLD'=>'Shortmold',
+                                        'CHK_WELDLINE'=>'Weld Line', 'CHK_BURNING'=>'Burning', 'CHK_SINKMARK'=>'Sink Mark',
+                                        'CHK_DENTED'=>'Dented', 'CHK_SILVER'=>'Silver Mark', 'CHK_SCRATCH'=>'Scratch'
+                                    ];
+                                    foreach($checks as $key => $label): ?>
+                                    <div class="col">
+                                        <label style="font-size:10px;"><?= $label ?></label>
+                                        <select name="<?= $key ?>" id="<?= $key ?>" class="form-select form-select-sm fw-bold">
+                                            <option value="V" class="text-success">V</option>
+                                            <option value="X" class="text-danger">X</option>
+                                        </select>
+                                    </div>
+                                    <?php endforeach; ?>
+                                </div>
+                                <hr>
+                                <div class="row g-3 mt-1">
+                                    <div class="col-md-6">
+                                        <label>QE Comment</label>
+                                        <textarea name="QE_COMMENT" class="form-control" rows="2"></textarea>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label>PE Comment</label>
+                                        <textarea name="PE_COMMENT" class="form-control" rows="2"></textarea>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label>Corrective Action</label>
+                                        <textarea name="CORRECTIVE_ACTION" class="form-control" rows="2"></textarea>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label>Analisis</label>
+                                        <textarea name="ANALYSYS" class="form-control" rows="2"></textarea>
+                                    </div>
 
-            <button type="button" class="btn btn-success btn-sm mb-2" id="addACTbtn">
-              + Tambah Actual
-            </button>
+                                    <div class="col-md-4">
+                                        <label>Qty OK</label>
+                                        <input type="number" name="QTY_OK" class="form-control border-success">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label>Qty NG</label>
+                                        <input type="number" name="QTY_NG" class="form-control border-danger">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label>Final Judge</label>
+                                        <select name="JUDGE_ID" class="form-select border-primary fw-bold">
+                                            <option value="">-- Pilih Hasil --</option>
+                                            <?php foreach($judge_list as $j) echo "<option value='{$j['ID']}'>{$j['JUDGE_TRIAL']}</option>"; ?>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
-            <table class="table table-bordered table-sm" id="ACT_TABLE">
-              <thead class="table-light">
-                <tr>
-                  <th style="width:40px;">No</th>
-                  <th>Weight Part Actual</th>
-                  <th>Cavity</th>
-                  <th style="width:70px;">Aksi</th>
-                </tr>
-              </thead>
-              <tbody id="ACT_BODY">
-                <!-- diisi via JS -->
-              </tbody>
-            </table>
-          </div>
+                    </div>
 
+                    <div class="col-lg-4">
+                        
+                        <div class="card-custom">
+                            <div class="card-header-custom"><i class="bi bi-speedometer"></i> Standard vs Actual</div>
+                            <div class="card-body p-3">
+                                <div class="bg-light p-2 rounded mb-3 small border">
+                                    <div class="d-flex justify-content-between"><span>Part STD:</span><strong id="STD_WEIGHT_PART">-</strong></div>
+                                    <div class="d-flex justify-content-between"><span>Runner STD:</span><strong id="STD_WEIGHT_RUNNER">-</strong></div>
+                                    <div class="d-flex justify-content-between"><span>Cavity STD:</span><strong id="STD_CAVITY">-</strong></div>
+                                </div>
+
+                                <label class="mb-2">Input Berat Aktual Per Cavity</label>
+                                <button type="button" class="btn btn-primary btn-sm w-100 mb-2 fw-bold" id="addACTbtn">+ Tambah Cavity Aktual</button>
+                                
+                                <div class="table-responsive rounded border">
+                                    <table class="table table-sm table-act mb-0" id="ACT_TABLE">
+                                        <thead><tr><th width="10%">No</th><th>Weight (g)</th><th width="20%">Cav</th><th width="20%">#</th></tr></thead>
+                                        <tbody id="ACT_BODY">
+                                            <tr><td colspan='4' class='text-center text-muted small py-3'>Simpan Trial dulu untuk input berat aktual.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div class="mt-3">
+                                    <label>Weight Runner Aktual (g)</label>
+                                    <input type="text" name="WEIGHT_RUNNER" class="form-control">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card-custom">
+                            <div class="card-header-custom"><i class="bi bi-pen"></i> Tanda Tangan & Lampiran</div>
+                            <div class="card-body p-3">
+                                <div class="row g-2 mb-3">
+                                    <div class="col-6"><label>PIC</label><input type="text" name="PIC" class="form-control form-control-sm"></div>
+                                    <div class="col-6"><label>Prepared</label><input type="text" name="PREPARED" class="form-control form-control-sm"></div>
+                                    <div class="col-6"><label>Checked</label><input type="text" name="CHECKED" class="form-control form-control-sm"></div>
+                                    <div class="col-6"><label>Approved</label><input type="text" name="APPROVED" class="form-control form-control-sm"></div>
+                                </div>
+                                <hr>
+                                <div class="mb-2">
+                                    <label>Foto Produk/Part</label>
+                                    <input type="file" name="foto" class="form-control form-control-sm" accept="image/*">
+                                </div>
+                                <div class="mb-2">
+                                    <label>Foto Material Bag</label>
+                                    <input type="file" name="foto_material" class="form-control form-control-sm" accept="image/*">
+                                </div>
+                                <div class="mb-2">
+                                    <label>Foto Mold Core</label>
+                                    <input type="file" name="foto_mold_core" class="form-control form-control-sm" accept="image/*">
+                                </div>
+                                <div class="mb-2">
+                                    <label>Foto Mold Cavity</label>
+                                    <input type="file" name="foto_mold_cavity" class="form-control form-control-sm" accept="image/*">
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="floating-action d-flex justify-content-between align-items-center mt-3">
+                    <div>
+                        <button type="button" class="btn btn-outline-dark btn-nav" id="firstBtn">⏮ First</button>
+                        <button type="button" class="btn btn-outline-dark btn-nav" id="prevBtn">← Prev</button>
+                        <button type="button" class="btn btn-outline-dark btn-nav" id="nextBtn">Next →</button>
+                        <button type="button" class="btn btn-outline-dark btn-nav" id="lastBtn">Last ⏭</button>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-success btn-nav me-2" id="newBtn"><i class="bi bi-plus-lg"></i> Form Baru</button>
+                        <button type="submit" class="btn btn-primary btn-nav shadow"><i class="bi bi-save"></i> Simpan Laporan</button>
+                    </div>
+                </div>
+
+            </form>
         </div>
-
-      </div>
     </div>
-
-    <!-- ===================== BUTTON BAWAH ======================= -->
-    <div class="text-center mb-4">
-      <button type="button" class="btn btn-dark" id="loadBtn">Load</button>
-      <button type="button" class="btn btn-secondary" id="firstBtn">⏮ First</button>
-      <button type="button" class="btn btn-secondary" id="prevBtn">← Prev</button>
-      <button type="button" class="btn btn-secondary" id="nextBtn">Next →</button>
-      <button type="button" class="btn btn-secondary" id="lastBtn">Last ⏭</button>
-
-      <button type="button" class="btn btn-success" id="newBtn">➕ Tambah Data</button>
-
-      <button type="submit" class="btn btn-primary px-5">Simpan Data</button>
-    </div>
-
-  </form>
 </div>
 
 <script>
-/**********************************************************
- * BAGIAN 2 — FILL FORM + NAVIGASI RECORD (TRIAL_CODE)
- **********************************************************/
+// --- LOGIC JAVASCRIPT ---
 
-let MIN_CODE = "";
-let MAX_CODE = "";
-
-/* === Ambil nilai MIN & MAX TRIAL_CODE === */
+let MIN_CODE = "", MAX_CODE = "";
 function loadMinMax() {
     $.get("load_record.php", {mode: "minmax"}, function(r){
-        if (r.status === "ok") {
-            MIN_CODE = r.min_code;
-            MAX_CODE = r.max_code;
-        }
+        if (r.status === "ok") { MIN_CODE = r.min_code; MAX_CODE = r.max_code; }
     }, "json");
 }
 loadMinMax();
 
-/* === Update tombol navigasi sesuai posisi === */
 function updateNav(code) {
     $("#firstBtn, #prevBtn").prop("disabled", code == MIN_CODE);
     $("#nextBtn, #lastBtn").prop("disabled", code == MAX_CODE);
 }
 
-/**********************************************************
- * FILL FORM UTAMA TRIAL_PE
- **********************************************************/
+// FUNGSI FILL FORM SAAT KLIK NEXT/PREV
 function fillForm(rec) {
-
     $("#CURRENT_CODE").val(rec.TRIAL_CODE);
     $("#TRIAL_CODE").val(rec.TRIAL_CODE);
 
@@ -480,291 +448,153 @@ function fillForm(rec) {
     $("input[name='MOLD_SET_DOWN']").val(rec.MOLD_SET_DOWN);
     $("input[name='TRIAL_DURATION']").val(rec.TRIAL_DURATION);
     $("input[name='CYCLE_TIME_ACT']").val(rec.CYCLE_TIME_ACT);
+    $("input[name='MAC_NO']").val(rec.MAC_NO);
+    $("input[name='TONAGE']").val(rec.TONAGE);
+    $("select[name='OPERATION']").val(rec.OPERATION || "AUTO ROBOT");
+    $("input[name='REGRIND_PCT']").val(rec.REGRIND_PCT || 0);
+
+    // Checklist Quality (Appearance)
+    let checks = ['BURRY','VOID','SHORTMOLD','WELDLINE','BURNING','SINKMARK','DENTED','SILVER','SCRATCH'];
+    checks.forEach(c => {
+        let field = 'CHK_' + c;
+        if(rec[field]) $("#" + field).val(rec[field]);
+    });
 
     $("textarea[name='QE_COMMENT']").val(rec.QE_COMMENT);
     $("textarea[name='PE_COMMENT']").val(rec.PE_COMMENT);
+    $("textarea[name='CORRECTIVE_ACTION']").val(rec.CORRECTIVE_ACTION);
+    $("textarea[name='ANALYSYS']").val(rec.ANALYSYS);
 
     $("input[name='PIC']").val(rec.PIC);
     $("input[name='WEIGHT_RUNNER']").val(rec.WEIGHT_RUNNER);
     $("input[name='PREPARED']").val(rec.PREPARED);
     $("input[name='CHECKED']").val(rec.CHECKED);
     $("input[name='APPROVED']").val(rec.APPROVED);
-
     $("input[name='QTY_OK']").val(rec.QTY_OK);
     $("input[name='QTY_NG']").val(rec.QTY_NG);
-    $("input[name='MAC_NO']").val(rec.MAC_NO);
-
-    $("select[name='JENIS_ID']").val(rec.JENIS_ID);
-    $("input[name='TONAGE']").val(rec.TONAGE);
-
-    $("textarea[name='CORRECTIVE_ACTION']").val(rec.CORRECTIVE_ACTION);
-    $("textarea[name='ANALYSYS']").val(rec.ANALYSYS);
     $("select[name='JUDGE_ID']").val(rec.JUDGE_ID);
 
     updateNav(rec.TRIAL_CODE);
-
-    // === STD berdasarkan PART CODE ===
     loadSTD(rec.PART_CODE);
-
-    // === ACT GRID berdasarkan TRIAL CODE ===
     loadACTgrid(rec.TRIAL_CODE);
 }
 
-/**********************************************************
- * NAVIGASI BUTTON
- **********************************************************/
+// Navigasi Tombol
+$("#firstBtn").click(function(){ $.get("load_record.php", {mode:"first"}, function(r){ if(r.status==="ok") fillForm(r.record);},"json"); });
+$("#lastBtn").click(function(){ $.get("load_record.php", {mode:"last"}, function(r){ if(r.status==="ok") fillForm(r.record);},"json"); });
+$("#nextBtn").click(function(){ let code=$("#CURRENT_CODE").val()||0; $.get("load_record.php", {mode:"next", code:code}, function(r){ if(r.status==="ok") fillForm(r.record);},"json"); });
+$("#prevBtn").click(function(){ let code=$("#CURRENT_CODE").val()||0; $.get("load_record.php", {mode:"prev", code:code}, function(r){ if(r.status==="ok") fillForm(r.record);},"json"); });
 
-$("#loadBtn").click(function(){
-    $.get("load_record.php", {mode: "load"}, function(r){
-        if (r.status === "ok") fillForm(r.record);
-        else alert("Tidak ada data!");
-    },"json");
-});
-
-$("#firstBtn").click(function(){
-    $.get("load_record.php", {mode: "first"}, function(r){
-        if (r.status === "ok") fillForm(r.record);
-    },"json");
-});
-
-$("#lastBtn").click(function(){
-    $.get("load_record.php", {mode: "last"}, function(r){
-        if (r.status === "ok") fillForm(r.record);
-    },"json");
-});
-
-$("#nextBtn").click(function(){
-    let code = $("#CURRENT_CODE").val() || 0;
-    $.get("load_record.php", {mode: "next", code: code}, function(r){
-        if (r.status === "ok") fillForm(r.record);
-    },"json");
-});
-
-$("#prevBtn").click(function(){
-    let code = $("#CURRENT_CODE").val() || 0;
-    $.get("load_record.php", {mode: "prev", code: code}, function(r){
-        if (r.status === "ok") fillForm(r.record);
-    },"json");
-});
-
-/**********************************************************
- * LOAD DATA STD (STANDARD PARAMETER)
- **********************************************************/
+// Load Data STD
 function loadSTD(part_code){
     if (!part_code) return;
-
     $.getJSON("get_std.php", {code: part_code}, function(std){
-        $("#STD_WEIGHT_PART").val(std.WEIGHT_PART_STD || "");
-        $("#STD_WEIGHT_RUNNER").val(std.WEIGHT_RUNNER_STD || "");
-        $("#STD_CYCLE_TIME").val(std.CYCLE_TIME_STD || "");
-        $("#STD_TONAGE").val(std.TONAGE_STD || "");
-        $("#STD_CAVITY").val(std.CAVITY_STD || "");
+        $("#STD_WEIGHT_PART").text((std.WEIGHT_PART_STD || "-") + " g");
+        $("#STD_WEIGHT_RUNNER").text((std.WEIGHT_RUNNER_STD || "-") + " g");
+        $("#STD_CAVITY").text(std.CAVITY_STD || "-");
     });
 }
 
-/**********************************************************
- * AUTOCOMPLETE PART
- **********************************************************/
+// Autocomplete Part
 $("#PART_CODE").autocomplete({
-    source: function(req, res){
-        $.getJSON("search_part.php", {term: req.term}, function(data){
-            res(data);
-        });
-    },
+    source: function(req, res){ $.getJSON("search_part.php", {term: req.term}, function(data){ res(data); }); },
     minLength: 2,
     select: function(event, ui){
-
         $("#PART_CODE").val(ui.item.part_code);
         $("#PART_NAME").val(ui.item.part_name);
         $("#CUST_COMP").val(ui.item.cust_comp);
         $("#CUST_ID").val(ui.item.cust_id);
         $("#MAT_USING").val(ui.item.mat_code);
         $("#MAT_NAME").val(ui.item.mat_name);
-
-        // Load STD berdasarkan part
         loadSTD(ui.item.part_code);
-
         return false;
     }
 });
 
-/**********************************************************
- * TOMBOL TAMBAH DATA BARU (NEW RECORD)
- **********************************************************/
+// Tombol Form Baru
 $("#newBtn").click(function(){
-
     $.getJSON("load_record.php", {mode:"last"}, function(r){
-
         let newCode = 1;
         if (r.status === "ok") newCode = parseInt(r.record.TRIAL_CODE) + 1;
-
-        // kosongkan seluruh form utama
         $("input[type='text'], input[type='number'], input[type='date']").val("");
-        $("textarea").val("");
-        $("select").val("");
-
-        // kosongkan STD
-        $("#STD_WEIGHT_PART").val("");
-        $("#STD_WEIGHT_RUNNER").val("");
-        $("#STD_CYCLE_TIME").val("");
-        $("#STD_TONAGE").val("");
-        $("#STD_CAVITY").val("");
-
-        // kosongkan GRID ACT
-        $("#ACT_BODY").html("<tr><td colspan='4' class='text-center text-muted'>Belum ada data Actual</td></tr>");
-
-        // set kode trial baru
-        $("#TRIAL_CODE").val(newCode);
-        $("#CURRENT_CODE").val("");
-
-        // disable navigasi
-        $("#firstBtn, #prevBtn, #nextBtn, #lastBtn").prop("disabled", true);
-
-        alert("Form siap untuk input data baru.");
+        $("textarea").val(""); $("select").val("");
+        $("#TRIAL_CODE").val(newCode); $("#CURRENT_CODE").val("");
+        $("#ACT_BODY").html("<tr><td colspan='4' class='text-center text-muted py-3'>Simpan Trial dulu untuk input berat aktual.</td></tr>");
+        $("input[name='DATE']").val(new Date().toISOString().slice(0, 10)); // Set Tgl Hari ini
+        alert("Form siap untuk diisi.");
     });
 });
 
-/****************************************************
- * LOAD ACT GRID (INLINE)
- ****************************************************/
-
+// ===================== ACT GRID INLINE =====================
 function loadACTgrid(trial_code){
     $.getJSON("get_act_list.php", {trial: trial_code}, function(list){
-
-        let TB = $("#ACT_BODY");
-        TB.empty();
-
+        let TB = $("#ACT_BODY"); TB.empty();
         if (!list || list.length === 0) {
-            TB.append("<tr><td colspan='4' class='text-center text-muted'>Belum ada data Actual</td></tr>");
+            TB.append("<tr><td colspan='4' class='text-center text-muted py-3 small'>Belum ada data Actual</td></tr>");
             return;
         }
-
         list.forEach((r, i) => {
-            TB.append(`
-                <tr data-id="${r.ID}">
-                    <td>${i+1}</td>
-
-                    <td class="editable" data-field="Weight_Part_Actual">
-                        ${r.Weight_Part_Actual}
-                    </td>
-
-                    <td class="editable" data-field="CAVITY">
-                        ${r.CAVITY}
-                    </td>
-
-                    <td>
-                        <button type="button" 
-                                class="btn btn-sm btn-danger" 
-                                onclick="deleteACT(${r.ID})">
-                            Hapus
-                        </button>
-                    </td>
-                </tr>
-            `);
+            TB.append(`<tr data-id="${r.ID}">
+                <td class="text-center">${i+1}</td>
+                <td class="editable" data-field="Weight_Part_Actual">${r.Weight_Part_Actual}</td>
+                <td class="editable text-center" data-field="CAVITY">${r.CAVITY}</td>
+                <td class="text-center"><button type="button" class="btn btn-sm btn-danger py-0 px-2" onclick="deleteACT(${r.ID})"><i class="bi bi-x"></i></button></td>
+            </tr>`);
         });
-
     });
 }
 
-
-/****************************************************
- * INLINE EDITING + AUTOSAVE
- ****************************************************/
-
 $(document).on("click", "#ACT_TABLE td.editable", function () {
     let td = $(this);
-
-    // Jika sudah jadi input, abaikan
     if (td.find("input").length > 0) return;
+    let oldVal = td.text().trim(), field = td.data("field"), id = td.closest("tr").data("id");
+    let input = $("<input>").val(oldVal).addClass("form-control form-control-sm text-center");
+    td.empty().append(input); input.focus();
 
-    let oldVal = td.text().trim();
-    let field  = td.data("field");
-    let id     = td.closest("tr").data("id");
-
-    let input = $("<input>")
-        .val(oldVal)
-        .addClass("form-control form-control-sm");
-
-    td.empty().append(input);
-    input.focus();
-
-    // SAVE on blur
-    input.on("blur", function () {
-        saveCell(id, field, input.val(), oldVal, td);
-    });
-
-    // ENTER = save, ESC = cancel
+    input.on("blur", function () { saveCell(id, field, input.val(), oldVal, td); });
     input.on("keydown", function(e){
-        if (e.key === "Enter") {
-            e.preventDefault();
-            saveCell(id, field, input.val(), oldVal, td);
-        }
-        if (e.key === "Escape") {
-            td.text(oldVal);
-        }
+        if (e.key === "Enter") { e.preventDefault(); input.blur(); }
+        if (e.key === "Escape") td.text(oldVal);
     });
 });
 
 function saveCell(id, field, value, oldVal, td){
-
-    $.post("save_act_inline.php", {
-        id: id,
-        field: field,
-        value: value
-    }, function(r){
-
+    $.post("save_act_inline.php", {id: id, field: field, value: value}, function(r){
         if (r.status === "ok") {
-            td.text(value);
-            td.css("background","#d4ffd4");
-            setTimeout(()=> td.css("background",""), 400);
+            td.text(value); td.css("background","#d4ffd4"); setTimeout(()=> td.css("background",""), 400);
         } else {
-            td.text(oldVal);
-            td.css("background","#ffd4d4");
-            setTimeout(()=> td.css("background",""), 600);
-            alert("Gagal menyimpan data Actual!");
+            td.text(oldVal); td.css("background","#ffd4d4"); setTimeout(()=> td.css("background",""), 600);
+            alert("Gagal menyimpan data!");
         }
-
     },"json");
 }
 
-/****************************************************
- * ADD ROW INLINE
- ****************************************************/
 $("#addACTbtn").click(function(){
-
-    let trial = $("#TRIAL_CODE").val();
-    if (!trial) {
-        alert("Kode Trial belum ada.");
-        return;
-    }
-
+    let trial = $("#CURRENT_CODE").val();
+    if (!trial) { alert("Simpan Data Master Trial terlebih dahulu!"); return; }
     $.post("add_act_inline.php", {trial: trial}, function(r){
-        if (r.status === "ok") {
-            loadACTgrid(trial);
-        } else {
-            alert("Gagal menambah baris Actual!");
-        }
+        if (r.status === "ok") loadACTgrid(trial);
+        else alert("Gagal menambah baris!");
     },"json");
-
 });
 
-/****************************************************
- * DELETE ROW
- ****************************************************/
 function deleteACT(id){
-
-    if (!confirm("Hapus data actual ini?")) return;
-
+    if (!confirm("Hapus baris ini?")) return;
     $.post("delete_act.php", {id: id}, function(r){
-
-        if (r.status === "ok") {
-            loadACTgrid($("#TRIAL_CODE").val());
-        } else {
-            alert("Gagal menghapus data Actual!");
-        }
-
+        if (r.status === "ok") loadACTgrid($("#CURRENT_CODE").val());
     },"json");
 }
+
+// Cek apakah ada '?code=' di URL untuk auto load saat baru edit
+$(document).ready(function(){
+    const urlParams = new URLSearchParams(window.location.search);
+    if(urlParams.has('code')) {
+        let code = urlParams.get('code');
+        $.get("load_record.php", {mode: "load", code: code}, function(r){
+            if (r.status === "ok") fillForm(r.record);
+        },"json");
+    }
+});
 </script>
 </body>
 </html>

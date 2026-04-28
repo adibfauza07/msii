@@ -1,93 +1,33 @@
 <?php
-require_once '../config/database.php';
+// load_record.php
+require_once __DIR__ . '/../config/database_p1.php';
 header('Content-Type: application/json');
 
-$mode = isset($_GET['mode']) ? $_GET['mode'] : '';
-$code = isset($_GET['code']) ? intval($_GET['code']) : 0;
-
-function fetchRow($conn, $sql, $param = array()) {
-    $stmt = sqlsrv_query($conn, $sql, $param);
-    if (!$stmt) return null;
-    $r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
-    if (!$r) return null;
-
-    if (isset($r['DATE']) && $r['DATE'] instanceof DateTime) {
-        $r['DATE'] = $r['DATE']->format("Y-m-d");
-    }
-
-    return $r;
-}
-
-/* =======================================================
-   QUERY MASTER SESUAI STRUKTUR MASTER ANDA
-   ======================================================= */
+$mode = $_GET['mode'] ?? '';
+$code = intval($_GET['code'] ?? 0);
 
 $JOIN = "
 SELECT 
-    t.*,
-
-    icvt.PART_NAME,
-    icvt.PART_NO,
-    icvt.CUST_ID AS CUST_ID_MASTER,
-    c.CUST_COMP,
-
-    std.MAT_CODE,
-    mat.ITEM_NAME AS MAT_NAME
-
-FROM TRIAL_PE t
-LEFT JOIN ITEM_CUST_VIEW_TRIAL icvt 
-       ON icvt.PART_CODE = t.PART_CODE
-LEFT JOIN CUST c 
-       ON c.CUST_ID = icvt.CUST_ID
-LEFT JOIN TRIAL_PE_STD std
-       ON std.ITEM_CODE = icvt.PART_CODE
-LEFT JOIN ITEMS mat
-       ON mat.ITEM_CODE = std.MAT_CODE
+    T.*, I.ITEM_NAME, I.ITEM_NO, C.CUST_COMP, S.MAT_CODE, M.ITEM_NAME as MAT_NAME,
+    S.WEIGHT_PART_STD, S.WEIGHT_RUNNER_STD, S.CYCLE_TIME_STD, S.TONAGE_STD, S.CAVITY_STD
+FROM TRIAL_PE2 T
+LEFT JOIN ITEMS I ON T.PART_CODE = I.ITEM_CODE
+LEFT JOIN CUST C ON T.CUST_ID = C.CUST_ID
+LEFT JOIN TRIAL_PE_STD S ON T.PART_CODE = S.ITEM_CODE
+LEFT JOIN ITEMS M ON S.MAT_CODE = M.ITEM_CODE
 ";
 
-/* =======================================================
-   MODE LOAD / NEXT / PREV
-   ======================================================= */
+if ($mode == 'next') $sql = "SELECT TOP 1 * FROM ($JOIN) X WHERE X.TRIAL_CODE > ? ORDER BY X.TRIAL_CODE ASC";
+elseif ($mode == 'prev') $sql = "SELECT TOP 1 * FROM ($JOIN) X WHERE X.TRIAL_CODE < ? ORDER BY X.TRIAL_CODE DESC";
+elseif ($mode == 'first') $sql = "SELECT TOP 1 * FROM ($JOIN) X ORDER BY X.TRIAL_CODE ASC";
+else $sql = "SELECT TOP 1 * FROM ($JOIN) X WHERE X.TRIAL_CODE = ? OR ? = 0 ORDER BY X.TRIAL_CODE DESC";
 
-$data = null;
+$stmt = sqlsrv_query($conn, $sql, [$code, $code]);
+$res = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
 
-if ($mode == "next") {
-    $sql = "SELECT TOP 1 * FROM ( $JOIN ) X WHERE X.TRIAL_CODE > ? ORDER BY X.TRIAL_CODE ASC";
-    $data = fetchRow($conn, $sql, array($code));
+if ($res) {
+    if ($res['DATE'] instanceof DateTime) $res['DATE'] = $res['DATE']->format('Y-m-d');
+    echo json_encode(['status' => 'ok', 'record' => $res]);
+} else {
+    echo json_encode(['status' => 'err']);
 }
-else if ($mode == "prev") {
-    $sql = "SELECT TOP 1 * FROM ( $JOIN ) X WHERE X.TRIAL_CODE < ? ORDER BY X.TRIAL_CODE DESC";
-    $data = fetchRow($conn, $sql, array($code));
-}
-else if ($mode == "first") {
-    $sql = "SELECT TOP 1 * FROM ( $JOIN ) X ORDER BY X.TRIAL_CODE ASC";
-    $data = fetchRow($conn, $sql);
-}
-else if ($mode == "last" || $mode == "load") {
-    $sql = "SELECT TOP 1 * FROM ( $JOIN ) X ORDER BY X.TRIAL_CODE DESC";
-    $data = fetchRow($conn, $sql);
-}
-else if ($mode == "minmax") {
-
-    $min = fetchRow($conn, "SELECT MIN(TRIAL_CODE) AS C FROM TRIAL_PE");
-    $max = fetchRow($conn, "SELECT MAX(TRIAL_CODE) AS C FROM TRIAL_PE");
-
-    echo json_encode(array(
-        "status" => "ok",
-        "min_code" => $min['C'],
-        "max_code" => $max['C']
-    ));
-    exit;
-}
-
-// jika tidak ada data
-if (!$data) {
-    echo json_encode(array("status" => "none"));
-    exit;
-}
-
-echo json_encode(array(
-    "status" => "ok",
-    "record" => $data
-));
-?>
