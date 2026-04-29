@@ -243,28 +243,34 @@ if (isset($_GET['delete'])) {
             </div>
 
         </div> </div> </div> 
-        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js">
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
-        </script>
-        <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
-<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-<script>
-$(document).ready(function() {
-    $('#tableTrial').DataTable({
-        "pageLength": 10,           // Batas 10 data per halaman
-        "ordering": false,          // Biarkan urutan sesuai tanggal dari Database
-        "lengthChange": false,      // Hilangkan pilihan "Show X entries" agar bersih
-        "language": {
-            "search": "Cari Cepat:",
-            "info": "Menampilkan _START_ sampai _END_ dari _TOTAL_ data Trial",
-            "paginate": {
-                "next": "Selanjutnya",
-                "previous": "Sebelumnya"
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+    <script>
+    $(document).ready(function() {
+        // Pastikan tabel kamu benar-benar sudah memiliki id="tableTrial"
+        $('#tableTrial').DataTable({
+            "pageLength": 10,           // Batas 10 baris
+            "ordering": false,          // Matikan sorting bawaan agar sesuai tanggal DB
+            "lengthChange": false,      // Hilangkan dropdown "Show Entries"
+            "language": {
+                "search": "Cari Cepat:",
+                "info": "Menampilkan _START_ sampai _END_ dari _TOTAL_ data",
+                "infoEmpty": "Tidak ada data",
+                "emptyTable": "<div class='text-center text-muted py-4'><i class='bi bi-folder-x fs-1 d-block mb-2 text-secondary'></i>Belum ada data Trial pada rentang tanggal tersebut.</div>",a
+                "paginate": {
+                    "next": "Selanjutnya",
+                    "previous": "Sebelumnya"
+                }
             }
-        }
+        });
     });
-});
-</script>
+    </script>
+</body>
+</html>
 </body>
 </html>

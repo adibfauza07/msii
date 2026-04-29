@@ -1,35 +1,51 @@
 <?php
-require_once __DIR__ . '/../config/database_p1.php';
+// msii/pe/search_part.php
+require_once '../config/database_p1.php';
+
 header('Content-Type: application/json');
 
 $term = isset($_GET['term']) ? $_GET['term'] : '';
 
-$sql = "
-SELECT TOP 10 
-  icvt.CUST_ID, c.CUST_COMP,
-  icvt.PART_CODE, icvt.PART_NAME,
-  t.MAT_CODE, m.ITEM_NAME AS MAT_NAME
-FROM ITEM_CUST_VIEW_TRIAL icvt
-JOIN CUST c ON c.CUST_ID = icvt.CUST_ID
-JOIN TRIAL_PE_STD t ON t.ITEM_CODE = icvt.PART_CODE
-JOIN ITEMS m ON t.MAT_CODE = m.ITEM_CODE
-WHERE icvt.PART_CODE LIKE ? OR icvt.PART_NAME LIKE ?
-ORDER BY icvt.PART_NAME";
-
-$params = ['%'.$term.'%', '%'.$term.'%'];
-$res = sqlsrv_query($conn, $sql, $params);
-
-$data = [];
-while ($r = sqlsrv_fetch_array($res, SQLSRV_FETCH_ASSOC)) {
-  $data[] = [
-    'label' => $r['PART_CODE'].' - '.$r['PART_NAME'],
-    'part_code' => $r['PART_CODE'],
-    'part_name' => $r['PART_NAME'],
-    'cust_id' => $r['CUST_ID'],
-    'cust_comp' => $r['CUST_COMP'],
-    'mat_code' => $r['MAT_CODE'],
-    'mat_name' => $r['MAT_NAME']
-  ];
+if (empty($term)) {
+    echo json_encode([]);
+    exit;
 }
-echo json_encode($data);
+
+// Perbaikan Query: Mengambil CUST_ID dari ITEM_CUST_VIEW_TRIAL sesuai struktur DB kamu
+$sql = "SELECT TOP 15 
+            I.ITEM_CODE AS part_code, 
+            I.ITEM_NAME AS part_name,
+            V.CUST_ID AS cust_id,
+            C.CUST_COMP AS cust_comp,
+            STD.MAT_CODE AS mat_code,
+            MAT.ITEM_NAME AS mat_name
+        FROM ITEMS I
+        -- 1. Ambil relasi Customer dari View
+        LEFT JOIN ITEM_CUST_VIEW_TRIAL V ON I.ITEM_CODE = V.PART_CODE
+        LEFT JOIN CUST C ON V.CUST_ID = C.CUST_ID
+        -- 2. Ambil relasi Material dari tabel Standard
+        LEFT JOIN TRIAL_PE_STD STD ON I.ITEM_CODE = STD.ITEM_CODE
+        LEFT JOIN ITEMS MAT ON STD.MAT_CODE = MAT.ITEM_CODE
+        WHERE I.ITEM_CODE LIKE ? OR I.ITEM_NAME LIKE ?";
+
+$params = array("%$term%", "%$term%");
+$stmt = sqlsrv_query($conn, $sql, $params);
+
+// Pengecekan Error
+if ($stmt === false) {
+    echo json_encode([
+        "error" => "SQL Error",
+        "pesan" => sqlsrv_errors()
+    ]);
+    exit;
+}
+
+$results = [];
+while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+    $row['label'] = $row['part_code'] . ' - ' . $row['part_name'];
+    $row['value'] = $row['part_code'];
+    $results[] = $row;
+}
+
+echo json_encode($results);
 ?>

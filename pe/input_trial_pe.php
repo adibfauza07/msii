@@ -149,6 +149,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         /* Nav Control Bawah */
         .btn-nav { border-radius: 8px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.5px; }
         .floating-action { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 -4px 15px rgba(0,0,0,0.05); position: sticky; bottom: 20px; z-index: 100;}
+    
+    /* Tambahkan ini di dalam tag <style> pada input_trial_pe.php */
+        .ui-autocomplete {
+            position: absolute;
+            z-index: 9999 !important; /* Paksa tampil paling depan */
+            background-color: #ffffff;
+            border: 1px solid #ced4da;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            max-height: 250px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 5px 0;
+        }
+        .ui-menu-item .ui-menu-item-wrapper {
+            padding: 8px 15px;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+        .ui-menu-item .ui-menu-item-wrapper:hover,
+        .ui-menu-item .ui-menu-item-wrapper.ui-state-active {
+            background-color: #3498db !important;
+            color: #ffffff !important;
+            border: none;
+            margin: 0;
+        }
     </style>
 </head>
 <body>
@@ -202,7 +228,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                     </div>
 
                                     <div class="col-md-8">
-                                        <label>Material Menggunakan</label>
+                                        <label>Material Name</label>
                                         <input type="hidden" name="MAT_USING" id="MAT_USING">
                                         <input type="text" id="MAT_NAME" class="form-control" readonly>
                                     </div>
@@ -242,7 +268,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                     </div>
 
                                     <div class="col-md-3">
-                                        <label>Drying Time (Min)</label>
+                                        <label>Material Drying Time</label>
                                         <input type="number" name="MAT_DRYING_TIME" class="form-control">
                                     </div>
                                     <div class="col-md-3">
@@ -263,7 +289,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                         <input type="number" name="QUANTITY_TRIAL" class="form-control">
                                     </div>
                                     <div class="col-md-8">
-                                        <label>Alasan Trial</label>
+                                        <label>Trial Reason</label>
                                         <input type="text" name="TRIAL_REASON" class="form-control">
                                     </div>
                                 </div>
@@ -293,12 +319,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 </div>
                                 <hr>
                                 <div class="row g-3 mt-1">
-                                    <div class="col-md-6">
-                                        <label>QE Comment</label>
-                                        <textarea name="QE_COMMENT" class="form-control" rows="2"></textarea>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label>PE Comment</label>
+                                   
+                                    <div class="col-md-12">
+                                        <label>Problem</label>
                                         <textarea name="PE_COMMENT" class="form-control" rows="2"></textarea>
                                     </div>
                                     <div class="col-md-6">
