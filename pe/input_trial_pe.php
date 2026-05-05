@@ -1,7 +1,31 @@
 <?php
+// FILE: msii/pe/input_trial_pe.php
 require_once 'MiddleWare/Auth.php'; 
-// require_once 'MiddleWare/RoleCheck.php';
 require_once __DIR__ . '/../config/database_p1.php';
+
+// === AJAX HANDLER UNTUK AUTOCOMPLETE CUSTOMER & MATERIAL ===
+// Fitur baru agar form tidak perlu pindah halaman untuk mencari data
+if (isset($_GET['ajax_search'])) {
+    header('Content-Type: application/json');
+    $type = $_GET['ajax_search'];
+    $term = isset($_GET['term']) ? trim($_GET['term']) : '';
+    $res = [];
+    
+    if ($type == 'cust' && !empty($term)) {
+        $stmt = sqlsrv_query($conn, "SELECT TOP 15 CUST_ID, CUST_COMP FROM CUST WHERE CUST_COMP LIKE ?", ["%$term%"]);
+        if($stmt) while($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)){
+            $res[] = ['label' => $r['CUST_COMP'], 'value' => $r['CUST_ID']];
+        }
+    } 
+    elseif ($type == 'mat' && !empty($term)) {
+        $stmt = sqlsrv_query($conn, "SELECT TOP 15 ITEM_ID, ITEM_NAME FROM ITEMS WHERE ITEM_NAME LIKE ? OR ITEM_CODE LIKE ?", ["%$term%", "%$term%"]);
+        if($stmt) while($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)){
+            $res[] = ['label' => $r['ITEM_NAME'], 'value' => $r['ITEM_ID']];
+        }
+    }
+    echo json_encode($res);
+    exit;
+}
 
 // === Ambil data jenis trial ===
 $jenis_list = [];
@@ -21,7 +45,7 @@ if ($resLast && ($last = sqlsrv_fetch_array($resLast, SQLSRV_FETCH_ASSOC))) {
 }
 $autoTrialCode = $nextNum;
 
-// === Fungsi Upload Foto Khusus ===
+// === Fungsi Upload Foto ===
 function uploadFoto($inputName) {
     if (!empty($_FILES[$inputName]['name'])) {
         $dir = "../assets/foto_trial/";
@@ -38,60 +62,100 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     function val($k, $d = "") { return isset($_POST[$k]) ? $_POST[$k] : $d; }
 
-    /* =============== UPLOAD 4 FOTO ==================== */
-    $foto_name = uploadFoto('foto'); // Foto Part
-    $foto_mat  = uploadFoto('foto_material');
-    $foto_core = uploadFoto('foto_mold_core');
+    $current_code = val('CURRENT_CODE'); 
+    $part_code    = val('PART_CODE');
+
+    $foto_name   = uploadFoto('foto'); 
+    $foto_mat    = uploadFoto('foto_material');
+    $foto_core   = uploadFoto('foto_mold_core');
     $foto_cavity = uploadFoto('foto_mold_cavity');
+    $foto_mach   = uploadFoto('foto_machine');
 
-    $part_code = val('PART_CODE');
-
-    // Ambil Data Master
-    $sqlMaster = "SELECT TOP 1 icvt.CUST_ID, std.MAT_CODE, mat.ITEM_ID AS MAT_ID
-                  FROM ITEM_CUST_VIEW_TRIAL icvt
-                  INNER JOIN TRIAL_PE_STD std ON std.ITEM_CODE = icvt.PART_CODE
-                  INNER JOIN ITEMS mat ON mat.ITEM_CODE = std.MAT_CODE
-                  WHERE icvt.PART_CODE = ?";
+    // Ambil fallback data dari Master
+    $sqlMaster = "SELECT TOP 1 LAST_CUST.CUST_ID, std.MAT_CODE, mat.ITEM_ID AS MAT_ID
+                  FROM ITEMS I
+                  LEFT JOIN TRIAL_PE_STD std ON I.ITEM_CODE = std.ITEM_CODE
+                  LEFT JOIN ITEMS mat ON mat.ITEM_CODE = std.MAT_CODE
+                  OUTER APPLY (
+                      SELECT TOP 1 CUST_ID FROM TRIAL_PE WHERE PART_CODE = I.ITEM_CODE ORDER BY TRIAL_CODE DESC
+                  ) AS LAST_CUST
+                  WHERE I.ITEM_CODE = ?";
     $stmtM = sqlsrv_query($conn, $sqlMaster, array($part_code));
     $master = $stmtM ? sqlsrv_fetch_array($stmtM, SQLSRV_FETCH_ASSOC) : null;
 
-    $cust_id   = $master ? intval($master['CUST_ID']) : intval(val('CUST_ID'));
-    $mat_id    = $master ? intval($master['MAT_ID'])  : intval(val('MAT_USING'));
+    // PRIORITASKAN INPUT USER: Jika diketik manual, ambil ID manualnya. Jika tidak, baru pakai Master.
+    $cust_id = !empty(val('CUST_ID')) ? intval(val('CUST_ID')) : ($master && $master['CUST_ID'] ? intval($master['CUST_ID']) : 0);
+    $mat_id  = !empty(val('MAT_USING')) ? intval(val('MAT_USING')) : ($master && $master['MAT_ID'] ? intval($master['MAT_ID']) : 0);
 
-    /* ============================================================
-       INSERT DATA - TERMASUK KOLOM NEW FORMAT REPORT
-    ============================================================ */
-    $sql = "INSERT INTO TRIAL_PE (
-        DATE, PART_CODE, CUST_ID, QUANTITY_TRIAL, TRIAL_REASON, TRIAL_TIMES,
-        MAT_USING, MAT_DRYING_TIME, MOLD_SET_UP, MOLD_SET_DOWN, TRIAL_DURATION,
-        QE_COMMENT, PE_COMMENT, JUDGE_ID, PIC, WEIGHT_RUNNER, PREPARED,
-        CHECKED, APPROVED, QTY_OK, QTY_NG, CYCLE_TIME_ACT, MAC_NO, JENIS_ID,
-        TONAGE, CORRECTIVE_ACTION, ANALYSYS, foto, 
-        OPERATION, REGRIND_PCT, CHK_BURRY, CHK_VOID, CHK_SHORTMOLD, CHK_WELDLINE, 
-        CHK_BURNING, CHK_SINKMARK, CHK_DENTED, CHK_SILVER, CHK_SCRATCH, 
-        foto_material, foto_mold_core, foto_mold_cavity
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+    if (!empty($current_code)) {
+        // UPDATE
+        $sql = "UPDATE TRIAL_PE SET 
+            DATE=?, PART_CODE=?, CUST_ID=?, QUANTITY_TRIAL=?, TRIAL_REASON=?, TRIAL_TIMES=?,
+            MAT_USING=?, MAT_DRYING_TIME=?, MOLD_SET_UP=?, MOLD_SET_DOWN=?, TRIAL_DURATION=?,
+            QE_COMMENT=?, PE_COMMENT=?, JUDGE_ID=?, PIC=?, WEIGHT_RUNNER=?, PREPARED=?,
+            CHECKED=?, APPROVED=?, QTY_OK=?, QTY_NG=?, CYCLE_TIME_ACT=?, MAC_NO=?, JENIS_ID=?,
+            TONAGE=?, CORRECTIVE_ACTION=?, ANALYSYS=?, 
+            OPERATION=?, REGRIND_PCT=?, CHK_BURRY=?, CHK_VOID=?, CHK_SHORTMOLD=?, CHK_WELDLINE=?, 
+            CHK_BURNING=?, CHK_SINKMARK=?, CHK_DENTED=?, CHK_SILVER=?, CHK_SCRATCH=? ";
+        
+        $params = [
+            val('DATE'), $part_code, $cust_id, floatval(val('QUANTITY_TRIAL')), val('TRIAL_REASON'), val('TRIAL_TIMES'),
+            $mat_id, intval(val('MAT_DRYING_TIME')), intval(val('MOLD_SET_UP')), intval(val('MOLD_SET_DOWN')), val('TRIAL_DURATION'),
+            val('QE_COMMENT'), val('PE_COMMENT'), intval(val('JUDGE_ID')), val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'),
+            val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), intval(val('JENIS_ID')),
+            intval(val('TONAGE')), val('CORRECTIVE_ACTION'), val('ANALYSYS'),
+            val('OPERATION'), floatval(val('REGRIND_PCT')), val('CHK_BURRY','V'), val('CHK_VOID','V'), val('CHK_SHORTMOLD','V'), val('CHK_WELDLINE','V'),
+            val('CHK_BURNING','V'), val('CHK_SINKMARK','V'), val('CHK_DENTED','V'), val('CHK_SILVER','V'), val('CHK_SCRATCH','V')
+        ];
 
-    $params = [
-        val('DATE'), $part_code, $cust_id, floatval(val('QUANTITY_TRIAL')), val('TRIAL_REASON'), val('TRIAL_TIMES'),
-        $mat_id, intval(val('MAT_DRYING_TIME')), intval(val('MOLD_SET_UP')), intval(val('MOLD_SET_DOWN')), val('TRIAL_DURATION'),
-        val('QE_COMMENT'), val('PE_COMMENT'), intval(val('JUDGE_ID')), val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'),
-        val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), intval(val('JENIS_ID')),
-        intval(val('TONAGE')), val('CORRECTIVE_ACTION'), val('ANALYSYS'), $foto_name,
-        // Kolom Baru
-        val('OPERATION'), floatval(val('REGRIND_PCT')), val('CHK_BURRY','V'), val('CHK_VOID','V'), val('CHK_SHORTMOLD','V'), val('CHK_WELDLINE','V'),
-        val('CHK_BURNING','V'), val('CHK_SINKMARK','V'), val('CHK_DENTED','V'), val('CHK_SILVER','V'), val('CHK_SCRATCH','V'),
-        $foto_mat, $foto_core, $foto_cavity
-    ];
+        if ($foto_name)   { $sql .= ", foto=? "; $params[] = $foto_name; }
+        if ($foto_mat)    { $sql .= ", foto_material=? "; $params[] = $foto_mat; }
+        if ($foto_core)   { $sql .= ", foto_mold_core=? "; $params[] = $foto_core; }
+        if ($foto_cavity) { $sql .= ", foto_mold_cavity=? "; $params[] = $foto_cavity; }
+        if ($foto_mach)   { $sql .= ", foto_machine=? "; $params[] = $foto_mach; }
 
-    $stmt = sqlsrv_query($conn, $sql, $params);
+        $sql .= " WHERE TRIAL_CODE=?";
+        $params[] = $current_code;
+
+        $stmt = sqlsrv_query($conn, $sql, $params);
+        $msg = "Data Trial #{$current_code} berhasil di-UPDATE!";
+        $targetCode = $current_code;
+
+    } else {
+        // INSERT
+        $sql = "INSERT INTO TRIAL_PE (
+            DATE, PART_CODE, CUST_ID, QUANTITY_TRIAL, TRIAL_REASON, TRIAL_TIMES,
+            MAT_USING, MAT_DRYING_TIME, MOLD_SET_UP, MOLD_SET_DOWN, TRIAL_DURATION,
+            QE_COMMENT, PE_COMMENT, JUDGE_ID, PIC, WEIGHT_RUNNER, PREPARED,
+            CHECKED, APPROVED, QTY_OK, QTY_NG, CYCLE_TIME_ACT, MAC_NO, JENIS_ID,
+            TONAGE, CORRECTIVE_ACTION, ANALYSYS, foto, 
+            OPERATION, REGRIND_PCT, CHK_BURRY, CHK_VOID, CHK_SHORTMOLD, CHK_WELDLINE, 
+            CHK_BURNING, CHK_SINKMARK, CHK_DENTED, CHK_SILVER, CHK_SCRATCH, 
+            foto_material, foto_mold_core, foto_mold_cavity, foto_machine
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+
+        $params = [
+            val('DATE'), $part_code, $cust_id, floatval(val('QUANTITY_TRIAL')), val('TRIAL_REASON'), val('TRIAL_TIMES'),
+            $mat_id, intval(val('MAT_DRYING_TIME')), intval(val('MOLD_SET_UP')), intval(val('MOLD_SET_DOWN')), val('TRIAL_DURATION'),
+            val('QE_COMMENT'), val('PE_COMMENT'), intval(val('JUDGE_ID')), val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'),
+            val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), intval(val('JENIS_ID')),
+            intval(val('TONAGE')), val('CORRECTIVE_ACTION'), val('ANALYSYS'), $foto_name,
+            val('OPERATION'), floatval(val('REGRIND_PCT')), val('CHK_BURRY','V'), val('CHK_VOID','V'), val('CHK_SHORTMOLD','V'), val('CHK_WELDLINE','V'),
+            val('CHK_BURNING','V'), val('CHK_SINKMARK','V'), val('CHK_DENTED','V'), val('CHK_SILVER','V'), val('CHK_SCRATCH','V'),
+            $foto_mat, $foto_core, $foto_cavity, $foto_mach
+        ];
+
+        $stmt = sqlsrv_query($conn, $sql, $params);
+        $msg = "Data Trial BARU berhasil disimpan!";
+        $targetCode = val('TRIAL_CODE');
+    }
 
     if ($stmt) {
-        $trialCode = intval($_POST['TRIAL_CODE']);
-        echo "<script>alert('Data trial berhasil disimpan!'); window.location='input_trial_pe.php?code={$trialCode}';</script>";
+        echo "<script>alert('$msg'); window.location='input_trial_pe.php?mode=load&code={$targetCode}';</script>";
         exit;
     } else {
-        echo "<pre>Gagal menyimpan data trial:\n" . print_r(sqlsrv_errors(), true) . "</pre>";
+        echo "<pre>Gagal memproses data:\n" . print_r(sqlsrv_errors(), true) . "</pre>";
+        exit;
     }
 }
 ?>
@@ -113,7 +177,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <style>
         body { background-color: #f4f7f6; font-family: "Segoe UI", Roboto, Arial, sans-serif; overflow-x: hidden; }
         
-        /* Sidebar Styling Sesuai Dashboard */
         #sidebar {
             width: 250px; height: 100vh; background: #1f2a36; color: white;
             position: fixed; top: 0; left: 0; z-index: 1050;
@@ -129,31 +192,26 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         #content { padding-left: 250px; transition: all 0.3s; }
         .top-header { background: white; padding: 15px 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 25px; }
 
-        /* Card Custom Elegan */
         .card-custom { border: none; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.04); background: white; margin-bottom: 25px; overflow: hidden; }
         .card-header-custom { background: #f8f9fa; padding: 15px 20px; border-bottom: 1px solid #eef0f3; font-weight: 700; color: #1f2a36; display: flex; align-items: center; }
         .card-header-custom i { color: #3498db; margin-right: 10px; font-size: 1.2rem; }
         
-        /* Form Styling */
         label { font-weight: 600; color: #495057; font-size: 0.85rem; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.5px;}
         .form-control, .form-select { border-radius: 8px; border: 1px solid #ced4da; padding: 10px 15px; font-size: 0.95rem;}
         .form-control:focus, .form-select:focus { box-shadow: 0 0 0 0.25rem rgba(52,152,219,0.25); border-color: #3498db; }
         .form-control[readonly] { background-color: #f8f9fa; border-color: #e9ecef; }
         
-        /* ACT Grid Styling */
         .table-act th { background: #1f2a36; color: white; font-weight: 600; font-size: 0.85rem; text-transform: uppercase; border:none;}
         #ACT_TABLE td.editable { cursor:pointer; background: #fffbe6; font-weight: bold;}
         #ACT_TABLE td.editable:hover { background: #fff3cd; }
         #ACT_TABLE td.editable input { width:100%; border:1px solid #3498db; border-radius:4px; padding:4px 8px; font-size:0.9rem; }
         
-        /* Nav Control Bawah */
         .btn-nav { border-radius: 8px; padding: 10px 20px; font-weight: 600; letter-spacing: 0.5px; }
         .floating-action { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 -4px 15px rgba(0,0,0,0.05); position: sticky; bottom: 20px; z-index: 100;}
     
-    /* Tambahkan ini di dalam tag <style> pada input_trial_pe.php */
         .ui-autocomplete {
             position: absolute;
-            z-index: 9999 !important; /* Paksa tampil paling depan */
+            z-index: 9999 !important; 
             background-color: #ffffff;
             border: 1px solid #ced4da;
             border-radius: 8px;
@@ -191,7 +249,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         <div class="container-fluid px-4">
             <form method="POST" enctype="multipart/form-data" id="trialForm">
-                <input type="hidden" id="CURRENT_CODE">
+                <input type="hidden" name="CURRENT_CODE" id="CURRENT_CODE">
 
                 <div class="row">
                     <div class="col-lg-8">
@@ -223,14 +281,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                     </div>
                                     <div class="col-md-4">
                                         <label>Customer</label>
-                                        <input type="text" id="CUST_COMP" class="form-control" readonly>
+                                        <!-- KUNCI DIBUKA & DIBERI AUTOCOMPLETE -->
+                                        <input type="text" id="CUST_COMP" class="form-control border-primary" placeholder="Cari Customer..." autocomplete="off">
                                         <input type="hidden" name="CUST_ID" id="CUST_ID">
                                     </div>
 
                                     <div class="col-md-8">
                                         <label>Material Name</label>
+                                        <!-- KUNCI DIBUKA & DIBERI AUTOCOMPLETE -->
                                         <input type="hidden" name="MAT_USING" id="MAT_USING">
-                                        <input type="text" id="MAT_NAME" class="form-control" readonly>
+                                        <input type="text" id="MAT_NAME" class="form-control border-primary" placeholder="Cari Material..." autocomplete="off">
                                     </div>
                                     <div class="col-md-4">
                                         <label>Regrind Material (%)</label>
@@ -410,6 +470,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                     <label>Foto Mold Cavity</label>
                                     <input type="file" name="foto_mold_cavity" class="form-control form-control-sm" accept="image/*">
                                 </div>
+                                <div class="mb-3">
+                                    <label class="form-label text-muted small fw-bold">PICTURE OF MACHINE STATISTIC</label>
+                                    <input type="file" name="foto_machine" id="foto_machine" class="form-control" accept="image/*">
+                                </div>
                             </div>
                         </div>
 
@@ -459,8 +523,8 @@ function fillForm(rec) {
     $("input[name='PART_CODE']").val(rec.PART_CODE);
     $("#PART_NAME").val(rec.PART_NAME || "");
     $("#CUST_COMP").val(rec.CUST_COMP || "");
-    $("#CUST_ID").val(rec.CUST_ID);
-    $("#MAT_USING").val(rec.MAT_USING);
+    $("#CUST_ID").val(rec.CUST_ID || "");
+    $("#MAT_USING").val(rec.MAT_USING || "");
     $("#MAT_NAME").val(rec.MAT_NAME || "");
 
     $("input[name='QUANTITY_TRIAL']").val(rec.QUANTITY_TRIAL);
@@ -476,7 +540,6 @@ function fillForm(rec) {
     $("select[name='OPERATION']").val(rec.OPERATION || "AUTO ROBOT");
     $("input[name='REGRIND_PCT']").val(rec.REGRIND_PCT || 0);
 
-    // Checklist Quality (Appearance)
     let checks = ['BURRY','VOID','SHORTMOLD','WELDLINE','BURNING','SINKMARK','DENTED','SILVER','SCRATCH'];
     checks.forEach(c => {
         let field = 'CHK_' + c;
@@ -518,6 +581,28 @@ function loadSTD(part_code){
     });
 }
 
+// === FUNGSI BARU: AUTOCOMPLETE CUSTOMER ===
+$("#CUST_COMP").autocomplete({
+    source: "?ajax_search=cust",
+    minLength: 2,
+    select: function(event, ui) {
+        $("#CUST_COMP").val(ui.item.label);
+        $("#CUST_ID").val(ui.item.value);
+        return false;
+    }
+});
+
+// === FUNGSI BARU: AUTOCOMPLETE MATERIAL ===
+$("#MAT_NAME").autocomplete({
+    source: "?ajax_search=mat",
+    minLength: 2,
+    select: function(event, ui) {
+        $("#MAT_NAME").val(ui.item.label);
+        $("#MAT_USING").val(ui.item.value);
+        return false;
+    }
+});
+
 // Autocomplete Part
 $("#PART_CODE").autocomplete({
     source: function(req, res){ $.getJSON("search_part.php", {term: req.term}, function(data){ res(data); }); },
@@ -525,10 +610,10 @@ $("#PART_CODE").autocomplete({
     select: function(event, ui){
         $("#PART_CODE").val(ui.item.part_code);
         $("#PART_NAME").val(ui.item.part_name);
-        $("#CUST_COMP").val(ui.item.cust_comp);
-        $("#CUST_ID").val(ui.item.cust_id);
-        $("#MAT_USING").val(ui.item.mat_code);
-        $("#MAT_NAME").val(ui.item.mat_name);
+        $("#CUST_COMP").val(ui.item.cust_comp || "");
+        $("#CUST_ID").val(ui.item.cust_id || "");
+        $("#MAT_USING").val(ui.item.mat_id || ""); // Pastikan ini menggunakan mat_id
+        $("#MAT_NAME").val(ui.item.mat_name || "");
         loadSTD(ui.item.part_code);
         return false;
     }
@@ -543,7 +628,7 @@ $("#newBtn").click(function(){
         $("textarea").val(""); $("select").val("");
         $("#TRIAL_CODE").val(newCode); $("#CURRENT_CODE").val("");
         $("#ACT_BODY").html("<tr><td colspan='4' class='text-center text-muted py-3'>Simpan Trial dulu untuk input berat aktual.</td></tr>");
-        $("input[name='DATE']").val(new Date().toISOString().slice(0, 10)); // Set Tgl Hari ini
+        $("input[name='DATE']").val(new Date().toISOString().slice(0, 10)); 
         alert("Form siap untuk diisi.");
     });
 });
@@ -608,7 +693,6 @@ function deleteACT(id){
     },"json");
 }
 
-// Cek apakah ada '?code=' di URL untuk auto load saat baru edit
 $(document).ready(function(){
     const urlParams = new URLSearchParams(window.location.search);
     if(urlParams.has('code')) {

@@ -1,13 +1,22 @@
 <?php
-// ====================================================
-//  REPORT PRINT FORM (PLANT 1)
-//  Direvisi (Rombak Total) untuk meniru layout Crystal Report
-//  Versi 3.2: Perbaikan Teks "MATRIK" dan Kompresi Layout 1 Halaman
-// ====================================================
+// ==========================================
+// KONEKSI DINAMIS UNTUK PRINT
+// ==========================================
+if (session_status() == PHP_SESSION_NONE) { session_start(); }
+// Tangkap parameter plant dari URL (karena dari AJAX dikirim lewat URL)
+$active_plant = isset($_GET['plant']) ? $_GET['plant'] : (isset($_SESSION['active_plant']) ? $_SESSION['active_plant'] : 'p1');
 
-// 1. Koneksi ke Database PLANT 1
-require_once '../config/database.php'; 
+if ($active_plant == 'p2') {
+    if(!isset($_SESSION['erp_user'])) $_SESSION['erp_user'] = $_SESSION['db_user'];
+    if(!isset($_SESSION['erp_pass'])) $_SESSION['erp_pass'] = $_SESSION['db_pass'];
+    $_SESSION['server_sql'] = "192.168.0.9"; 
+    require_once __DIR__ . '/../config/database.php';
+} else {
+    require_once __DIR__ . '/../config/database_p1.php';
+}
+// ==========================================
 
+// ... (Biarkan sisa kode di bawahnya tetap sama) ...
 // 2. Cek FPDF
 $fpdf_path = '../lib/fpdf.php';
 if (!file_exists($fpdf_path)) {

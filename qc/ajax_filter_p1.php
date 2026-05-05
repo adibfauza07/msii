@@ -82,7 +82,7 @@ ob_start();
     <div class="card-body d-flex justify-content-end align-items-center">
         <div class="d-flex gap-2">
             <a href="<?php echo 'export_usulan.php?' . $query_string . '&plant=p1'; ?>" class="btn btn-success"><i class="bi bi-file-earmark-excel"></i> Export Excel</a>
-            <button class="btn btn-info" onclick="printFormByKode_P2()"><i class="bi bi-printer"></i> Print Form</button>
+            <button class="btn btn-info" onclick="printFormByKode_P1()"><i class="bi bi-printer"></i> Print Form</button>
             <a href="<?php echo 'report_list_all_print.php?' . $query_string . '&plant=p1'; ?>" target="_blank" class="btn btn-danger"><i class="bi bi-file-earmark-pdf"></i> Print All</a>
         </div>
     </div>
