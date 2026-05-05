@@ -309,10 +309,18 @@ function chk($val) {
             <td class="bold text-center" style="width: 50%;">PICTURE OF MACHINE STATISTIC</td>
         </tr>
         <tr>
-            <td style="height: 50px;"></td> 
-            <td><?= nl2br(htmlspecialchars(isset($data['ANALYSIS']) ? $data['ANALYSIS'] : (isset($data['ANALYSYS']) ? $data['ANALYSYS'] : ''))) ?></td>
+            
+            <td style="height: 50px;"><?= nl2br(htmlspecialchars(isset($data['PE_COMMENT']) ? $data['PE_COMMENT'] : '')) ?></td> 
+            
+            <td ><?= nl2br(htmlspecialchars(isset($data['ANALYSIS']) ? $data['ANALYSIS'] : (isset($data['ANALYSYS']) ? $data['ANALYSYS'] : ''))) ?></td>
             <td rowspan="3" style="padding: 5px;">
-                <div class="photo-box" style="height: 90%;">No Picture</div>
+                <div class="photo-box" style="flex-grow: 1;">
+                    <?php if(!empty($data['foto_machine'])): ?>
+                        <img src="../assets/foto_trial/<?= $data['foto_machine'] ?>" alt="Machine Statistic">
+                    <?php else: ?>
+                        No Picture
+                    <?php endif; ?>
+                </div>
             </td>
         </tr>
         <tr>
@@ -324,7 +332,7 @@ function chk($val) {
     </table>
 
     <div class="flex-container" style="margin-top: 5px;">
-        <table class="sig-table" style="width: 60%;">
+        <table class="sig-table" style="width: 40%;">
             <tr><th colspan="3">PRODUCT ENGINEERING</th></tr>
             <tr>
                 <td style="height: 15px; font-size:8px;">PREPARED</td>
@@ -339,13 +347,14 @@ function chk($val) {
         </table>
         
         <table class="sig-table" style="width: 38%;">
+           
             <tr>
+                <td style="height: 55px;"></td>
+                <td style="height: 55px;"></td>
+            </tr>
+             <tr>
                 <th style="width: 50%;">KNOWLEDGE</th>
                 <th style="width: 50%;">PPIC</th>
-            </tr>
-            <tr>
-                <td style="height: 55px;"></td>
-                <td style="height: 55px;"></td>
             </tr>
         </table>
     </div>

@@ -138,7 +138,9 @@ if (isset($_GET['delete'])) {
         <div class="container-fluid px-4">
             
             <div class="card-custom p-4">
-                <form method="GET" class="row g-2 align-items-end">
+                <form method="GET" class="row g-2 align-items-center">
+                    
+                    <!-- Area Input Fields (Memakan 8 Kolom) -->
                     <div class="col-md-2">
                         <label class="filter-label" style="font-size: 10px;">Tanggal Awal</label>
                         <input type="date" name="start" class="form-control form-control-sm" value="<?= htmlspecialchars($start) ?>">
@@ -147,30 +149,49 @@ if (isset($_GET['delete'])) {
                         <label class="filter-label" style="font-size: 10px;">Tanggal Akhir</label>
                         <input type="date" name="end" class="form-control form-control-sm" value="<?= htmlspecialchars($end) ?>">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="filter-label" style="font-size: 10px;">Nama Part</label>
-                        <input type="text" name="filter_part" class="form-control form-control-sm" placeholder="Ketik nama part..." value="<?= htmlspecialchars($filter_part) ?>">
+                        <input type="text" name="filter_part" class="form-control form-control-sm" placeholder="Ketik part..." value="<?= htmlspecialchars($filter_part) ?>">
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="filter-label" style="font-size: 10px;">Customer</label>
                         <input type="text" name="filter_cust" class="form-control form-control-sm" placeholder="Ketik customer..." value="<?= htmlspecialchars($filter_cust) ?>">
                     </div>
-                    <div class="col-md-1">
-                        <button type="submit" class="btn btn-primary w-100 btn-sm fw-bold">
-                            <i class="bi bi-search"></i> Cari
-                        </button>
+                    
+                    <!-- Area Tombol Aksi Tumpuk 2x2 (Memakan sisa 4 Kolom) -->
+                    <div class="col-md-4">
+                        <!-- Menurunkan sedikit posisi tombol agar sejajar dengan input box -->
+                        <div class="row g-1 mt-3">
+                            
+                            <!-- Kolom Kiri: Excel & Report -->
+                            <div class="col-6 d-flex flex-column gap-1">
+                                <button type="submit" formaction="export_excel_pe.php" formtarget="_blank" class="btn btn-success btn-sm fw-bold w-100" title="Export Data ke Excel">
+                                    <i class="bi bi-file-earmark-excel"></i> Excel
+                                </button>
+                                <button type="submit" formaction="cetak_batch_pe.php" formtarget="_blank" class="btn btn-warning btn-sm fw-bold w-100" title="Cetak Semua Hasil Filter ke Report A4">
+                                    <i class="bi bi-file-pdf"></i> Report
+                                </button>
+                            </div>
+                            
+                            <!-- Kolom Kanan: Cari & Baru -->
+                            <div class="col-6 d-flex flex-column gap-1">
+                                <button type="submit" class="btn btn-primary btn-sm fw-bold w-100" title="Cari Data">
+                                    <i class="bi bi-search"></i> Cari
+                                </button>
+                                <a href="input_trial_pe.php" class="btn btn-dark btn-sm fw-bold w-100" title="Buat Trial Baru">
+                                    <i class="bi bi-plus-lg"></i> Baru
+                                </a>
+                            </div>
+                            
+                        </div>
                     </div>
-                    <div class="col-md-1 text-end">
-                        <a href="input_trial_pe.php" class="btn btn-success w-100 btn-sm fw-bold shadow-sm" title="Buat Trial Baru">
-                            <i class="bi bi-plus-lg"></i> Baru
-                        </a>
-                    </div>
+                    
                 </form>
             </div>
 
             <div class="card-custom table-wrapper">
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle" id="tableTrial">
+                    <table class="table table-hover align-middle" >
                         <thead class="text-center">
                             <tr>
                                 <th width="10%">NO. TRIAL</th>
@@ -262,26 +283,49 @@ if (isset($_GET['delete'])) {
     </div> 
 </div> 
 
+<!-- ==============================================================
+     JAVASCRIPT LIBRARIES & DATATABLES INITIALIZATION
+     ============================================================== -->
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
+<!-- Tambahan Library untuk Export Excel dan Print Tabel -->
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/dataTables.buttons.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.bootstrap5.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.html5.min.js"></script>
+<script src="https://cdn.datatables.net/buttons/2.4.1/js/buttons.print.min.js"></script>
+
 <script>
 $(document).ready(function() {
     $('#tableTrial').DataTable({
-        "pageLength": 10,
+        "pageLength": 10, // Menampilkan 10 data per halaman (Pagination)
         "ordering": false,
-        "lengthChange": false,
+        "lengthChange": false, // Menyembunyikan opsi ubah jumlah baris agar rapi
+        // Menyusun letak tombol export di kiri atas dan kotak pencarian di kanan atas
+        "dom": '<"d-flex justify-content-between align-items-center mb-3"Bf>rt<"d-flex justify-content-between align-items-center mt-3"ip>',
+        "buttons": [
+            { 
+                extend: 'excelHtml5', 
+                className: 'btn btn-success btn-sm fw-bold', 
+                text: '<i class="bi bi-file-earmark-excel"></i> Export Excel',
+                title: 'Rekap Data Trial PE'
+            },
+            { 
+                extend: 'print', 
+                className: 'btn btn-secondary btn-sm fw-bold', 
+                text: '<i class="bi bi-printer"></i> Print Tabel',
+                title: 'Rekap Data Trial PE'
+            }
+        ],
         "language": {
-            "search": "Cari Cepat:",
+            "search": "Cari Cepat di Tabel:",
             "info": "Menampilkan _START_ sampai _END_ dari _TOTAL_ data",
             "infoEmpty": "Tidak ada data",
-            "emptyTable": "<div class='text-center text-muted py-4'><i class='bi bi-folder-x fs-1 d-block mb-2 text-secondary'></i>Belum ada data Trial pada rentang tanggal tersebut.</div>",
-            "paginate": {
-                "next": "Selanjutnya",
-                "previous": "Sebelumnya"
-            }
+            "emptyTable": "<div class='text-center text-muted py-4'><i class='bi bi-folder-x fs-1 d-block mb-2 text-secondary'></i>Belum ada data Trial sesuai filter pencarian Anda.</div>",
+            "paginate": { "next": "Next →", "previous": "← Prev" }
         }
     });
 });
