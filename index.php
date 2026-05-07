@@ -114,6 +114,10 @@
     .card-division:hover .icon-box {
       transform: rotate(-5deg) scale(1.1);
     }
+	.bg-it {
+  background: linear-gradient(135deg, #2563eb, #60a5fa);
+  box-shadow: 0 15px 30px -10px rgba(37, 99, 235, 0.5);
+}
 
     .division-name {
       font-weight: 700;
@@ -254,6 +258,17 @@
           <span class="division-name">4M Change</span>
         </a>
       </div>
+	  
+	 <div class="col">
+  <a href="it/login.php" class="card-division">
+    
+    <div class="icon-box bg-it">
+      <i class="bi bi-laptop"></i>
+    </div>
+
+    <span class="division-name">IT</span>
+  </a>
+</div>
 
     </div>
   </div>

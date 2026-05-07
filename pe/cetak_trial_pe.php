@@ -205,9 +205,7 @@ function chk($val) {
                 </div>
             </td>
             <td style="padding: 5px; position: relative;">
-                <div style="min-height: 20px; font-style: italic; border-bottom: 1px dashed #999; margin-bottom: 5px;">
-                    <?= isset($data['QE_COMMENT']) ? htmlspecialchars($data['QE_COMMENT']) : '' ?>
-                </div>
+               
                 <div class="flex-container">
                     <div style="width: 48%;">
                         <div class="bold">*APPEARANCE :</div>
@@ -228,11 +226,13 @@ function chk($val) {
                         </table>
                     </div>
                 </div>
+              
                 <div style="margin-top: 5px;">
-                    <span class="bold">DIMENSION :</span> &nbsp;&nbsp;&nbsp; OK (V) / NG (X) <?= chk('') ?>
+                    <span class="bold">DIMENSION :</span> &nbsp;&nbsp;&nbsp; OK (V) / NG (X) <?= chk(isset($data['CHK_DIMENSION']) ? $data['CHK_DIMENSION'] : '') ?>
                 </div>
-                <div style="position: absolute; bottom: 5px; left: 5px; right: 5px; font-size: 8px;">
-                    *Remark : <?= isset($data['PE_COMMENT']) ? htmlspecialchars($data['PE_COMMENT']) : '' ?>
+                <br>
+                <div style="margin-top: 8px; font-size: 8px;">
+                    *Remark : <?= isset($data['QE_COMMENT']) ? htmlspecialchars($data['QE_COMMENT']) : '' ?>
                 </div>
             </td>
             <td class="text-center" style="position: relative;">
@@ -274,30 +274,33 @@ function chk($val) {
                     </div>
                     <div style="width: 30%; border-left: 1px solid #000; padding: 3px; font-size: 8px;">
                         <div class="bold text-center" style="margin-bottom: 2px;">YA (V) / TIDAK (X)</div>
+                        <!-- Kolom MOLD -->
                         <table style="width: 100%; border:none;">
-                            <tr><td style="border:none; padding:1px;">&bull; Ejector Jam</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
-                            <tr><td style="border:none; padding:1px;">&bull; Runner Stuck</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
-                            <tr><td style="border:none; padding:1px;">&bull; Part Stuck</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
-                            <tr><td style="border:none; padding:1px;">&bull; Cooling Leakage</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
-                            <tr><td style="border:none; padding:1px;">&bull; Undercut Mold</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
-                            <tr><td style="border:none; padding:1px;">&bull; Slider Jam</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
-                            <tr><td style="border:none; padding:1px;">&bull; Mold Can't Clamping</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
-                            <tr><td style="border:none; padding:1px;">&bull; Nipple Complete</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
+                            <tr><td style="border:none; padding:1px;">&bull; Ejector Jam</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_EJECTOR_JAM']) ? $data['CHK_EJECTOR_JAM'] : '') ?></td></tr>
+                            <tr><td style="border:none; padding:1px;">&bull; Runner Stuck</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_RUNNER_STUCK']) ? $data['CHK_RUNNER_STUCK'] : '') ?></td></tr>
+                            <tr><td style="border:none; padding:1px;">&bull; Part Stuck</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_PART_STUCK']) ? $data['CHK_PART_STUCK'] : '') ?></td></tr>
+                            <tr><td style="border:none; padding:1px;">&bull; Cooling Leakage</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_COOLING_LEAKAGE']) ? $data['CHK_COOLING_LEAKAGE'] : '') ?></td></tr>
+                            <tr><td style="border:none; padding:1px;">&bull; Undercut Mold</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_UNDERCUT_MOLD']) ? $data['CHK_UNDERCUT_MOLD'] : '') ?></td></tr>
+                            <tr><td style="border:none; padding:1px;">&bull; Slider Jam</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_SLIDER_JAM']) ? $data['CHK_SLIDER_JAM'] : '') ?></td></tr>
+                            <tr><td style="border:none; padding:1px;">&bull; Mold Can't Clamping</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_MOLD_CLAMPING']) ? $data['CHK_MOLD_CLAMPING'] : '') ?></td></tr>
+                            <tr><td style="border:none; padding:1px;">&bull; Nipple Complete</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_NIPPLE_COMPLETE']) ? $data['CHK_NIPPLE_COMPLETE'] : '') ?></td></tr>
                         </table>
                     </div>
                 </div>
             </td>
             <td style="padding: 3px; font-size: 8px;">
                 <div class="bold text-center" style="margin-bottom: 2px;">YA (V) / TIDAK (X)</div>
-                <table style="width: 100%; border:none;">
-                    <tr><td style="border:none; padding:1px;">&bull; BACKFLOW</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
-                    <tr><td style="border:none; padding:1px;">&bull; ROBOT</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
-                    <tr><td style="border:none; padding:1px;">&bull; HEATER BARREL</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
-                    <tr><td style="border:none; padding:1px;">&bull; CONVEYOR</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
-                    <tr><td style="border:none; padding:1px;">&bull; MTC</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
-                    <tr><td style="border:none; padding:1px;">&bull; HEATER CONTROL</td><td style="border:none; padding:1px; text-align:right;"><?= chk('') ?></td></tr>
-                </table>
-                <div style="margin-top: 5px;">*Remark :</div>
+                <!-- Kolom MACHINE -->
+                    <table style="width: 100%; border:none;">
+                        <tr><td style="border:none; padding:1px;">&bull; BACKFLOW</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_BACKFLOW']) ? $data['CHK_BACKFLOW'] : '') ?></td></tr>
+                        <tr><td style="border:none; padding:1px;">&bull; ROBOT</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_ROBOT']) ? $data['CHK_ROBOT'] : '') ?></td></tr>
+                        <tr><td style="border:none; padding:1px;">&bull; HEATER BARREL</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_HEATER_BARREL']) ? $data['CHK_HEATER_BARREL'] : '') ?></td></tr>
+                        <tr><td style="border:none; padding:1px;">&bull; CONVEYOR</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_CONVEYOR']) ? $data['CHK_CONVEYOR'] : '') ?></td></tr>
+                        <tr><td style="border:none; padding:1px;">&bull; MTC</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_MTC']) ? $data['CHK_MTC'] : '') ?></td></tr>
+                        <tr><td style="border:none; padding:1px;">&bull; HEATER CONTROL</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_HEATER_CONTROL']) ? $data['CHK_HEATER_CONTROL'] : '') ?></td></tr>
+                    </table>
+                    <div style="margin-top: 5px; font-size:8px;">*Remark : <?= isset($data['MACHINE_REMARK']) ? htmlspecialchars($data['MACHINE_REMARK']) : '' ?></div>
+                
             </td>
         </tr>
     </table>

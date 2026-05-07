@@ -262,7 +262,7 @@ function chk($val) {
                         </div>
                     </div>
                     <div style="margin-top: 5px;"><span class="bold">DIMENSION :</span> &nbsp;&nbsp;&nbsp; OK (V) / NG (X) <?= chk('') ?></div>
-                    <div style="position: absolute; bottom: 5px; left: 5px; right: 5px; font-size: 8px;">*Remark : <?= isset($data['PE_COMMENT']) ? htmlspecialchars($data['PE_COMMENT']) : '' ?></div>
+                    <div style="margin-top: 8px; font-size: 8px;">*Remark : <?= isset($data['QE_COMMENT']) ? htmlspecialchars($data['QE_COMMENT']) : '' ?></div>
                 </td>
                 <td class="text-center" style="position: relative;">
                     <div style="font-size: 18px; font-weight: bold; border: 2px solid #000; padding: 10px; display: inline-block; margin-top: 10px; width: 70%;"><?= isset($data['JUDGE_TRIAL']) ? $data['JUDGE_TRIAL'] : '...' ?></div>

@@ -301,10 +301,11 @@ if (isset($_GET['delete'])) {
 <script>
 $(document).ready(function() {
     $('#tableTrial').DataTable({
-        "pageLength": 10, // Menampilkan 10 data per halaman (Pagination)
+        "pageLength": 10, // Menampilkan 10 data per halaman
         "ordering": false,
-        "lengthChange": false, // Menyembunyikan opsi ubah jumlah baris agar rapi
-        // Menyusun letak tombol export di kiri atas dan kotak pencarian di kanan atas
+        "lengthChange": false, // Menyembunyikan opsi ubah jumlah baris
+        "pagingType": "simple_numbers", // Memaksa format pagination angka (1, 2, 3...)
+        // Menyusun letak tombol export di kiri atas, kotak pencarian di kanan atas, dan info & pagination di bawah
         "dom": '<"d-flex justify-content-between align-items-center mb-3"Bf>rt<"d-flex justify-content-between align-items-center mt-3"ip>',
         "buttons": [
             { 
@@ -325,7 +326,10 @@ $(document).ready(function() {
             "info": "Menampilkan _START_ sampai _END_ dari _TOTAL_ data",
             "infoEmpty": "Tidak ada data",
             "emptyTable": "<div class='text-center text-muted py-4'><i class='bi bi-folder-x fs-1 d-block mb-2 text-secondary'></i>Belum ada data Trial sesuai filter pencarian Anda.</div>",
-            "paginate": { "next": "Next →", "previous": "← Prev" }
+            "paginate": { 
+                "next": "Selanjutnya", 
+                "previous": "Sebelumnya" 
+            }
         }
     });
 });

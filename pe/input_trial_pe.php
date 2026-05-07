@@ -34,6 +34,19 @@ if($resJenis) while ($row = sqlsrv_fetch_array($resJenis, SQLSRV_FETCH_ASSOC)) {
 
 // === Ambil data Judge Trial ===
 $judge_list = [];
+// === Ambil data history Tanda Tangan untuk Auto-dropdown ===
+$history_names = ['PIC' => [], 'PREPARED' => [], 'CHECKED' => [], 'APPROVED' => []];
+$fields = ['PIC', 'PREPARED', 'CHECKED', 'APPROVED'];
+
+foreach ($fields as $f) {
+    // Mengambil nama-nama unik yang tidak kosong dari database
+    $q = sqlsrv_query($conn, "SELECT DISTINCT $f FROM TRIAL_PE WHERE $f IS NOT NULL AND $f <> '' ORDER BY $f");
+    if ($q) {
+        while ($r = sqlsrv_fetch_array($q, SQLSRV_FETCH_ASSOC)) {
+            $history_names[$f][] = $r[$f];
+        }
+    }
+}
 $resJudge = sqlsrv_query($conn, "SELECT ID, JUDGE_TRIAL FROM JUDGE_TRIAL ORDER BY JUDGE_TRIAL");
 if($resJudge) while ($row = sqlsrv_fetch_array($resJudge, SQLSRV_FETCH_ASSOC)) { $judge_list[] = $row; }
 
@@ -87,25 +100,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $cust_id = !empty(val('CUST_ID')) ? intval(val('CUST_ID')) : ($master && $master['CUST_ID'] ? intval($master['CUST_ID']) : 0);
     $mat_id  = !empty(val('MAT_USING')) ? intval(val('MAT_USING')) : ($master && $master['MAT_ID'] ? intval($master['MAT_ID']) : 0);
 
-    if (!empty($current_code)) {
+   if (!empty($current_code)) {
         // UPDATE
         $sql = "UPDATE TRIAL_PE SET 
             DATE=?, PART_CODE=?, CUST_ID=?, QUANTITY_TRIAL=?, TRIAL_REASON=?, TRIAL_TIMES=?,
             MAT_USING=?, MAT_DRYING_TIME=?, MOLD_SET_UP=?, MOLD_SET_DOWN=?, TRIAL_DURATION=?,
             QE_COMMENT=?, PE_COMMENT=?, JUDGE_ID=?, PIC=?, WEIGHT_RUNNER=?, PREPARED=?,
             CHECKED=?, APPROVED=?, QTY_OK=?, QTY_NG=?, CYCLE_TIME_ACT=?, MAC_NO=?, JENIS_ID=?,
-            TONAGE=?, CORRECTIVE_ACTION=?, ANALYSYS=?, 
+            TONAGE=?, CORRECTIVE_ACTION=?, PROBLEM=?, ANALYSYS=?,
             OPERATION=?, REGRIND_PCT=?, CHK_BURRY=?, CHK_VOID=?, CHK_SHORTMOLD=?, CHK_WELDLINE=?, 
-            CHK_BURNING=?, CHK_SINKMARK=?, CHK_DENTED=?, CHK_SILVER=?, CHK_SCRATCH=? ";
+            CHK_BURNING=?, CHK_SINKMARK=?, CHK_DENTED=?, CHK_SILVER=?, CHK_SCRATCH=?,
+            CHK_DIMENSION=?, CHK_EJECTOR_JAM=?, CHK_RUNNER_STUCK=?, CHK_PART_STUCK=?, CHK_COOLING_LEAKAGE=?, 
+            CHK_UNDERCUT_MOLD=?, CHK_SLIDER_JAM=?, CHK_MOLD_CLAMPING=?, CHK_NIPPLE_COMPLETE=?, 
+            CHK_BACKFLOW=?, CHK_ROBOT=?, CHK_HEATER_BARREL=?, CHK_CONVEYOR=?, CHK_MTC=?, CHK_HEATER_CONTROL=?, MACHINE_REMARK=? ";
         
         $params = [
             val('DATE'), $part_code, $cust_id, floatval(val('QUANTITY_TRIAL')), val('TRIAL_REASON'), val('TRIAL_TIMES'),
             $mat_id, intval(val('MAT_DRYING_TIME')), intval(val('MOLD_SET_UP')), intval(val('MOLD_SET_DOWN')), val('TRIAL_DURATION'),
             val('QE_COMMENT'), val('PE_COMMENT'), intval(val('JUDGE_ID')), val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'),
             val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), intval(val('JENIS_ID')),
-            intval(val('TONAGE')), val('CORRECTIVE_ACTION'), val('ANALYSYS'),
-            val('OPERATION'), floatval(val('REGRIND_PCT')), val('CHK_BURRY','V'), val('CHK_VOID','V'), val('CHK_SHORTMOLD','V'), val('CHK_WELDLINE','V'),
-            val('CHK_BURNING','V'), val('CHK_SINKMARK','V'), val('CHK_DENTED','V'), val('CHK_SILVER','V'), val('CHK_SCRATCH','V')
+            intval(val('TONAGE')), val('CORRECTIVE_ACTION'), val('PROBLEM'), val('ANALYSYS'),
+            val('OPERATION'), floatval(val('REGRIND_PCT')), val('CHK_BURRY'), val('CHK_VOID'), val('CHK_SHORTMOLD'), val('CHK_WELDLINE'),
+            val('CHK_BURNING'), val('CHK_SINKMARK'), val('CHK_DENTED'), val('CHK_SILVER'), val('CHK_SCRATCH'),
+            val('CHK_DIMENSION'), val('CHK_EJECTOR_JAM'), val('CHK_RUNNER_STUCK'), val('CHK_PART_STUCK'), val('CHK_COOLING_LEAKAGE'),
+            val('CHK_UNDERCUT_MOLD'), val('CHK_SLIDER_JAM'), val('CHK_MOLD_CLAMPING'), val('CHK_NIPPLE_COMPLETE'),
+            val('CHK_BACKFLOW'), val('CHK_ROBOT'), val('CHK_HEATER_BARREL'), val('CHK_CONVEYOR'), val('CHK_MTC'), val('CHK_HEATER_CONTROL'), val('MACHINE_REMARK')
         ];
 
         if ($foto_name)   { $sql .= ", foto=? "; $params[] = $foto_name; }
@@ -130,9 +149,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             CHECKED, APPROVED, QTY_OK, QTY_NG, CYCLE_TIME_ACT, MAC_NO, JENIS_ID,
             TONAGE, CORRECTIVE_ACTION, ANALYSYS, foto, 
             OPERATION, REGRIND_PCT, CHK_BURRY, CHK_VOID, CHK_SHORTMOLD, CHK_WELDLINE, 
-            CHK_BURNING, CHK_SINKMARK, CHK_DENTED, CHK_SILVER, CHK_SCRATCH, 
+            CHK_BURNING, CHK_SINKMARK, CHK_DENTED, CHK_SILVER, CHK_SCRATCH,
+            CHK_DIMENSION, CHK_EJECTOR_JAM, CHK_RUNNER_STUCK, CHK_PART_STUCK, CHK_COOLING_LEAKAGE, 
+            CHK_UNDERCUT_MOLD, CHK_SLIDER_JAM, CHK_MOLD_CLAMPING, CHK_NIPPLE_COMPLETE, 
+            CHK_BACKFLOW, CHK_ROBOT, CHK_HEATER_BARREL, CHK_CONVEYOR, CHK_MTC, CHK_HEATER_CONTROL, MACHINE_REMARK, 
             foto_material, foto_mold_core, foto_mold_cavity, foto_machine
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
         $params = [
             val('DATE'), $part_code, $cust_id, floatval(val('QUANTITY_TRIAL')), val('TRIAL_REASON'), val('TRIAL_TIMES'),
@@ -140,8 +162,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             val('QE_COMMENT'), val('PE_COMMENT'), intval(val('JUDGE_ID')), val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'),
             val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), intval(val('JENIS_ID')),
             intval(val('TONAGE')), val('CORRECTIVE_ACTION'), val('ANALYSYS'), $foto_name,
-            val('OPERATION'), floatval(val('REGRIND_PCT')), val('CHK_BURRY','V'), val('CHK_VOID','V'), val('CHK_SHORTMOLD','V'), val('CHK_WELDLINE','V'),
-            val('CHK_BURNING','V'), val('CHK_SINKMARK','V'), val('CHK_DENTED','V'), val('CHK_SILVER','V'), val('CHK_SCRATCH','V'),
+            val('OPERATION'), floatval(val('REGRIND_PCT')), val('CHK_BURRY'), val('CHK_VOID'), val('CHK_SHORTMOLD'), val('CHK_WELDLINE'),
+            val('CHK_BURNING'), val('CHK_SINKMARK'), val('CHK_DENTED'), val('CHK_SILVER'), val('CHK_SCRATCH'),
+            val('CHK_DIMENSION'), val('CHK_EJECTOR_JAM'), val('CHK_RUNNER_STUCK'), val('CHK_PART_STUCK'), val('CHK_COOLING_LEAKAGE'),
+            val('CHK_UNDERCUT_MOLD'), val('CHK_SLIDER_JAM'), val('CHK_MOLD_CLAMPING'), val('CHK_NIPPLE_COMPLETE'),
+            val('CHK_BACKFLOW'), val('CHK_ROBOT'), val('CHK_HEATER_BARREL'), val('CHK_CONVEYOR'), val('CHK_MTC'), val('CHK_HEATER_CONTROL'), val('MACHINE_REMARK'),
             $foto_mat, $foto_core, $foto_cavity, $foto_mach
         ];
 
@@ -377,7 +402,69 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                     </div>
                                     <?php endforeach; ?>
                                 </div>
+                                
                                 <hr>
+                                <!-- Tambahan Dimension Check -->
+                                <div class="row mt-2 mb-4">
+                                    <div class="col-md-3">
+                                        <label class="fw-bold text-primary">DIMENSION CHECK</label>
+                                        <select name="CHK_DIMENSION" id="CHK_DIMENSION" class="form-select form-select-sm fw-bold border-primary">
+                                            <option value="">-</option>
+                                            <option value="V" class="text-success">V (OK)</option>
+                                            <option value="X" class="text-danger">X (NG)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <hr>
+
+                                <!-- Tambahan Mold Condition Check -->
+                                <h6 class="fw-bold mb-3 mt-3">MOLD CONDITION CHECK (V = YA, X = TIDAK)</h6>
+                                <div class="row g-2 text-center align-items-end mb-4">
+                                    <?php 
+                                    $mold_checks = [
+                                        'CHK_EJECTOR_JAM'=>'Ejector Jam', 'CHK_RUNNER_STUCK'=>'Runner Stuck', 'CHK_PART_STUCK'=>'Part Stuck',
+                                        'CHK_COOLING_LEAKAGE'=>'Cooling Leak', 'CHK_UNDERCUT_MOLD'=>'Undercut', 'CHK_SLIDER_JAM'=>'Slider Jam',
+                                        'CHK_MOLD_CLAMPING'=>'Clamping', 'CHK_NIPPLE_COMPLETE'=>'Nipple Comp.'
+                                    ];
+                                    foreach($mold_checks as $key => $label): ?>
+                                    <div class="col">
+                                        <label style="font-size:10px;"><?= $label ?></label>
+                                        <select name="<?= $key ?>" id="<?= $key ?>" class="form-select form-select-sm fw-bold">
+                                            <option value="">-</option>
+                                            <option value="V" class="text-success">V</option>
+                                            <option value="X" class="text-danger">X</option>
+                                        </select>
+                                    </div>
+                                    <?php endforeach; ?>
+                                </div>
+                                <hr>
+
+                                <!-- Tambahan Machine Condition Check -->
+                                <h6 class="fw-bold mb-3 mt-3">MACHINE CONDITION CHECK (V = YA, X = TIDAK)</h6>
+                                <div class="row g-2 text-center align-items-end mb-4">
+                                    <?php 
+                                    $mac_checks = [
+                                        'CHK_BACKFLOW'=>'Backflow', 'CHK_ROBOT'=>'Robot', 'CHK_HEATER_BARREL'=>'Heater Barrel',
+                                        'CHK_CONVEYOR'=>'Conveyor', 'CHK_MTC'=>'MTC', 'CHK_HEATER_CONTROL'=>'Heater Control'
+                                    ];
+                                    foreach($mac_checks as $key => $label): ?>
+                                    <div class="col">
+                                        <label style="font-size:10px;"><?= $label ?></label>
+                                        <select name="<?= $key ?>" id="<?= $key ?>" class="form-select form-select-sm fw-bold">
+                                            <option value="">-</option>
+                                            <option value="V" class="text-success">V</option>
+                                            <option value="X" class="text-danger">X</option>
+                                        </select>
+                                    </div>
+                                    <?php endforeach; ?>
+                                    
+                                    <!-- Input Machine Remark -->
+                                    <div class="col-md-12 mt-3 text-start">
+                                        <label style="font-size:11px;" class="fw-bold text-muted">*Machine Remark</label>
+                                        <input type="text" name="MACHINE_REMARK" id="MACHINE_REMARK" class="form-control form-control-sm" placeholder="Ketik keterangan mesin jika ada...">
+                                    </div>
+                                </div>
+                                <hr class="mb-4">
                                 <div class="row g-3 mt-1">
                                    
                                     <div class="col-md-12">
@@ -448,10 +535,34 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <div class="card-header-custom"><i class="bi bi-pen"></i> Tanda Tangan & Lampiran</div>
                             <div class="card-body p-3">
                                 <div class="row g-2 mb-3">
-                                    <div class="col-6"><label>PIC</label><input type="text" name="PIC" class="form-control form-control-sm"></div>
-                                    <div class="col-6"><label>Prepared</label><input type="text" name="PREPARED" class="form-control form-control-sm"></div>
-                                    <div class="col-6"><label>Checked</label><input type="text" name="CHECKED" class="form-control form-control-sm"></div>
-                                    <div class="col-6"><label>Approved</label><input type="text" name="APPROVED" class="form-control form-control-sm"></div>
+                                    <div class="col-6">
+                                        <label>PIC</label>
+                                        <input type="text" name="PIC" class="form-control form-control-sm" list="list_pic" autocomplete="off" placeholder="Pilih / Ketik...">
+                                        <datalist id="list_pic">
+                                            <?php foreach($history_names['PIC'] as $n) echo "<option value=\"".htmlspecialchars($n)."\">"; ?>
+                                        </datalist>
+                                    </div>
+                                    <div class="col-6">
+                                        <label>Prepared</label>
+                                        <input type="text" name="PREPARED" class="form-control form-control-sm" list="list_prepared" autocomplete="off" placeholder="Pilih / Ketik...">
+                                        <datalist id="list_prepared">
+                                            <?php foreach($history_names['PREPARED'] as $n) echo "<option value=\"".htmlspecialchars($n)."\">"; ?>
+                                        </datalist>
+                                    </div>
+                                    <div class="col-6">
+                                        <label>Checked</label>
+                                        <input type="text" name="CHECKED" class="form-control form-control-sm" list="list_checked" autocomplete="off" placeholder="Pilih / Ketik...">
+                                        <datalist id="list_checked">
+                                            <?php foreach($history_names['CHECKED'] as $n) echo "<option value=\"".htmlspecialchars($n)."\">"; ?>
+                                        </datalist>
+                                    </div>
+                                    <div class="col-6">
+                                        <label>Approved</label>
+                                        <input type="text" name="APPROVED" class="form-control form-control-sm" list="list_approved" autocomplete="off" placeholder="Pilih / Ketik...">
+                                        <datalist id="list_approved">
+                                            <?php foreach($history_names['APPROVED'] as $n) echo "<option value=\"".htmlspecialchars($n)."\">"; ?>
+                                        </datalist>
+                                    </div>
                                 </div>
                                 <hr>
                                 <div class="mb-2">
@@ -545,6 +656,19 @@ function fillForm(rec) {
         let field = 'CHK_' + c;
         if(rec[field]) $("#" + field).val(rec[field]);
     });
+
+    // Pengisi untuk Checkbox Baru
+    let new_checks = [
+        'DIMENSION', 'EJECTOR_JAM', 'RUNNER_STUCK', 'PART_STUCK', 'COOLING_LEAKAGE',
+        'UNDERCUT_MOLD', 'SLIDER_JAM', 'MOLD_CLAMPING', 'NIPPLE_COMPLETE',
+        'BACKFLOW', 'ROBOT', 'HEATER_BARREL', 'CONVEYOR', 'MTC', 'HEATER_CONTROL'
+    ];
+    new_checks.forEach(c => {
+        let field = 'CHK_' + c;
+        if(rec[field]) $("#" + field).val(rec[field]); else $("#" + field).val("");
+    });
+    
+    if(rec.MACHINE_REMARK) $("#MACHINE_REMARK").val(rec.MACHINE_REMARK); else $("#MACHINE_REMARK").val("");
 
     $("textarea[name='QE_COMMENT']").val(rec.QE_COMMENT);
     $("textarea[name='PE_COMMENT']").val(rec.PE_COMMENT);
