@@ -758,7 +758,7 @@ $("#newBtn").click(function(){
 });
 
 // ===================== ACT GRID INLINE =====================
-function loadACTgrid(trial_code){
+function loadACTgrid(trial_code){                         
     $.getJSON("get_act_list.php", {trial: trial_code}, function(list){
         let TB = $("#ACT_BODY"); TB.empty();
         if (!list || list.length === 0) {

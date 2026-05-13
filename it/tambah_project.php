@@ -1,11 +1,13 @@
-<?php
-session_start();
-if (!isset($_SESSION['db_user'])) {
-    header("Location: login.php");
-    exit();
-}
+<<?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-include "../config/database_p1.php";
+require_once "auth.php";
+require_once "../config/database_p2.php";
+
+if ($conn === false) {
+    die(print_r(sqlsrv_errors(), true));
+}
 
 if (isset($_POST['simpan'])) {
 
@@ -50,13 +52,13 @@ if (isset($_POST['simpan'])) {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Tambah Project IT</title>
+    <title>Tambah Project</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body class="bg-light">
 
 <div class="container mt-4">
-    <h3>Tambah Project IT</h3>
+    <h3>Tambah Project</h3>
 
     <form method="POST" class="card p-4 bg-white">
 
@@ -91,7 +93,7 @@ if (isset($_POST['simpan'])) {
         </div>
 
         <div class="mb-3">
-            <label>PIC IT</label>
+            <label>PIC Khusus </label>
             <input type="text" name="pic_it" class="form-control">
         </div>
 

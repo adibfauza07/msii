@@ -1,20 +1,16 @@
-<!-- FILE: msii/qc/page_kakotora.php -->
-<!-- UPDATE: Penambahan Tombol Cetak (Print) di Tabel -->
+<link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
 
 <style>
     .cursor-pointer { cursor: pointer; }
     .table-hover tbody tr:hover { background-color: #f1f8ff; }
     .pagination-container { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
     
-    /* Efek Hover pada Thumbnail Gambar */
-    .img-thumbnail-qc {
-        transition: transform 0.2s;
-        cursor: zoom-in;
-    }
-    .img-thumbnail-qc:hover {
-        transform: scale(1.02);
-        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    }
+    .img-thumbnail-qc { transition: transform 0.2s; cursor: zoom-in; }
+    .img-thumbnail-qc:hover { transform: scale(1.02); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+
+    .select2-container--bootstrap-5 .select2-selection { font-size: 0.875rem; min-height: 31px; }
+    .select2-container--bootstrap-5 .select2-selection--single { padding: 0.25rem 0.75rem; }
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -25,7 +21,6 @@
     </div>
 </div>
 
-<!-- TABEL GRID DATA -->
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-header bg-white py-3">
         <div class="row">
@@ -52,7 +47,7 @@
                         <th>Part Name</th>
                         <th>Problem</th>
                         <th class="text-center">Tipe / Kategori</th>
-                        <th class="text-center" width="130px">Aksi</th> <!-- Lebar kolom ditambah -->
+                        <th class="text-center" width="130px">Aksi</th>
                     </tr>
                 </thead>
                 <tbody id="tableBody">
@@ -68,7 +63,6 @@
     </div>
 </div>
 
-<!-- DETAIL AREA (READ ONLY) -->
 <div id="detailSection" class="row g-3" style="display:none;">
     <div class="col-md-8">
         <div class="card shadow-sm border-0 h-100">
@@ -92,7 +86,6 @@
     </div>
 </div>
 
-<!-- MODAL ZOOM GAMBAR -->
 <div class="modal fade" id="modalZoomImage" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-xl">
         <div class="modal-content bg-transparent border-0">
@@ -104,7 +97,6 @@
     </div>
 </div>
 
-<!-- MODAL INPUT / EDIT -->
 <div class="modal fade" id="modalForm" tabindex="-1" data-bs-backdrop="static">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -117,7 +109,6 @@
                     <input type="hidden" name="action" id="formAction">
                     <input type="hidden" name="car_id" id="formId">
 
-                    <!-- TABS NAV -->
                     <ul class="nav nav-tabs nav-fill mb-3" id="myTab" role="tablist">
                         <li class="nav-item"><button class="nav-link active py-1" id="tab1-btn" data-bs-toggle="tab" data-bs-target="#tab1" type="button">Header (Master)</button></li>
                         <li class="nav-item"><button class="nav-link py-1" id="tab2-btn" data-bs-toggle="tab" data-bs-target="#tab2" type="button">Analisis & Detail</button></li>
@@ -125,7 +116,6 @@
                     </ul>
 
                     <div class="tab-content" id="myTabContent">
-                        <!-- TAB 1: HEADER -->
                         <div class="tab-pane fade show active" id="tab1">
                             <div class="row g-2 mb-2">
                                 <div class="col-md-4">
@@ -144,11 +134,11 @@
                             <div class="row g-2 mb-2">
                                 <div class="col-md-6">
                                     <label class="form-label small fw-bold">Customer</label>
-                                    <select name="cust_id" id="inp_cust_id" class="form-select form-select-sm" onchange="loadItems(this.value)"><option value="">-- Pilih Customer --</option></select>
+                                    <select name="cust_id" id="inp_cust_id" class="form-select form-select-sm" style="width: 100%;"><option value="">-- Pilih Customer --</option></select>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label small fw-bold">Item / Part</label>
-                                    <select name="item_id" id="inp_item_id" class="form-select form-select-sm" disabled><option value="">-- Pilih Customer Dulu --</option></select>
+                                    <select name="item_id" id="inp_item_id" class="form-select form-select-sm" style="width: 100%;" disabled><option value="">-- Pilih Customer Dulu --</option></select>
                                 </div>
                             </div>
                             <div class="mb-2">
@@ -164,7 +154,6 @@
                             </div>
                         </div>
 
-                        <!-- TAB 2: DETAIL -->
                         <div class="tab-pane fade" id="tab2">
                             <div class="row g-2 mb-2">
                                 <div class="col-md-6">
@@ -230,7 +219,6 @@
                             </div>
                         </div>
 
-                        <!-- TAB 3: GAMBAR -->
                         <div class="tab-pane fade text-center p-3" id="tab3">
                             <div class="border border-dashed p-4 bg-light rounded">
                                 <input type="file" name="gambar" id="inp_gambar" class="form-control mb-3" accept="image/*">
@@ -248,9 +236,55 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
 <script>
 let currentPage = 1, totalPages = 1, searchTimer = null;
-$(document).ready(function(){ loadTableData(1); });
+
+$(document).ready(function(){ 
+    loadTableData(1); 
+
+    $('#inp_cust_id').select2({
+        theme: "bootstrap-5",
+        dropdownParent: $('#modalForm'),
+        placeholder: "-- Pilih Customer --",
+        width: '100%'
+    });
+
+    // PERBAIKAN: INISIALISASI SERVER-SIDE SELECT2 UNTUK PART
+    $('#inp_item_id').select2({
+        theme: "bootstrap-5",
+        dropdownParent: $('#modalForm'),
+        placeholder: "-- Ketik untuk mencari Part --",
+        width: '100%',
+        ajax: {
+            url: 'api_kakotora_master.php',
+            dataType: 'json',
+            delay: 300, 
+            data: function (params) {
+                return {
+                    action: 'get_items_by_cust_ajax',
+                    cust_id: $('#inp_cust_id').val(), 
+                    search: params.term || '' 
+                };
+            },
+            processResults: function (data) {
+                return { results: data.data };
+            },
+            cache: true
+        },
+        minimumInputLength: 0 
+    });
+
+    $('#inp_cust_id').on('select2:select', function (e) {
+        // Buka gembok Part setelah pilih customer
+        $('#inp_item_id').empty().prop('disabled', false).trigger('change');
+    });
+
+    $('#inp_cust_id').on('select2:clear', function (e) {
+        $('#inp_item_id').empty().prop('disabled', true).trigger('change');
+    });
+});
 
 function searchTable() { clearTimeout(searchTimer); searchTimer = setTimeout(function() { currentPage = 1; loadTableData(1); }, 500); }
 function changePage(d) { let n = currentPage + d; if (n > 0 && n <= totalPages) { currentPage = n; loadTableData(n); } }
@@ -275,7 +309,6 @@ function loadTableData(page) {
                             <td>${r.tgl_formatted}</td><td>${cust}</td><td>${part}</td><td>${r.problem}</td>
                             <td class='text-center'><span class='badge ${badge}'>${st}</span></td>
                             <td class='text-center'>
-                                <!-- TOMBOL CETAK -->
                                 <button class='btn btn-sm btn-outline-secondary py-0 me-1' onclick='event.stopPropagation(); printSingle(${r.car_id})' title="Cetak PDF"><i class='bi bi-printer'></i></button>
                                 <button class='btn btn-sm btn-outline-primary py-0 me-1' onclick='event.stopPropagation(); editMaster(${r.car_id})' title="Edit"><i class='bi bi-pencil'></i></button>
                                 <button class='btn btn-sm btn-outline-danger py-0' onclick='event.stopPropagation(); deleteMaster(${r.car_id})' title="Hapus"><i class='bi bi-trash'></i></button>
@@ -294,16 +327,35 @@ function loadTableData(page) {
     });
 }
 
-// --- FUNGSI CETAK ---
-function printSingle(id) {
-    // Membuka halaman print di tab baru
-    window.open('print_kakotora.php?id=' + id, '_blank');
+function printSingle(id) { window.open('print_kakotora.php?id=' + id, '_blank'); }
+
+function loadCustomers(selId = null) { 
+    $.ajax({url:'api_kakotora_master.php', type:'GET', data:{action:'get_customers'}, dataType:'json', success:function(res){ 
+        var h='<option value="">-- Pilih Customer --</option>'; 
+        if(res.status=='ok') {
+            res.data.forEach(function(i){ var s=(selId==i.id)?'selected':''; h+=`<option value="${i.id}" ${s}>${i.text}</option>`; }); 
+        }
+        $('#inp_cust_id').html(h).trigger('change'); 
+    }}); 
 }
 
-function loadCustomers(selId) { $.ajax({url:'api_kakotora_master.php', type:'GET', data:{action:'get_customers'}, dataType:'json', success:function(res){ var h='<option value="">-- Pilih --</option>'; if(res.status=='ok') res.data.forEach(function(i){ var s=(selId==i.id)?'selected':''; h+=`<option value="${i.id}" ${s}>${i.text}</option>`; }); $('#inp_cust_id').html(h); }}); }
-function loadItems(cId, selId) { if(!cId) { $('#inp_item_id').html('<option value="">-- Pilih Cust --</option>').prop('disabled',true); return; } $('#inp_item_id').html('<option>Loading...</option>').prop('disabled',true); $.ajax({url:'api_kakotora_master.php', type:'GET', data:{action:'get_items_by_cust', cust_id:cId}, dataType:'json', success:function(res){ var h='<option value="">-- Pilih --</option>'; if(res.status=='ok'&&res.data.length>0){ res.data.forEach(function(i){ var s=(selId==i.id)?'selected':''; h+=`<option value="${i.id}" ${s}>${i.text}</option>`; }); $('#inp_item_id').html(h).prop('disabled',false); } else $('#inp_item_id').html('<option>Tidak ada item</option>'); }}); }
-
-function addMaster() { $('#formMaster')[0].reset(); $('#formAction').val('insert_master'); $('#formId').val(''); $('#modalTitle').text('Buat Claim Baru'); $('#inp_car_no').prop('readonly',false); loadCustomers(); $('#inp_item_id').html('<option>-- Pilih Cust --</option>').prop('disabled',true); $('#inp_event_status').val('New Project'); $('#inp_detail_status').val('OPEN'); (new bootstrap.Tab(document.querySelector('#tab1-btn'))).show(); (new bootstrap.Modal(document.getElementById('modalForm'))).show(); }
+function addMaster() { 
+    $('#formMaster')[0].reset(); 
+    $('#formAction').val('insert_master'); 
+    $('#formId').val(''); 
+    $('#modalTitle').text('Buat Claim Baru'); 
+    $('#inp_car_no').prop('readonly',false); 
+    
+    $('#inp_cust_id').val('').trigger('change');
+    $('#inp_item_id').empty().html('<option value="">-- Pilih Customer Dulu --</option>').prop('disabled',true).trigger('change');
+    
+    loadCustomers(); 
+    
+    $('#inp_event_status').val('New Project'); 
+    $('#inp_detail_status').val('OPEN'); 
+    (new bootstrap.Tab(document.querySelector('#tab1-btn'))).show(); 
+    (new bootstrap.Modal(document.getElementById('modalForm'))).show(); 
+}
 
 function editMaster(id) {
     (new bootstrap.Tab(document.querySelector('#tab1-btn'))).show();
@@ -313,7 +365,16 @@ function editMaster(id) {
             $('#inp_car_no').val(d.car_no).prop('readonly',true); 
             $('#inp_claim_date').val(new Date(d.claim_date.date).toISOString().split('T')[0]);
             $('#inp_qty').val(d.qty); $('#inp_problem').val(d.problem); $('#inp_event_status').val(d.event_status); 
-            loadCustomers(d.cust_id); loadItems(d.cust_id, d.item_id);
+            
+            loadCustomers(d.cust_id); 
+            
+            // Pancing manual option agar terisi saat edit
+            $('#inp_item_id').empty().prop('disabled', false);
+            if(d.item_id && d.PART_NAME) {
+                var opt = new Option(d.PART_NAME, d.item_id, true, true);
+                $('#inp_item_id').append(opt).trigger('change');
+            }
+
             $('#inp_loc').val(d.loc_problem); $('#inp_efek').val(d.efek); $('#inp_klasifikasi').val(d.klasifikasi); $('#inp_pic').val(d.pic);
             $('#inp_cause').val(d.cause); $('#inp_counter').val(d.counter); $('#inp_detail_status').val(d.status); 
             if(d.eff_date) $('#inp_eff_date').val(new Date(d.eff_date.date).toISOString().split('T')[0]);

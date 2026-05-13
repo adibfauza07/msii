@@ -58,7 +58,7 @@ $totalPages = count($chunks);
 
 // Info Perusahaan
 $companyName = "PT. IMC TEKNO INDONESIA PLANT 1";
-$companyAddress = "Kawasan Industri Mitra Karawang<br>Blok A-III No. 15E Dangdeur Bungursari<br>Kab. Purwakarta, Jawa Barat 41181<br>Phone : (0264)351440";
+$companyAddress = "Kawasan Berikat, NSS Indonesia<br>Kota Bukit Indah Dangdeur Bungursari<br>Kab. Purwakarta, Jawa Barat 41181<br>Phone : (0264)351440";
 
 if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
     $companyName = "PT. IMC TEKNO INDONESIA PLANT 2";

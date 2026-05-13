@@ -1,79 +1,143 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-session_start();
-
-if (!isset($_SESSION['db_user'])) {
-    header("Location: login.php");
-    exit();
-}
-
-$serverName = "192.168.0.4";
-
-if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == "p2") {
-    $serverName = "192.168.0.9";
-}
-
-$connectionOptions = array(
-    "Database" => "msData",
-    "Uid" => $_SESSION['db_user'],
-    "PWD" => $_SESSION['db_pass'],
-    "CharacterSet" => "UTF-8"
-);
-
-$conn = sqlsrv_connect($serverName, $connectionOptions);
+require_once "auth.php";
+require_once "../config/database_p2.php";
 
 if ($conn === false) {
-
     die(print_r(sqlsrv_errors(), true));
-
 }
 
-$sql_total = "SELECT COUNT(*) AS total FROM it_projects";
-$q_total = sqlsrv_query($conn, $sql_total);
+function runQuery($conn, $sql, $params = array())
+{
+    $stmt = sqlsrv_query($conn, $sql, $params);
+
+    if ($stmt === false) {
+        echo "<pre>";
+        echo "SQL ERROR:\n";
+        print_r(sqlsrv_errors());
+        echo "\nQUERY:\n" . $sql;
+        echo "</pre>";
+        exit();
+    }
+
+    return $stmt;
+}
+
+$role = isset($_SESSION['role']) ? $_SESSION['role'] : 'user';
+$user_department = isset($_SESSION['department']) ? $_SESSION['department'] : '';
+$nama_lengkap = isset($_SESSION['nama_lengkap']) ? $_SESSION['nama_lengkap'] : '';
+
+$where = "";
+$params = array();
+
+if ($role != 'admin') {
+    $where = " WHERE department = ?";
+    $params[] = $user_department;
+}
+
+$sql_total = "SELECT COUNT(*) AS total
+              FROM dbo.it_projects
+              $where";
+$q_total = runQuery($conn, $sql_total, $params);
 $total = sqlsrv_fetch_array($q_total, SQLSRV_FETCH_ASSOC);
 
-$sql_dev = "SELECT COUNT(*) AS total FROM it_projects WHERE status='Development'";
-$q_dev = sqlsrv_query($conn, $sql_dev);
-$dev = sqlsrv_fetch_array($q_dev, SQLSRV_FETCH_ASSOC);
+if ($where == "") {
+    $sql_progress = "SELECT COUNT(*) AS total
+                     FROM dbo.it_projects
+                     WHERE status NOT IN ('Finish','Done','Completed')";
+    $params_progress = array();
+} else {
+    $sql_progress = "SELECT COUNT(*) AS total
+                     FROM dbo.it_projects
+                     WHERE department = ?
+                     AND status NOT IN ('Finish','Done','Completed')";
+    $params_progress = array($user_department);
+}
+$q_progress = runQuery($conn, $sql_progress, $params_progress);
+$progress = sqlsrv_fetch_array($q_progress, SQLSRV_FETCH_ASSOC);
 
-$sql_done = "SELECT COUNT(*) AS total FROM it_projects WHERE status='Selesai'";
-$q_done = sqlsrv_query($conn, $sql_done);
+if ($where == "") {
+    $sql_done = "SELECT COUNT(*) AS total
+                 FROM dbo.it_projects
+                 WHERE status IN ('Finish','Done','Completed')";
+    $params_done = array();
+} else {
+    $sql_done = "SELECT COUNT(*) AS total
+                 FROM dbo.it_projects
+                 WHERE department = ?
+                 AND status IN ('Finish','Done','Completed')";
+    $params_done = array($user_department);
+}
+$q_done = runQuery($conn, $sql_done, $params_done);
 $done = sqlsrv_fetch_array($q_done, SQLSRV_FETCH_ASSOC);
 
-$sql_late = "SELECT COUNT(*) AS total 
-             FROM it_projects 
-             WHERE deadline < GETDATE() 
-             AND status <> 'Selesai'";
-
-$q_late = sqlsrv_query($conn, $sql_late);
+if ($where == "") {
+    $sql_late = "SELECT COUNT(*) AS total
+                 FROM dbo.it_projects
+                 WHERE deadline < GETDATE()
+                 AND status NOT IN ('Finish','Done','Completed')";
+    $params_late = array();
+} else {
+    $sql_late = "SELECT COUNT(*) AS total
+                 FROM dbo.it_projects
+                 WHERE department = ?
+                 AND deadline < GETDATE()
+                 AND status NOT IN ('Finish','Done','Completed')";
+    $params_late = array($user_department);
+}
+$q_late = runQuery($conn, $sql_late, $params_late);
 $late = sqlsrv_fetch_array($q_late, SQLSRV_FETCH_ASSOC);
 
-$sql_budget = "SELECT ISNULL(SUM(budget),0) AS total FROM it_projects";
-$q_budget = sqlsrv_query($conn, $sql_budget);
+$sql_budget = "SELECT ISNULL(SUM(budget),0) AS total
+               FROM dbo.it_projects
+               $where";
+$q_budget = runQuery($conn, $sql_budget, $params);
 $budget = sqlsrv_fetch_array($q_budget, SQLSRV_FETCH_ASSOC);
 
-$sql_biaya = "SELECT ISNULL(SUM(nominal),0) AS total FROM it_project_costs";
-$q_biaya = sqlsrv_query($conn, $sql_biaya);
+if ($role == 'admin') {
+    $sql_biaya = "SELECT ISNULL(SUM(c.nominal),0) AS total
+                  FROM dbo.it_project_costs c
+                  LEFT JOIN dbo.it_projects p
+                  ON c.project_id = p.id";
+    $params_biaya = array();
+} else {
+    $sql_biaya = "SELECT ISNULL(SUM(c.nominal),0) AS total
+                  FROM dbo.it_project_costs c
+                  LEFT JOIN dbo.it_projects p
+                  ON c.project_id = p.id
+                  WHERE p.department = ?";
+    $params_biaya = array($user_department);
+}
+$q_biaya = runQuery($conn, $sql_biaya, $params_biaya);
 $biaya = sqlsrv_fetch_array($q_biaya, SQLSRV_FETCH_ASSOC);
 
-$sql_project = "SELECT TOP 10 * FROM it_projects ORDER BY id DESC";
-$q_project = sqlsrv_query($conn, $sql_project);
-
+if ($role == 'admin') {
+    $sql_project = "SELECT TOP 10 *
+                    FROM dbo.it_projects
+                    ORDER BY id DESC";
+    $params_project = array();
+} else {
+    $sql_project = "SELECT TOP 10 *
+                    FROM dbo.it_projects
+                    WHERE department = ?
+                    ORDER BY id DESC";
+    $params_project = array($user_department);
+}
+$q_project = runQuery($conn, $sql_project, $params_project);
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
-
 <head>
-
     <meta charset="UTF-8">
-
     <title>Dashboard IT Project</title>
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+          rel="stylesheet">
 
     <style>
-
         body {
             background: #eef2f7;
             font-family: Arial, sans-serif;
@@ -141,50 +205,42 @@ $q_project = sqlsrv_query($conn, $sql_project);
             padding: 20px;
             box-shadow: 0 5px 15px rgba(0,0,0,0.08);
         }
-
-        .badge-status {
-            padding: 6px 10px;
-            border-radius: 8px;
-            color: white;
-            font-size: 12px;
-        }
-
-        .Request { background: #64748b; }
-        .Planning { background: #8b5cf6; }
-        .Development { background: #2563eb; }
-        .Testing { background: #f59e0b; }
-        .Revision { background: #ef4444; }
-        .Deployment { background: #0ea5e9; }
-        .Selesai { background: #16a34a; }
-        .Pending { background: #475569; }
-
     </style>
-
 </head>
 
 <body>
 
 <div class="sidebar">
-
     <h3>MENU PROJECT</h3>
 
     <a href="dashboard.php" class="active">Dashboard</a>
     <a href="department.php">Department</a>
-	<a href="project.php">Data Project</a>
+    <a href="project.php">Data Project</a>
     <a href="tambah_project.php">Tambah Project</a>
-    <a href="progress.php">Progress Pengerjaan</a>
-    <a href="biaya.php">Budget & Biaya</a>
     <a href="laporan.php">Laporan</a>
-    <a href="logout.php">Logout</a>
-    <a href="../index.php">Kembali Portal</a>
+    <a href="laporan_budget.php">Laporan Budget</a>
 
+    <?php if ($role == 'admin') { ?>
+        <a href="user.php">Management User</a>
+    <?php } ?>
+
+    <a href="logout.php">Logout</a>
 </div>
 
 <div class="content">
 
     <h2>Dashboard IT Project</h2>
 
-    <p>Monitoring pembuatan software internal perusahaan.</p>
+    <p>
+        Welcome,
+        <strong><?php echo htmlspecialchars($nama_lengkap); ?></strong>
+        |
+        Department:
+        <strong><?php echo htmlspecialchars($user_department); ?></strong>
+        |
+        Role:
+        <strong><?php echo htmlspecialchars($role); ?></strong>
+    </p>
 
     <div class="row">
 
@@ -197,14 +253,14 @@ $q_project = sqlsrv_query($conn, $sql_project);
 
         <div class="col-md-3">
             <div class="card-box">
-                <h4>Development</h4>
-                <h2><?php echo $dev['total']; ?></h2>
+                <h4>On Progress</h4>
+                <h2><?php echo $progress['total']; ?></h2>
             </div>
         </div>
 
         <div class="col-md-3">
             <div class="card-box">
-                <h4>Selesai</h4>
+                <h4>Finish</h4>
                 <h2><?php echo $done['total']; ?></h2>
             </div>
         </div>
@@ -224,82 +280,90 @@ $q_project = sqlsrv_query($conn, $sql_project);
             <div class="card-box">
                 <h4>Total Budget</h4>
                 <h2>
-                    Rp <?php echo number_format($budget['total'],0,',','.'); ?>
+                    Rp <?php echo number_format($budget['total'], 0, ',', '.'); ?>
                 </h2>
             </div>
         </div>
 
         <div class="col-md-6">
             <div class="card-box">
-                <h4>Total Biaya Terpakai</h4>
+                <h4>Total Biaya Actual</h4>
                 <h2>
-                    Rp <?php echo number_format($biaya['total'],0,',','.'); ?>
+                    Rp <?php echo number_format($biaya['total'], 0, ',', '.'); ?>
                 </h2>
             </div>
         </div>
 
     </div>
 
-    <div class="table-box">
-
+    <div class="table-box mt-3">
         <h4>Project Terbaru</h4>
 
-        <table class="table table-bordered table-striped">
-
+        <table class="table table-bordered table-striped mt-3">
             <thead>
                 <tr>
                     <th>No</th>
-                    <th>Nama Software</th>
+                    <th>Nama Project</th>
                     <th>Department</th>
-                    <th>PIC IT</th>
-                    <th>Deadline</th>
-                    <th>Progress</th>
                     <th>Status</th>
+                    <th>Deadline</th>
+                    <th>Budget</th>
                 </tr>
             </thead>
 
             <tbody>
-
             <?php
             $no = 1;
-
             while ($row = sqlsrv_fetch_array($q_project, SQLSRV_FETCH_ASSOC)) {
             ?>
-
                 <tr>
-
                     <td><?php echo $no++; ?></td>
-
-                    <td><?php echo $row['nama_software']; ?></td>
-
-                    <td><?php echo $row['department']; ?></td>
-
-                    <td><?php echo $row['pic_it']; ?></td>
 
                     <td>
                         <?php
-                        if ($row['deadline']) {
+                        echo isset($row['nama_software'])
+                            ? htmlspecialchars($row['nama_software'])
+                            : '-';
+                        ?>
+                    </td>
+
+                    <td>
+                        <?php
+                        echo isset($row['department'])
+                            ? htmlspecialchars($row['department'])
+                            : '-';
+                        ?>
+                    </td>
+
+                    <td>
+                        <?php
+                        echo isset($row['status'])
+                            ? htmlspecialchars($row['status'])
+                            : '-';
+                        ?>
+                    </td>
+
+                    <td>
+                        <?php
+                        if (isset($row['deadline']) && $row['deadline'] instanceof DateTime) {
                             echo $row['deadline']->format('Y-m-d');
+                        } else {
+                            echo '-';
                         }
                         ?>
                     </td>
 
-                    <td><?php echo $row['progress']; ?>%</td>
-
                     <td>
-                        <span class="badge-status <?php echo $row['status']; ?>">
-                            <?php echo $row['status']; ?>
-                        </span>
+                        Rp <?php
+                        echo isset($row['budget'])
+                            ? number_format($row['budget'], 0, ',', '.')
+                            : '0';
+                        ?>
                     </td>
-
                 </tr>
-
             <?php } ?>
-
             </tbody>
-
         </table>
-
     </div>
 
 </div>

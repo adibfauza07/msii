@@ -1,12 +1,13 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-session_start();
+require_once "auth.php";
+require_once "../config/database_p2.php";
 
-if (!isset($_SESSION['db_user'])) {
-    header("Location: login.php");
-    exit();
+if ($conn === false) {
+    die(print_r(sqlsrv_errors(), true));
 }
-
 $serverName = "192.168.0.4";
 
 if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == "p2") {

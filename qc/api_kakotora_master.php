@@ -1,6 +1,6 @@
 <?php
 // FILE: msii/qc/api_kakotora_master.php
-// UPDATE: Multi-Database Support (P1 & P2)
+// UPDATE: Multi-Database Support & Server-Side AJAX Search
 
 ini_set('display_errors', 0);
 error_reporting(0);
@@ -12,37 +12,25 @@ $active_plant = isset($_SESSION['active_plant']) ? $_SESSION['active_plant'] : '
 
 // 2. PILIH KONEKSI DATABASE
 if ($active_plant == 'p2') {
-    // --- SETTING PLANT 2 ---
-    // Pastikan session yang dibutuhkan database.php tersedia
     if(!isset($_SESSION['erp_user'])) $_SESSION['erp_user'] = $_SESSION['db_user'];
     if(!isset($_SESSION['erp_pass'])) $_SESSION['erp_pass'] = $_SESSION['db_pass'];
-    
-    // !!! WAJIB ISI IP SERVER PLANT 2 DI SINI !!!
     $_SESSION['server_sql'] = "192.168.0.9"; 
-
-    // Panggil file database.php milik Plant 2 (Naik 2 folder ke MSII/Config)
     $db_path = __DIR__ . '/../config/database.php';
-    if(file_exists($db_path)) {
-        require_once $db_path;
-    } else {
-        echo json_encode(array('status'=>'error', 'msg'=>'File Config P2 tidak ditemukan di: ' . $db_path)); exit;
-    }
+    if(file_exists($db_path)) { require_once $db_path; } 
+    else { echo json_encode(array('status'=>'error', 'msg'=>'File Config P2 tidak ditemukan')); exit; }
 } else {
-    // --- SETTING PLANT 1 (DEFAULT) ---
     require_once __DIR__ . '/../config/database_p1.php'; 
 }
 
 header('Content-Type: application/json');
 
-if (!$conn) { echo json_encode(array('status'=>'error', 'msg'=>'Koneksi Database Gagal. Cek Config.')); exit; }
-
-// --- SISA KODE KE BAWAH SAMA PERSIS SEPERTI SEBELUMNYA ---
-// (Copy paste sisa logic dari file api_kakotora_master.php yang terakhir saya berikan)
-// Agar tidak kepanjangan, saya tulis ulang bagian intinya saja:
+if (!$conn) { echo json_encode(array('status'=>'error', 'msg'=>'Koneksi Database Gagal.')); exit; }
 
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method == 'GET' && isset($_GET['action'])) {
+    
+    // --- LOAD TABLE DEPAN ---
     if ($_GET['action'] == 'get_table_data') {
         $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
         $limit = 10;
@@ -80,21 +68,16 @@ if ($method == 'GET' && isset($_GET['action'])) {
         } else { $e = sqlsrv_errors(); echo json_encode(array('status' => 'error', 'msg' => 'SQL Error: '.$e[0]['message'])); }
         exit;
     }
-    // ... Copy paste sisa fungsi GET (get_master, get_complete_data, get_customers, dll) dari file sebelumnya ...
-    if ($_GET['action'] == 'get_master') {
-        $id = $_GET['id']; $sql = "SELECT * FROM car_claim WHERE car_id = ?"; $stmt = sqlsrv_query($conn, $sql, array($id));
-        if ($stmt && $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) echo json_encode(array('status' => 'ok', 'data' => $row));
-        else echo json_encode(array('status' => 'error', 'msg' => 'Data tidak ditemukan'));
-        exit;
-    }
+
+    // --- GET DATA UNTUK EDIT ---
     elseif ($_GET['action'] == 'get_complete_data') {
         $id = $_GET['id'];
-        $sqlHead = "SELECT * FROM car_claim WHERE car_id = ?";
+        $sqlHead = "SELECT c.*, v.PART_NAME FROM car_claim c LEFT JOIN ITEM_CUSTINFO_VIEW v ON c.item_id = v.ITEM_ID WHERE c.car_id = ?";
         $stmtHead = sqlsrv_query($conn, $sqlHead, array($id));
         $data = ($stmtHead) ? sqlsrv_fetch_array($stmtHead, SQLSRV_FETCH_ASSOC) : array();
         if(empty($data)) { echo json_encode(array('status'=>'error', 'msg'=>'ID Not Found')); exit; }
         
-        $sqlDet = "SELECT cause, counter, pic, eff_date FROM car_claim_detail WHERE car_id = ?";
+        $sqlDet = "SELECT cause, counter, pic, eff_date, status FROM car_claim_detail WHERE car_id = ?";
         $stmtDet = sqlsrv_query($conn, $sqlDet, array($id));
         if($stmtDet && $rDet = sqlsrv_fetch_array($stmtDet, SQLSRV_FETCH_ASSOC)){ $data = array_merge($data, $rDet); } 
         else { $data['cause'] = ''; $data['counter'] = ''; $data['pic'] = ''; $data['eff_date'] = null; }
@@ -109,28 +92,75 @@ if ($method == 'GET' && isset($_GET['action'])) {
 
         $stmtKlas = sqlsrv_query($conn, "SELECT klasifikasi FROM car_klasifikasi WHERE car_id = ?", array($id));
         $rKlas = ($stmtKlas) ? sqlsrv_fetch_array($stmtKlas, SQLSRV_FETCH_ASSOC) : null;
-        $data['klasifikasi'] = ($rKlas) ? $rKlas['klasifikasi'] : 'Minor';
+        $data['klasifikasi'] = ($rKlas) ? $rKlas['klasifikasi'] : '';
+
+        // Fallback Part Name jika View Kosong
+        if (empty($data['PART_NAME']) && !empty($data['item_id'])) {
+            $sPart = sqlsrv_query($conn, "SELECT ITEM_CODE, ITEM_NAME FROM ITEMS WHERE ITEM_ID = ?", array($data['item_id']));
+            if ($sPart && $rPart = sqlsrv_fetch_array($sPart, SQLSRV_FETCH_ASSOC)) {
+                $data['PART_NAME'] = $rPart['ITEM_CODE'] . ' - ' . $rPart['ITEM_NAME'];
+            }
+        }
 
         echo json_encode(array('status' => 'ok', 'data' => $data)); exit;
     }
+
+    // --- GET LIST CUSTOMER ---
     elseif ($_GET['action'] == 'get_customers') {
         $sql = "SELECT TOP 300 CUST_ID, CUST_CODE, CUST_COMP FROM CUST WHERE CUST_INACTIVE = 0 ORDER BY CUST_COMP ASC";
         $stmt = sqlsrv_query($conn, $sql); $data = array();
         if($stmt) { while($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) { $data[] = array('id' => $row['CUST_ID'], 'text' => $row['CUST_COMP']); } }
         echo json_encode(array('status' => 'ok', 'data' => $data)); exit;
     }
-    elseif ($_GET['action'] == 'get_items_by_cust') {
-        $custId = $_GET['cust_id'];
-        $sql = "SELECT TOP 200 ITEM_ID, PART_CODE, PART_NAME FROM ITEM_CUSTINFO_VIEW WHERE CUST_ID = ? ORDER BY PART_NAME ASC";
-        $stmt = sqlsrv_query($conn, $sql, array($custId)); $data = array();
-        if($stmt) { while($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) { $data[] = array('id' => $row['ITEM_ID'], 'text' => $row['PART_CODE'] . ' - ' . $row['PART_NAME']); } }
+
+    // --- FITUR BARU: SERVER-SIDE AJAX SEARCH UNTUK PART/ITEM ---
+    elseif ($_GET['action'] == 'get_items_by_cust_ajax') {
+        $custId = isset($_GET['cust_id']) ? $_GET['cust_id'] : '';
+        $search = isset($_GET['search']) ? trim($_GET['search']) : '';
+        $data = array();
+
+        // 1. Prioritas Pertama: Cari di riwayat Customer
+        if (!empty($custId)) {
+            $sql = "SELECT TOP 50 ITEM_ID, PART_CODE, PART_NAME FROM ITEM_CUSTINFO_VIEW WHERE CUST_ID = ?";
+            $params = array($custId);
+            if (!empty($search)) {
+                $sql .= " AND (PART_CODE LIKE ? OR PART_NAME LIKE ?)";
+                $params[] = "%$search%"; $params[] = "%$search%";
+            }
+            $sql .= " ORDER BY PART_NAME ASC";
+            $stmt = sqlsrv_query($conn, $sql, $params);
+            if ($stmt) {
+                while($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+                    $data[] = array('id' => $row['ITEM_ID'], 'text' => $row['PART_CODE'] . ' - ' . $row['PART_NAME']);
+                }
+            }
+        }
+
+        // 2. Fallback: Jika kosong, cari bebas di Master Item
+        if (empty($data)) {
+            $sql2 = "SELECT TOP 50 ITEM_ID, ITEM_CODE AS PART_CODE, ITEM_NAME AS PART_NAME FROM ITEMS WHERE 1=1";
+            $params2 = array();
+            if (!empty($search)) {
+                $sql2 .= " AND (ITEM_CODE LIKE ? OR ITEM_NAME LIKE ?)";
+                $params2[] = "%$search%"; $params2[] = "%$search%";
+            }
+            $sql2 .= " ORDER BY ITEM_NAME ASC";
+            $stmt2 = sqlsrv_query($conn, $sql2, $params2);
+            if ($stmt2) {
+                while($row = sqlsrv_fetch_array($stmt2, SQLSRV_FETCH_ASSOC)) {
+                    $data[] = array('id' => $row['ITEM_ID'], 'text' => $row['PART_CODE'] . ' - ' . $row['PART_NAME']);
+                }
+            }
+        }
+
         echo json_encode(array('status' => 'ok', 'data' => $data)); exit;
     }
 }
 
+// --- LOGIC SIMPAN & DELETE ---
 if ($method == 'POST') {
     $action = $_POST['action'];
-    // FUNGSI SIMPAN DETAIL (SAMA PERSIS)
+    
     function saveDetails($conn, $car_id) {
         $cek = sqlsrv_query($conn, "SELECT car_id FROM car_claim_detail WHERE car_id=?", array($car_id));
         $hasRow = sqlsrv_has_rows($cek);

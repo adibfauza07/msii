@@ -1,49 +1,80 @@
 <?php
-error_reporting(0);
-ini_set('display_errors', 0);
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-if (isset($_SESSION['db_user'])) {
-    header("Location: dashboard.php");
-    exit();
-}
+define('LOGIN_PAGE', true);
 
 $error = "";
 
 if (isset($_POST['btnMasuk'])) {
 
-    $temp_username = trim($_POST['username']);
-    $temp_password = $_POST['password'];
-    $selected_plant = $_POST['plant'];
+    $username = trim($_POST['username']);
+    $password = trim($_POST['password']);
+    $plant    = isset($_POST['plant']) ? $_POST['plant'] : 'p1';
 
-    $serverName = ($selected_plant == 'p1')
-        ? "192.168.0.4"
-        : "192.168.0.9";
+    if ($username == "" || $password == "") {
+        $error = "Username dan password wajib diisi";
+    } else {
 
-    $connectionString = "sqlsrv:Server=$serverName;Database=msData";
+        $is_login_process = true;
+        $temp_username = $username;
+        $temp_password = $password;
 
-    try {
+        if ($plant == 'p2') {
+            $serverCheck = "192.168.0.9";
+            $_SESSION['active_plant'] = "p2";
+        } else {
+            $serverCheck = "192.168.0.4";
+            $_SESSION['active_plant'] = "p1";
+        }
 
-        $conn = new PDO(
-            $connectionString,
-            $temp_username,
-            $temp_password
-        );
+        include "../config/database_p2.php";
 
-        $_SESSION['db_user'] = $temp_username;
-        $_SESSION['db_pass'] = $temp_password;
-        $_SESSION['active_plant'] = $selected_plant;
-        $_SESSION['module'] = "IT";
+        if ($conn === false) {
+            $error = "Koneksi database gagal";
+        } else {
 
-        header("Location: dashboard.php");
-        exit();
+            $sql = "SELECT TOP 1 *
+                    FROM dbo.it_users
+                    WHERE username = ?
+                    AND password = ?
+                    AND status_user = 'active'";
 
-    } catch (PDOException $e) {
+            $params = array($username, $password);
 
-        $error = "Username / Password Salah";
+            $query = sqlsrv_query($conn, $sql, $params);
+
+            if ($query === false) {
+                die(print_r(sqlsrv_errors(), true));
+            }
+
+            $user = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC);
+
+            if ($user) {
+
+                session_regenerate_id(true);
+
+                $_SESSION['user_id']      = $user['id'];
+                $_SESSION['username']     = $user['username'];
+                $_SESSION['nama_lengkap'] = $user['nama_lengkap'];
+                $_SESSION['department']   = $user['department'];
+                $_SESSION['role']         = $user['role'];
+                $_SESSION['status_user']  = $user['status_user'];
+                $_SESSION['module']       = "IT";
+
+               
+
+                header("Location: dashboard.php");
+                exit();
+
+            } else {
+                $error = "Username / Password salah atau user tidak aktif";
+            }
+        }
     }
 }
 ?>
@@ -52,156 +83,119 @@ if (isset($_POST['btnMasuk'])) {
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Login IT Project</title>
-
+    <title>Login Budgeting</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-
-    <link rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-
     <style>
-
-        body{
-            background:#eef2f7;
-            height:100vh;
-            display:flex;
-            justify-content:center;
-            align-items:center;
-            font-family:Arial;
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #f1f5f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
         }
 
-        .login-box{
-            width:100%;
-            max-width:420px;
-            background:white;
-            padding:40px;
-            border-radius:20px;
-            box-shadow:0 10px 30px rgba(0,0,0,0.1);
+        .login-box {
+            width: 360px;
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
         }
 
-        .title{
-            text-align:center;
-            margin-bottom:30px;
+        .login-box h2 {
+            text-align: center;
+            margin-bottom: 22px;
+            color: #0f172a;
         }
 
-        .title h2{
-            font-weight:bold;
-            color:#2563eb;
+        .error {
+            background: #fee2e2;
+            color: #991b1b;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 14px;
+            text-align: center;
         }
 
-        .title p{
-            color:#64748b;
-            font-size:14px;
+        .form-group {
+            margin-bottom: 14px;
         }
 
-        .btn-login{
-            background:#2563eb;
-            border:none;
-            padding:12px;
-            font-weight:bold;
+        label {
+            display: block;
+            margin-bottom: 6px;
+            color: #334155;
+            font-size: 14px;
         }
 
-        .btn-login:hover{
-            background:#1d4ed8;
+        input, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            font-size: 14px;
+            box-sizing: border-box;
         }
 
+        input:focus, select:focus {
+            outline: none;
+            border-color: #2563eb;
+        }
+
+        button {
+            width: 100%;
+            padding: 11px;
+            background: #2563eb;
+            border: none;
+            color: white;
+            font-size: 15px;
+            font-weight: bold;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 6px;
+        }
+
+        button:hover {
+            background: #1d4ed8;
+        }
     </style>
-
 </head>
 <body>
 
 <div class="login-box">
+    <h2>LOGIN BUDGETING</h2>
 
-    <div class="title">
-        <h2>IT PROJECT</h2>
-        <p>Monitoring Software Internal</p>
-    </div>
-
-    <?php if($error != ""){ ?>
-
-        <div class="alert alert-danger">
-            <?php echo $error; ?>
+    <?php if (!empty($error)) { ?>
+        <div class="error">
+            <?php echo htmlspecialchars($error); ?>
         </div>
-
     <?php } ?>
 
-    <form method="POST">
-
-        <div class="mb-3">
-            <label class="form-label">Plant</label>
-
-            <select name="plant" class="form-select" required>
-    <option value="p1">PLANT 1</option>
-    <option value="p2" selected>PLANT 2</option>
-</select>
+    <form method="POST" action="">
+        <div class="form-group">
+            <label>Plant</label>
+            <select name="plant">
+                <option value="p1">Plant 1</option>
+                <option value="p2">Plant 2</option>
+            </select>
         </div>
 
-        <div class="mb-3">
-
-            <label class="form-label">Username</label>
-
-            <div class="input-group">
-
-                <span class="input-group-text">
-                    <i class="bi bi-person"></i>
-                </span>
-
-                <input type="text"
-                name="username"
-                class="form-control"
-                required>
-
-            </div>
-
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" name="username" required autofocus>
         </div>
 
-        <div class="mb-4">
-
-            <label class="form-label">Password</label>
-
-            <div class="input-group">
-
-                <span class="input-group-text">
-                    <i class="bi bi-lock"></i>
-                </span>
-
-                <input type="password"
-                name="password"
-                class="form-control"
-                required>
-
-            </div>
-
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" name="password" required>
         </div>
 
-        <div class="d-grid">
-
-            <button type="submit"
-            name="btnMasuk"
-            class="btn btn-primary btn-login">
-
-                LOGIN
-                <i class="bi bi-box-arrow-in-right"></i>
-
-            </button>
-
-        </div>
-
-        <div class="d-grid mt-2">
-
-            <a href="../index.php"
-            class="btn btn-outline-secondary">
-
-                Kembali Portal
-
-            </a>
-
-        </div>
-
+        <button type="submit" name="btnMasuk">Masuk</button>
     </form>
-
 </div>
 
 </body>

@@ -266,7 +266,7 @@
       <i class="bi bi-laptop"></i>
     </div>
 
-    <span class="division-name">IT</span>
+    <span class="division-name">BUDGETING</span>
   </a>
 </div>
 

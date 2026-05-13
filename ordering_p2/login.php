@@ -1,81 +1,204 @@
 <?php
-// Aktifkan error reporting sementara untuk mendeteksi penyebab layar blank
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+define('LOGIN_PAGE', true);
 
-if (session_status() == PHP_SESSION_NONE) { session_start(); }
+$errorMsg = "";
+$successLogin = false;
 
-// Jika sudah login, arahkan ke dashboard internal ordering
-if (isset($_SESSION['db_user']) && $_SESSION['active_plant'] == 'p2') {
-    header("Location: dashboard.php");
+// Jika user klik logout
+if (isset($_GET['logout'])) {
+    if (session_status() == PHP_SESSION_NONE) {
+        session_start();
+    }
+
+    session_destroy();
+    header("Location: login.php");
     exit();
 }
 
-$error = "";
-if (isset($_POST['btnMasuk'])) {
-    $u = trim($_POST['username']);
-    $p = $_POST['password'];
-    
-    // Koneksi ke Database Plant 2
-    $serverName = "192.168.0.9"; 
-    $connectionOptions = array(
-        "Database" => "msData",
-        "Uid" => $u,
-        "PWD" => $p,
-        "CharacterSet" => "UTF-8"
-    );
+// Proses login
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
-    $conn = sqlsrv_connect($serverName, $connectionOptions);
+    $username = isset($_POST['username']) ? trim($_POST['username']) : "";
+    $password = isset($_POST['password']) ? $_POST['password'] : "";
 
-    if ($conn) {
-        $_SESSION['db_user'] = $u;
-        $_SESSION['db_pass'] = $p;
-        $_SESSION['erp_user'] = $u; // Untuk keperluan Auth.php
-        $_SESSION['active_plant'] = 'p2';
-        $_SESSION['erp_role'] = 'staff_p2'; // Role default
-        $_SESSION['last_activity'] = time();
-        
+    if ($username == "" || $password == "") {
+        $errorMsg = "Username dan password wajib diisi.";
+    } else {
+
+        $is_login_process = true;
+        $temp_username = $username;
+        $temp_password = $password;
+
+        require_once __DIR__ . "/../config/db_plant2.php";
+
+        if ($conn !== false) {
+            $_SESSION['db_user'] = $username;
+            $_SESSION['db_pass'] = $password;
+            $_SESSION['active_plant'] = "p2";
+            $_SESSION['login_time'] = date('Y-m-d H:i:s');
+
+            session_regenerate_id(true);
+
+            header("Location: dashboard.php");
+            exit();
+        } else {
+            $errorMsg = "Login gagal. Username atau password database salah.";
+        }
+    }
+
+} else {
+
+    require_once __DIR__ . "/../config/db_plant2.php";
+
+    // Kalau sudah login, langsung ke dashboard
+    if (isset($_SESSION['db_user']) && !empty($_SESSION['db_user']) && $conn !== false) {
         header("Location: dashboard.php");
         exit();
-    } else {
-        $error = "Gagal konek ke Server Plant 2! Cek User & Password SQL Server.";
     }
 }
 ?>
 <!DOCTYPE html>
-<html lang="id">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Login - Ordering Plant 2</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <meta charset="utf-8">
+    <title>Login Ordering Plant 2</title>
+
     <style>
-        body { background: #f8f9fa; height: 100vh; display: flex; align-items: center; justify-content: center; }
-        .card-login { width: 100%; max-width: 400px; border-radius: 15px; border: none; }
+        body {
+            margin: 0;
+            padding: 0;
+            background: #d4d0c8;
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 12px;
+        }
+
+        .login-wrapper {
+            width: 360px;
+            margin: 100px auto;
+            border: 2px solid #808080;
+            background: #d4d0c8;
+            padding: 0;
+        }
+
+        .title-bar {
+            background: #000080;
+            color: #ffffff;
+            padding: 6px 8px;
+            font-weight: bold;
+        }
+
+        .login-body {
+            padding: 16px;
+        }
+
+        table {
+            width: 100%;
+        }
+
+        td {
+            padding: 4px;
+        }
+
+        input {
+            width: 100%;
+            height: 24px;
+            border: 1px solid #808080;
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 12px;
+            box-sizing: border-box;
+            padding: 2px 4px;
+        }
+
+        button {
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 12px;
+            background: #d4d0c8;
+            border: 2px outset #ffffff;
+            padding: 5px 18px;
+            cursor: pointer;
+        }
+
+        button:active {
+            border: 2px inset #ffffff;
+        }
+
+        .button-row {
+            text-align: right;
+            margin-top: 12px;
+        }
+
+        .error {
+            background: #ffd6d6;
+            border: 1px solid #cc0000;
+            color: #800000;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+
+        .info {
+            background: #eeeeee;
+            border: 1px solid #808080;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+
+        .footer {
+            font-size: 11px;
+            margin-top: 10px;
+            color: #333333;
+        }
     </style>
 </head>
+
 <body>
-<div class="card card-login shadow">
-    <div class="card-header bg-success text-white text-center py-3">
-        <h5 class="mb-0 fw-bold">ORDERING SYSTEM P2</h5>
-        <small>PT. IMCTekno Indonesia</small>
-    </div>
-    <div class="card-body p-4">
-        <?php if($error): ?>
-            <div class="alert alert-danger py-2 small"><?= $error ?></div>
-        <?php endif; ?>
-        <form method="POST">
-            <div class="mb-3">
-                <label class="form-label small fw-bold">USERNAME</label>
-                <input type="text" name="username" class="form-control" required placeholder="User DB Plant 2">
+
+<div class="login-wrapper">
+    <div class="title-bar">LOGIN ORDERING SYSTEM - PLANT 2</div>
+
+    <div class="login-body">
+
+        <?php if ($errorMsg != "") { ?>
+            <div class="error"><?php echo htmlspecialchars($errorMsg, ENT_QUOTES, 'UTF-8'); ?></div>
+        <?php } ?>
+
+        <?php if (isset($_GET['error']) && $_GET['error'] == 'session_expired') { ?>
+            <div class="error">Session habis atau koneksi database gagal. Silakan login ulang.</div>
+        <?php } ?>
+
+        <div class="info">
+            Server: <b>192.168.0.9</b><br>
+            Database: <b>msdata</b>
+        </div>
+
+        <form method="post" action="login.php" autocomplete="off">
+            <table>
+                <tr>
+                    <td style="width:90px;">Username</td>
+                    <td>
+                        <input type="text" name="username" id="username" autofocus>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td>Password</td>
+                    <td>
+                        <input type="password" name="password" id="password">
+                    </td>
+                </tr>
+            </table>
+
+            <div class="button-row">
+                <button type="submit">LOGIN</button>
+                <button type="reset">RESET</button>
             </div>
-            <div class="mb-4">
-                <label class="form-label small fw-bold">PASSWORD</label>
-                <input type="password" name="password" class="form-control" required placeholder="••••••">
-            </div>
-            <button type="submit" name="btnMasuk" class="btn btn-success w-100 fw-bold">LOG IN <i class="bi bi-box-arrow-in-right"></i></button>
         </form>
+
+        <div class="footer">
+            Gunakan user SQL Server yang memiliki akses ke database msData.
+        </div>
+
     </div>
 </div>
+
 </body>
 </html>

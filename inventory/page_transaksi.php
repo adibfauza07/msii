@@ -21,7 +21,8 @@ if (isset($_POST['btnHapusTransaksi'])) {
             sqlsrv_query($conn, "DELETE FROM INV_TRAN WHERE TRAN_ID = ?", array($idToDelete));
             
             if ($isPlant1) {
-                sqlsrv_query($conn, "DELETE FROM $TABEL_BC WHERE TRAN_ID = ?", array($idToDelete));
+                // Hapus data BC berdasarkan TRAN_DOC milik TRAN_ID yang mau dihapus
+                sqlsrv_query($conn, "DELETE FROM $TABEL_BC WHERE TRAN_DOC = (SELECT TRAN_DOC FROM TRANS WHERE TRAN_ID = ?)", array($idToDelete));
             }
             
             $stmtDel = sqlsrv_query($conn, "DELETE FROM TRANS WHERE TRAN_ID = ?", array($idToDelete));
@@ -83,9 +84,10 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
                     $stmtHead = sqlsrv_query($conn, $sqlHead, $paramsHead);
                     if ($stmtHead === false) throw new Exception("Gagal Update Header (P1):\n" . print_r(sqlsrv_errors(), true));
                     
-                    sqlsrv_query($conn, "DELETE FROM $TABEL_BC WHERE TRAN_ID=?", array($currentID));
-                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (TRAN_ID, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($currentID, $jenisBC, $nomorBC));
-                    if ($stmtBC === false) throw new Exception("Gagal Update Tabel BC:\n" . print_r(sqlsrv_errors(), true));
+                    // UPDATE BC MENGGUNAKAN TRAN_DOC
+                    sqlsrv_query($conn, "DELETE FROM $TABEL_BC WHERE TRAN_DOC=?", array($tranDoc));
+                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (TRAN_DOC, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($tranDoc, $jenisBC, $nomorBC));
+                    if ($stmtBC === false) throw new Exception("Gagal Update Tabel BC (Cek apakah kolom TRAN_DOC ada):\n" . print_r(sqlsrv_errors(), true));
 
                     $targetID = $currentID;
                 } else {
@@ -98,8 +100,9 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
                     $rowID = sqlsrv_fetch_array($stmtHead);
                     $targetID = $rowID['ID'];
 
-                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (TRAN_ID, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($targetID, $jenisBC, $nomorBC));
-                    if ($stmtBC === false) throw new Exception("Gagal Insert Tabel BC:\n" . print_r(sqlsrv_errors(), true));
+                    // INSERT BC MENGGUNAKAN TRAN_DOC
+                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (TRAN_DOC, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($tranDoc, $jenisBC, $nomorBC));
+                    if ($stmtBC === false) throw new Exception("Gagal Insert Tabel BC (Cek apakah kolom TRAN_DOC ada):\n" . print_r(sqlsrv_errors(), true));
                 }
             } 
             // ===================================================================
@@ -185,11 +188,11 @@ if ($mode == 'new') {
     }
 
     if ($currentID) {
-        // FETCH DATA (P1 MENGGUNAKAN JOIN, P2 NORMAL)
+        // FETCH DATA (P1 MENGGUNAKAN JOIN BERDASARKAN TRAN_DOC)
         if ($isPlant1) {
             $sqlHead = "SELECT T.*, B.JENIS_BC, B.NOMOR_BC 
                         FROM TRANS T 
-                        LEFT JOIN $TABEL_BC B ON T.TRAN_ID = B.TRAN_ID 
+                        LEFT JOIN $TABEL_BC B ON T.TRAN_DOC = B.TRAN_DOC 
                         WHERE T.TRAN_ID = ?";
         } else {
             $sqlHead = "SELECT * FROM TRANS WHERE TRAN_ID = ?";
@@ -365,7 +368,7 @@ while($qT && $r=sqlsrv_fetch_array($qT)) {
                         </div>
                         <div class="col-6 col-lg-2">
                             <label class="small fw-bold">Qty</label>
-                            <input type="number" id="inputQty" class="form-control form-control-sm" value="">
+                            <input type="number" id="inputQty" class="form-control form-control-sm" value="0">
                         </div>
                         <div class="col-6 col-lg-2">
                             <label class="small fw-bold">Unit</label>

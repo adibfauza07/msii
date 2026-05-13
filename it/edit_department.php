@@ -1,12 +1,13 @@
-<?php
-session_start();
+<<?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-if (!isset($_SESSION['db_user'])) {
-    header("Location: login.php");
-    exit();
+require_once "auth.php";
+require_once "../config/database_p2.php";
+
+if ($conn === false) {
+    die(print_r(sqlsrv_errors(), true));
 }
-
-include "../config/database_p1.php";
 
 $id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 

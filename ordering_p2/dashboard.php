@@ -1,162 +1,168 @@
 <?php
-require_once 'Middleware/Auth.php';
-require_once 'Middleware/RoleCheck.php';
+require_once __DIR__ . "/../config/db_plant2.php";
 
-// Koneksi Database Plant 2
-$serverName = "192.168.0.9";
-$connectionOptions = array("Database" => "msData", "Uid" => $_SESSION['db_user'], "PWD" => $_SESSION['db_pass']);
-$conn = sqlsrv_connect($serverName, $connectionOptions);
+if ($conn === false) {
+    header("Location: login.php?error=session_expired");
+    exit();
+}
 
-$page = isset($_GET['page']) ? $_GET['page'] : 'Home';
+$dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : "";
+$loginTime = isset($_SESSION['login_time']) ? $_SESSION['login_time'] : "";
 ?>
 <!DOCTYPE html>
-<html lang="id">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Dashboard Ordering P2</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <meta charset="utf-8">
+    <title>Dashboard Ordering Plant 2</title>
+
     <style>
-               body {
-            background: #f4f6f9;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            overflow-x: hidden;
+        body {
+            margin: 0;
+            padding: 0;
+            background: #d4d0c8;
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 12px;
+            color: #000000;
         }
 
-        /* Sidebar Asli yang Elegan */
-        #sidebar {
-            width: 240px; /* Lebar asli */
-            height: 100vh;
-            background: #1f2a36; /* Warna Gelap Premium */
-            color: white;
-            position: fixed;
-            top: 0;
-            left: 0;
-            z-index: 1050;
-            transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); /* Animasi halus */
-            box-shadow: 2px 0 10px rgba(0,0,0,0.3);
-            display: flex;
-            flex-direction: column;
+        .topbar {
+            background: #000080;
+            color: #ffffff;
+            padding: 8px 12px;
+            font-weight: bold;
         }
 
-        #sidebar .brand {
-            padding: 20px;
-            font-size: 17px;
-            font-weight: 600;
-            background: #273442; /* Header Sidebar */
-            border-bottom: 1px solid rgba(255,255,255,0.05);
-            color: #fff;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            text-align: center;
+        .container {
+            width: 1000px;
+            margin: 20px auto;
+            border: 2px solid #808080;
+            background: #d4d0c8;
+            padding: 12px;
+            box-sizing: border-box;
         }
 
-        .nav-link {
-            color: #aab0b6; /* Warna teks abu-abu elegan */
-            padding: 12px 20px;
+        .welcome {
+            border: 1px solid #808080;
+            background: #eeeeee;
+            padding: 10px;
+            margin-bottom: 12px;
+        }
+
+        .menu-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+
+        .menu-card {
+            border: 1px solid #808080;
+            background: #f0f0f0;
+            padding: 14px;
+            min-height: 100px;
+            box-sizing: border-box;
+        }
+
+        .menu-card h3 {
+            margin: 0 0 8px 0;
             font-size: 14px;
-            border-left: 3px solid transparent;
-            transition: all 0.2s;
         }
 
-        .nav-link:hover {
-            background: #2c3e50;
-            color: #fff;
-            border-left-color: #5c7cfa; /* Sedikit biru saat hover */
+        .menu-card p {
+            margin: 0 0 12px 0;
+            line-height: 1.4;
         }
 
-        .nav-link.active {
-            background: #2c3e50;
-            color: #fff !important;
-            border-left-color: #3498db; /* Biru terang aktif */
-            font-weight: 500;
+        a.button {
+            display: inline-block;
+            text-decoration: none;
+            color: #000000;
+            background: #d4d0c8;
+            border: 2px outset #ffffff;
+            padding: 5px 14px;
         }
 
-        .nav-link i { margin-right: 12px; font-size: 1.1rem; }
-
-        /* Kategori Menu Kecil */
-        .menu-label {
-            padding: 15px 20px 5px 20px;
-            font-size: 11px;
-            text-transform: uppercase;
-            color: #5b6e80;
-            font-weight: 700;
-            letter-spacing: 0.5px;
+        a.button:active {
+            border: 2px inset #ffffff;
         }
 
-        /* Footer Sidebar */
-        .sidebar-footer {
-            margin-top: auto;
-            padding: 15px 20px;
-            background: #19222c;
-            border-top: 1px solid rgba(255,255,255,0.05);
+        .bottom-row {
+            margin-top: 16px;
+            text-align: right;
         }
 
-        /* --- LOGIKA RESPONSIVE (Media Queries) --- */
-        #content {
-            width: 100%;
-            min-height: 100vh;
-            transition: all 0.3s;
-            padding: 25px;
-            padding-left: 265px; /* 240px sidebar + 25px gap */
-        }
-
-        /* Tombol Burger (Hanya muncul di HP) */
-        .btn-toggle-mobile {
-            position: fixed; top: 15px; left: 15px; z-index: 2000;
-            display: none; 
-            background: #1f2a36; color: white; border: none;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-        }
-
-        /* Overlay Gelap (Hanya muncul di HP) */
-        .overlay {
-            display: none; position: fixed;
-            width: 100vw; height: 100vh; background: rgba(0,0,0,0.5);
-            z-index: 1040; top: 0; left: 0;
-        }
-
-        /* TAMPILAN HP (< 768px) */
-        @media (max-width: 768px) {
-            #sidebar { margin-left: -240px; } /* Sembunyikan Sidebar */
-            #sidebar.active { margin-left: 0; } /* Munculkan Sidebar */
-            #content { padding-left: 20px; padding-top: 60px; } /* Konten Full Width */
-            .btn-toggle-mobile { display: block; } /* Munculkan Tombol Burger */
-            .overlay.active { display: block; } /* Munculkan Overlay */
+        .status {
+            margin-top: 12px;
+            border: 1px solid #808080;
+            background: #ffffff;
+            padding: 8px;
         }
     </style>
 </head>
+
 <body>
 
-    <div id="sidebar">
-        <div class="p-3 text-center fw-bold border-bottom border-secondary">ORDERING P2</div>
-        <ul class="nav flex-column mt-3">
-            <li class="nav-item">
-                <a href="?page=home" class="nav-link <?= ($page=='home')?'active':'' ?>"><i class="bi bi-house"></i> Home</a>
-            </li>
-            <div class="menu-label">Transaksi</div>
-            <li class="nav-item">
-                <a href="?page=forecast" class="nav-link <?= ($page=='forecast')?'active':'' ?>"><i class="bi bi-graph-up"></i> Forecast</a>
-            </li>
-            <li class="nav-item">
-                <a href="?page=di_auto" class="nav-link <?= ($page=='di_auto')?'active':'' ?>"><i class="bi bi-truck"></i> DI Auto Manual</a>
-            </li>
-            <div class="menu-label">System</div>
-            <li class="nav-item">
-                <a href="logout.php" class="nav-link text-danger"><i class="bi bi-box-arrow-left"></i> Logout</a>
-            </li>
-        </ul>
+<div class="topbar">
+    ORDERING SYSTEM - PLANT 2
+</div>
+
+<div class="container">
+
+    <div class="welcome">
+        Login sebagai: <b><?php echo htmlspecialchars($dbUser, ENT_QUOTES, 'UTF-8'); ?></b><br>
+        Server: <b>192.168.0.9</b><br>
+        Database: <b>msData</b><br>
+        Login time: <b><?php echo htmlspecialchars($loginTime, ENT_QUOTES, 'UTF-8'); ?></b>
     </div>
 
-    <div id="content">
-        <?php 
-            switch($page) {
-                case 'forecast': include "page_forecast.php"; break; // Referensi Ucast.pas
-                case 'di_auto': include "page_di_auto.php"; break;   // Referensi UAuto_po.pas
-                default: echo "<h3>Selamat Datang, ".$_SESSION['db_user']."</h3><p>Sistem Ordering Plant 2 Aktif.</p>"; break;
-            }
-        ?>
+    <div class="menu-grid">
+
+        <div class="menu-card">
+            <h3>Manual Delivery Instruction</h3>
+            <p>Input dan proses manual DI seperti form Delphi.</p>
+            <a class="button" href="manual_order.php">OPEN</a>
+        </div>
+
+        <div class="menu-card">
+            <h3>Import PO</h3>
+            <p>Menu import PO. Nanti bisa diarahkan ke modul import PO.</p>
+            <a class="button" href="#" onclick="alert('Modul Import PO dibuat step berikutnya.'); return false;">OPEN</a>
+        </div>
+
+        <div class="menu-card">
+            <h3>Import Schedule</h3>
+            <p>Menu import schedule. Nanti bisa diarahkan ke modul import schedule.</p>
+            <a class="button" href="#" onclick="alert('Modul Import Schedule dibuat step berikutnya.'); return false;">OPEN</a>
+        </div>
+
+        <div class="menu-card">
+            <h3>Edit Order</h3>
+            <p>Menu edit order seperti form Delphi ORDER edit.</p>
+            <a class="button" href="#" onclick="alert('Modul Edit Order dibuat step berikutnya.'); return false;">OPEN</a>
+        </div>
+
+        <div class="menu-card">
+            <h3>Report</h3>
+            <p>Menu laporan invoice, delivery sheet, packing list, dan selling card.</p>
+            <a class="button" href="#" onclick="alert('Modul Report dibuat step berikutnya.'); return false;">OPEN</a>
+        </div>
+
+        <div class="menu-card">
+            <h3>Logout</h3>
+            <p>Keluar dari sistem dan hapus session login.</p>
+            <a class="button" href="login.php?logout=1">LOGOUT</a>
+        </div>
+
     </div>
+
+    <div class="status">
+        Status koneksi: <b>Connected</b>
+    </div>
+
+    <div class="bottom-row">
+        <a class="button" href="login.php?logout=1">LOGOUT</a>
+    </div>
+
+</div>
 
 </body>
 </html>

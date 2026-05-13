@@ -1,11 +1,13 @@
 <?php
-session_start();
-if (!isset($_SESSION['db_user'])) {
-    header("Location: login.php");
-    exit();
-}
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
 
-include "../config/database_p1.php";
+require_once "auth.php";
+require_once "../config/database_p2.php";
+
+if ($conn === false) {
+    die(print_r(sqlsrv_errors(), true));
+}
 
 $project_id = $_GET['id'];
 
