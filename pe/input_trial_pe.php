@@ -97,11 +97,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $master = $stmtM ? sqlsrv_fetch_array($stmtM, SQLSRV_FETCH_ASSOC) : null;
 
     // PRIORITASKAN INPUT USER: Jika diketik manual, ambil ID manualnya. Jika tidak, baru pakai Master.
-    $cust_id = !empty(val('CUST_ID')) ? intval(val('CUST_ID')) : ($master && $master['CUST_ID'] ? intval($master['CUST_ID']) : 0);
-    $mat_id  = !empty(val('MAT_USING')) ? intval(val('MAT_USING')) : ($master && $master['MAT_ID'] ? intval($master['MAT_ID']) : 0);
+// PRIORITASKAN INPUT USER: Jika diketik manual, ambil ID manualnya. Jika tidak, baru pakai Master.
+    $cust_id  = !empty(val('CUST_ID')) ? intval(val('CUST_ID')) : ($master && $master['CUST_ID'] ? intval($master['CUST_ID']) : null);
+    $mat_id   = !empty(val('MAT_USING')) ? intval(val('MAT_USING')) : ($master && $master['MAT_ID'] ? intval($master['MAT_ID']) : null);
+    
+    // Cegah Error Constraint: Jika dropdown kosong, kirim NULL, bukan 0.
+    $jenis_id = !empty(val('JENIS_ID')) ? intval(val('JENIS_ID')) : null;
+    $judge_id = !empty(val('JUDGE_ID')) ? intval(val('JUDGE_ID')) : null;
 
-   if (!empty($current_code)) {
-        // UPDATE
+   // =========================================================================
+    // PROSES SIMPAN / UPDATE KE DATABASE
+    // =========================================================================
+    if (!empty($current_code)) {
+        // --- BLOK UPDATE ---
         $sql = "UPDATE TRIAL_PE SET 
             DATE=?, PART_CODE=?, CUST_ID=?, QUANTITY_TRIAL=?, TRIAL_REASON=?, TRIAL_TIMES=?,
             MAT_USING=?, MAT_DRYING_TIME=?, MOLD_SET_UP=?, MOLD_SET_DOWN=?, TRIAL_DURATION=?,
@@ -114,11 +122,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             CHK_UNDERCUT_MOLD=?, CHK_SLIDER_JAM=?, CHK_MOLD_CLAMPING=?, CHK_NIPPLE_COMPLETE=?, 
             CHK_BACKFLOW=?, CHK_ROBOT=?, CHK_HEATER_BARREL=?, CHK_CONVEYOR=?, CHK_MTC=?, CHK_HEATER_CONTROL=?, MACHINE_REMARK=? ";
         
+        // Di sini variabel baru ($judge_id dan $jenis_id) sudah dipasang langsung tanpa intval(val())
         $params = [
             val('DATE'), $part_code, $cust_id, floatval(val('QUANTITY_TRIAL')), val('TRIAL_REASON'), val('TRIAL_TIMES'),
             $mat_id, intval(val('MAT_DRYING_TIME')), intval(val('MOLD_SET_UP')), intval(val('MOLD_SET_DOWN')), val('TRIAL_DURATION'),
-            val('QE_COMMENT'), val('PE_COMMENT'), intval(val('JUDGE_ID')), val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'),
-            val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), intval(val('JENIS_ID')),
+            val('QE_COMMENT'), val('PE_COMMENT'), $judge_id, val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'), // <-- JUDGE_ID diganti ke $judge_id
+            val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), $jenis_id, // <-- JENIS_ID diganti ke $jenis_id
             intval(val('TONAGE')), val('CORRECTIVE_ACTION'), val('PROBLEM'), val('ANALYSYS'),
             val('OPERATION'), floatval(val('REGRIND_PCT')), val('CHK_BURRY'), val('CHK_VOID'), val('CHK_SHORTMOLD'), val('CHK_WELDLINE'),
             val('CHK_BURNING'), val('CHK_SINKMARK'), val('CHK_DENTED'), val('CHK_SILVER'), val('CHK_SCRATCH'),
@@ -141,7 +150,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $targetCode = $current_code;
 
     } else {
-        // INSERT
+        // --- BLOK INSERT ---
         $sql = "INSERT INTO TRIAL_PE (
             DATE, PART_CODE, CUST_ID, QUANTITY_TRIAL, TRIAL_REASON, TRIAL_TIMES,
             MAT_USING, MAT_DRYING_TIME, MOLD_SET_UP, MOLD_SET_DOWN, TRIAL_DURATION,
@@ -156,11 +165,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             foto_material, foto_mold_core, foto_mold_cavity, foto_machine
         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
+        // Di sini juga sudah diganti menggunakan $judge_id dan $jenis_id
         $params = [
             val('DATE'), $part_code, $cust_id, floatval(val('QUANTITY_TRIAL')), val('TRIAL_REASON'), val('TRIAL_TIMES'),
             $mat_id, intval(val('MAT_DRYING_TIME')), intval(val('MOLD_SET_UP')), intval(val('MOLD_SET_DOWN')), val('TRIAL_DURATION'),
-            val('QE_COMMENT'), val('PE_COMMENT'), intval(val('JUDGE_ID')), val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'),
-            val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), intval(val('JENIS_ID')),
+            val('QE_COMMENT'), val('PE_COMMENT'), $judge_id, val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'), // <-- JUDGE_ID diganti ke $judge_id
+            val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), $jenis_id, // <-- JENIS_ID diganti ke $jenis_id
             intval(val('TONAGE')), val('CORRECTIVE_ACTION'), val('ANALYSYS'), $foto_name,
             val('OPERATION'), floatval(val('REGRIND_PCT')), val('CHK_BURRY'), val('CHK_VOID'), val('CHK_SHORTMOLD'), val('CHK_WELDLINE'),
             val('CHK_BURNING'), val('CHK_SINKMARK'), val('CHK_DENTED'), val('CHK_SILVER'), val('CHK_SCRATCH'),
@@ -332,7 +342,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <div class="card-header-custom"><i class="bi bi-sliders"></i> Parameter Kondisi Mesin</div>
                             <div class="card-body p-4">
                                 <div class="row g-3">
-                                    <div class="col-md-4">
+                                    <div class="col-md-3">
                                         <label>Operation Method</label>
                                         <select name="OPERATION" class="form-select">
                                             <option value="AUTO ROBOT">AUTO ROBOT</option>
@@ -340,15 +350,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                             <option value="SEMI AUTO">SEMI AUTO</option>
                                         </select>
                                     </div>
-                                    <div class="col-md-4">
+                                    <div class="col-md-3">
+                                        <label>Jenis Trial</label>
+                                        <select name="JENIS_ID" id="JENIS_ID" class="form-select border-primary" required>
+                                            <option value="">-- Pilih Jenis --</option>
+                                            <?php foreach($jenis_list as $j) echo "<option value='{$j['ID']}'>{$j['JENIS_TRIAL']}</option>"; ?>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
                                         <label>No Mesin / Tonnage</label>
                                         <div class="input-group">
                                             <input type="text" name="MAC_NO" class="form-control" placeholder="No Mac">
                                             <input type="text" name="TONAGE" class="form-control" placeholder="Ton">
                                         </div>
                                     </div>
-                                    <div class="col-md-4">
-                                        <label>Cycle Time Actual (Sec)</label>
+                                    <div class="col-md-3">
+                                        <label>Cycle Time Act (Sec)</label>
                                         <input type="text" name="CYCLE_TIME_ACT" class="form-control">
                                     </div>
 
@@ -682,6 +699,7 @@ function fillForm(rec) {
     $("input[name='APPROVED']").val(rec.APPROVED);
     $("input[name='QTY_OK']").val(rec.QTY_OK);
     $("input[name='QTY_NG']").val(rec.QTY_NG);
+    $("select[name='JENIS_ID']").val(rec.JENIS_ID || "");
     $("select[name='JUDGE_ID']").val(rec.JUDGE_ID);
 
     updateNav(rec.TRIAL_CODE);

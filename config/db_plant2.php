@@ -20,7 +20,7 @@ if (session_status() == PHP_SESSION_NONE) {
 // SETTING DATABASE PLANT 2
 // ==========================================================
 $serverName   = "192.168.0.9";
-$databaseName = "msdata";
+$databaseName = "data1";
 
 
 // ==========================================================

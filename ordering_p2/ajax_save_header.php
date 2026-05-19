@@ -95,7 +95,7 @@ function get_next_ds_inv_no($conn, $cust_abbr, $date_text) {
         }
     }
 
-    $dsno = sprintf("%03d/IMC/DS/%s/%s/%s", $newNo, $cust_abbr, $monthRoman, $year2);
+    $dsno  = sprintf("%03d/IMC/DS/%s/%s/%s", $newNo, $cust_abbr, $monthRoman, $year2);
     $invno = str_replace("/DS/", "/INV/", $dsno);
 
     return array($dsno, $invno);
@@ -111,22 +111,37 @@ function get_special_ds_inv_no($cust_abbr, $date_text) {
     $month = date("m", $ts);
     $year2 = date("y", $ts);
 
-    $dsno = $cust_abbr . "/" . $month . "/" . $year2;
+    $dsno  = $cust_abbr . "/" . $month . "/" . $year2;
     $invno = $dsno;
 
     return array($dsno, $invno);
 }
 
+function generate_ds_inv_no($conn, $cust_id, $cust_abbr, $di_start_date) {
+    if (is_special_customer($cust_id)) {
+        return get_special_ds_inv_no($cust_abbr, $di_start_date);
+    }
 
-// ==========================================================
-// AMBIL POST
-// ==========================================================
+    return get_next_ds_inv_no($conn, $cust_abbr, $di_start_date);
+}
+
+/*
+    AMBIL POST
+*/
 $di_id          = post_value("DI_ID");
 $di_no          = post_value("DI_NO");
 $di_start_date  = post_value("DI_START_DATE");
 $di_date        = post_value("DI_DATE");
 $cust_code      = post_value("CUST_CODE");
 $di_orderno     = post_value("DI_ORDERNO");
+
+/*
+    Nilai edit manual dari form.
+    INSERT pertama tetap auto-generate.
+    UPDATE berikutnya boleh simpan nilai manual ini.
+*/
+$di_dsno_post   = post_value("DI_DSNO");
+$di_invno_post  = post_value("DI_INVNO");
 
 if ($di_no == "") {
     json_error("DI NO wajib diisi.");
@@ -148,12 +163,21 @@ if ($cust_code == "") {
     json_error("Customer wajib dipilih.");
 }
 
+if (strlen($di_dsno_post) > 25) {
+    json_error("DS NO maksimal 25 karakter.");
+}
 
-// ==========================================================
-// AMBIL DATA CUSTOMER DARI TABEL CUST
-// CUST_COMP dan CUST_ABBR hanya untuk tampilan/generate nomor,
-// tidak disimpan ke tabel DI.
-// ==========================================================
+if (strlen($di_invno_post) > 25) {
+    json_error("INV NO maksimal 25 karakter.");
+}
+
+if (strlen($di_orderno) > 25) {
+    json_error("ORDER NO maksimal 25 karakter.");
+}
+
+/*
+    AMBIL CUSTOMER
+*/
 $sqlCust = "
     SELECT TOP 1
         CUST_ID,
@@ -184,13 +208,9 @@ if ($cust_abbr == "") {
     json_error("Customer abbreviation belum diisi di tabel CUST.");
 }
 
-
-// ==========================================================
-// SAVE HEADER KE TABEL DI
-// Struktur tabel DI Plant 2:
-// DI_NO, CUST_ID, CUST_CODE, DI_START_DATE, DI_DATE,
-// DI_INVNO, DI_DSNO, DATE_CREATED, DATE_UPDATED, DI_ORDERNO
-// ==========================================================
+/*
+    SAVE HEADER
+*/
 $mode = "";
 $di_dsno = "";
 $di_invno = "";
@@ -201,41 +221,47 @@ try {
 
     if ($di_id == "") {
 
+        /*
+            INSERT BARU:
+            Tetap AUTO GENERATE.
+            Nilai manual DS/INV dari form tidak dipakai saat insert pertama.
+        */
         $mode = "insert";
 
-        if (is_special_customer($cust_id)) {
-            list($di_dsno, $di_invno) = get_special_ds_inv_no($cust_abbr, $di_start_date);
-        } else {
-            list($di_dsno, $di_invno) = get_next_ds_inv_no($conn, $cust_abbr, $di_start_date);
-        }
+        list($di_dsno, $di_invno) = generate_ds_inv_no(
+            $conn,
+            $cust_id,
+            $cust_abbr,
+            $di_start_date
+        );
 
-       $sqlInsert = "
-    SET NOCOUNT ON;
+        $sqlInsert = "
+            SET NOCOUNT ON;
 
-    DECLARE @NewID TABLE
-    (
-        DI_ID INT
-    );
+            DECLARE @NewID TABLE
+            (
+                DI_ID INT
+            );
 
-    INSERT INTO DI
-    (
-        DI_NO,
-        CUST_ID,
-        CUST_CODE,
-        DI_START_DATE,
-        DI_DATE,
-        DI_INVNO,
-        DI_DSNO,
-        DI_ORDERNO
-    )
-    OUTPUT INSERTED.DI_ID INTO @NewID
-    VALUES
-    (
-        ?, ?, ?, ?, ?, ?, ?, ?
-    );
+            INSERT INTO DI
+            (
+                DI_NO,
+                CUST_ID,
+                CUST_CODE,
+                DI_START_DATE,
+                DI_DATE,
+                DI_INVNO,
+                DI_DSNO,
+                DI_ORDERNO
+            )
+            OUTPUT INSERTED.DI_ID INTO @NewID
+            VALUES
+            (
+                ?, ?, ?, ?, ?, ?, ?, ?
+            );
 
-    SELECT DI_ID FROM @NewID;
-";
+            SELECT DI_ID FROM @NewID;
+        ";
 
         $paramsInsert = array(
             $di_no,
@@ -260,10 +286,16 @@ try {
             throw new Exception("Header tersimpan, tapi DI_ID baru gagal dibaca.");
         }
 
-        $di_id = $rowInsert["DI_ID"];
+        $di_id = intval($rowInsert["DI_ID"]);
 
     } else {
 
+        /*
+            UPDATE:
+            DS/INV bisa diedit manual.
+            Kalau form DS/INV kosong, pakai nomor lama.
+            Kalau customer berubah dan form kosong, generate ulang.
+        */
         $mode = "update";
         $di_id_int = intval($di_id);
 
@@ -289,18 +321,39 @@ try {
         }
 
         $old_cust_id = intval($old["CUST_ID"]);
-        $old_dsno = trim($old["DI_DSNO"]);
-        $old_invno = trim($old["DI_INVNO"]);
+        $old_dsno    = trim($old["DI_DSNO"]);
+        $old_invno   = trim($old["DI_INVNO"]);
+
+        $auto_dsno = "";
+        $auto_invno = "";
 
         if ($cust_id != $old_cust_id || $old_dsno == "" || $old_invno == "") {
-            if (is_special_customer($cust_id)) {
-                list($di_dsno, $di_invno) = get_special_ds_inv_no($cust_abbr, $di_start_date);
-            } else {
-                list($di_dsno, $di_invno) = get_next_ds_inv_no($conn, $cust_abbr, $di_start_date);
-            }
-        } else {
+            list($auto_dsno, $auto_invno) = generate_ds_inv_no(
+                $conn,
+                $cust_id,
+                $cust_abbr,
+                $di_start_date
+            );
+        }
+
+        /*
+            Ini inti perbaikannya:
+            Kalau user edit DS/INV di form, simpan nilai itu.
+        */
+        if ($di_dsno_post != "") {
+            $di_dsno = $di_dsno_post;
+        } elseif ($old_dsno != "") {
             $di_dsno = $old_dsno;
+        } else {
+            $di_dsno = $auto_dsno;
+        }
+
+        if ($di_invno_post != "") {
+            $di_invno = $di_invno_post;
+        } elseif ($old_invno != "") {
             $di_invno = $old_invno;
+        } else {
+            $di_invno = $auto_invno;
         }
 
         $sqlUpdate = "
@@ -342,15 +395,16 @@ try {
     sqlsrv_commit($conn);
 
     echo json_encode(array(
-        "success"   => true,
-        "mode"      => $mode,
-        "message"   => "Header DI berhasil disimpan.",
-        "DI_ID"     => $di_id,
-        "DI_DSNO"   => $di_dsno,
-        "DI_INVNO"  => $di_invno,
-        "CUST_ID"   => $cust_id,
-        "CUST_COMP" => $cust_comp,
-        "CUST_ABBR" => $cust_abbr
+        "success"    => true,
+        "mode"       => $mode,
+        "message"    => "Header DI berhasil disimpan.",
+        "DI_ID"      => $di_id,
+        "DI_DSNO"    => $di_dsno,
+        "DI_INVNO"   => $di_invno,
+        "DI_ORDERNO" => $di_orderno,
+        "CUST_ID"    => $cust_id,
+        "CUST_COMP"  => $cust_comp,
+        "CUST_ABBR"  => $cust_abbr
     ));
     exit();
 

@@ -148,7 +148,7 @@ function getIssueSummary($r) {
                     <th width="4%">NG</th>
                     <th width="20%">APP, MOLD & M/C CHECK (NG ISSUE)</th>
                     <th width="8%">PIC</th>
-                    <th width="7%">OPERATION</th>
+                    <th width="7%">PROBLEM</th>
                     <th width="15%">CORRECTIVE ACTION</th>
                 </tr>
             </thead>
@@ -187,9 +187,12 @@ function getIssueSummary($r) {
                                 <td>".htmlspecialchars($h['TRIAL_REASON'])."</td>
                                 <td class='text-center'>{$h['QTY_OK']}</td>
                                 <td class='text-center'>{$h['QTY_NG']}</td>
-                                <td style='{$issueClass}'>{$issueSummary}</td>
+                                <td>
+                                    Final Judgement : <b>{$h['JUDGE_TRIAL']}</b><br>
+                                    Comment : <b>{$h['QE_COMMENT']}</b><br>
+                                </td>
                                 <td class='text-center'>".htmlspecialchars($h['PIC'])."</td>
-                                <td class='text-center'>{$h['OPERATION']}</td>
+                                <td class='text-center'>{$h['PE_COMMENT']}</td>
                                 <td>".nl2br(htmlspecialchars($h['CORRECTIVE_ACTION']))."</td>
                               </tr>";
                         $no++;

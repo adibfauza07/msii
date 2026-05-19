@@ -519,7 +519,7 @@ $edit_biaya = isset($edit['biaya']) ? $edit['biaya'] : 0;
                                id="amount"
                                class="form-control"
                                min="0"
-                               step="1000"
+                               step="1"
                                value="<?php echo $edit_amount; ?>">
                     </div>
 

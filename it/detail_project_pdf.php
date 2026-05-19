@@ -126,9 +126,24 @@ $pic_department = isset($project['pic_department']) ? $project['pic_department']
 $pic_it = isset($project['pic_it']) ? $project['pic_it'] : '-';
 $status_project = isset($project['status']) ? $project['status'] : '-';
 
-$budget_project = isset($project['budget']) ? $project['budget'] : 0;
 $total_biaya_actual = isset($total_biaya['total']) ? $total_biaya['total'] : 0;
 $total_biaya_progress = isset($total_progress['total']) ? $total_progress['total'] : 0;
+
+/*
+   PERBAIKAN:
+   Budget Project sekarang dibuat sama dengan Total Biaya Progress.
+*/
+$budget_project = $total_biaya_progress;
+
+/*
+   Pengajuan = Total Biaya Progress - Total Biaya Actual.
+*/
+$pengajuan = $total_biaya_progress - $total_biaya_actual;
+
+/*
+   Karena Budget Project = Total Biaya Progress,
+   maka Sisa Budget hasilnya sama dengan Pengajuan.
+*/
 $sisa_budget = $budget_project - $total_biaya_actual;
 
 $deadline = "-";
@@ -342,7 +357,7 @@ $html .= '
     </tr>
 </table>
 
-<div class="section-title">Riwayat Pembayaran Aktual </div>
+<div class="section-title">Riwayat Pembayaran Aktual</div>
 
 <table cellpadding="3">
     <tr>
@@ -393,6 +408,11 @@ $html .= '
     <tr>
         <th colspan="4" class="text-right">Total Biaya Actual</th>
         <th>Rp '.number_format($total_biaya_actual, 0, ',', '.').'</th>
+    </tr>
+
+    <tr>
+        <th colspan="4" class="text-right">Pengajuan</th>
+        <th>Rp '.number_format($pengajuan, 0, ',', '.').'</th>
     </tr>
 </table>
 ';
