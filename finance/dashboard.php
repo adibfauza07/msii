@@ -4,8 +4,9 @@
     <h3 class="fw-bold mb-4 text-dark">Ringkasan Aging</h3>
     
     <div class="row g-4">
-        <div class="col-md-6">
-            <div class="card card-stats p-4 bg-white">
+
+        <div class="col-md-4">
+            <div class="card card-stats p-4 bg-white h-100">
                 <div class="d-flex justify-content-between">
                     <div>
                         <h6 class="text-muted">Total Outstanding</h6>
@@ -14,13 +15,15 @@
                     <i class="bi bi-cart-check fs-1 text-primary opacity-25"></i>
                 </div>
                 <div class="mt-3">
-                    <a href="aging_sales.php" class="btn btn-outline-primary btn-sm w-100">Buka Detail Aging Sales</a>
+                    <a href="aging_sales.php" class="btn btn-outline-primary btn-sm w-100">
+                        Buka Detail Aging Sales
+                    </a>
                 </div>
             </div>
         </div>
 
-        <div class="col-md-6">
-            <div class="card card-stats p-4 bg-white">
+        <div class="col-md-4">
+            <div class="card card-stats p-4 bg-white h-100">
                 <div class="d-flex justify-content-between">
                     <div>
                         <h6 class="text-muted">Total Outstanding</h6>
@@ -29,10 +32,31 @@
                     <i class="bi bi-truck fs-1 text-danger opacity-25"></i>
                 </div>
                 <div class="mt-3">
-                    <a href="aging_ap.php" class="btn btn-outline-danger btn-sm w-100">Buka Detail Aging AP</a>
+                    <a href="aging_ap.php" class="btn btn-outline-danger btn-sm w-100">
+                        Buka Detail Aging AP
+                    </a>
                 </div>
             </div>
         </div>
+
+        <!-- MENU BARU CORETAX -->
+        <div class="col-md-4">
+            <div class="card card-stats p-4 bg-white h-100">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="text-muted">Export Pajak</h6>
+                        <h2 class="fw-bold text-success">CORETAX</h2>
+                    </div>
+                    <i class="bi bi-file-earmark-excel fs-1 text-success opacity-25"></i>
+                </div>
+                <div class="mt-3">
+                    <a href="inv_coretax.php" class="btn btn-outline-success btn-sm w-100">
+                        Buka Invoice Coretax
+                    </a>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
