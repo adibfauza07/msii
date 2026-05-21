@@ -69,6 +69,11 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
                         <i class="bi bi-clock-history"></i> Riwayat Perubahan
                     </a>
                 </li>
+                <li class="nav-item">
+    <a href="?page=rekap" class="nav-link <?php echo ($page=='rekap')?'active':''; ?>">
+        <i class="bi bi-journal-text"></i> Rekap Perubahan (Summary)
+    </a>
+</li>
             </ul>
         </div>
 
@@ -98,6 +103,14 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
                     echo "<div class='alert alert-danger'>File page_history.php tidak ditemukan!</div>";
                 }
                 break;
+
+                case 'rekap':
+    if (file_exists("rekap_4m.php")) {
+        include "rekap_4m.php";
+    } else {
+        echo "<div class='alert alert-danger'>File rekap_4m.php tidak ditemukan!</div>";
+    }
+    break;
 
             case 'home':
             default:

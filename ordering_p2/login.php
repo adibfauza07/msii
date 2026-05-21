@@ -167,7 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         <div class="info">
             Server: <b>192.168.0.9</b><br>
-            Database: <b>data1</b>
+            Database: <b>msdata</b>
         </div>
 
         <form method="post" action="login.php" autocomplete="off">

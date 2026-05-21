@@ -1,4 +1,8 @@
 <?php
+if (session_id() == "") {
+    session_start();
+}
+
 require_once __DIR__ . "/../config/db_plant2.php";
 
 if ($conn === false) {
@@ -6,163 +10,158 @@ if ($conn === false) {
     exit();
 }
 
-$dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : "";
-$loginTime = isset($_SESSION['login_time']) ? $_SESSION['login_time'] : "";
+$dbUser = isset($_SESSION["db_user"]) ? $_SESSION["db_user"] : "";
+$loginTime = isset($_SESSION["login_time"]) ? $_SESSION["login_time"] : "";
+
+function h($value) {
+    return htmlspecialchars((string)$value, ENT_QUOTES, "UTF-8");
+}
 ?>
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Dashboard Ordering Plant 2</title>
+    <title>Ordering System - Plant 2</title>
 
     <style>
-        body {
+        html, body {
             margin: 0;
             padding: 0;
+            width: 100%;
+            height: 100%;
             background: #d4d0c8;
             font-family: Tahoma, Arial, sans-serif;
             font-size: 12px;
             color: #000000;
+            overflow: hidden;
         }
 
-        .topbar {
-            background: #000080;
+        .layout {
+            display: flex;
+            width: 100%;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 210px;
+            min-width: 210px;
+            height: 100vh;
+            background: #1d2a3d;
             color: #ffffff;
-            padding: 8px 12px;
+            box-sizing: border-box;
+            padding: 18px 14px;
+            overflow-y: auto;
+        }
+
+        .sidebar-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 24px;
+            text-align: center;
+            line-height: 23px;
+        }
+
+        .menu-link {
+            display: block;
+            color: #ffffff;
+            text-decoration: none;
+            padding: 12px 10px;
+            margin-bottom: 7px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .menu-link:hover {
+            background: #2f65d9;
+        }
+
+        .menu-link.active {
+            background: #2f65d9;
             font-weight: bold;
         }
 
-        .container {
-            width: 1000px;
-            margin: 20px auto;
-            border: 2px solid #808080;
+        .main {
+            flex: 1;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
             background: #d4d0c8;
-            padding: 12px;
-            box-sizing: border-box;
+            overflow: hidden;
         }
 
-        .welcome {
-            border: 1px solid #808080;
-            background: #eeeeee;
-            padding: 10px;
-            margin-bottom: 12px;
+        .topbar {
+            height: 34px;
+            line-height: 34px;
+            background: #000080;
+            color: #ffffff;
+            font-weight: bold;
+            text-align: center;
+            font-size: 16px;
+            letter-spacing: 1px;
+            flex-shrink: 0;
         }
 
-        .menu-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 12px;
-        }
-
-        .menu-card {
-            border: 1px solid #808080;
-            background: #f0f0f0;
-            padding: 14px;
-            min-height: 100px;
-            box-sizing: border-box;
-        }
-
-        .menu-card h3 {
-            margin: 0 0 8px 0;
-            font-size: 14px;
-        }
-
-        .menu-card p {
-            margin: 0 0 12px 0;
-            line-height: 1.4;
-        }
-
-        a.button {
-            display: inline-block;
-            text-decoration: none;
-            color: #000000;
+        .frame-area {
+            flex: 1;
+            overflow: hidden;
             background: #d4d0c8;
-            border: 2px outset #ffffff;
-            padding: 5px 14px;
         }
 
-        a.button:active {
-            border: 2px inset #ffffff;
-        }
-
-        .bottom-row {
-            margin-top: 16px;
-            text-align: right;
-        }
-
-        .status {
-            margin-top: 12px;
-            border: 1px solid #808080;
-            background: #ffffff;
-            padding: 8px;
+        #mainFrame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #d4d0c8;
         }
     </style>
 </head>
 
 <body>
 
-<div class="topbar">
-    ORDERING SYSTEM - PLANT 2
-</div>
+<div class="layout">
 
-<div class="container">
+    <div class="sidebar">
+        <div class="sidebar-title">
+            MENU<br>
+            ORDERING SYSTEM
+        </div>
 
-    <div class="welcome">
-        Login sebagai: <b><?php echo htmlspecialchars($dbUser, ENT_QUOTES, 'UTF-8'); ?></b><br>
-        Server: <b>192.168.0.9</b><br>
-        Database: <b>msData</b><br>
-        Login time: <b><?php echo htmlspecialchars($loginTime, ENT_QUOTES, 'UTF-8'); ?></b>
+        <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Report</a>
+        <a class="menu-link" href="manual_order.php" target="mainFrame">Manual Delivery Instruction</a>
+        <a class="menu-link" href="input_order.php" target="mainFrame">Input Order</a>
+        <a class="menu-link" href="forecast.php" target="mainFrame">Forecast</a>
+        <a class="menu-link" href="schedule.php" target="mainFrame">Schedule</a>
+        <a class="menu-link" href="order_edit.php" target="mainFrame">Edit Order</a>
+        <a class="menu-link" href="login.php?logout=1" target="_top">Logout</a>
     </div>
 
-    <div class="menu-grid">
-
-        <div class="menu-card">
-            <h3>Manual Delivery Instruction</h3>
-            <p>Input dan proses manual DI seperti form Delphi.</p>
-            <a class="button" href="manual_order.php">OPEN</a>
+    <div class="main">
+        <div class="topbar">
+            ORDERING SYSTEM - PLANT 2
         </div>
 
-        <div class="menu-card">
-            <h3>Import PO</h3>
-            <p>Menu import PO. Nanti bisa diarahkan ke modul import PO.</p>
-            <a class="button" href="#" onclick="alert('Modul Import PO dibuat step berikutnya.'); return false;">OPEN</a>
+        <div class="frame-area">
+            <iframe id="mainFrame" name="mainFrame" src="dashboard_home.php"></iframe>
         </div>
-
-        <div class="menu-card">
-            <h3>Import Schedule</h3>
-            <p>Menu import schedule. Nanti bisa diarahkan ke modul import schedule.</p>
-            <a class="button" href="#" onclick="alert('Modul Import Schedule dibuat step berikutnya.'); return false;">OPEN</a>
-        </div>
-
-        <div class="menu-card">
-            <h3>Edit Order</h3>
-            <p>Menu edit order seperti form Delphi ORDER edit.</p>
-            <a class="button" href="#" onclick="alert('Modul Edit Order dibuat step berikutnya.'); return false;">OPEN</a>
-        </div>
-
-        <div class="menu-card">
-            <h3>Report</h3>
-            <p>Menu laporan invoice, delivery sheet, packing list, dan selling card.</p>
-            <a class="button" href="#" onclick="alert('Modul Report dibuat step berikutnya.'); return false;">OPEN</a>
-        </div>
-
-        <div class="menu-card">
-            <h3>Logout</h3>
-            <p>Keluar dari sistem dan hapus session login.</p>
-            <a class="button" href="login.php?logout=1">LOGOUT</a>
-        </div>
-
-    </div>
-
-    <div class="status">
-        Status koneksi: <b>Connected</b>
-    </div>
-
-    <div class="bottom-row">
-        <a class="button" href="login.php?logout=1">LOGOUT</a>
     </div>
 
 </div>
+
+<script>
+var menuLinks = document.getElementsByClassName("menu-link");
+
+for (var i = 0; i < menuLinks.length; i++) {
+    menuLinks[i].onclick = function () {
+        for (var j = 0; j < menuLinks.length; j++) {
+            menuLinks[j].className = "menu-link";
+        }
+
+        if (this.getAttribute("target") != "_top") {
+            this.className = "menu-link active";
+        }
+    };
+}
+</script>
 
 </body>
 </html>

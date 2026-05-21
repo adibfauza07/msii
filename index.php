@@ -203,6 +203,13 @@
     </a>
 </div>
 
+<div class="col">
+        <a href="pica/dashboard_pica.php" class="card-division">
+          <div class="icon-box bg-pica"><i class="bi bi-truck"></i></div>
+          <span class="division-name">PICA</span>
+        </a>
+      </div>
+
       <div class="col">
         <a href="ppic/dashboard_ppic.php" class="card-division">
           <div class="icon-box bg-ppic"><i class="bi bi-calendar3"></i></div>

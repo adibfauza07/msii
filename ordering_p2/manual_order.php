@@ -372,7 +372,7 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
 
     <div class="readonly-info">
         Server: <b>192.168.0.9</b> |
-        Database: <b>Data1</b> |
+        Database: <b>msdata</b> |
         Status: <b>Connected</b>
     </div>
 
@@ -576,18 +576,22 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
             <label>END :</label>
             <input type="date" name="REPORT_END_DATE" id="REPORT_END_DATE" value="<?php echo h($tomorrow); ?>">
 
-            <label>CUSTOMER :</label>
-            <input type="text" name="REPORT_CUST_CODE" id="REPORT_CUST_CODE" value="%">
+           <label>CUSTOMER :</label>
+<div class="autocomplete-wrap">
+    <input type="text" name="REPORT_CUST_CODE" id="REPORT_CUST_CODE" value="%" autocomplete="off" placeholder="Ketik kode/nama customer">
+    <div id="reportCustSuggest" class="autocomplete-list"></div>
+</div>
 
-            <button type="button" id="btnReportDI">PRINT DELIVERY INSTRUCTION</button>
+<button type="button" id="btnReportDI">PRINT DELIVERY INSTRUCTION</button>
 
         </div>
 
         <div class="footer-row">
 
             <div>
-                <button type="button" id="btnImportPO">IMPORT PO</button>
-                <button type="button" id="btnImportSchedule">IMPORT SCHEDULE</button>
+                <button type="button" id="btnorder">INPUT ORDER</button>
+				<button type="button" id="btnForecast">FORECAST</button>
+                <button type="button" id="btnSchedule">SCHEDULE</button>
                 <button type="button" id="btnEditOrder">EDIT ORDER</button>
             </div>
 
@@ -609,6 +613,9 @@ var selectedPORow = null;
 var custItems = [];
 var diItems = [];
 var packItems = [];
+
+var reportCustItems = [];
+var reportCustIndex = -1;
 
 function ajaxPost(url, data, callback) {
     var xhr = new XMLHttpRequest();
@@ -758,6 +765,154 @@ document.getElementById("CUST_SEARCH").onblur = function () {
         document.getElementById("custSuggest").style.display = "none";
     }, 250);
 };
+
+function hideReportCustSuggest() {
+    var box = document.getElementById("reportCustSuggest");
+
+    if (box) {
+        box.style.display = "none";
+        box.innerHTML = "";
+    }
+
+    reportCustItems = [];
+    reportCustIndex = -1;
+}
+
+function setActiveReportCust(index) {
+    var box = document.getElementById("reportCustSuggest");
+    var items = box.getElementsByClassName("autocomplete-item");
+
+    if (!items || items.length == 0) {
+        reportCustIndex = -1;
+        return;
+    }
+
+    if (index < 0) {
+        index = items.length - 1;
+    }
+
+    if (index >= items.length) {
+        index = 0;
+    }
+
+    for (var i = 0; i < items.length; i++) {
+        items[i].style.background = "#c6d8e8";
+        items[i].style.color = "#000000";
+    }
+
+    items[index].style.background = "#316ac5";
+    items[index].style.color = "#ffffff";
+
+    reportCustIndex = index;
+}
+
+function setReportCustomer(c) {
+    document.getElementById("REPORT_CUST_CODE").value = c.CUST_CODE;
+    hideReportCustSuggest();
+}
+
+function renderReportCustomerSuggest(items) {
+    var box = document.getElementById("reportCustSuggest");
+    box.innerHTML = "";
+
+    reportCustItems = items || [];
+    reportCustIndex = -1;
+
+    if (!items || items.length == 0) {
+        box.style.display = "none";
+        return;
+    }
+
+    for (var i = 0; i < items.length; i++) {
+        var div = document.createElement("div");
+        div.className = "autocomplete-item";
+        div.setAttribute("data-index", i);
+
+        div.innerHTML =
+            htmlEncode(items[i].CUST_CODE) +
+            " - " +
+            htmlEncode(items[i].CUST_COMP);
+
+        div.onmouseover = function () {
+            setActiveReportCust(parseInt(this.getAttribute("data-index"), 10));
+        };
+
+        div.onmousedown = function (e) {
+            if (!e) {
+                e = window.event;
+            }
+
+            if (e.preventDefault) {
+                e.preventDefault();
+            }
+
+            var idx = parseInt(this.getAttribute("data-index"), 10);
+            setReportCustomer(reportCustItems[idx]);
+        };
+
+        box.appendChild(div);
+    }
+
+    box.style.display = "block";
+    setActiveReportCust(0);
+}
+
+document.getElementById("REPORT_CUST_CODE").onkeyup = function (e) {
+    e = e || window.event;
+
+    var key = e.keyCode || e.which;
+    var q = this.value;
+
+    if (key == 40) {
+        setActiveReportCust(reportCustIndex + 1);
+        return;
+    }
+
+    if (key == 38) {
+        setActiveReportCust(reportCustIndex - 1);
+        return;
+    }
+
+    if (key == 13) {
+        if (reportCustItems.length > 0) {
+            if (reportCustIndex < 0) {
+                reportCustIndex = 0;
+            }
+
+            setReportCustomer(reportCustItems[reportCustIndex]);
+        }
+
+        return;
+    }
+
+    if (q.length < 1 || q == "%") {
+        hideReportCustSuggest();
+        return;
+    }
+
+    ajaxPost("ajax_customer_autocomplete.php", "q=" + enc(q), function (status, responseText) {
+        if (status != 200) {
+            return;
+        }
+
+        var result;
+
+        try {
+            result = JSON.parse(responseText);
+        } catch (e) {
+            return;
+        }
+
+        renderReportCustomerSuggest(result);
+    });
+};
+
+document.getElementById("REPORT_CUST_CODE").onblur = function () {
+    setTimeout(function () {
+        hideReportCustSuggest();
+    }, 250);
+};
+
 
 function renderDISuggest(items) {
     var box = document.getElementById("diSuggest");
@@ -1004,20 +1159,27 @@ function getLoadOtherPostData() {
 }
 
 function fillHeaderFromSearch(h) {
-    document.getElementById("DI_ID").value = h.DI_ID;
-    document.getElementById("DI_NO").value = h.DI_NO;
-    document.getElementById("DI_START_DATE").value = h.DI_START_DATE;
-    document.getElementById("DI_DATE").value = h.DI_DATE;
-    document.getElementById("DI_DSNO").value = h.DI_DSNO;
-    document.getElementById("DI_INVNO").value = h.DI_INVNO;
-    document.getElementById("DI_ORDERNO").value = h.DI_ORDERNO;
+    var custCode = "";
 
-    document.getElementById("CUST_CODE").value = h.CUST_CODE;
-    document.getElementById("CUST_SEARCH").value = h.CUST_CODE;
-    document.getElementById("CUST_ID").value = h.CUST_ID;
-    document.getElementById("CUST_COMP").value = h.CUST_COMP;
-    document.getElementById("CUST_ABBR").value = h.CUST_ABBR;
-    document.getElementById("REPORT_CUST_CODE").value = h.CUST_CODE;
+    if (h.CUST_CODE) {
+        custCode = h.CUST_CODE;
+    }
+
+    document.getElementById("DI_ID").value = h.DI_ID || "";
+    document.getElementById("DI_NO").value = h.DI_NO || "";
+    document.getElementById("DI_START_DATE").value = h.DI_START_DATE || "";
+    document.getElementById("DI_DATE").value = h.DI_DATE || "";
+    document.getElementById("DI_DSNO").value = h.DI_DSNO || "";
+    document.getElementById("DI_INVNO").value = h.DI_INVNO || "";
+    document.getElementById("DI_ORDERNO").value = h.DI_ORDERNO || "";
+
+    document.getElementById("CUST_CODE").value = custCode;
+    document.getElementById("CUST_SEARCH").value = custCode;
+
+    document.getElementById("CUST_ID").value = h.CUST_ID || "";
+    document.getElementById("CUST_COMP").value = h.CUST_COMP || "";
+    document.getElementById("CUST_ABBR").value = h.CUST_ABBR || "";
+    document.getElementById("REPORT_CUST_CODE").value = custCode;
 }
 
 function fillDetailFromSearch(details) {
@@ -1788,27 +1950,42 @@ function openReportMenuItem(reportType) {
     }
 
     if (reportType == "DELIVERY_SHEET_CABININDO") {
-        alert("Report belum dibuat: DELIVERY SHEET CABININDO\nDI_ID: " + diId);
+        window.open(
+        "report_delivery_sheet_cabinindo.php?DI_ID=" + enc(diId),
+        "_blank"
+    );
         return;
     }
 
     if (reportType == "DS_TOYODENSO") {
-        alert("Report belum dibuat: DS TOYODENSO\nDI_ID: " + diId);
+        window.open(
+        "report_ds_toyodenso.php?DI_ID=" + enc(diId),
+        "_blank"
+    );
         return;
     }
 
     if (reportType == "INVOICE_RATE_HIROSE") {
-        alert("Report belum dibuat: INVOICE RATE HIROSE\nDI_ID: " + diId);
+        window.open(
+        "report_invoice_rate.php?DI_ID=" + enc(diId),
+        "_blank"
+    );
         return;
     }
 
     if (reportType == "INVOICE_HILEX") {
-        alert("Report belum dibuat: INVOICE HILEX\nDI_ID: " + diId);
+        window.open(
+        "report_surat_jalan.php?DI_ID=" + enc(diId),
+        "_blank"
+    );
         return;
     }
 
     if (reportType == "PACKING_LIST") {
-        alert("Report belum dibuat: PACKING LIST\nDI_ID: " + diId);
+         window.open(
+        "report_packing_list.php?DI_ID=" + enc(diId),
+        "_blank"
+    );
         return;
     }
 
@@ -1836,19 +2013,116 @@ document.addEventListener("click", function () {
 });
 
 document.getElementById("btnReportDI").onclick = function () {
-    alert("Step berikutnya: PRINT DELIVERY INSTRUCTION.");
+    var custCode  = document.getElementById("REPORT_CUST_CODE").value;
+    var startDate = document.getElementById("REPORT_START_DATE").value;
+    var endDate   = document.getElementById("REPORT_END_DATE").value;
+
+    custCode = custCode.replace(/^\s+|\s+$/g, "");
+
+    /*
+        % = CETAK SEMUA CUSTOMER
+    */
+    if (custCode == "") {
+        alert("Customer report belum diisi. Isi kode customer atau % untuk semua customer.");
+        document.getElementById("REPORT_CUST_CODE").focus();
+        return;
+    }
+
+    if (startDate == "") {
+        alert("Start date report belum diisi.");
+        document.getElementById("REPORT_START_DATE").focus();
+        return;
+    }
+
+    if (endDate == "") {
+        alert("End date report belum diisi.");
+        document.getElementById("REPORT_END_DATE").focus();
+        return;
+    }
+
+    window.open(
+        "delivery_instruction_report.php" +
+        "?CUST_CODE=" + enc(custCode) +
+        "&START_DATE=" + enc(startDate) +
+        "&END_DATE=" + enc(endDate),
+        "delivery_instruction",
+        "width=1200,height=700,scrollbars=yes,resizable=yes"
+    );
 };
 
-document.getElementById("btnImportPO").onclick = function () {
-    alert("Step berikutnya: IMPORT PO.");
+
+document.getElementById("btnorder").onclick = function () {
+    window.open(
+        "input_order.php",
+        "_blank",
+        "width=1150,height=700,scrollbars=yes"
+    );
 };
 
-document.getElementById("btnImportSchedule").onclick = function () {
-    alert("Step berikutnya: IMPORT SCHEDULE.");
+document.getElementById("btnForecast").onclick = function () {
+    window.open(
+        "forecast.php",
+        "forecast",
+        "width=1150,height=560,scrollbars=yes,resizable=yes"
+    );
+};
+
+document.getElementById("btnSchedule").onclick = function () {
+    window.open(
+        "schedule.php",
+        "schedule",
+        "width=1150,height=620,scrollbars=yes,resizable=yes"
+    );
 };
 
 document.getElementById("btnEditOrder").onclick = function () {
-    alert("Step berikutnya: EDIT ORDER.");
+    var po = "";
+
+    /*
+        Ambil PO dari grid ORDER / PO AVAILABLE.
+        Pastikan tbody PO Available punya id="poAvailableBody".
+    */
+    var poBody = document.getElementById("poAvailableBody");
+
+    if (poBody) {
+        var rows = poBody.getElementsByTagName("tr");
+
+        if (rows.length > 0) {
+            var cells = rows[0].getElementsByTagName("td");
+
+            /*
+                Kolom:
+                0 = ORDR_DATE
+                1 = ORDR_PO
+                2 = QTY
+                3 = DQTY
+                4 = BQTY
+            */
+            if (cells.length >= 2) {
+                po = cells[1].innerText || cells[1].textContent;
+                po = po.replace(/^\s+|\s+$/g, "");
+            }
+        }
+    }
+
+    /*
+        Kalau PO kosong / belum ada data, tetap buka halaman Edit Order kosong.
+    */
+    if (po == "" || po == "Belum ada data.") {
+        window.open(
+            "order_edit.php",
+            "_blank",
+            "width=980,height=620,scrollbars=yes"
+        );
+
+        return;
+    }
+
+    window.open(
+        "order_edit.php?po=" + enc(po),
+        "_blank",
+        "width=980,height=620,scrollbars=yes"
+    );
 };
 
 function getSelectedPartParams(row) {
