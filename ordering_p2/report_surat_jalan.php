@@ -206,9 +206,24 @@ if ($totalDetailRows < $minDetailRows) {
             font-size: 10px;
         }
 
-        .detail th,
-.detail td {
+       .detail th {
     border: 1px solid #000000;
+    padding: 3px 3px;
+    height: 28px;
+    line-height: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+    box-sizing: border-box;
+    text-align: center;
+    font-weight: bold;
+}
+
+.detail td {
+    border-left: 1px solid #000000;
+    border-right: 1px solid #000000;
+    border-top: none;
+    border-bottom: none;
     padding: 3px 3px;
     height: 28px;
     line-height: 14px;
@@ -269,9 +284,11 @@ if ($totalDetailRows < $minDetailRows) {
         }
 
         .total-row td {
-            font-weight: bold;
-            height: 22px;
-        }
+    font-weight: bold;
+    height: 22px;
+    border-top: 1px solid #000000;
+    border-bottom: 1px solid #000000;
+}
 
         .footer-code {
             display: grid;

@@ -3,7 +3,7 @@ session_start();
 
 // Jika sudah login, arahkan ke index
 if (isset($_SESSION['db_user'])) {
-    header("Location: index.php");
+    header("Location: dashboard_pica.php");
     exit();
 }
 
@@ -16,7 +16,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     
     $is_login_process = true; // Penanda untuk database_p1.php
     define('LOGIN_PAGE', true);
-    require_once 'config/database_p1.php'; // Sesuaikan path
+require_once __DIR__ . '/../config/database_p1.php';
 
     if ($conn) {
         // Login Sukses
@@ -24,7 +24,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $_SESSION['db_pass'] = $temp_password;
         $_SESSION['active_plant'] = ($serverCheck == '192.168.0.4') ? 'p1' : 'p2';
         
-        header("Location: index.php");
+        header("Location: dashboard_pica.php");
         exit();
     } else {
         $error = "Username, Password, atau Plant salah!";

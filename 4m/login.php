@@ -63,8 +63,8 @@ if (isset($_POST['btnLog'])) {
                 <div class="mb-3">
                     <label class="small fw-bold">SERVER / PLANT</label>
                     <select name="server" class="form-select">
-                        <option value="192.168.0.4">PLANT 1 (192.168.0.4)</option>
-                        <option value="192.168.0.9">PLANT 2 (192.168.0.9)</option>
+                        <option value="192.168.0.4">PLANT 1</option>
+                        <option value="192.168.0.9">PLANT 2</option>
                     </select>
                 </div>
                 <div class="mb-3">

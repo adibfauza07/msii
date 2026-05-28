@@ -234,6 +234,11 @@ function chk($val) {
                 <div style="margin-top: 8px; font-size: 8px;">
                     *Remark : <?= isset($data['QE_COMMENT']) ? htmlspecialchars($data['QE_COMMENT']) : '' ?>
                 </div>
+                <?php if(!empty($data['ATTACHMENT_QE'])): ?>
+                <div style="margin-top: 5px; font-size: 9px; font-weight: bold; color: blue;">
+                    * Terdapat Lampiran PDF (Lihat Halaman Belakang)
+                </div>
+                <?php endif; ?>
             </td>
             <td class="text-center" style="position: relative;">
                 <div style="font-size: 18px; font-weight: bold; border: 2px solid #000; padding: 10px; display: inline-block; margin-top: 10px; width: 70%;">
@@ -324,6 +329,11 @@ function chk($val) {
                         No Picture
                     <?php endif; ?>
                 </div>
+                <?php if(!empty($data['ATTACHMENT_MAC'])): ?>
+                <div style="margin-top: 5px; text-align: center; font-size: 9px; font-weight: bold; color: blue;">
+                    * Lampiran PDF Mesin (Lihat Belakang)
+                </div>
+                <?php endif; ?>
             </td>
         </tr>
         <tr>
@@ -368,5 +378,61 @@ function chk($val) {
 
 </div>
 
+
+<div id="pdf-attachments"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+    function renderPDF(url, title) {
+        pdfjsLib.getDocument(url).promise.then(function(pdf) {
+            let container = document.getElementById('pdf-attachments');
+            
+            // Looping semua halaman PDF jika halamannya lebih dari satu
+            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                pdf.getPage(pageNum).then(function(page) {
+                    let scale = 2.0; // Skala 2x lipat agar hasil print tidak pecah/blur
+                    let viewport = page.getViewport({scale: scale});
+                    let canvas = document.createElement('canvas');
+                    let ctx = canvas.getContext('2d');
+                    
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+                    
+                    let renderContext = { canvasContext: ctx, viewport: viewport };
+                    
+                    page.render(renderContext).promise.then(function() {
+                        // Convert canvas ke elemen Image agar aman diprint oleh Chrome/Edge
+                        let img = document.createElement('img');
+                        img.src = canvas.toDataURL('image/jpeg', 1.0);
+                        img.style.width = '100%';
+                        img.style.border = '2px solid #ccc';
+                        
+                        // Bungkus di dalam div yang memicu Halaman Baru (Page Break)
+                        let wrapper = document.createElement('div');
+                        wrapper.className = 'wrapper page-break';
+                        wrapper.style.marginTop = '30px';
+                        wrapper.innerHTML = '<h3 style="text-align:center; font-family:Arial; text-transform:uppercase; margin-bottom:10px;">LAMPIRAN: ' + title + ' (Hal. ' + pageNum + ')</h3>';
+                        wrapper.appendChild(img);
+                        
+                        container.appendChild(wrapper);
+                    });
+                });
+            }
+        }).catch(function(error) {
+            console.error("Gagal meload PDF: ", error);
+        });
+    }
+
+    // Panggil fungsi render jika filenya ada di database
+    <?php if(!empty($data['ATTACHMENT_QE'])): ?>
+        renderPDF('../assets/foto_trial/<?= $data['ATTACHMENT_QE'] ?>', 'Quality Engineering Comment');
+    <?php endif; ?>
+
+    <?php if(!empty($data['ATTACHMENT_MAC'])): ?>
+        renderPDF('../assets/foto_trial/<?= $data['ATTACHMENT_MAC'] ?>', 'Machine Statistic');
+    <?php endif; ?>
+</script>
 </body>
 </html>

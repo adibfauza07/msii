@@ -1,16 +1,11 @@
 <?php
-// Pastikan script ini dipanggil dari dashboard_pica.php yang sudah memiliki koneksi database ($conn)
-
-// Logika untuk menyimpan data ketika tombol "Simpan" ditekan
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['simpan_pica'])) {
-    // 1. Ambil data Header
     $no_tr = $_POST['no_tr'];
     $pica_date = $_POST['pica_date'];
     $customer = $_POST['customer'];
     $supplier = $_POST['supplier'];
     $problem_title = $_POST['problem_title'];
     
-    // Simpan Header dan ambil ID yang baru saja dibuat (SCOPE_IDENTITY)
     $sql_header = "INSERT INTO PICA_HEADER (NoTR, PicaDate, Customer, Supplier, ProblemTitle) 
                    VALUES (?, ?, ?, ?, ?); SELECT SCOPE_IDENTITY() as PicaID;";
     $params_header = array($no_tr, $pica_date, $customer, $supplier, $problem_title);
@@ -18,55 +13,39 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['simpan_pica'])) {
     $stmt_header = sqlsrv_query($conn, $sql_header, $params_header);
     
     if ($stmt_header) {
-        // Ambil ID Header untuk Foregin Key tabel lainnya
         sqlsrv_next_result($stmt_header);
         $row = sqlsrv_fetch_array($stmt_header);
         $pica_id = $row['PicaID'];
 
-        // 2. Simpan 5 Why
         $main_problem = $_POST['main_problem'];
         $data_support = $_POST['data_support'];
-        $why1 = $_POST['why1'];
-        $why2 = $_POST['why2'];
-        $why3 = $_POST['why3'];
-        $why4 = $_POST['why4'];
-        $why5 = $_POST['why5'];
+        $why1 = $_POST['why1']; $why2 = $_POST['why2']; $why3 = $_POST['why3']; $why4 = $_POST['why4']; $why5 = $_POST['why5'];
 
         $sql_why = "INSERT INTO PICA_5WHY (PicaID, MainProblem, DataSupport, Why1, Why2, Why3, Why4, Why5) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         $params_why = array($pica_id, $main_problem, $data_support, $why1, $why2, $why3, $why4, $why5);
         sqlsrv_query($conn, $sql_why, $params_why);
 
-        // 3. Simpan Corrective Action
+        // --- PERUBAHAN: Query Insert disesuaikan dengan 2 kolom baru ---
         $obj_target = $_POST['obj_target'];
         $activity = $_POST['activity'];
-        $dept_pic = $_POST['dept_pic'];
+        $dept = $_POST['dept'];
+        $pic = $_POST['pic'];
         $status_remark = $_POST['status_remark'];
 
-        $sql_action = "INSERT INTO PICA_ACTION (PicaID, ObjectiveTarget, Activity, DeptPIC, StatusRemark) 
-                       VALUES (?, ?, ?, ?, ?)";
-        $params_action = array($pica_id, $obj_target, $activity, $dept_pic, $status_remark);
+        $sql_action = "INSERT INTO PICA_ACTION (PicaID, ObjectiveTarget, Activity, Dept, PIC, StatusRemark) 
+                       VALUES (?, ?, ?, ?, ?, ?)";
+        $params_action = array($pica_id, $obj_target, $activity, $dept, $pic, $status_remark);
         sqlsrv_query($conn, $sql_action, $params_action);
 
-        // Tampilkan pesan sukses
-        // ... kode atasnya tetap sama ...
-        
-        // Tampilkan pesan sukses
         echo "<div class='alert alert-success shadow-sm'><i class='bi bi-check-circle'></i> Data PICA berhasil disimpan!</div>";
     } else {
-        // PERBAIKAN: Menampilkan pesan error asli dari SQL Server
         $errors = sqlsrv_errors();
         $pesan_error = "";
         if ($errors != null) {
-            foreach ($errors as $error) {
-                $pesan_error .= "<b>Error:</b> " . $error['message'] . "<br>";
-            }
+            foreach ($errors as $error) { $pesan_error .= "<b>Error:</b> " . $error['message'] . "<br>"; }
         }
-        echo "<div class='alert alert-danger shadow-sm'>
-                <i class='bi bi-exclamation-triangle'></i> Gagal menyimpan data! <br>
-                <hr>
-                Detail Sistem:<br>".$pesan_error."
-              </div>";
+        echo "<div class='alert alert-danger shadow-sm'><i class='bi bi-exclamation-triangle'></i> Gagal menyimpan data! <br><hr>Detail Sistem:<br>".$pesan_error."</div>";
     }
 }
 ?>
@@ -87,17 +66,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['simpan_pica'])) {
                     <label class="form-label text-muted small fw-bold">Tanggal</label>
                     <input type="date" name="pica_date" class="form-control" required>
                 </div>
-                
                 <div class="col-md-4">
                     <label class="form-label text-muted small fw-bold">Customer</label>
                     <select name="customer" class="form-select select2-search" required>
-                        <option value=""></option> <option value="IDBM">IDBM</option>
+                        <option value=""></option>
+                        <option value="IDBM">IDBM</option>
                         <option value="CUSTOMER A">CUSTOMER A</option>
-                        <option value="CUSTOMER B">CUSTOMER B</option>
-                        </select>
+                    </select>
                 </div>
             </div>
-            
             <div class="row mb-4">
                 <div class="col-md-6">
                     <label class="form-label text-muted small fw-bold">Supplier</label>
@@ -105,10 +82,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['simpan_pica'])) {
                         <option value=""></option>
                         <option value="IMC TEKNO INDONESIA">IMC TEKNO INDONESIA</option>
                         <option value="SUPPLIER A">SUPPLIER A</option>
-                        <option value="SUPPLIER B">SUPPLIER B</option>
-                        </select>
+                    </select>
                 </div>
-                
                 <div class="col-md-6">
                     <label class="form-label text-muted small fw-bold">Judul Masalah (Problem)</label>
                     <input type="text" name="problem_title" class="form-control" placeholder="Contoh: Part No pada kemasan berbeda" required>
@@ -140,15 +115,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['simpan_pica'])) {
                     <label class="form-label text-muted small fw-bold">Objective Target</label>
                     <textarea name="obj_target" class="form-control" rows="2"></textarea>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label text-muted small fw-bold">Activity</label>
                     <textarea name="activity" class="form-control" rows="2"></textarea>
                 </div>
+                
                 <div class="col-md-2">
-                    <label class="form-label text-muted small fw-bold">Dept & P.I.C</label>
-                    <input type="text" name="dept_pic" class="form-control" placeholder="Prod / WH">
+                    <label class="form-label text-muted small fw-bold">Dept</label>
+                    <input type="text" name="dept" class="form-control" placeholder="Contoh: Prod">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
+                    <label class="form-label text-muted small fw-bold">P.I.C</label>
+                    <input type="text" name="pic" class="form-control" placeholder="Contoh: Member WH">
+                </div>
+                <div class="col-md-2">
                     <label class="form-label text-muted small fw-bold">Status (Remark)</label>
                     <select name="status_remark" class="form-select">
                         <option value="Open">Open</option>

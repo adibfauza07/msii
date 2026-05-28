@@ -273,7 +273,7 @@ function h($value) {
 
             <div class="toolbar">
                 <button type="button" id="btnRefreshItem">REFRESH ITEM</button>
-                <button type="button" id="btnClose">CLOSE</button>
+              
             </div>
 
             <label>CARI ITEM CODE / NAME</label>
@@ -1125,7 +1125,8 @@ function moveScheduleSelection(direction, fieldName) {
     var rows = getScheduleRows();
 
     if (!rows || rows.length == 0) {
-        return;
+        addScheduleRow();
+        rows = getScheduleRows();
     }
 
     var index = getSelectedScheduleIndex();
@@ -1134,6 +1135,17 @@ function moveScheduleSelection(direction, fieldName) {
         index = 0;
     } else {
         index = index + direction;
+    }
+
+    /*
+        Jika tekan panah bawah saat posisi sudah di baris terakhir,
+        otomatis tambah baris baru.
+    */
+    if (direction > 0 && index >= rows.length) {
+        addScheduleRow();
+
+        rows = getScheduleRows();
+        index = rows.length - 1;
     }
 
     if (index < 0) {
@@ -1151,6 +1163,10 @@ function moveScheduleSelection(direction, fieldName) {
     if (input) {
         input.focus();
         input.select();
+    }
+
+    if (rows[index].scrollIntoView) {
+        rows[index].scrollIntoView({ block: "nearest" });
     }
 }
 
@@ -1406,9 +1422,18 @@ function deleteScheduleRow() {
     var priceId = document.getElementById("PRICE_ID").value;
     var dateInput = getScheduleInput(selectedScheduleRow, "DELS_DATE");
 
+    /*
+        Kalau baris baru belum ada tanggal, hapus dari layar saja.
+        Setelah hapus, kalau kosong otomatis tambah 1 baris kosong lagi.
+    */
     if (!dateInput || dateInput.value == "") {
         selectedScheduleRow.parentNode.removeChild(selectedScheduleRow);
         selectedScheduleRow = null;
+
+        if (document.getElementById("scheduleBody").getElementsByTagName("tr").length == 0) {
+            addScheduleRow();
+        }
+
         return;
     }
 
@@ -1455,6 +1480,8 @@ function deleteScheduleRow() {
         }
     );
 }
+
+
 
 document.getElementById("CUST_CODE").onkeydown = function (e) {
     return custKeyDown(e);
@@ -1528,9 +1555,13 @@ document.getElementById("btnReloadSchedule").onclick = function () {
     loadSchedule();
 };
 
-document.getElementById("btnClose").onclick = function () {
-    window.close();
-};
+var btnClose = document.getElementById("btnClose");
+
+if (btnClose) {
+    btnClose.onclick = function () {
+        window.close();
+    };
+}
 
 document.getElementById("CUST_CODE").focus();
 </script>

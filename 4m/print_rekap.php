@@ -4,9 +4,9 @@ require_once __DIR__ . '/../config/database.php';
 
 $is_filtered = isset($_GET['filter']) ? true : false;
 
-$start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01'); 
-$end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');     
-$cust_alias = isset($_GET['cust_alias']) ? trim($_GET['cust_alias']) : '';
+$start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01');
+$end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');    
+$cust_comp  = isset($_GET['cust_comp']) ? trim($_GET['cust_comp']) : ''; // <-- PERBAIKAN SINKRONISASI VARIABEL
 $item_code  = isset($_GET['item_code']) ? trim($_GET['item_code']) : '';
 $f_status   = isset($_GET['f_status']) ? trim($_GET['f_status']) : '';
 
@@ -14,10 +14,13 @@ $query = false;
 
 if ($is_filtered) {
     $sp_start = date('Ymd', strtotime($start_date));
-    $sp_end   = date('Ymd', strtotime($end_date));
-    $sp_item  = ($item_code != '') ? $item_code : '%';
-    $sp_cust  = ($cust_alias != '') ? $cust_alias : '%';
+    $sp_end   = date('Ymd', strtotime($end_date));  
+    
+    // Gunakan trim() ganda untuk memastikan tidak ada spasi hantu terbawa dari URL
+    $sp_item = ($item_code != '') ? trim($item_code) : '%';
+    $sp_cust = ($cust_comp != '') ? trim($cust_comp) : '%'; // <-- Dilempar aman ke Stored Procedure
 
+    // Panggil Stored Procedure REP_PCIS1
     $sql = "{CALL REP_PCIS1(?, ?, ?, ?)}";
     $params = array($sp_start, $sp_end, $sp_item, $sp_cust);
     $query = q($sql, $params);
@@ -70,13 +73,14 @@ if ($is_filtered) {
     <table class="report-table">
         <thead>
             <tr>
-                <th width="15%" class="text-center">NO. CONTROL</th>
-                <th width="10%" class="text-center">TANGGAL</th>
+                <th width="14%" class="text-center">NO. CONTROL</th>
+                <th width="9%" class="text-center">TANGGAL</th>
                 <th width="12%">CUSTOMER</th>
-                <th width="15%">PART CODE</th>
-                <th width="25%">PART NAME / ITEM</th>
-                <th width="15%" class="text-center">4M CATEGORY</th>
-                <th width="8%" class="text-center">STATUS</th>
+                <th width="13%">PART CODE</th>
+                <th width="22%">PART NAME / ITEM</th>
+                <th width="10%" class="text-center">MODEL</th>
+                <th width="14%" class="text-center">4M CATEGORY</th>
+                <th width="7%" class="text-center">STATUS</th>
             </tr>
         </thead>
         <tbody>
@@ -98,7 +102,7 @@ if ($is_filtered) {
                     $print_4m = implode(', ', $m_list);
             ?>
             <tr>
-                <td class="text-center fw-bold"><?php echo isset($row['CONTROL_NO']) ? $row['CONTROL_NO'] : '-'; ?></td>
+                <td class="text-center fw-bold"><?php echo isset($row['CONTROL_NO']) ? rtrim($row['CONTROL_NO']) : '-'; ?></td>
                 <td class="text-center">
                     <?php 
                     if (isset($row['CONTROL_DATE1'])) {
@@ -109,8 +113,9 @@ if ($is_filtered) {
                     ?>
                 </td>
                 <td class="fw-bold"><?php echo isset($row['CUST_ALIAS']) ? trim($row['CUST_ALIAS']) : '-'; ?></td>
-                <td class="fw-bold"><?php echo isset($row['PART_CODE']) ? $row['PART_CODE'] : (isset($row['PART_NO']) ? $row['PART_NO'] : '-'); ?></td>
-                <td><?php echo isset($row['PART_NAME']) ? $row['PART_NAME'] : (isset($row['ITEM_NAME']) ? $row['ITEM_NAME'] : '-'); ?></td>
+                <td class="fw-bold"><?php echo isset($row['PART_CODE']) ? trim($row['PART_CODE']) : (isset($row['PART_NO']) ? trim($row['PART_NO']) : '-'); ?></td>
+                <td><?php echo isset($row['PART_NAME']) ? trim($row['PART_NAME']) : (isset($row['ITEM_NAME']) ? trim($row['ITEM_NAME']) : '-'); ?></td>
+                <td class="text-center fw-bold text-muted"><?php echo isset($row['MODEL']) ? trim($row['MODEL']) : '-'; ?></td>
                 <td class="text-center fw-bold"><?php echo !empty($print_4m) ? $print_4m : '-'; ?></td>
                 <td class="text-center fw-bold"><?php echo $current_status; ?></td>
             </tr>
@@ -121,7 +126,7 @@ if ($is_filtered) {
             if ($no_data): 
             ?>
             <tr>
-                <td colspan="7" class="text-center" style="padding: 30px; font-style: italic;">
+                <td colspan="8" class="text-center" style="padding: 30px; font-style: italic;">
                     Tidak ada data rekapitulasi ditemukan.
                 </td>
             </tr>

@@ -1,15 +1,9 @@
 <?php
-// ===============================
-// SECURITY MIDDLEWARE
-// ===============================
-require_once "../middleware/Auth.php";       // wajib login
-require_once "../middleware/RoleCheck.php";  // cek role
-only(['p1','p2']);                           // hanya plant1 & plant2
 
 // ===============================
 // KONEKSI DATABASE SESUAI USER LOGIN
 // ===============================
-require_once "../config/database.php";
+require_once "../config/db_plant2.php";
 
 // ===============================
 // QUERY DATA

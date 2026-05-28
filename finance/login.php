@@ -50,7 +50,7 @@ if (isset($_POST['btnMasuk'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Finance Aging System - Login</title>
+    <title>Finance  System - Login</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
@@ -79,7 +79,7 @@ if (isset($_POST['btnMasuk'])) {
 
 <div class="login-box">
     <div class="brand-logo">
-        FINANCE <span>AGING</span>
+        FINANCE <span>SYSTEM</span>
         <div style="font-size: 12px; font-weight: 400; color: #158806;">PT IMC TEKNO INDONESIA</div>
     </div>
 

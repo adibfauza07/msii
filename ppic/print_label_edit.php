@@ -1,9 +1,7 @@
 <?php
-require_once "../middleware/Auth.php";
-require_once "../middleware/RoleCheck.php";
-only(array('p1','p2'));
 
-require_once "../config/database.php";
+
+require_once "../config/db_plant2.php.php";
 
 // TCPDF library
 if (file_exists('../tcpdf/tcpdf.php')) {

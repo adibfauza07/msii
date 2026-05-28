@@ -254,7 +254,7 @@ function h($value) {
 
             <div class="toolbar">
     <button type="button" id="btnRefreshItem">REFRESH ITEM</button>
-    <button type="button" id="btnClose">CLOSE</button>
+    
 </div>
 
 <label>CARI ITEM CODE / NAME</label>
@@ -318,6 +318,7 @@ var selectedItemRow = null;
 var selectedForecastRow = null;
 var forecastLoadSeq = 0;
 
+var itemRowsAll = [];
 var itemRowsCache = [];
 var itemSuggestRows = [];
 var itemSuggestIndex = -1;
@@ -1122,7 +1123,8 @@ function moveForecastSelection(direction, fieldName) {
     var rows = getForecastRows();
 
     if (!rows || rows.length == 0) {
-        return;
+        addForecastRow();
+        rows = getForecastRows();
     }
 
     var index = getSelectedForecastIndex();
@@ -1131,6 +1133,17 @@ function moveForecastSelection(direction, fieldName) {
         index = 0;
     } else {
         index = index + direction;
+    }
+
+    /*
+        Jika tekan panah bawah di baris terakhir,
+        otomatis tambah baris forecast baru.
+    */
+    if (direction > 0 && index >= rows.length) {
+        addForecastRow();
+
+        rows = getForecastRows();
+        index = rows.length - 1;
     }
 
     if (index < 0) {
@@ -1394,9 +1407,19 @@ function deleteForecastRow() {
     var priceId = document.getElementById("PRICE_ID").value;
     var monthInput = getForecastInput(selectedForecastRow, "FORE_MONTH");
 
+    /*
+        Kalau baris baru belum ada month,
+        hapus dari layar saja.
+        Kalau habis dihapus jadi kosong, otomatis tambah 1 baris kosong.
+    */
     if (!monthInput || monthInput.value == "") {
         selectedForecastRow.parentNode.removeChild(selectedForecastRow);
         selectedForecastRow = null;
+
+        if (document.getElementById("forecastBody").getElementsByTagName("tr").length == 0) {
+            addForecastRow();
+        }
+
         return;
     }
 
@@ -1516,9 +1539,13 @@ document.getElementById("btnReloadForecast").onclick = function () {
     loadForecast();
 };
 
-document.getElementById("btnClose").onclick = function () {
-    window.close();
-};
+var btnClose = document.getElementById("btnClose");
+
+if (btnClose) {
+    btnClose.onclick = function () {
+        window.close();
+    };
+}
 
 document.getElementById("CUST_CODE").focus();
 </script>

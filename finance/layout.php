@@ -7,7 +7,7 @@ if (!isset($_SESSION['db_user'])) header("Location: login.php");
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Finance Aging System</title>
+    <title>Finance System</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
@@ -47,6 +47,39 @@ if (!isset($_SESSION['db_user'])) header("Location: login.php");
     <a href="dashboard.php"><i class="bi bi-speedometer2 me-2"></i> Dashboard</a>
     <a href="aging_sales.php"><i class="bi bi-graph-up-arrow me-2"></i> Aging Sales</a>
     <a href="aging_ap.php"><i class="bi bi-graph-down-arrow me-2"></i> Aging AP</a>
+	<a href="inv_coretax.php" class="nav-link">
+    <i class="bi bi-file-earmark-excel"></i> Invoice Coretax
+	<a href="inv_coretax_monthly.php" class="nav-link">
+    <i class="bi bi-calendar-range"></i> Coretax By Date
+</a>
+	<?php
+$login_user = isset($_SESSION['db_user']) ? strtolower(trim($_SESSION['db_user'])) : '';
+$active_plant_menu = isset($_SESSION['active_plant']) ? strtolower(trim($_SESSION['active_plant'])) : '';
+
+$allow_tally_menu = false;
+
+if ($login_user == 'plant1' || $active_plant_menu == 'p1') {
+    $allow_tally_menu = true;
+}
+?>
+
+<?php if ($allow_tally_menu) { ?>
+    <a href="tally_import.php" class="nav-link">
+        <i class="bi bi-arrow-left-right"></i> Import SQL To Tally plant1
+    </a>
+<?php } ?>
+<?php
+$login_user = isset($_SESSION['db_user']) ? strtolower(trim($_SESSION['db_user'])) : '';
+$active_plant_menu = isset($_SESSION['active_plant']) ? strtolower(trim($_SESSION['active_plant'])) : '';
+
+if ($login_user == 'plant2' || $active_plant_menu == 'p2') {
+?>
+    <a href="tally_import_p2.php" class="nav-link">
+        <i class="bi bi-arrow-left-right"></i> Import SQL To Tally P2
+    </a>
+<?php } ?>
+</a>
+
     <hr>
     <a href="logout.php" class="text-danger"><i class="bi bi-box-arrow-left me-2"></i> Logout</a>
 </div>

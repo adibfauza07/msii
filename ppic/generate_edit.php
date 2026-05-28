@@ -1,6 +1,6 @@
 <?php
-require '../config/database.php';
-require '../vendor/autoload.php';
+require '../config/db_plant2.php';
+
 
 use Endroid\QrCode\QrCode;
 use Endroid\QrCode\Writer\PngWriter;

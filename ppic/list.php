@@ -1,5 +1,5 @@
 <?php
-require "../config/database.php";
+require "../config/db_plant2.php";
 
 $sql = "SELECT * FROM barcode_showa ORDER BY id DESC";
 $data = q($sql);

@@ -405,7 +405,7 @@ while($r=sqlsrv_fetch_array($qL)) {
                 </div>
             </div>
             <div class="card shadow-sm">
-                <div class="card-header bg-white fw-bold py-2 border-bottom">LAPORAN</div>
+                <div class="card-header bg-white fw-bold py-2 border-bottom">MENU LAPORAN (REPORT)</div>
                 <div class="card-body p-2">
                     <div class="list-group list-group-flush small">
                         <?php 
@@ -417,18 +417,121 @@ while($r=sqlsrv_fetch_array($qL)) {
                             <i class="bi bi-card-list me-2 text-primary"></i> <b>Tag List Detail</b>
                         </a>
                         
-                        <a href="report_tag_summary.php?sop=<?php echo $currentID; ?>" target="_blank" class="list-group-item list-group-item-action py-2 <?php echo $linkDisabled; ?>">
-                            <i class="bi bi-table me-2 text-success"></i> <b>Tag Summary By Item</b>
-                        </a>
+                        
 
                         <a href="report_var_before.php?id=<?php echo $currentID; ?>" target="_blank" class="list-group-item list-group-item-action py-2">
     <i class="bi bi-calculator me-2"></i> <b>Variance Before Adjust</b> 
 </a>
                         
-                        <a href="#" class="list-group-item list-group-item-action py-2 disabled text-muted">
-                            <i class="bi bi-arrow-left-right me-2"></i> SOP Conversion
-                        </a>
+                        
                     </div>
+                    <?php
+            // Ambil daftar SOP untuk dimasukkan ke Dropdown
+            $optSop = ""; 
+            $qSop = sqlsrv_query($conn, "SELECT SOP_ID, SOP_REF, SOP_SDATE FROM SOP ORDER BY SOP_SDATE DESC");
+            if ($qSop) {
+                while($rSop = sqlsrv_fetch_array($qSop)) { 
+                    $tglSop = ($rSop['SOP_SDATE'] instanceof DateTime) ? $rSop['SOP_SDATE']->format('d-M-Y') : $rSop['SOP_SDATE'];
+                    $optSop .= "<option value='{$rSop['SOP_ID']}'>{$rSop['SOP_REF']} ({$tglSop})</option>"; 
+                }
+            }
+            ?>
+            <div class="card mt-3 shadow-sm">
+                <div class="card-header bg-success text-white text-center fw-bold py-1">
+                    <i class="bi bi-tags-fill"></i> TAG SUMMARY BY ITEM REPORT
+                </div>
+                <div class="card-body p-2 bg-light">
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <label class="small fw-bold">Pilih Dokumen SOP:</label>
+                            <select id="ts_sop_id" class="form-select form-select-sm select2" style="width:100%;">
+                                <option value="">-- Pilih Dokumen Stock Opname --</option>
+                                <?php echo $optSop; ?>
+                            </select>
+                        </div>
+                        <div class="col-12 mt-2">
+                            <button type="button" onclick="cetakTagSummary()" class="btn btn-dark btn-sm w-100 fw-bold border">
+                                <i class="bi bi-printer-fill"></i> PRINT TAG SUMMARY
+                            </button>
+                            <button type="button" onclick="cetakSopConversion()" class="btn btn-primary btn-sm w-100 fw-bold border">
+                                <i class="bi bi-diagram-3-fill"></i> PRINT SOP CONVERSION
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+                function cetakSopConversion() {
+                var sop_id = document.getElementById('ts_sop_id').value;
+
+                if (!sop_id || sop_id == "") {
+                    alert('Silakan pilih Dokumen SOP terlebih dahulu!');
+                    return;
+                }
+
+                // Buka tab baru untuk print SOP Conversion
+                window.open('print_sop_conversion.php?sop_id=' + sop_id, '_blank');
+            }
+            function cetakTagSummary() {
+                var sop_id = document.getElementById('ts_sop_id').value;
+
+                if (!sop_id || sop_id == "") {
+                    alert('Silakan pilih Dokumen SOP terlebih dahulu!');
+                    return;
+                }
+
+                // Buka tab baru untuk print
+                window.open('print_tag_summary_item.php?sop_id=' + sop_id, '_blank');
+            }
+            </script>
+<div class="card mt-3 shadow-sm">
+                <div class="card-header bg-primary text-white text-center fw-bold py-1">
+                    <i class="bi bi-bar-chart-fill"></i> STOCK ANALYSIS REPORT
+                </div>
+                <div class="card-body p-2 bg-light">
+                    <div class="row g-2">
+                        <div class="col-12">
+                            <label class="small fw-bold">Pilih Item:</label>
+                            <select id="sa_item_id" class="form-select form-select-sm select2-ajax" style="width:100%;">
+                                <option value="0" selected>-- SEMUA ITEM (ALL) --</option>
+                            </select>
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="small fw-bold">Start Date:</label>
+                            <input type="date" id="sa_start_date" class="form-control form-control-sm" value="<?php echo date('Y-m-01'); ?>">
+                        </div>
+                        <div class="col-12 col-md-6">
+                            <label class="small fw-bold">Periode (Bulan):</label>
+                            <input type="number" id="sa_period" class="form-control form-control-sm" value="1" min="1">
+                        </div>
+                        <div class="col-12 mt-2">
+                            <button type="button" onclick="cetakStockAnalysis()" class="btn btn-dark btn-sm w-100 fw-bold border">
+                                <i class="bi bi-printer-fill"></i> PRINT ANALYSIS
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+            function cetakStockAnalysis() {
+                var item_id = document.getElementById('sa_item_id').value;
+                var start_date = document.getElementById('sa_start_date').value;
+                var period = document.getElementById('sa_period').value;
+
+                if (item_id === null || item_id === "") {
+                    alert('Silakan cari dan pilih Item terlebih dahulu!');
+                    return;
+                }
+                if (!start_date || !period) {
+                    alert('Tanggal dan Periode wajib diisi!');
+                    return;
+                }
+
+                window.open('print_stock_analysis.php?item_id=' + item_id + '&start_date=' + start_date + '&period=' + period, '_blank');
+            }
+            </script>
                 </div>
             </div>
             </div>

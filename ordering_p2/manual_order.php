@@ -352,6 +352,15 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
             background: #316ac5;
             color: #ffffff;
         }
+		.autocomplete-item.active {
+    background: #316ac5;
+    color: #ffffff;
+}
+
+.grid .autocomplete-item.active {
+    background: #316ac5;
+    color: #ffffff;
+}
     </style>
 </head>
 
@@ -2830,110 +2839,296 @@ function moveToNextRowSameColumn(currentInput) {
     }
 }
 
+var lastDIQtyValid = false;
+var partItems = [];
+var partActiveInput = null;
+var partActiveIndex = -1;
+
+function getPartSuggestBox(input) {
+    if (!input || !input.parentNode) {
+        return null;
+    }
+
+    var boxes = input.parentNode.getElementsByClassName("partSuggest");
+
+    if (!boxes || boxes.length == 0) {
+        return null;
+    }
+
+    return boxes[0];
+}
+
+function isPartSuggestOpen(input) {
+    var box = getPartSuggestBox(input);
+
+    if (!box) {
+        return false;
+    }
+
+    return box.style.display != "none" && partItems && partItems.length > 0;
+}
+
+function setActivePartSuggest(input, index) {
+    var box = getPartSuggestBox(input);
+
+    if (!box) {
+        partActiveIndex = -1;
+        return;
+    }
+
+    var items = box.getElementsByClassName("autocomplete-item");
+
+    if (!items || items.length == 0) {
+        partActiveIndex = -1;
+        return;
+    }
+
+    if (index < 0) {
+        index = items.length - 1;
+    }
+
+    if (index >= items.length) {
+        index = 0;
+    }
+
+    for (var i = 0; i < items.length; i++) {
+        items[i].className = "autocomplete-item";
+    }
+
+    items[index].className = "autocomplete-item active";
+
+    if (items[index].scrollIntoView) {
+        items[index].scrollIntoView({ block: "nearest" });
+    }
+
+    partActiveInput = input;
+    partActiveIndex = index;
+}
+
+function hidePartSuggest(input) {
+    var box = getPartSuggestBox(input);
+
+    if (box) {
+        box.style.display = "none";
+    }
+
+    if (partActiveInput === input) {
+        partActiveInput = null;
+        partActiveIndex = -1;
+    }
+}
+
+function choosePartSuggest(input, index, autoSave) {
+    if (!partItems || partItems.length == 0) {
+        return;
+    }
+
+    if (index < 0 || index >= partItems.length) {
+        index = 0;
+    }
+
+    var row = getRowFromElement(input);
+    var item = partItems[index];
+
+    setRowPartFromLookup(input, item);
+    hidePartSuggest(input);
+
+    /*
+        Pilih pakai ENTER = langsung SAVE line.
+    */
+    if (autoSave && row) {
+        saveDetailRow(row, function (ok) {
+            if (ok) {
+                moveToNextRowSameColumn(input);
+            }
+        });
+    }
+}
+
+function focusInputSameColumn(row, cellIndex) {
+    if (!row || !row.cells || !row.cells[cellIndex]) {
+        return;
+    }
+
+    var nextInput = row.cells[cellIndex].getElementsByTagName("input")[0];
+
+    if (nextInput) {
+        selectPartRow(row);
+        nextInput.focus();
+
+        if (nextInput.select) {
+            nextInput.select();
+        }
+    }
+}
+
+function movePartGridSelection(currentInput, direction) {
+    var cell = getCellFromElement(currentInput);
+
+    if (!cell) {
+        return;
+    }
+
+    var row = cell.parentNode;
+    var tbody = document.getElementById("partBody");
+    var rows = tbody.getElementsByTagName("tr");
+
+    var rowIndex = -1;
+    var cellIndex = cell.cellIndex;
+
+    for (var i = 0; i < rows.length; i++) {
+        if (rows[i] == row) {
+            rowIndex = i;
+            break;
+        }
+    }
+
+    if (rowIndex < 0) {
+        return;
+    }
+
+    var nextRowIndex = rowIndex + direction;
+
+    if (nextRowIndex < 0) {
+        nextRowIndex = 0;
+    }
+
+    /*
+        Kalau panah bawah di baris terakhir,
+        otomatis tambah baris baru.
+    */
+    if (nextRowIndex >= rows.length) {
+        addRow();
+        rows = tbody.getElementsByTagName("tr");
+        nextRowIndex = rows.length - 1;
+    }
+
+    focusInputSameColumn(rows[nextRowIndex], cellIndex);
+}
+
 document.getElementById("tblPart").addEventListener("keydown", function (e) {
     e = e || window.event;
 
     var target = e.target || e.srcElement;
 
     if (!target || target.tagName != "INPUT") {
-        return;
+        return true;
     }
 
     var key = e.keyCode || e.which;
 
-    if (key == 38 || key == 40) {
-        var cell = getCellFromElement(target);
-
-        if (!cell) {
-            return;
-        }
-
-        var row = cell.parentNode;
-        var tbody = document.getElementById("partBody");
-        var rows = tbody.getElementsByTagName("tr");
-
-        var rowIndex = -1;
-        var cellIndex = cell.cellIndex;
-
-        for (var i = 0; i < rows.length; i++) {
-            if (rows[i] == row) {
-                rowIndex = i;
-                break;
-            }
-        }
-
-        if (rowIndex < 0) {
-            return;
-        }
-
-        var nextRowIndex = key == 38 ? rowIndex - 1 : rowIndex + 1;
-
-        if (nextRowIndex < 0 || nextRowIndex >= rows.length) {
-            return;
-        }
-
-        var nextCell = rows[nextRowIndex].cells[cellIndex];
-
-        if (!nextCell) {
-            return;
-        }
-
-        var nextInput = nextCell.getElementsByTagName("input")[0];
-
-        if (nextInput) {
+    /*
+        Kalau sedang di kolom CODE dan dropdown part terbuka:
+        - Panah bawah = turun pilihan dropdown
+        - Panah atas   = naik pilihan dropdown
+        - Enter        = pilih item aktif + SAVE line
+    */
+    if (target.name == "CODE[]" && isPartSuggestOpen(target)) {
+        if (key == 40) {
             if (e.preventDefault) {
                 e.preventDefault();
             } else {
                 e.returnValue = false;
             }
 
-            selectPartRow(rows[nextRowIndex]);
-            nextInput.focus();
-
-            if (nextInput.select) {
-                nextInput.select();
-            }
+            setActivePartSuggest(target, partActiveIndex + 1);
+            return false;
         }
 
-        return;
+        if (key == 38) {
+            if (e.preventDefault) {
+                e.preventDefault();
+            } else {
+                e.returnValue = false;
+            }
+
+            setActivePartSuggest(target, partActiveIndex - 1);
+            return false;
+        }
+
+        if (key == 13) {
+            if (e.preventDefault) {
+                e.preventDefault();
+            } else {
+                e.returnValue = false;
+            }
+
+            if (e.stopImmediatePropagation) {
+                e.stopImmediatePropagation();
+            }
+
+            if (partActiveIndex < 0) {
+                partActiveIndex = 0;
+            }
+
+            choosePartSuggest(target, partActiveIndex, true);
+            return false;
+        }
     }
 
-    if (key != 13) {
-        return;
-    }
-
-    if (target.name == "CODE[]") {
+    /*
+        Kalau dropdown tidak terbuka:
+        panah atas / bawah pindah baris grid.
+    */
+    if (key == 38) {
         if (e.preventDefault) {
             e.preventDefault();
         } else {
             e.returnValue = false;
         }
 
-        if (e.stopImmediatePropagation) {
-            e.stopImmediatePropagation();
-        }
-
-        var codeBox = target.parentNode.getElementsByClassName("partSuggest")[0];
-
-        if (codeBox && codeBox.style.display != "none" && partItems.length > 0) {
-            setRowPartFromLookup(target, partItems[0]);
-        } else {
-            loadPartLookup(target);
-        }
-
-        return;
+        movePartGridSelection(target, -1);
+        return false;
     }
 
-    var rowSave = getRowFromElement(target);
+    if (key == 40) {
+        if (e.preventDefault) {
+            e.preventDefault();
+        } else {
+            e.returnValue = false;
+        }
 
-    if (!rowSave) {
-        return;
+        movePartGridSelection(target, 1);
+        return false;
+    }
+
+    if (key != 13) {
+        return true;
     }
 
     if (e.preventDefault) {
         e.preventDefault();
     } else {
         e.returnValue = false;
+    }
+
+    if (e.stopImmediatePropagation) {
+        e.stopImmediatePropagation();
+    }
+
+    /*
+        ENTER di kolom CODE:
+        kalau dropdown belum muncul, load lookup dulu.
+        kalau dropdown muncul, pilih item aktif + save.
+    */
+    if (target.name == "CODE[]") {
+        if (isPartSuggestOpen(target)) {
+            if (partActiveIndex < 0) {
+                partActiveIndex = 0;
+            }
+
+            choosePartSuggest(target, partActiveIndex, true);
+        } else {
+            loadPartLookup(target);
+        }
+
+        return false;
+    }
+
+    var rowSave = getRowFromElement(target);
+
+    if (!rowSave) {
+        return false;
     }
 
     if (target.name == "PACK_DESC[]") {
@@ -2944,10 +3139,15 @@ document.getElementById("tblPart").addEventListener("keydown", function (e) {
         }
     }
 
-    saveDetailRow(rowSave, function () {
-        moveToNextRowSameColumn(target);
+    saveDetailRow(rowSave, function (ok) {
+        if (ok) {
+            moveToNextRowSameColumn(target);
+        }
     });
+
+    return false;
 });
+
 document.getElementById("tblPart").onfocusin = function (e) {
     e = e || window.event;
 
@@ -2963,10 +3163,6 @@ document.getElementById("tblPart").onfocusin = function (e) {
         selectPartRow(row);
     }
 };
-
-
-var lastDIQtyValid = false;
-var partItems = [];
 
 function buildDIQtyWarning(result) {
     var msg = "";
@@ -3315,6 +3511,8 @@ function renderPartSuggest(input, items) {
 
     box.innerHTML = "";
     partItems = items || [];
+    partActiveInput = input;
+    partActiveIndex = -1;
 
     if (!items || items.length == 0) {
         box.style.display = "none";
@@ -3322,37 +3520,48 @@ function renderPartSuggest(input, items) {
     }
 
     for (var i = 0; i < items.length; i++) {
-        var div = document.createElement("div");
-        div.className = "autocomplete-item";
-        div.setAttribute("data-index", i);
+        (function (idx) {
+            var div = document.createElement("div");
+            div.className = "autocomplete-item";
+            div.setAttribute("data-index", idx);
 
-        div.innerHTML =
-            htmlEncode(items[i].CODE) +
-            " - " +
-            htmlEncode(items[i].NAME) +
-            "<br>Sch: " +
-            htmlEncode(items[i].DAILY_SCH) +
-            " | Price ID: " +
-            htmlEncode(items[i].PRICE_ID);
+            div.innerHTML =
+                htmlEncode(items[idx].CODE) +
+                " - " +
+                htmlEncode(items[idx].NAME) +
+                "<br>Sch: " +
+                htmlEncode(items[idx].DAILY_SCH) +
+                " | Price ID: " +
+                htmlEncode(items[idx].PRICE_ID);
 
-        div.onmousedown = function (e) {
-            if (!e) {
-                e = window.event;
-            }
+            div.onmouseover = function () {
+                setActivePartSuggest(input, idx);
+            };
 
-            if (e.preventDefault) {
-                e.preventDefault();
-            }
+            div.onmousedown = function (e) {
+                if (!e) {
+                    e = window.event;
+                }
 
-            var idx = parseInt(this.getAttribute("data-index"), 10);
-            setRowPartFromLookup(input, partItems[idx]);
-        };
+                if (e.preventDefault) {
+                    e.preventDefault();
+                }
 
-        box.appendChild(div);
+                /*
+                    Klik mouse hanya pilih item, belum auto save.
+                    Kalau mau klik juga langsung save, ubah false jadi true.
+                */
+                choosePartSuggest(input, idx, false);
+            };
+
+            box.appendChild(div);
+        })(i);
     }
 
     box.style.display = "block";
+    setActivePartSuggest(input, 0);
 }
+
 
 document.getElementById("tblPart").addEventListener("focusin", function (e) {
     e = e || window.event;

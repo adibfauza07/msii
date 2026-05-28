@@ -9,7 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
 
   <style>
     :root {
@@ -204,14 +204,14 @@
 </div>
 
 <div class="col">
-        <a href="pica/dashboard_pica.php" class="card-division">
-          <div class="icon-box bg-pica"><i class="bi bi-truck"></i></div>
+        <a href="pica/login.php" class="card-division">
+          <div class="icon-box bg-pica"><i class="bi bi-asterisk"></i></div>
           <span class="division-name">PICA</span>
         </a>
       </div>
 
       <div class="col">
-        <a href="ppic/dashboard_ppic.php" class="card-division">
+        <a href="ppic/login.php" class="card-division">
           <div class="icon-box bg-ppic"><i class="bi bi-calendar3"></i></div>
           <span class="division-name">PPIC</span>
         </a>

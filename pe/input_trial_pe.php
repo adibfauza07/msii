@@ -83,6 +83,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $foto_core   = uploadFoto('foto_mold_core');
     $foto_cavity = uploadFoto('foto_mold_cavity');
     $foto_mach   = uploadFoto('foto_machine');
+    $attach_qe  = uploadFoto('ATTACHMENT_QE');
+    $attach_mac = uploadFoto('ATTACHMENT_MAC');
 
     // Ambil fallback data dari Master
     $sqlMaster = "SELECT TOP 1 LAST_CUST.CUST_ID, std.MAT_CODE, mat.ITEM_ID AS MAT_ID
@@ -108,8 +110,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
    // =========================================================================
     // PROSES SIMPAN / UPDATE KE DATABASE
     // =========================================================================
+    // =========================================================================
+    // PROSES SIMPAN / UPDATE KE DATABASE
+    // =========================================================================
+    // =========================================================================
+    // PROSES SIMPAN / UPDATE KE DATABASE
+    // =========================================================================
     if (!empty($current_code)) {
         // --- BLOK UPDATE ---
+        // HAPUS ATTACHMENT_QE & ATTACHMENT_MAC dari query dasar agar tidak tertimpa NULL
         $sql = "UPDATE TRIAL_PE SET 
             DATE=?, PART_CODE=?, CUST_ID=?, QUANTITY_TRIAL=?, TRIAL_REASON=?, TRIAL_TIMES=?,
             MAT_USING=?, MAT_DRYING_TIME=?, MOLD_SET_UP=?, MOLD_SET_DOWN=?, TRIAL_DURATION=?,
@@ -122,12 +131,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             CHK_UNDERCUT_MOLD=?, CHK_SLIDER_JAM=?, CHK_MOLD_CLAMPING=?, CHK_NIPPLE_COMPLETE=?, 
             CHK_BACKFLOW=?, CHK_ROBOT=?, CHK_HEATER_BARREL=?, CHK_CONVEYOR=?, CHK_MTC=?, CHK_HEATER_CONTROL=?, MACHINE_REMARK=? ";
         
-        // Di sini variabel baru ($judge_id dan $jenis_id) sudah dipasang langsung tanpa intval(val())
         $params = [
             val('DATE'), $part_code, $cust_id, floatval(val('QUANTITY_TRIAL')), val('TRIAL_REASON'), val('TRIAL_TIMES'),
             $mat_id, intval(val('MAT_DRYING_TIME')), intval(val('MOLD_SET_UP')), intval(val('MOLD_SET_DOWN')), val('TRIAL_DURATION'),
-            val('QE_COMMENT'), val('PE_COMMENT'), $judge_id, val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'), // <-- JUDGE_ID diganti ke $judge_id
-            val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), $jenis_id, // <-- JENIS_ID diganti ke $jenis_id
+            val('QE_COMMENT'), val('PE_COMMENT'), $judge_id, val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'),
+            val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), $jenis_id,
             intval(val('TONAGE')), val('CORRECTIVE_ACTION'), val('PROBLEM'), val('ANALYSYS'),
             val('OPERATION'), floatval(val('REGRIND_PCT')), val('CHK_BURRY'), val('CHK_VOID'), val('CHK_SHORTMOLD'), val('CHK_WELDLINE'),
             val('CHK_BURNING'), val('CHK_SINKMARK'), val('CHK_DENTED'), val('CHK_SILVER'), val('CHK_SCRATCH'),
@@ -136,6 +144,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             val('CHK_BACKFLOW'), val('CHK_ROBOT'), val('CHK_HEATER_BARREL'), val('CHK_CONVEYOR'), val('CHK_MTC'), val('CHK_HEATER_CONTROL'), val('MACHINE_REMARK')
         ];
 
+        // Lampiran PDF HANYA ditambahkan ke Query jika user benar-benar meng-upload file baru
+        if ($attach_qe)   { $sql .= ", ATTACHMENT_QE=? "; $params[] = $attach_qe; }
+        if ($attach_mac)  { $sql .= ", ATTACHMENT_MAC=? "; $params[] = $attach_mac; }
+        // Foto juga sama
         if ($foto_name)   { $sql .= ", foto=? "; $params[] = $foto_name; }
         if ($foto_mat)    { $sql .= ", foto_material=? "; $params[] = $foto_mat; }
         if ($foto_core)   { $sql .= ", foto_mold_core=? "; $params[] = $foto_core; }
@@ -162,21 +174,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             CHK_DIMENSION, CHK_EJECTOR_JAM, CHK_RUNNER_STUCK, CHK_PART_STUCK, CHK_COOLING_LEAKAGE, 
             CHK_UNDERCUT_MOLD, CHK_SLIDER_JAM, CHK_MOLD_CLAMPING, CHK_NIPPLE_COMPLETE, 
             CHK_BACKFLOW, CHK_ROBOT, CHK_HEATER_BARREL, CHK_CONVEYOR, CHK_MTC, CHK_HEATER_CONTROL, MACHINE_REMARK, 
+            ATTACHMENT_QE, ATTACHMENT_MAC,
             foto_material, foto_mold_core, foto_mold_cavity, foto_machine
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
-        // Di sini juga sudah diganti menggunakan $judge_id dan $jenis_id
         $params = [
             val('DATE'), $part_code, $cust_id, floatval(val('QUANTITY_TRIAL')), val('TRIAL_REASON'), val('TRIAL_TIMES'),
             $mat_id, intval(val('MAT_DRYING_TIME')), intval(val('MOLD_SET_UP')), intval(val('MOLD_SET_DOWN')), val('TRIAL_DURATION'),
-            val('QE_COMMENT'), val('PE_COMMENT'), $judge_id, val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'), // <-- JUDGE_ID diganti ke $judge_id
-            val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), $jenis_id, // <-- JENIS_ID diganti ke $jenis_id
+            val('QE_COMMENT'), val('PE_COMMENT'), $judge_id, val('PIC'), floatval(val('WEIGHT_RUNNER')), val('PREPARED'),
+            val('CHECKED'), val('APPROVED'), intval(val('QTY_OK')), intval(val('QTY_NG')), floatval(val('CYCLE_TIME_ACT')), intval(val('MAC_NO')), $jenis_id,
             intval(val('TONAGE')), val('CORRECTIVE_ACTION'), val('ANALYSYS'), $foto_name,
             val('OPERATION'), floatval(val('REGRIND_PCT')), val('CHK_BURRY'), val('CHK_VOID'), val('CHK_SHORTMOLD'), val('CHK_WELDLINE'),
             val('CHK_BURNING'), val('CHK_SINKMARK'), val('CHK_DENTED'), val('CHK_SILVER'), val('CHK_SCRATCH'),
             val('CHK_DIMENSION'), val('CHK_EJECTOR_JAM'), val('CHK_RUNNER_STUCK'), val('CHK_PART_STUCK'), val('CHK_COOLING_LEAKAGE'),
             val('CHK_UNDERCUT_MOLD'), val('CHK_SLIDER_JAM'), val('CHK_MOLD_CLAMPING'), val('CHK_NIPPLE_COMPLETE'),
-            val('CHK_BACKFLOW'), val('CHK_ROBOT'), val('CHK_HEATER_BARREL'), val('CHK_CONVEYOR'), val('CHK_MTC'), val('CHK_HEATER_CONTROL'), val('MACHINE_REMARK'),
+            val('CHK_BACKFLOW'), val('CHK_ROBOT'), val('CHK_HEATER_BARREL'), val('CHK_CONVEYOR'), val('CHK_MTC'), val('CHK_HEATER_CONTROL'), val('MACHINE_REMARK'), // Fix typo HEATER_BARREL -> CHK_HEATER_BARREL
+            $attach_qe, $attach_mac,
             $foto_mat, $foto_core, $foto_cavity, $foto_mach
         ];
 
@@ -488,6 +501,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                         <label>Problem</label>
                                         <textarea name="PE_COMMENT" class="form-control" rows="2"></textarea>
                                     </div>
+                                    <div class="col-md-12 mt-2">
+                                        <label class="small fw-bold text-danger"><i class="bi bi-file-earmark-pdf"></i> Lampiran PDF (QE Comment)</label>
+                                        <input type="file" name="ATTACHMENT_QE" class="form-control form-control-sm" accept=".pdf">
+                                    </div>
                                     <div class="col-md-6">
                                         <label>Corrective Action</label>
                                         <textarea name="CORRECTIVE_ACTION" class="form-control" rows="2"></textarea>
@@ -601,6 +618,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 <div class="mb-3">
                                     <label class="form-label text-muted small fw-bold">PICTURE OF MACHINE STATISTIC</label>
                                     <input type="file" name="foto_machine" id="foto_machine" class="form-control" accept="image/*">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label text-danger small fw-bold"><i class="bi bi-file-earmark-pdf"></i> LAMPIRAN PDF MACHINE STATISTIC</label>
+                                    <input type="file" name="ATTACHMENT_MAC" class="form-control" accept=".pdf">
                                 </div>
                             </div>
                         </div>

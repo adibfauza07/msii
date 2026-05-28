@@ -500,7 +500,7 @@ $rowsPerPage = 20;
                     <th rowspan="3" class="col-po-bal">PO.Bal</th>
                     <th rowspan="3" class="col-plan">Del.Plan</th>
                     <th colspan="4">Actual Qty</th>
-                    <th rowspan="3" class="col-remark">R&nbsp; E&nbsp; M&nbsp; A&nbsp; R&nbsp; K</th>
+                    <th rowspan="3" class="col-remark">REMARK</th>
                     <th rowspan="3" class="col-check">loading<br>check</th>
                 </tr>
                 <tr>

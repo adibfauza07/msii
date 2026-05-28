@@ -1,195 +1,231 @@
 <?php
-// /msii/ppic/dashboard_ppic.php
+if (session_id() == "") {
+    session_start();
+}
 
-require_once __DIR__ . "/../middleware/Auth.php";
-require_once __DIR__ . "/../middleware/RoleCheck.php";
+require_once __DIR__ . "/../config/db_plant2.php";
 
-$page = isset($_GET['page']) ? $_GET['page'] : 'home';
+if ($conn === false) {
+    header("Location: login.php?error=session_expired");
+    exit();
+}
+
+$dbUser = isset($_SESSION["db_user"]) ? $_SESSION["db_user"] : "";
+$loginTime = isset($_SESSION["login_time"]) ? $_SESSION["login_time"] : "";
+
+function h($value) {
+    return htmlspecialchars((string)$value, ENT_QUOTES, "UTF-8");
+}
 ?>
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Dashboard PPIC</title>
-
-    <link rel="stylesheet" href="../assets/bootstrap.min.css">
+    <meta charset="utf-8">
+    <title>PPIC System - Plant 2</title>
 
     <style>
-        body {
+        html, body {
             margin: 0;
-            font-family: Arial, sans-serif;
-            background: #f4f6f9;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #d4d0c8;
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 12px;
+            color: #000000;
+            overflow: hidden;
         }
 
-        /* SIDEBAR */
-        #sidebar {
-            width: 240px;
+        .layout {
+            display: flex;
+            width: 100%;
             height: 100vh;
-            background: #1f2a36;
-            color: white;
-            position: fixed;
-            top: 0;
-            left: 0;
+        }
+
+        .sidebar {
+            width: 230px;
+            min-width: 230px;
+            height: 100vh;
+            background: #1d2a3d;
+            color: #ffffff;
+            box-sizing: border-box;
+            padding: 18px 14px;
             overflow-y: auto;
-            box-shadow: 2px 0 5px rgba(0,0,0,0.2);
         }
 
-        #sidebar h4 {
-            padding: 18px 20px;
-            margin: 0;
-            font-size: 17px;
-            background: #273442;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
+        .sidebar-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 18px;
+            text-align: center;
+            line-height: 23px;
+            letter-spacing: 1px;
         }
 
-        #sidebar h4 a {
-            color:#ff6b6b;
-            font-size:12px;
-            text-decoration:none;
+        .user-box {
+            background: #263850;
+            border: 1px solid #425a78;
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 16px;
+            font-size: 11px;
+            line-height: 17px;
         }
 
-        .nav-link {
-            color: #e5e5e5;
-            font-size: 14px;
-            padding: 12px 20px;
+        .menu-section {
+            font-size: 11px;
+            color: #b8c7dd;
+            margin: 14px 0 6px 2px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .menu-link {
             display: block;
-            transition: 0.15s;
-            cursor: pointer;
+            color: #ffffff;
+            text-decoration: none;
+            padding: 11px 10px;
+            margin-bottom: 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            background: transparent;
         }
 
-        .nav-link:hover {
-            background: #324257;
-            color: #fff;
+        .menu-link:hover {
+            background: #2f65d9;
         }
 
-        .submenu {
-            margin-left: 10px;
-        }
-
-        .submenu .nav-link {
-            padding-left: 35px;
-            font-size: 13px;
-            color: #cccccc;
-        }
-
-        .submenu .nav-link:hover {
-            background: #2c3a4b;
-        }
-
-        .active {
-            background: #405066 !important;
+        .menu-link.active {
+            background: #2f65d9;
             font-weight: bold;
-            color: white !important;
         }
 
-        #content {
-            margin-left: 240px;
-            padding: 30px;
+        .menu-link.logout {
+            background: #7a1f1f;
+            margin-top: 14px;
         }
 
-        .header-line {
-            border-bottom: 1px solid #dcdcdc;
-            margin: 12px 0 20px 0;
+        .menu-link.logout:hover {
+            background: #b32626;
         }
 
-        h2 {
-            margin: 0;
-            font-size: 22px;
+        .main {
+            flex: 1;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: #d4d0c8;
+            overflow: hidden;
+        }
+
+        .topbar {
+            height: 38px;
+            line-height: 38px;
+            background: #000080;
+            color: #ffffff;
             font-weight: bold;
-            color: #333;
+            text-align: center;
+            font-size: 16px;
+            letter-spacing: 1px;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .topbar-right {
+            position: absolute;
+            right: 12px;
+            top: 0;
+            font-size: 11px;
+            font-weight: normal;
+            letter-spacing: 0;
+        }
+
+        .frame-area {
+            flex: 1;
+            overflow: hidden;
+            background: #d4d0c8;
+        }
+
+        #mainFrame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #d4d0c8;
         }
     </style>
 </head>
 
 <body>
 
-<!-- SIDEBAR -->
-<div id="sidebar">
+<div class="layout">
 
-    <h4>
-        Dashboard PPIC 
-        <a href="../logout.php">Logout ⎋</a>
-    </h4>
+    <div class="sidebar">
+        <div class="sidebar-title">
+            MENU<br>
+            PPIC SYSTEM
+        </div>
 
-    <ul class="nav flex-column">
+        <div class="user-box">
+            User: <?php echo h($dbUser); ?><br>
+            Login: <?php echo h($loginTime); ?>
+        </div>
 
-        <!-- DASHBOARD -->
-        <li class="nav-item">
-            <a href="?page=home" class="nav-link <?= ($page=='home')?'active':'' ?>">
-                🏠 Dashboard
-            </a>
-        </li>
+        <div class="menu-section">Main</div>
+        <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Dashboard / Report</a>
 
-        <!-- DELIVERY INSTRUCTION -->
-        <li class="nav-item">
-            <a class="nav-link">🚚 Delivery Instruction</a>
+        <div class="menu-section">PPIC Entry</div>
+        <a class="menu-link" href="grid_input.php" target="mainFrame">LIST MASTER</a>
+        <a class="menu-link" href="input.php" target="mainFrame">BUAT QR HITACHI LABEL</a>
+        <a class="menu-link" href="label_plant2.php" target="mainFrame">LABEL MANUAL PLANT 2</a>
+        <a class="menu-link" href="input_order.php" target="mainFrame">Input Order</a>
+        <a class="menu-link" href="order_edit.php" target="mainFrame">Edit Order</a>
 
-            <!-- MENU UNTUK PLANT 1 -->
-            <?php if (isset($_SESSION['erp_role']) && $_SESSION['erp_role'] === 'p1'): ?>
-            <div class="submenu">
-                <a href="?page=p1" class="nav-link <?= ($page=='p1')?'active':'' ?>">➤ Plant 1</a>
-                <a href="?page=schedule_p1" class="nav-link <?= ($page=='schedule_p1')?'active':'' ?>">➤ Schedule Plant 1</a>
+        <div class="menu-section">Master</div>
+        <a class="menu-link" href="master_item_prod.php" target="mainFrame">BOM MASTER</a>
+        <a class="menu-link" href="master_machine.php" target="mainFrame">MASTER MACHINE</a>
+        <a class="menu-link" href="master_process.php" target="mainFrame">MASTER PROSES</a>
+
+       
+
+        <a class="menu-link logout" href="login.php?logout=1" target="_top">Logout</a>
+    </div>
+
+    <div class="main">
+        <div class="topbar">
+            PPIC SYSTEM - PLANT 2
+            <div class="topbar-right">
+                <?php echo h(date("d-M-Y H:i")); ?>
             </div>
-            <?php endif; ?>
+        </div>
 
-            <!-- MENU UNTUK PLANT 2 -->
-            <?php if (isset($_SESSION['erp_role']) && $_SESSION['erp_role'] === 'p2'): ?>
-            <div class="submenu">
-                <a href="?page=p2" class="nav-link <?= ($page=='p2')?'active':'' ?>">➤ Plant 2</a>
-                <a href="?page=schedule_p2" class="nav-link <?= ($page=='schedule_p2')?'active':'' ?>">➤ Schedule Plant 2</a>
-            </div>
-            <?php endif; ?>
-        </li>
-
-        <!-- SHOWA BARCODE (contoh: boleh untuk semua role p1/p2) -->
-        <li class="nav-item">
-            <a class="nav-link">🏷 Barcode Showa</a>
-
-            <div class="submenu">
-                <a href="grid_input.php" class="nav-link">- List Barcode</a>
-                <a href="input.php" class="nav-link">- Print Barcode</a>
-            </div>
-        </li>
-    </ul>
+        <div class="frame-area">
+            <iframe id="mainFrame" name="mainFrame" src="dashboard_home.php"></iframe>
+        </div>
+    </div>
 
 </div>
 
-<!-- CONTENT -->
-<div id="content">
-<?php
-// ROUTING
-if ($page == 'home') {
-    echo "<h2>Dashboard PPIC</h2><div class='header-line'></div>
-          Selamat datang, <b>{$_SESSION['erp_user']}</b>!";
-}
+<script>
+var menuLinks = document.getElementsByClassName("menu-link");
 
-// PLANT 1 HANYA UNTUK ROLE p1
-elseif ($page == 'p1') { 
-    only(['p1']);
-    include "instruction.php"; 
-}
-elseif ($page == 'schedule_p1') { 
-    only(['p1']);
-    include "schedule_p1.php"; 
-}
+for (var i = 0; i < menuLinks.length; i++) {
+    menuLinks[i].onclick = function () {
+        if (this.getAttribute("target") == "_top") {
+            return true;
+        }
 
-// PLANT 2 HANYA UNTUK ROLE p2
-elseif ($page == 'p2') { 
-    only(['p2']);
-    include "instruction_p2.php"; 
-}
-elseif ($page == 'schedule_p2') { 
-    only(['p2']);
-    include "schedule_p2.php"; 
-}
-?>
-</div>
+        for (var j = 0; j < menuLinks.length; j++) {
+            menuLinks[j].className = menuLinks[j].className.replace(" active", "");
+        }
 
-<script src="../assets/jquery.min.js"></script>
-<script src="../assets/bootstrap.min.js"></script>
+        if (this.className.indexOf("active") < 0) {
+            this.className = this.className + " active";
+        }
+
+        return true;
+    };
+}
+</script>
 
 </body>
 </html>

@@ -5,15 +5,15 @@ if (!isset($conn)) { die("Direct access not allowed."); }
 // Cek apakah user sudah menekan tombol filter atau belum
 $is_filtered = isset($_GET['filter']) ? true : false;
 
-// Ambil Parameter Filter Sesuai Stored Procedure
-$start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01'); 
-$end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');     
-$cust_alias = isset($_GET['cust_alias']) ? trim($_GET['cust_alias']) : '';
+// Ambil Parameter Filter (KALIBRASI TOTAL: Menggunakan cust_comp agar sinkron dengan form HTML)
+$start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01');
+$end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');    
+$cust_comp  = isset($_GET['cust_comp']) ? trim($_GET['cust_comp']) : ''; // <-- PERBAIKAN UTAMA PARAMETER
 $item_code  = isset($_GET['item_code']) ? trim($_GET['item_code']) : '';
 $f_status   = isset($_GET['f_status']) ? trim($_GET['f_status']) : '';
 
 // Query Lookup Dropdown Filter (Select2)
-$q_cust_list = q("SELECT DISTINCT CUST_ALIAS FROM PC_ITEM_CUSTOMER_VIEW WHERE CUST_ALIAS IS NOT NULL ORDER BY CUST_ALIAS ASC");
+$q_cust_list = q("SELECT DISTINCT CUST_COMP FROM PC_ITEM_CUSTOMER_VIEW WHERE CUST_COMP IS NOT NULL ORDER BY CUST_COMP ASC");
 $q_item_list = q("SELECT DISTINCT PART_NO, PART_NAME FROM PC_ITEM_CUSTOMER_VIEW ORDER BY PART_NAME ASC");
 
 $query = false;
@@ -21,11 +21,11 @@ $query = false;
 // Hanya jalankan query eksekusi SP jika tombol filter sudah ditekan
 if ($is_filtered) {
     $sp_start = date('Ymd', strtotime($start_date));
-    $sp_end   = date('Ymd', strtotime($end_date));
+    $sp_end   = date('Ymd', strtotime($end_date));  
     
-    // Sesuaikan parameter wildcard LIKE untuk SP
-    $sp_item = ($item_code != '') ? $item_code : '%';
-    $sp_cust = ($cust_alias != '') ? $cust_alias : '%';
+    // Gunakan trim() ganda untuk memastikan tidak ada spasi hantu bawaan tipe data CHAR database
+    $sp_item = ($item_code != '') ? trim($item_code) : '%';
+    $sp_cust = ($cust_comp != '') ? trim($cust_comp) : '%'; // <-- Dilempar lurus ke parameter Stored Procedure
 
     // Panggil Stored Procedure REP_PCIS1
     $sql = "{CALL REP_PCIS1(?, ?, ?, ?)}";
@@ -40,19 +40,20 @@ if ($is_filtered) {
 
 <style>
     .filter-card { background: #f8f9fa; border-top: 3px solid #8b5cf6 !important; border-radius: 8px; }
-    .table th { font-size: 11px; text-align: center; vertical-align: middle; background-color: #1f2a36 !important; color: white; }
+    .table th { font-size: 11px; text-align: center; vertical-align: middle; background-color: #1f2a36 !important; color: white; padding: 8px 4px; }
     .table td { font-size: 11px; vertical-align: middle; }
     .badge-4m { font-size: 9px; padding: 3px 6px; margin: 1px; display: inline-block; }
+    .x-small { font-size: 11px; }
 </style>
 
 <div class="container-fluid px-0">
     <div class="card filter-card shadow-sm mb-4">
         <div class="card-body p-3">
             <h6 class="fw-bold text-dark mb-3"><i class="bi bi-journal-text me-2"></i>Filter Rekapitulasi Perubahan (Summary SP Model)</h6>
-            <form method="GET" action="">
+            <form method="GET" action="dashboard_4m.php">
                 <input type="hidden" name="page" value="rekap">
                 
-                <div class="row g-2">
+                <div class="row g-2 align-items-end">
                     <div class="col-md-2">
                         <label class="x-small fw-bold text-muted mb-1">Tanggal Awal</label>
                         <input type="date" name="start_date" class="form-control form-control-sm" value="<?php echo $start_date; ?>">
@@ -63,11 +64,14 @@ if ($is_filtered) {
                     </div>
                     <div class="col-md-2">
                         <label class="x-small fw-bold text-muted mb-1">Customer</label>
-                        <select name="cust_alias" id="filter_cust" class="form-select form-select-sm select2-init">
-                            <option value="">-- Semua --</option>
-                            <?php while($c = sqlsrv_fetch_array($q_cust_list, SQLSRV_FETCH_ASSOC)): ?>
-                                <option value="<?php echo $c['CUST_ALIAS']; ?>" <?php echo $cust_alias == $c['CUST_ALIAS'] ? 'selected' : ''; ?>>
-                                    <?php echo $c['CUST_ALIAS']; ?>
+                        <select name="cust_comp" id="filter_cust" class="form-select form-select-sm select2-init">
+                            <option value="" <?php echo ($cust_comp == '') ? 'selected' : ''; ?>>-- Semua Customer --</option>
+                            <?php while($c = sqlsrv_fetch_array($q_cust_list, SQLSRV_FETCH_ASSOC)): 
+                                $clean_cust = trim($c['CUST_COMP']);
+                                if ($clean_cust == '') continue;
+                            ?> 
+                                <option value="<?php echo $clean_cust; ?>" <?php echo $cust_comp == $clean_cust ? 'selected' : ''; ?>>
+                                    <?php echo $clean_cust; ?>
                                 </option>
                             <?php endwhile; ?>
                         </select>
@@ -75,26 +79,31 @@ if ($is_filtered) {
                     <div class="col-md-3">
                         <label class="x-small fw-bold text-muted mb-1">Part / Item Name</label>
                         <select name="item_code" id="filter_item" class="form-select form-select-sm select2-init">
-                            <option value="">-- Semua Part --</option>
-                            <?php while($i = sqlsrv_fetch_array($q_item_list, SQLSRV_FETCH_ASSOC)): ?>
-                                <option value="<?php echo $i['PART_NO']; ?>" <?php echo $item_code == $i['PART_NO'] ? 'selected' : ''; ?>>
-                                    <?php echo $i['PART_NO'] . " - " . $i['PART_NAME']; ?>
+                            <option value="" <?php echo ($item_code == '') ? 'selected' : ''; ?>>-- Semua Part --</option>
+                            <?php 
+                            while($i = sqlsrv_fetch_array($q_item_list, SQLSRV_FETCH_ASSOC)): 
+                                $clean_part_no = isset($i['PART_NO']) ? trim($i['PART_NO']) : '';
+                                $part_name     = isset($i['PART_NAME']) ? trim($i['PART_NAME']) : '';
+                                if ($clean_part_no == '') continue;
+                            ?>
+                                <option value="<?php echo $clean_part_no; ?>" <?php echo ($item_code === $clean_part_no) ? 'selected' : ''; ?>>
+                                    <?php echo $clean_part_no . " - " . $part_name; ?>
                                 </option>
                             <?php endwhile; ?>
                         </select>
                     </div>
                     <div class="col-md-1">
                         <label class="x-small fw-bold text-muted mb-1">Status</label>
-                        <select name="f_status" class="form-select form-select-sm">
+                        <select name="f_status" class="form-select form-select-sm fw-bold text-center">
                             <option value="">-- Semua --</option>
                             <option value="OPEN" <?php echo $f_status == 'OPEN' ? 'selected' : ''; ?>>OPEN</option>
                             <option value="CLOSE" <?php echo $f_status == 'CLOSE' ? 'selected' : ''; ?>>CLOSE</option>
                         </select>
                     </div>
-                    <div class="col-md-2 d-flex align-items-end">
+                    <div class="col-md-2">
                         <div class="btn-group w-100">
                             <button type="submit" name="filter" value="1" class="btn btn-primary btn-sm fw-bold"><i class="bi bi-funnel"></i> Filter</button>
-                            <a href="print_rekap.php?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>&cust_alias=<?php echo $cust_alias; ?>&item_code=<?php echo $item_code; ?>&f_status=<?php echo $f_status; ?>&filter=<?php echo $is_filtered ? '1' : '0'; ?>" target="_blank" class="btn btn-success btn-sm fw-bold">
+                            <a href="print_rekap.php?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>&cust_comp=<?php echo urlencode($cust_comp); ?>&item_code=<?php echo $item_code; ?>&f_status=<?php echo $f_status; ?>&filter=<?php echo $is_filtered ? '1' : '0'; ?>" target="_blank" class="btn btn-success btn-sm fw-bold">
                                 <i class="bi bi-printer"></i> Cetak Summary
                             </a>
                             <a href="?page=rekap" class="btn btn-secondary btn-sm" title="Reset"><i class="bi bi-arrow-clockwise"></i></a>
@@ -109,31 +118,31 @@ if ($is_filtered) {
         <div class="card-body">
             <div class="table-responsive">
                 <table id="tableRekap4M" class="table table-striped table-hover table-bordered table-sm w-100">
-                    <thead>
+                    <thead class="table-dark">
                         <tr>
-                            <th>No. Control</th>
-                            <th>Tanggal</th>
-                            <th>Customer</th>
-                            <th>Part Code</th>
-                            <th>Part Name / Item</th>
-                            <th>Kategori (4M)</th>
-                            <th>Status</th>
+                            <th width="12%">No. Control</th>
+                            <th width="10%">Tanggal</th>
+                            <th width="15%">Customer</th>
+                            <th width="12%">Part Code</th>
+                            <th width="22%">Part Name / Item</th>
+                            <th width="10%">Model</th>
+                            <th width="12%">Kategori (4M)</th>
+                            <th width="7%">Status</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php 
                         $no_data = true;
-                        if ($is_filtered && $query): 
-                            while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)): 
-                                // Ambil status asli dan bersihkan spasi kanan kiri
+                        if ($is_filtered && $query):
+                            while($row = sqlsrv_fetch_array($query, SQLSRV_FETCH_ASSOC)):
+                                $row_cust = isset($row['CUST_ALIAS']) ? trim($row['CUST_ALIAS']) : '-';
                                 $current_status = isset($row['STATUS']) ? trim(strval($row['STATUS'])) : 'OPEN';
                                 
-                                // Filter status level PHP
                                 if ($f_status != '' && $current_status != $f_status) { continue; }
                                 $no_data = false;
                         ?>
                         <tr>
-                            <td class="fw-bold text-center text-primary"><?php echo isset($row['CONTROL_NO']) ? $row['CONTROL_NO'] : '-'; ?></td>
+                            <td class="fw-bold text-center text-primary"><?php echo isset($row['CONTROL_NO']) ? rtrim($row['CONTROL_NO']) : '-'; ?></td>
                             <td class="text-center">
                                 <?php 
                                 if (isset($row['CONTROL_DATE1'])) {
@@ -143,11 +152,12 @@ if ($is_filtered) {
                                 }
                                 ?>
                             </td>
-                            <td class="text-center fw-bold text-secondary"><?php echo isset($row['CUST_ALIAS']) ? trim($row['CUST_ALIAS']) : '-'; ?></td>
-                            <td class="fw-bold"><?php echo isset($row['PART_CODE']) ? $row['PART_CODE'] : (isset($row['PART_NO']) ? $row['PART_NO'] : '-'); ?></td>
-                            <td><?php echo isset($row['PART_NAME']) ? $row['PART_NAME'] : (isset($row['ITEM_NAME']) ? $row['ITEM_NAME'] : '-'); ?></td>
+                            <td class="fw-bold text-secondary"><?php echo $row_cust; ?></td>
+                            <td class="fw-bold text-dark"><?php echo isset($row['PART_CODE']) ? trim($row['PART_CODE']) : (isset($row['PART_NO']) ? trim($row['PART_NO']) : '-'); ?></td>
+                            <td><?php echo isset($row['PART_NAME']) ? trim($row['PART_NAME']) : (isset($row['ITEM_NAME']) ? trim($row['ITEM_NAME']) : '-'); ?></td>
+                            <td class="text-center fw-bold text-muted"><?php echo isset($row['MODEL']) ? trim($row['MODEL']) : '-'; ?></td>
                             <td>
-                                <div class="d-flex flex-wrap">
+                                <div class="d-flex flex-wrap justify-content-center">
                                     <?php if(!empty($row['MAN'])): ?><span class="badge bg-danger badge-4m">Man</span><?php endif; ?>
                                     <?php if(!empty($row['MACHINE'])): ?><span class="badge bg-primary badge-4m">Machine</span><?php endif; ?>
                                     <?php if(!empty($row['METHOD'])): ?><span class="badge bg-warning text-dark badge-4m">Method</span><?php endif; ?>
@@ -168,7 +178,7 @@ if ($is_filtered) {
                         if ($no_data): 
                         ?>
                         <tr>
-                            <td colspan="7" class="text-center py-4 text-muted bg-light">
+                            <td colspan="8" class="text-center py-4 text-muted bg-light">
                                 <?php if (!$is_filtered): ?>
                                     <i class="bi bi-info-circle me-1"></i> Silakan tentukan rentang tanggal parameter di atas, lalu klik tombol <b>Filter</b> untuk memunculkan data rekap.
                                 <?php else: ?>
