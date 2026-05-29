@@ -5,10 +5,10 @@ if (!isset($conn)) { die("Direct access not allowed."); }
 // Cek apakah user sudah menekan tombol filter atau belum
 $is_filtered = isset($_GET['filter']) ? true : false;
 
-// Ambil Parameter Filter (KALIBRASI TOTAL: Menggunakan cust_comp agar sinkron dengan form HTML)
+// Ambil Parameter Filter Sesuai Stored Procedure
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01');
 $end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');    
-$cust_comp  = isset($_GET['cust_comp']) ? trim($_GET['cust_comp']) : ''; // <-- PERBAIKAN UTAMA PARAMETER
+$cust_alias = isset($_GET['cust_alias']) ? trim($_GET['cust_alias']) : '';
 $item_code  = isset($_GET['item_code']) ? trim($_GET['item_code']) : '';
 $f_status   = isset($_GET['f_status']) ? trim($_GET['f_status']) : '';
 
@@ -23,9 +23,8 @@ if ($is_filtered) {
     $sp_start = date('Ymd', strtotime($start_date));
     $sp_end   = date('Ymd', strtotime($end_date));  
     
-    // Gunakan trim() ganda untuk memastikan tidak ada spasi hantu bawaan tipe data CHAR database
     $sp_item = ($item_code != '') ? trim($item_code) : '%';
-    $sp_cust = ($cust_comp != '') ? trim($cust_comp) : '%'; // <-- Dilempar lurus ke parameter Stored Procedure
+    $sp_cust = ($cust_alias != '') ? trim($cust_alias) : '%';
 
     // Panggil Stored Procedure REP_PCIS1
     $sql = "{CALL REP_PCIS1(?, ?, ?, ?)}";
@@ -64,13 +63,13 @@ if ($is_filtered) {
                     </div>
                     <div class="col-md-2">
                         <label class="x-small fw-bold text-muted mb-1">Customer</label>
-                        <select name="cust_comp" id="filter_cust" class="form-select form-select-sm select2-init">
-                            <option value="" <?php echo ($cust_comp == '') ? 'selected' : ''; ?>>-- Semua Customer --</option>
+                        <select name="cust_alias" id="filter_cust" class="form-select form-select-sm select2-init">
+                            <option value="">-- Semua --</option>
                             <?php while($c = sqlsrv_fetch_array($q_cust_list, SQLSRV_FETCH_ASSOC)): 
                                 $clean_cust = trim($c['CUST_COMP']);
                                 if ($clean_cust == '') continue;
                             ?> 
-                                <option value="<?php echo $clean_cust; ?>" <?php echo $cust_comp == $clean_cust ? 'selected' : ''; ?>>
+                                <option value="<?php echo $clean_cust; ?>" <?php echo $cust_alias == $clean_cust ? 'selected' : ''; ?>>
                                     <?php echo $clean_cust; ?>
                                 </option>
                             <?php endwhile; ?>
@@ -86,9 +85,7 @@ if ($is_filtered) {
                                 $part_name     = isset($i['PART_NAME']) ? trim($i['PART_NAME']) : '';
                                 if ($clean_part_no == '') continue;
                             ?>
-                                <option value="<?php echo $clean_part_no; ?>" <?php echo ($item_code === $clean_part_no) ? 'selected' : ''; ?>>
-                                    <?php echo $clean_part_no . " - " . $part_name; ?>
-                                </option>
+                                <option value="<?php echo $clean_part_no; ?>" <?php echo ($item_code === $clean_part_no) ? 'selected' : ''; ?>><?php echo $clean_part_no . " - " . $part_name; ?></option>
                             <?php endwhile; ?>
                         </select>
                     </div>
@@ -103,7 +100,8 @@ if ($is_filtered) {
                     <div class="col-md-2">
                         <div class="btn-group w-100">
                             <button type="submit" name="filter" value="1" class="btn btn-primary btn-sm fw-bold"><i class="bi bi-funnel"></i> Filter</button>
-                            <a href="print_rekap.php?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>&cust_comp=<?php echo urlencode($cust_comp); ?>&item_code=<?php echo $item_code; ?>&f_status=<?php echo $f_status; ?>&filter=<?php echo $is_filtered ? '1' : '0'; ?>" target="_blank" class="btn btn-success btn-sm fw-bold">
+                            
+                            <a href="print_rekap.php?start_date=<?php echo $start_date; ?>&end_date=<?php echo $end_date; ?>&cust_alias=<?php echo urlencode($cust_alias); ?>&item_code=<?php echo $item_code; ?>&f_status=<?php echo $f_status; ?>&filter=<?php echo $is_filtered ? '1' : '0'; ?>" target="_blank" id="btnCetakSummary" class="btn btn-success btn-sm fw-bold">
                                 <i class="bi bi-printer"></i> Cetak Summary
                             </a>
                             <a href="?page=rekap" class="btn btn-secondary btn-sm" title="Reset"><i class="bi bi-arrow-clockwise"></i></a>
@@ -126,8 +124,8 @@ if ($is_filtered) {
                             <th width="12%">Part Code</th>
                             <th width="22%">Part Name / Item</th>
                             <th width="10%">Model</th>
-                            <th width="12%">Kategori (4M)</th>
-                            <th width="7%">Status</th>
+                            <th width="14%">Kategori (4M)</th>
+                            <th width="8%">Status</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -206,16 +204,34 @@ $(document).ready(function() {
         width: '100%'
     });
 
-    $('#tableRekap4M').DataTable({
+    // Inisialisasi DataTables
+    var table = $('#tableRekap4M').DataTable({
         "paging": true,
         "lengthChange": true,
-        "searching": <?php echo $is_filtered ? 'true' : 'false'; ?>, 
+        "searching": true, // WAJIB TRUE: Agar kolom search DataTables aktif
         "ordering": true,
         "info": true,
         "autoWidth": false,
         "responsive": true,
-        "lengthMenu": [5, 10, 25], 
+        "lengthMenu": [5, 10, 25],
         "pageLength": 10
+    });
+
+    // PERBAIKAN LOGIKA UTAMA: Jembatan Sinkronisasi Visual Search box ke Tombol Cetak Summary
+    // Ambil URL dasar dari tombol cetak summary bawaan PHP
+    var basePrintUrl = $('#btnCetakSummary').attr('href');
+
+    // Setiap kali user mengetik sesuatu di kotak 'Search' DataTables
+    table.on('search.dt', function() {
+        var searchKeyword = table.search(); // Ambil teks pencarian (misal: 'Diamond')
+        
+        if(searchKeyword.trim() !== "") {
+            // Pasang parameter &dt_search=Diamond ke dalam URL tombol cetak secara dinamis
+            $('#btnCetakSummary').attr('href', basePrintUrl + '&dt_search=' + encodeURIComponent(searchKeyword));
+        } else {
+            // Kembalikan ke URL semula jika kotak pencarian dikosongkan
+            $('#btnCetakSummary').attr('href', basePrintUrl);
+        }
     });
 });
 </script>

@@ -6,21 +6,21 @@ $is_filtered = isset($_GET['filter']) ? true : false;
 
 $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01');
 $end_date   = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');    
-$cust_comp  = isset($_GET['cust_comp']) ? trim($_GET['cust_comp']) : ''; // <-- PERBAIKAN SINKRONISASI VARIABEL
+$cust_alias = isset($_GET['cust_alias']) ? trim($_GET['cust_alias']) : '';
 $item_code  = isset($_GET['item_code']) ? trim($_GET['item_code']) : '';
 $f_status   = isset($_GET['f_status']) ? trim($_GET['f_status']) : '';
+
+// PERBAIKAN: Tangkap kata kunci pencarian DataTables dari kiriman JavaScript URL
+$dt_search  = isset($_GET['dt_search']) ? trim($_GET['dt_search']) : '';
 
 $query = false;
 
 if ($is_filtered) {
     $sp_start = date('Ymd', strtotime($start_date));
     $sp_end   = date('Ymd', strtotime($end_date));  
-    
-    // Gunakan trim() ganda untuk memastikan tidak ada spasi hantu terbawa dari URL
-    $sp_item = ($item_code != '') ? trim($item_code) : '%';
-    $sp_cust = ($cust_comp != '') ? trim($cust_comp) : '%'; // <-- Dilempar aman ke Stored Procedure
+    $sp_item  = ($item_code != '') ? trim($item_code) : '%';
+    $sp_cust  = ($cust_alias != '') ? trim($cust_alias) : '%';
 
-    // Panggil Stored Procedure REP_PCIS1
     $sql = "{CALL REP_PCIS1(?, ?, ?, ?)}";
     $params = array($sp_start, $sp_end, $sp_item, $sp_cust);
     $query = q($sql, $params);
@@ -66,6 +66,9 @@ if ($is_filtered) {
             <tr>
                 <td style="font-size: 9px; color: #444;">Run Date: <?php echo date('d-m-Y H:i:s'); ?></td>
                 <td align="right" style="font-size: 9px; color: #444;">User: <?php echo isset($_SESSION['erp_user']) ? $_SESSION['erp_user'] : 'System'; ?></td>
+                <?php if(!empty($dt_search)): ?>
+                    <br><span style="color:blue; font-size:10px;">Filtered by search keyword: "<?php echo htmlspecialchars($dt_search); ?>"</span>
+                <?php endif; ?>
             </tr>
         </table>
     </div>
@@ -91,6 +94,21 @@ if ($is_filtered) {
                     $current_status = isset($row['STATUS']) ? trim(strval($row['STATUS'])) : 'OPEN';
                     if ($f_status != '' && $current_status != $f_status) { continue; }
                     
+                    // PERBAIKAN LOGIKA UTAMA: Lakukan pencarian string global (seperti DataTables Search) di level PHP array row
+                    if (!empty($dt_search)) {
+                        // Gabungkan seluruh teks baris data untuk dicocokkan dengan keyword (case-insensitive)
+                        $haystack = (isset($row['CONTROL_NO']) ? $row['CONTROL_NO'] : '') . ' ' .
+                                    (isset($row['CUST_ALIAS']) ? $row['CUST_ALIAS'] : '') . ' ' .
+                                    (isset($row['PART_CODE']) ? $row['PART_CODE'] : '') . ' ' .
+                                    (isset($row['PART_NAME']) ? $row['PART_NAME'] : '') . ' ' .
+                                    (isset($row['MODEL']) ? $row['MODEL'] : '');
+                        
+                        // Jika kata kunci (misal: 'Diamond') tidak ditemukan pada baris data ini, lewati baris ini (skip)
+                        if (stripos($haystack, $dt_search) === false) {
+                            continue;
+                        }
+                    }
+
                     $no_data = false;
                     
                     $m_list = array();

@@ -135,7 +135,7 @@ function h($value) {
         <a class="menu-link" href="order_edit.php" target="mainFrame">Edit Order</a>
 		<a class="menu-link" href="depresiasi.php" target="mainFrame">DEPRESIASI</a>
 		<a class="menu-link" href="quotation.php" target="mainFrame">LIST QUOTATION</a>
-        <a class="menu-link" href="login.php?logout=1" target="_top">Logout</a>
+      <a class="menu-link logout" href="http://103.136.170.125:81/msii/index.php?logout=1" target="_top">Logout</a>
     </div>
 
     <div class="main">

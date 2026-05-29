@@ -1,197 +1,203 @@
 <?php
-session_start();
+define('LOGIN_PAGE', true);
 
-$error = "";
+$errorMsg = "";
+$successLogin = false;
 
-// =====================================
-// PROSES LOGIN SAAT FORM DI-SUBMIT
-// =====================================
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-
-    $user = trim($_POST['username']);
-    $pass = trim($_POST['password']);
-    $u    = strtolower($user);
-
-    // ===========================================
-    // PILIH SERVER & ROLE BERDASARKAN USER LOGIN
-    // ===========================================
-    switch ($u) {
-        case 'plan1':
-            $serverName = '192.168.0.4';
-            $role       = 'p1';   // user plant 1
-            break;
-
-        case 'plan2':
-            $serverName = '192.168.0.9';
-            $role       = 'p2';   // user plant 2
-            break;
-
-        case 'admin':
-            $serverName = '192.168.0.9';
-            $role       = 'admin';
-            break;
-
-        default:
-            $serverName = '192.168.0.9';
-            $role       = 'other';
-            break;
+// Jika user klik logout
+if (isset($_GET['logout'])) {
+    if (session_status() == PHP_SESSION_NONE) {
+        session_start();
     }
 
-    // TEST LOGIN KE SQL SERVER
-    $connectionInfo = [
-        "Database"     => "msdata",
-        "Uid"          => $user,
-        "PWD"          => $pass,
-        "CharacterSet" => "UTF-8"
-    ];
+    session_destroy();
+    header("Location: login.php");
+    exit();
+}
 
-    $testConn = @sqlsrv_connect($serverName, $connectionInfo);
+// Proses login
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
-    if ($testConn === false) {
-        $error = "Login gagal! Username atau password salah.";
+    $username = isset($_POST['username']) ? trim($_POST['username']) : "";
+    $password = isset($_POST['password']) ? $_POST['password'] : "";
+
+    if ($username == "" || $password == "") {
+        $errorMsg = "Username dan password wajib diisi.";
     } else {
 
-        // Jika login berhasil → tutup koneksi test
-        sqlsrv_close($testConn);
+        $is_login_process = true;
+        $temp_username = $username;
+        $temp_password = $password;
 
-        // SIMPAN USER & INFO LAIN KE SESSION
-        $_SESSION['erp_user']   = $user;
-        $_SESSION['erp_pass']   = $pass;
-        $_SESSION['server_sql'] = $serverName;
-        $_SESSION['erp_role']   = $role;
-        $_SESSION['last_activity'] = time();
+        require_once __DIR__ . "/../config/db_plant2.php";
 
-        // REDIRECT SESUAI ROLE / DIVISI
-        if ($role === 'p1' || $role === 'p2') {
-            header("Location: /msii/mtn/dashboard_mtn.php");
-            exit;
-        }
+        if ($conn !== false) {
+            $_SESSION['db_user'] = $username;
+            $_SESSION['db_pass'] = $password;
+            $_SESSION['active_plant'] = "p2";
+            $_SESSION['login_time'] = date('Y-m-d H:i:s');
 
-        if ($u == "admin") {
-            header("Location: /msii/admin/dashboard_admin.php");
-            exit;
-        }
-        if ($u == "marketing") {
-            header("Location: /msii/marketing/dashboard_marketing.php");
-            exit;
-        }
-        if ($u == "sales") {
-            header("Location: /msii/sales/dashboard_sales.php");
-            exit;
-        }
-        if ($u == "inventory") {
-            header("Location: /msii/inventory/dashboard_inv.php");
-            exit;
-        }
-        if ($u == "purchasing") {
-            header("Location: /msii/purchasing/dashboard_purchasing.php");
-            exit;
-        }
-        if ($u == "production") {
-            header("Location: /msii/production/dashboard_production.php");
-            exit;
-        }
-        if ($u == "qc") {
-            header("Location: /msii/qc/dashboard_qc.php");
-            exit;
-        }
-        if ($u == "pe") {
-            header("Location: /msii/pe/dashboard_pe.php");
-            exit;
-        }
-        if ($u == "mtn") {
-            header("Location: /msii/mtn/dashboard_mtn.php");
-            exit;
-        }
+            session_regenerate_id(true);
 
-        // Jika username tidak ada routingnya
-        $error = "User tidak memiliki dashboard!";
+            header("Location: dashboard_purch.php");
+            exit();
+        } else {
+            $errorMsg = "Login gagal. Username atau password database salah.";
+        }
+    }
+
+} else {
+
+    require_once __DIR__ . "/../config/db_plant2.php";
+
+    // Kalau sudah login, langsung ke dashboard
+    if (isset($_SESSION['db_user']) && !empty($_SESSION['db_user']) && $conn !== false) {
+        header("Location: dashboard_home.php");
+        exit();
     }
 }
 ?>
 <!DOCTYPE html>
-<html lang="id">
+<html>
 <head>
-<meta charset="UTF-8">
-<title>Login ERP | IMC Tekno</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link href="../assets/bootstrap.min.css" rel="stylesheet">
+    <meta charset="utf-8">
+    <title>Login Ordering Plant 2</title>
 
-<style>
-body {
-  height: 100vh;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(135deg, #0d6efd 0%, #1a73e8 50%, #0049b7 100%);
-  font-family: "Segoe UI", sans-serif;
-}
-.login-card {
-  width: 360px;
-  padding: 30px;
-  border-radius: 15px;
-  background: rgba(255,255,255,0.15);
-  box-shadow: 0 8px 25px rgba(0,0,0,0.25);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255,255,255,0.25);
-  color: white;
-}
-.login-logo {
-  width: 90px;
-  border-radius: 10px;
-  margin-bottom: 15px;
-}
-.form-control {
-  background: rgba(255,255,255,0.25);
-  border: none;
-  color: #fff;
-}
-.form-control:focus {
-  background: rgba(255,255,255,0.35);
-  box-shadow: none;
-  outline: none;
-  color: #fff;
-}
-::placeholder { color: #e5e5e5 !important; }
-.btn-login {
-  background: #ffc107;
-  border: none;
-  color: #000;
-  font-weight: bold;
-  padding: 10px;
-  border-radius: 8px;
-}
-.alert-custom {
-  background: rgba(255,0,0,0.6);
-  color: white;
-  border-radius: 8px;
-  padding: 10px;
-}
-</style>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #d4d0c8;
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 12px;
+        }
+
+        .login-wrapper {
+            width: 360px;
+            margin: 100px auto;
+            border: 2px solid #808080;
+            background: #d4d0c8;
+            padding: 0;
+        }
+
+        .title-bar {
+            background: #000080;
+            color: #ffffff;
+            padding: 6px 8px;
+            font-weight: bold;
+        }
+
+        .login-body {
+            padding: 16px;
+        }
+
+        table {
+            width: 100%;
+        }
+
+        td {
+            padding: 4px;
+        }
+
+        input {
+            width: 100%;
+            height: 24px;
+            border: 1px solid #808080;
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 12px;
+            box-sizing: border-box;
+            padding: 2px 4px;
+        }
+
+        button {
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 12px;
+            background: #d4d0c8;
+            border: 2px outset #ffffff;
+            padding: 5px 18px;
+            cursor: pointer;
+        }
+
+        button:active {
+            border: 2px inset #ffffff;
+        }
+
+        .button-row {
+            text-align: right;
+            margin-top: 12px;
+        }
+
+        .error {
+            background: #ffd6d6;
+            border: 1px solid #cc0000;
+            color: #800000;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+
+        .info {
+            background: #eeeeee;
+            border: 1px solid #808080;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+
+        .footer {
+            font-size: 11px;
+            margin-top: 10px;
+            color: #333333;
+        }
+    </style>
 </head>
-
 
 <body>
 
-<div class="login-card text-center">
-  <img src="../mtn/logo_imc.jpg" class="login-logo" alt="Logo">
-  <h4 class="fw-bold mb-3">Login ERP IMC</h4>
+<div class="login-wrapper">
+    <div class="title-bar">LOGIN PURCHASING SYSTEM - PLANT 2</div>
 
-  <?php if($error != "") { ?>
-    <div class="alert-custom mb-3"><?= $error ?></div>
-  <?php } ?>
+    <div class="login-body">
 
-  <?php if(isset($_GET['timeout']) && $_GET['timeout'] == 1) { ?>
-    <div class="alert-custom mb-3">Sesi habis. Silakan login kembali.</div>
-  <?php } ?>
+        <?php if ($errorMsg != "") { ?>
+            <div class="error"><?php echo htmlspecialchars($errorMsg, ENT_QUOTES, 'UTF-8'); ?></div>
+        <?php } ?>
 
-  <form method="post">
-      <input type="text" name="username" class="form-control mb-3" placeholder="Username SQL Server" required>
-      <input type="password" name="password" class="form-control mb-4" placeholder="Password" required>
-      <button class="btn-login w-100">Login</button>
-  </form>
+        <?php if (isset($_GET['error']) && $_GET['error'] == 'session_expired') { ?>
+            <div class="error">Session habis atau koneksi database gagal. Silakan login ulang.</div>
+        <?php } ?>
 
+        <div class="info">
+            Server: <b>192.168.0.9</b><br>
+            Database: <b>msdata</b>
+        </div>
+
+        <form method="post" action="login.php" autocomplete="off">
+            <table>
+                <tr>
+                    <td style="width:90px;">Username</td>
+                    <td>
+                        <input type="text" name="username" id="username" autofocus>
+                    </td>
+                </tr>
+
+                <tr>
+                    <td>Password</td>
+                    <td>
+                        <input type="password" name="password" id="password">
+                    </td>
+                </tr>
+            </table>
+
+            <div class="button-row">
+                <button type="submit">LOGIN</button>
+                <button type="reset">RESET</button>
+            </div>
+        </form>
+
+        <div class="footer">
+            Gunakan user SQL Server yang memiliki akses ke database msData.
+        </div>
+
+    </div>
 </div>
 
 </body>

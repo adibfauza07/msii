@@ -140,7 +140,7 @@ function h($value) {
 
     <div class="header-box">
         <div class="header-title">REPORT MENU</div>
-        <div class="header-subtitle">PPIC System Plant 2</div>
+        <div class="header-subtitle">PURCHASING System Plant 2</div>
     </div>
 
     <div class="info-box">
@@ -181,7 +181,7 @@ function h($value) {
 
             <div class="report-item">
                 <div class="report-name">LOADING CAPACITY PER TONASE </div>
-                <a class="button" href="loading_capacity_tonase.php" target="_blank">OPEN</a>
+                <a class="button" href="mps_capacity.php" target="_blank">OPEN</a>
             </div>
 
             <div class="report-item">

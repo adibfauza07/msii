@@ -2,16 +2,16 @@
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 require_once __DIR__ . '/../config/database.php';
 
-// Ambil Nomor Control dari URL (Sesuai fungsi printData di JavaScript sebelumnya)
-$no = isset($_GET['no']) ? $_GET['no'] : '';
+// Ambil Nomor Control dari URL parameter
+$no = isset($_GET['no']) ? trim($_GET['no']) : '';
 
-if ($no == '') die("Nomor Kontrol Tidak Ditemukan.");
+if ($no == '') {
+    die("<div style='padding:20px; color:red; font-family:Arial;'><b>Error:</b> Control Number tidak ditemukan pada URL parameter.</div>");
+}
 
-// Query Lengkap mengambil Header & Join ke Master Data
-// Query yang disesuaikan dengan nama kolom di View PC_ITEM_CUSTOMER_VIEW
-$sql = "SELECT P.*, C.CUST_COMP, V.PART_NAME, V.PART_NO, D.DEP_NAME 
+// Query presisi menarik seluruh record PROSES_CHANGE beserta data view internal
+$sql = "SELECT P.*, V.PART_NAME, V.PART_NO, V.PART_CODE, V.CUST_COMP, V.CUST_ALIAS, D.DEP_NAME 
         FROM PROSES_CHANGE P
-        LEFT JOIN CUST C ON P.ITEM_ID = C.CUST_ID 
         LEFT JOIN PC_ITEM_CUSTOMER_VIEW V ON P.ITEM_ID = V.ITEM_ID
         LEFT JOIN DEPT D ON P.DEP_CODE = D.DEP_CODE
         WHERE P.CONTROL_NO = ?";
@@ -19,160 +19,298 @@ $sql = "SELECT P.*, C.CUST_COMP, V.PART_NAME, V.PART_NO, D.DEP_NAME
 $stmt = q($sql, array($no));
 $d = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
 
-if (!$d) die("Data dengan nomor $no tidak ada di database.");
+if (!$d) {
+    die("<div style='padding:20px; color:red; font-family:Arial;'><b>Error:</b> Data dengan nomor " . htmlspecialchars($no) . " tidak terdaftar di database.</div>");
+}
 
-// Format Tanggal
+// Format Tanggal standard dokumen (d-M-Y)
 function fTgl($date) {
-    return ($date instanceof DateTime) ? $date->format('d-M-Y') : '-';
+    return ($date instanceof DateTime) ? $date->format('d-M-Y') : (!empty($date) ? date('d-M-Y', strtotime($date)) : '');
+}
+
+// Fungsi render simbol kotak centang standard Crystal Report (.rpt)
+function renderBox($checked) {
+    return ($checked == 1 || $checked === true || strtolower(trim(strval($checked))) === 'yes') 
+        ? '<span class="cb-icon">&#9745;</span>'  // Checked box
+        : '<span class="cb-icon">&#9744;</span>'; // Unchecked box
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Cetak PCIS - <?php echo $no; ?></title>
+    <title>PROCESS CHANGE INFORMATION SHEET - <?php echo htmlspecialchars($no); ?></title>
     <style>
-        body { font-family: Arial, sans-serif; font-size: 11px; color: #000; margin: 0; padding: 20px; }
-        .wrapper { width: 100%; max-width: 210mm; margin: 0 auto; border: 1px solid #ccc; padding: 10px; }
+        * { box-sizing: border-box; -moz-box-sizing: border-box; }
+        body { font-family: "Arial", sans-serif; font-size: 9.5pt; color: #000; background-color: #fff; margin: 0; padding: 0; }
         
-        /* Header */
-        .header-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-        .header-table td { border: 1px solid #000; padding: 5px; vertical-align: top; }
-        .title-pcis { font-size: 14px; font-weight: bold; text-align: center; text-decoration: underline; }
+        .no-print { background: #f1f5f9; padding: 10px; text-align: center; border-bottom: 1px solid #cbd5e1; }
+        .no-print button { padding: 6px 16px; font-weight: bold; font-size: 12px; cursor: pointer; border-radius: 4px; margin: 0 5px; }
         
-        /* Main Layout Table */
-        .main-table { width: 100%; border-collapse: collapse; }
-        .main-table td { border: 1px solid #000; padding: 4px; vertical-align: top; }
-        .bg-gray { background-color: #f0f0f0; font-weight: bold; }
+        /* Mengunci ukuran kertas portrait A4 mirip lembar kerja .rpt asli */
+        .report-page { width: 210mm; margin: 0 auto; padding: 12mm 10mm; background: #fff; }
         
-        /* Checkbox & Radio Manual Styling */
-        .box { width: 10px; height: 10px; border: 1px solid #000; display: inline-block; margin-right: 3px; vertical-align: middle; text-align: center; line-height: 10px; font-size: 9px; }
-        .checked { background-color: #000; color: #fff; }
-
-        /* Footer / Approval */
-        .footer-table { width: 100%; border-collapse: collapse; margin-top: -1px; }
-        .footer-table td { border: 1px solid #000; padding: 5px; text-align: center; height: 20px; }
+        .main-title { font-size: 13pt; font-weight: bold; text-align: center; letter-spacing: 0.5px; margin-bottom: 15px; }
+        
+        /* Master Grid Tabel Lurus Tanpa Spasi */
+        table { width: 100%; border-collapse: collapse; margin-bottom: -1px; table-layout: fixed; }
+        th, td { border: 1px solid #000000; padding: 4px 6px; vertical-align: top; font-size: 8.5pt; }
+        
+        .lbl-bold { font-weight: bold; }
+        .lbl-italic { font-style: italic; color: #334155; }
+        .text-center { text-align: center; }
+        .text-right { text-align: right; }
+        
+        .cb-icon { font-size: 11pt; font-weight: bold; vertical-align: middle; margin-right: 3px; }
+        .content-block { min-height: 55px; font-size: 8.5pt; line-height: 1.2; white-space: pre-wrap; }
         
         @media print {
-            .no-print { display: none; }
-            .wrapper { border: none; padding: 0; }
-            body { padding: 0; }
+            .no-print { display: none !important; }
+            .report-page { width: 100%; margin: 0; padding: 5mm; }
+            body { background: #fff; }
         }
     </style>
 </head>
-<body onload="window.print()">
+<body>
 
-    <div class="no-print" style="margin-bottom: 20px;">
-        <button onclick="window.print()" style="padding: 10px 20px; cursor: pointer;">KLIK UNTUK PRINT</button>
-        <button onclick="window.close()" style="padding: 10px 20px; cursor: pointer;">TUTUP</button>
+    <div class="no-print">
+        <button onclick="window.print()" style="background: #2563eb; color: white; border: 1px solid #1d4ed8;">Cetak / Print Report</button>
+        <button onclick="window.close()" style="background: #64748b; color: white; border: 1px solid #475569;">Tutup Halaman</button>
     </div>
 
-    <div class="wrapper">
-        <table class="header-table">
+    <div class="report-page">
+        <div class="main-title">PROCESS CHANGE INFORMATION SHEET</div>
+
+        <table>
             <tr>
-                <td width="20%"><img src="../logo_imc.jpg" width="60"></td>
-                <td width="60%" class="title-pcis">PROSES CHANGE INFORMATION SHEET (PCIS)</td>
-                <!-- Ganti bagian ini -->
-<td width="20%">Plant: <?php echo isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p1' ? '1' : '2'; ?></td>
+                <td width="8%" style="border:none;" class="lbl-bold">TO</td>
+                <td width="42%" style="border-bottom: 1px solid #000; border-top:none; border-left:none; border-right:none;"><?php echo htmlspecialchars($d['TO_PCIS'] ? 'ALL DEPARTEMENT' : ''); ?></td>
+                <td width="15%" style="border:none;" class="lbl-bold">CONTROL NO</td>
+                <td width="35%" style="border-bottom: 1px solid #000; border-top:none; border-left:none; border-right:none;" class="lbl-bold"><?php echo htmlspecialchars($d['CONTROL_NO']); ?></td>
+            </tr>
+            <tr>
+                <td style="border:none;" class="lbl-bold">CC</td>
+                <td style="border-bottom: 1px solid #000; border-top:none; border-left:none; border-right:none;"><?php echo htmlspecialchars($d['CC'] ? 'ALL HEAD DEPT' : ''); ?></td>
+                <td style="border:none;" class="lbl-bold">CONTROL DATE</td>
+                <td style="border-bottom: 1px solid #000; border-top:none; border-left:none; border-right:none;"><?php echo fTgl($d['CONTROL_DATE1']); ?></td>
+            </tr>
+            <tr style="height: 6px;"><td colspan="4" style="border:none;"></td></tr>
+        </table>
+
+        <table>
+            <tr>
+                <td width="30%" class="lbl-italic" style="border-bottom:none;">Request by</td>
+                <td width="70%" class="lbl-italic" style="border-bottom:none;">Person in Charge</td>
+            </tr>
+            <tr>
+                <td style="border-top:none; padding-left: 15px; vertical-align: middle;">
+                    <div style="margin-bottom: 5px;"><?php echo renderBox($d['INTERNAL']); ?> Internal</div>
+                    <div style="margin-bottom: 5px;"><?php echo renderBox($d['CUSTOMER']); ?> Customer</div>
+                    <div><?php echo renderBox($d['SUPPLIER']); ?> Supplier</div>
+                </td>
+                <td style="border-top:none; padding: 6px 12px;">
+                    <table style="width:100%; border:none; margin:0;">
+                        <tr>
+                            <td width="20%" style="border:none; padding:3px 0;">Name</td>
+                            <td width="80%" style="border-bottom:1px solid #000; border-top:none; border-left:none; border-right:none; padding:3px 0;"><?php echo htmlspecialchars($d['PIC_NAME']); ?></td>
+                        </tr>
+                        <tr>
+                            <td style="border-none; padding:3px 0;">Department</td>
+                            <td style="border-bottom:1px solid #000; border-top:none; border-left:none; border-right:none; padding:3px 0;"><?php echo htmlspecialchars($d['DEP_NAME'] ? $d['DEP_CODE'] : ''); ?></td>
+                        </tr>
+                        <tr>
+                            <td style="border-none; padding:3px 0;">Sign</td>
+                            <td style="border-bottom:1px solid #000; border-top:none; border-left:none; border-right:none; padding:3px 0;"></td>
+                        </tr>
+                    </table>
+                </td>
             </tr>
         </table>
 
-        <table class="main-table">
-            <tr>
-                <td width="15%" class="bg-gray">CONTROL NO</td>
-                <td width="35%"><?php echo $d['CONTROL_NO']; ?></td>
-                <td width="15%" class="bg-gray">TO</td>
-                <td width="35%"><?php echo $d['TO_PCIS']; ?></td>
+        <table>
+            <tr class="text-center lbl-bold">
+                <td width="45%">Part Name</td>
+                <td width="35%">Part No</td>
+                <td width="20%">Model</td>
             </tr>
-            <tr>
-                <td class="bg-gray">DATE</td>
-                <td><?php echo fTgl($d['CONTROL_DATE1']); ?></td>
-                <td class="bg-gray">CC</td>
-                <td><?php echo $d['CC']; ?></td>
+            <tr class="text-center">
+                <td><?php echo htmlspecialchars($d['PART_NAME'] ? $d['PART_NAME'] : '-'); ?></td>
+                <td><?php echo htmlspecialchars($d['PART_NO'] ? $d['PART_NO'] : '-'); ?></td>
+                <td><?php echo htmlspecialchars($d['MODEL'] ? $d['MODEL'] : '-'); ?></td>
             </tr>
-            <tr>
-                <td class="bg-gray">REQUEST BY</td>
-                <td>
-                    <span class="box <?php echo $d['INTERNAL'] ? 'checked' : ''; ?>"><?php echo $d['INTERNAL'] ? 'v' : ''; ?></span> Internal &nbsp;
-                    <span class="box <?php echo $d['CUSTOMER'] ? 'checked' : ''; ?>"><?php echo $d['CUSTOMER'] ? 'v' : ''; ?></span> Customer &nbsp;
-                    <span class="box <?php echo $d['SUPPLIER'] ? 'checked' : ''; ?>"><?php echo $d['SUPPLIER'] ? 'v' : ''; ?></span> Supplier
-                </td>
-                <td class="bg-gray">PIC / DEPT</td>
-                <td><?php echo $d['PIC_NAME'] . " / " . $d['DEP_NAME']; ?></td>
+            <tr class="text-center lbl-bold">
+                <td>Material</td>
+                <td>Material Code</td>
+                <td>Customer</td>
             </tr>
-            <tr>
-                <td class="bg-gray">CUSTOMER</td>
-                <td><?php echo $d['CUST_COMP']; ?></td>
-                <td class="bg-gray">PART NO/NAME</td>
-                <!-- Ganti baris ini -->
-<td><?php echo $d['PART_NO'] . " - " . $d['PART_NAME']; ?></td>
-            </tr>
-            <tr>
-                <td class="bg-gray">ITEM CHANGE</td>
-                <td>
-                    <span class="box <?php echo $d['MAN'] ? 'checked' : ''; ?>"></span> Man &nbsp;
-                    <span class="box <?php echo $d['MACHINE'] ? 'checked' : ''; ?>"></span> Machine &nbsp;
-                    <span class="box <?php echo $d['METHOD'] ? 'checked' : ''; ?>"></span> Method &nbsp;
-                    <span class="box <?php echo $d['MATERIAL'] ? 'checked' : ''; ?>"></span> Material
-                </td>
-                <td class="bg-gray">CHANGE TYPE</td>
-                <td>
-                    <span class="box <?php echo $d['PERMANENT_CHANGE'] ? 'checked' : ''; ?>"></span> Permenant &nbsp;
-                    <span class="box <?php echo !$d['PERMANENT_CHANGE'] ? 'checked' : ''; ?>"></span> Temporary
-                </td>
-            </tr>
-            <tr>
-                <td colspan="4" class="bg-gray">REASON / PURPOSE:</td>
-            </tr>
-            <tr>
-                <td colspan="4" style="height: 50px;"><?php echo nl2br($d['REASON']); ?></td>
-            </tr>
-            <tr>
-                <td colspan="2" class="bg-gray" style="color: red;">BEFORE CHANGE:</td>
-                <td colspan="2" class="bg-gray" style="color: green;">AFTER CHANGE:</td>
-            </tr>
-            <tr>
-                <td colspan="2" style="height: 80px;"><?php echo nl2br($d['BEF_CHANGE']); ?></td>
-                <td colspan="2" style="height: 80px;"><?php echo nl2br($d['AFT_CHANGE']); ?></td>
+            <tr class="text-center">
+                <td><?php echo htmlspecialchars($d['MATERIAL'] ? $d['MATERIAL'] : '-'); ?></td>
+                <td><?php echo htmlspecialchars($d['PART_CODE'] ? $d['PART_CODE'] : '-'); ?></td>
+                <td><?php echo htmlspecialchars($d['CUST_COMP'] ? $d['CUST_ALIAS'] : ''); ?></td>
             </tr>
         </table>
 
-        <!-- Timeline Section -->
-        <table class="main-table" style="margin-top: -1px;">
+        <table>
             <tr>
-                <td width="33%" class="bg-gray">SCHEDULE PROCESS CHANGE</td>
-                <td width="33%" class="bg-gray">START CHANGING DATE</td>
-                <td width="34%" class="bg-gray">CLOSING DATE</td>
+                <td width="45%" class="lbl-italic" style="border-bottom:none;">Item Change</td>
+                <td width="55%" class="lbl-italic" style="border-bottom:none;">Changing Type</td>
             </tr>
             <tr>
-                <td><?php echo fTgl($d['SCH_CHANGE']); ?></td>
-                <td><?php echo fTgl($d['START_CHANGE']); ?></td>
-                <td><?php echo fTgl($d['CLOSE_CHANGE']); ?></td>
+                <td style="border-top:none; padding: 6px 15px;">
+                    <div style="display: inline-block; width: 45%; margin-bottom: 4px;"><?php echo renderBox($d['MAN']); ?> Man</div>
+                    <div style="display: inline-block; width: 45%; margin-bottom: 4px;"><?php echo renderBox($d['MATERIAL']); ?> Material</div>
+                    <div style="display: inline-block; width: 45%;"><?php echo renderBox($d['MACHINE']); ?> Machine</div>
+                    <div style="display: inline-block; width: 45%;"><?php echo renderBox($d['OTHER'] ? 0 : 0); ?> Other</div>
+                    <div style="margin-top: 4px;"><?php echo renderBox($d['METHOD']); ?> Method</div>
+                </td>
+                <td style="border-top:none; padding: 6px 15px;">
+                    <div style="margin-bottom: 4px;"><?php echo renderBox($d['PERMANENT_CHANGE']); ?> Permanent change</div>
+                    <div style="margin-bottom: 2px;"><?php echo renderBox(!$d['PERMANENT_CHANGE']); ?> Temporary change</div>
+                    <div style="padding-left: 20px;" class="lbl-italic">Implementation date (until when) : __________________</div>
+                </td>
             </tr>
         </table>
 
-        <!-- Approval Section -->
-        <table class="footer-table" style="margin-top: 10px;">
-            <tr class="bg-gray">
-                <td colspan="3">PT IMC TEKNO INDONESIA</td>
-                <td colspan="2">CUSTOMER</td>
+        <table>
+            <tr>
+                <td width="80%" class="lbl-italic" style="border-bottom:none;">Reason / Purpose</td>
+                <td width="20%" class="lbl-italic text-center" style="border-bottom:none; font-size:7.5pt;">Do we need Customer Approved</td>
             </tr>
-            <tr style="height: 10px;">
-                <td width="20%">PREPARED</td><td width="20%">CHECKED</td><td width="20%">APPROVED</td>
-                <td width="20%">CHECKED</td><td width="20%">APPROVED</td>
+            <tr>
+                <td style="border-top:none; padding: 6px;">
+                    <div class="content-block"><?php echo nl2br(htmlspecialchars($d['REASON'])); ?></div>
+                </td>
+                <td style="border-top:none; text-align: center; vertical-align: middle; padding-left: 10px;">
+                    <div style="margin-bottom: 5px;"><?php echo renderBox($d['NEED_CUSTOMER'] ? 1 : 0); ?> Yes</div>
+                    <div><?php echo renderBox(!($d['NEED_CUSTOMER'] ? 1 : 0)); ?> No</div>
+                </td>
             </tr>
-            <tr style="height: 80px;">
-                <td><br><br><?php echo $d['IMC_PREPARED']; ?></td>
-                <td><br><br><?php echo $d['IMC_CHECKED']; ?></td>
-                <td><br><br><?php echo $d['IMC_APROVE']; ?></td>
-                <td><br><br><?php echo $d['CUSTOMER_CHECKED']; ?></td>
-                <td><br><br><?php echo $d['CUSTOMER_APROVE']; ?></td>
+        </table>
+
+        <table>
+            <tr class="lbl-bold">
+                <td width="50%" style="color: #b91c1c;">BEFORE CHANGE</td>
+                <td width="50%" style="color: #15803d;">AFTER CHANGE</td>
+            </tr>
+            <tr>
+                <td><div style="min-height: 90px;" class="content-block"><?php echo nl2br(htmlspecialchars($d['BEF_CHANGE'])); ?></div></td>
+                <td><div style="min-height: 90px;" class="content-block"><?php echo nl2br(htmlspecialchars($d['AFT_CHANGE'])); ?></div></td>
+            </tr>
+        </table>
+
+        <table class="text-center lbl-bold" style="font-size: 8pt;">
+            <tr>
+                <td width="33.33%">Schedule Proses change : <span style="font-weight:normal;"><?php echo fTgl($d['SCH_CHANGE'] ? $d['SCH_CHANGE'] : ''); ?></span></td>
+                <td width="33.33%">Start Changing date : <span style="font-weight:normal;"><?php echo fTgl($d['START_CHANGE'] ? $d['START_CHANGE'] : ''); ?></span></td>
+                <td width="33.33%">Close Changing date : <span style="font-weight:normal;"><?php echo fTgl($d['CLOSE_CHANGE'] ? $d['CLOSE_CHANGE'] : ''); ?></span></td>
+            </tr>
+        </table>
+
+        <table>
+            <tr>
+                <td class="lbl-italic" style="padding: 4px 10px;">
+                    <span style="margin-right: 25px;">Attachment :</span>
+                    <span style="margin-right: 25px;"><?php echo renderBox($d['EMAIL'] ? 0 : 0); ?> Email / Information</span>
+                    <span style="margin-right: 25px;"><?php echo renderBox($d['DRAWING'] ? 0 : 0); ?> Drawing</span>
+                    <span style="margin-right: 25px;"><?php echo renderBox($d['SAMPLE'] ? 0 : 0); ?> Sample</span>
+                    <span><?php echo renderBox($d['DATA'] ? 0 : 0); ?> Data</span>
+                </td>
+            </tr>
+        </table>
+
+        <table>
+            <tr class="text-center lbl-bold" style="background-color: #f8fafc;">
+                <td width="20%">CONFIRMATION -></td>
+                <td width="65%" class="lbl-italic" style="font-weight: normal; text-align: left; font-size: 8pt;">* Please put confirmation base on impact and risk management</td>
+                <td width="15%">SIGN</td>
+            </tr>
+            <tr>
+                <td class="lbl-bold" style="vertical-align: middle;">PPIC</td>
+                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['PPIC_REMARK'] ? $d['PPIC_REMARK'] : ''); ?></div></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="lbl-bold" style="vertical-align: middle;">QC</td>
+                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['QC_REMARK'] ? $d['QC_REMARK'] : ''); ?></div></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="lbl-bold" style="vertical-align: middle;">PRODUCTION</td>
+                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['PRODUCTION_REMARK'] ? $d['PRODUCTION_REMARK'] : ''); ?></div></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="lbl-bold" style="vertical-align: middle;">MOLD SHOP</td>
+                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['MOLDSHOP_REMARK'] ? $d['MOLDSHOP_REMARK'] : ''); ?></div></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="lbl-bold" style="vertical-align: middle;">PE</td>
+                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['PE_REMARK'] ? $d['PE_REMARK'] : ''); ?></div></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td class="lbl-bold" style="vertical-align: middle;">MARKETING</td>
+                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['MARKETING_REMARK'] ? $d['MARKETING_REMARK'] : ''); ?></div></td>
+                <td></td>
+            </tr>
+        </table>
+
+        <table>
+            <tr class="text-center lbl-bold" style="font-size: 8pt; background-color: #f1f5f9;">
+                <td width="35%">CUSTOMER JUDGEMENT</td>
+                <td width="30%">CUSTOMER APPROVAL</td>
+                <td width="35%">PT. IMC Tekno Indonesia</td>
+            </tr>
+            <tr>
+                <td style="padding: 5px;">
+                    <span class="lbl-italic" style="font-size: 8pt; display:block; margin-bottom:2px;">Comment:</span>
+                    <div style="min-height: 35px; font-size:8pt; color:#475569;"><?php echo htmlspecialchars($d['CUSTOMER_COMMENT'] ? $d['CUSTOMER_COMMENT'] : ''); ?></div>
+                    <div class="text-right" style="padding-right: 15px; margin-top:2px;">
+                        <span style="margin-right: 15px; font-weight:bold; font-size:10pt;"><?php echo renderBox($d['CUSTOMER_JUDGEMENT'] === 'OK'); ?> OK</span>
+                        <span style="font-weight:bold; font-size:10pt;"><?php echo renderBox($d['CUSTOMER_JUDGEMENT'] === 'NG'); ?> NG</span>
+                    </div>
+                </td>
+                <td style="padding: 0;">
+                    <table style="width: 100%; height: 100%; margin: 0; border: none;">
+                        <tr class="text-center" style="font-size: 7.5pt; font-weight: bold; background: #fafafa;">
+                            <td width="50%" style="border-top:none; border-left:none;">Approved</td>
+                            <td width="50%" style="border-top:none; border-right:none; border-left:none;">Checked</td>
+                        </tr>
+                        <tr style="height: 38px;">
+                            <td style="border-left:none; border-bottom:none;"></td>
+                            <td style="border-right:none; border-left:none; border-bottom:none;"></td>
+                        </tr>
+                        <tr class="text-center" style="font-size: 8pt; font-weight: bold;">
+                            <td style="border-left:none; border-bottom:none; border-top: 1px dashed #ccc;"><?php echo htmlspecialchars($d['CUSTOMER_APROVE'] ? $d['CUSTOMER_APROVE'] : ''); ?></td>
+                            <td style="border-right:none; border-left:none; border-bottom:none; border-top: 1px dashed #ccc;"><?php echo htmlspecialchars($d['CUSTOMER_CHECKED'] ? $d['CUSTOMER_CHECKED'] : ''); ?></td>
+                        </tr>
+                    </table>
+                </td>
+                <td style="padding: 0;">
+                    <table style="width: 100%; height: 100%; margin: 0; border: none;">
+                        <tr class="text-center" style="font-size: 7.5pt; font-weight: bold; background: #fafafa;">
+                            <td width="33.33%" style="border-top:none; border-left:none;">Approved</td>
+                            <td width="33.33%" style="border-top:none; border-left:none;">Checked</td>
+                            <td width="33.34%" style="border-top:none; border-right:none; border-left:none;">Prepared</td>
+                        </tr>
+                        <tr style="height: 38px;">
+                            <td style="border-left:none; border-bottom:none;"></td>
+                            <td style="border-left:none; border-bottom:none;"></td>
+                            <td style="border-right:none; border-left:none; border-bottom:none;"></td>
+                        </tr>
+                        <tr class="text-center" style="font-size: 8pt; font-weight: bold;">
+                            <td style="border-left:none; border-bottom:none; border-top: 1px dashed #ccc;"><?php echo htmlspecialchars($d['IMC_APROVE'] ? $d['IMC_APROVE'] : ''); ?></td>
+                            <td style="border-left:none; border-bottom:none; border-top: 1px dashed #ccc;"><?php echo htmlspecialchars($d['IMC_CHECKED'] ? $d['IMC_CHECKED'] : ''); ?></td>
+                            <td style="border-right:none; border-left:none; border-bottom:none; border-top: 1px dashed #ccc;"><?php echo htmlspecialchars($d['IMC_PREPARED'] ? $d['IMC_PREPARED'] : ''); ?></td>
+                        </tr>
+                    </table>
+                </td>
             </tr>
         </table>
         
-        <div style="margin-top: 10px; font-size: 9px; font-style: italic;">
-            Printed by ERP System at: <?php echo date('d-m-Y H:i:s'); ?> | FM.CO.01-35
+        <div style="font-size: 7.5pt; font-weight: bold; font-family: Arial; margin-top: 5px; text-align: left;">
+            FM.EG.C.03-015-01 (REV.TGL.28/05/2026)
         </div>
     </div>
 

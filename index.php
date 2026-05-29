@@ -218,7 +218,7 @@
       </div>
 
       <div class="col">
-        <a href="purchasing/dashboard_purchasing.php" class="card-division">
+        <a href="purch/login.php" class="card-division">
           <div class="icon-box bg-purchasing"><i class="bi bi-bag-check"></i></div>
           <span class="division-name">Purchasing</span>
         </a>

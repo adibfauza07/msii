@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     // Kalau sudah login, langsung ke dashboard
     if (isset($_SESSION['db_user']) && !empty($_SESSION['db_user']) && $conn !== false) {
-        header("Location: dashboard_home.php");
+        header("Location: dashboard_ppic.php");
         exit();
     }
 }
@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Login Ordering Plant 2</title>
+    <title>Login ppic Plant 2</title>
 
     <style>
         body {

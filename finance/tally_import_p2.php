@@ -16,6 +16,7 @@ if (file_exists($config1)) {
 /* =========================
    AKSES KHUSUS P2
    ========================= */
+
 $login_user = isset($_SESSION['db_user']) ? strtolower(trim($_SESSION['db_user'])) : '';
 $active_plant_access = isset($_SESSION['active_plant']) ? strtolower(trim($_SESSION['active_plant'])) : '';
 
@@ -130,6 +131,25 @@ function resultIDR($idr, $currUsd, $currRp, $usd, $jenis) {
     return 'Rp' . $idr . '@USD ' . $currUsd . '/Rp ' . $currRp . '=USD' . $usd;
 }
 
+/*
+   P2:
+   NO_DS di Tally diambil dari nomor DO.
+   Tidak pakai BC / nomor BC.
+*/
+function getDoNoP2($r) {
+    return gv($r, array(
+        'DO_NO',
+        'DONO',
+        'NO_DO',
+        'DO_NO2',
+        'DI_DONO',
+        'RCV_DONO',
+        'DI_DSNO',
+        'NO_DS',
+        'DS_NO'
+    ), '');
+}
+
 function fetchRows($stmt) {
     $rows = array();
 
@@ -190,13 +210,28 @@ function loadSalesRows($fromDate, $toDate, $custId, $invNo) {
         return array();
     }
 
-    if ($invNo == '') {
-        $stmt = q("EXECUTE SP_TALLY_SALES ?, ?, ?", array($fromDate, $toDate, $custId));
-    } else {
-        $stmt = q("EXECUTE SP_TALLY_SALES_CUST_INVOICE ?, ?, ?", array($toDate, $custId, $invNo));
+    /*
+       Query P2 sesuai request:
+       EXECUTE SP_TALLY_SALES :STARTDATE, :ENDDATE, :CUST_ID
+
+       Jika invoice dipilih, hasilnya difilter di PHP berdasarkan DI_INVNO.
+    */
+    $stmt = q("EXECUTE SP_TALLY_SALES ?, ?, ?", array($fromDate, $toDate, $custId));
+    $rows = fetchRows($stmt);
+
+    if ($invNo != '') {
+        $filtered = array();
+
+        foreach ($rows as $r) {
+            if (trim((string)gv($r, 'DI_INVNO', '')) == trim((string)$invNo)) {
+                $filtered[] = $r;
+            }
+        }
+
+        return $filtered;
     }
 
-    return fetchRows($stmt);
+    return $rows;
 }
 
 function loadSopRows($fromDate) {
@@ -246,6 +281,7 @@ function getRateRows($currCode) {
 
     return fetchRows($stmt);
 }
+
 /* =========================
    MASTER RATE ACTION
    ========================= */
@@ -388,7 +424,10 @@ function deleteRateAction() {
 }
 
 /* =========================
-   IMPORT RECEIPT
+   IMPORT RECEIPT P2
+   P2:
+   - Tidak pakai BC
+   - NO_DS ambil dari nomor DO
    ========================= */
 
 function importReceipt($fromDate, $toDate) {
@@ -449,14 +488,13 @@ function importReceipt($fromDate, $toDate) {
             ITEM_PRICE,
             TOTAL_HARGA,
             TOTAL_HARGA2,
-            GROUP_TOTAL,
-            BC
+            GROUP_TOTAL
         )
         VALUES
         (
             ?, ?, ?, ?,
             ?, ?, ?, ?,
-            ?, ?, ?, ?
+            ?, ?, ?
         )
     ";
 
@@ -499,7 +537,7 @@ function importReceipt($fromDate, $toDate) {
 
         q($sqlInsert, array(
             $rcvNo,
-            gv($r, 'RCV_DONO', ''),
+            getDoNoP2($r),
             fmtTallyDate(gv($r, 'RCV_DATE', '')),
             gv($r, 'SUP_CODE', ''),
             gv($r, 'ITEM_CODE', ''),
@@ -508,8 +546,7 @@ function importReceipt($fromDate, $toDate) {
             $itemPrice,
             $totalHarga,
             $totalHarga2,
-            $groupTotal,
-            gv($r, 'BC', '')
+            $groupTotal
         ));
 
         $count++;
@@ -520,6 +557,9 @@ function importReceipt($fromDate, $toDate) {
 
 /* =========================
    IMPORT SALES P2
+   P2:
+   - Tidak pakai BC
+   - NO_DS ambil dari nomor DO
    ========================= */
 
 function importSales($fromDate, $toDate, $custId, $invNo) {
@@ -629,7 +669,7 @@ function importSales($fromDate, $toDate, $custId, $invNo) {
 
         q($sqlInsert, array(
             $inv,
-            gv($r, 'DI_DSNO', ''),
+            getDoNoP2($r),
             fmtTallyDate(gv($r, 'TRAN_DATE', '')),
             gv($r, 'CUST_CODE', ''),
             gv($r, 'ITEM_CODE', ''),
@@ -1144,7 +1184,6 @@ if ($tab == 'rate') {
                                         $edate = fmtDateInput(gv($r, 'CURR_EDATE', ''));
                                         $rp = gv($r, 'CURR_RP', '');
                                         $usd = gv($r, 'CURR_USD', '');
-                                       
                                         ?>
                                         <tr>
                                             <td><?php echo h($code); ?></td>
@@ -1152,7 +1191,6 @@ if ($tab == 'rate') {
                                             <td><?php echo h($edate); ?></td>
                                             <td class="text-end"><?php echo h($rp); ?></td>
                                             <td class="text-end"><?php echo h($usd); ?></td>
-                                            
                                             <td>
                                                 <button type="button"
                                                         class="btn btn-sm btn-outline-primary"
@@ -1314,7 +1352,7 @@ function renderReceiptTable($rows) {
     echo '<thead class="table-dark sticky-top">';
     echo '<tr>';
     echo '<th>ICL_NO</th>';
-    echo '<th>NO DS</th>';
+    echo '<th>NO DO / DS</th>';
     echo '<th>Tanggal</th>';
     echo '<th>Code Supplier</th>';
     echo '<th>Kode Barang</th>';
@@ -1322,14 +1360,13 @@ function renderReceiptTable($rows) {
     echo '<th>Qty</th>';
     echo '<th>Harga per pcs</th>';
     echo '<th>Currency</th>';
-    echo '<th>BC</th>';
     echo '</tr>';
     echo '</thead><tbody>';
 
     foreach ($rows as $r) {
         echo '<tr>';
         echo '<td>' . h(gv($r, 'RCV_NO', '')) . '</td>';
-        echo '<td>' . h(gv($r, 'RCV_DONO', '')) . '</td>';
+        echo '<td>' . h(getDoNoP2($r)) . '</td>';
         echo '<td>' . h(fmtDateView(gv($r, 'RCV_DATE', ''))) . '</td>';
         echo '<td>' . h(gv($r, 'SUP_CODE', '')) . '</td>';
         echo '<td>' . h(gv($r, 'ITEM_CODE', '')) . '</td>';
@@ -1337,7 +1374,6 @@ function renderReceiptTable($rows) {
         echo '<td class="text-end">' . h(gv($r, 'QTY', '')) . '</td>';
         echo '<td class="text-end">' . h(gv($r, 'POD_PRICE', '')) . '</td>';
         echo '<td>' . h(gv($r, 'PO_CUR', '')) . '</td>';
-        echo '<td>' . h(gv($r, 'BC', '')) . '</td>';
         echo '</tr>';
     }
 
@@ -1355,7 +1391,7 @@ function renderSalesTable($rows) {
     echo '<thead class="table-dark sticky-top">';
     echo '<tr>';
     echo '<th>No Invoice</th>';
-    echo '<th>No DS</th>';
+    echo '<th>No DO / DS</th>';
     echo '<th>Tanggal</th>';
     echo '<th>Customer</th>';
     echo '<th>Kode Barang</th>';
@@ -1370,7 +1406,7 @@ function renderSalesTable($rows) {
     foreach ($rows as $r) {
         echo '<tr>';
         echo '<td><input type="text" class="form-control form-control-sm edit-inv" value="' . h(gv($r, 'DI_INVNO', '')) . '" style="width:130px;"></td>';
-        echo '<td><input type="text" class="form-control form-control-sm edit-ds" value="' . h(gv($r, 'DI_DSNO', '')) . '" style="width:130px;"></td>';
+        echo '<td><input type="text" class="form-control form-control-sm edit-ds" value="' . h(getDoNoP2($r)) . '" style="width:130px;"></td>';
         echo '<td>' . h(fmtDateView(gv($r, 'TRAN_DATE', ''))) . '</td>';
         echo '<td>' . h(gv($r, 'CUST_CODE', '')) . '</td>';
         echo '<td>' . h(gv($r, 'ITEM_CODE', '')) . '</td>';

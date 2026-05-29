@@ -21,7 +21,7 @@ function h($value) {
 <html>
 <head>
     <meta charset="utf-8">
-    <title>PPIC System - Plant 2</title>
+    <title>PURCHASING System - Plant 2</title>
 
     <style>
         html, body {
@@ -162,7 +162,7 @@ function h($value) {
     <div class="sidebar">
         <div class="sidebar-title">
             MENU<br>
-            PPIC SYSTEM
+            PURCHASING SYSTEM
         </div>
 
         <div class="user-box">
@@ -173,26 +173,24 @@ function h($value) {
         <div class="menu-section">Main</div>
         <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Dashboard / Report</a>
 
-        <div class="menu-section">PPIC Entry</div>
-        <a class="menu-link" href="grid_input.php" target="mainFrame">LIST MASTER HITACHI</a>
-        <a class="menu-link" href="input.php" target="mainFrame">BUAT QR HITACHI LABEL</a>
-        <a class="menu-link" href="label_plant2.php" target="mainFrame">LABEL MANUAL PLANT 2</a>
-        <a class="menu-link" href="input_order.php" target="mainFrame">Input Order</a>
-        <a class="menu-link" href="order_edit.php" target="mainFrame">Edit Order</a>
-
+        <div class="menu-section">PURCHASING Entry</div>
+        <a class="menu-link" href="requisition.php" target="mainFrame">PURCHASE REQUESTION</a>
+        <a class="menu-link" href="quotation.php" target="mainFrame">QUOTATION</a>
+        <a class="menu-link" href="po.php" target="mainFrame">PURCHASE ORDER</a>
+		 <a class="menu-link" href="label_plant2.php" target="mainFrame">RECEIVE</a>
+        
         <div class="menu-section">Master</div>
-        <a class="menu-link" href="master_item_prod.php" target="mainFrame">BOM MASTER</a>
-        <a class="menu-link" href="master_machine.php" target="mainFrame">MASTER MACHINE</a>
-        <a class="menu-link" href="master_process.php" target="mainFrame">MASTER PROSES</a>
+        <a class="menu-link" href="master_supplier.php" target="mainFrame">MASTER SUPPLIER </a>
+        
 
        
 
-       <a class="menu-link logout" href="http://103.136.170.125:81/msii/index.php?logout=1" target="_top">Logout</a>
+        <a class="menu-link logout" href="http://103.136.170.125:81/msii/index.php?logout=1" target="_top">Logout</a>
     </div>
 
     <div class="main">
         <div class="topbar">
-            PPIC SYSTEM - PLANT 2
+            PURCHASING SYSTEM - PLANT 2
             <div class="topbar-right">
                 <?php echo h(date("d-M-Y H:i")); ?>
             </div>
