@@ -21,7 +21,6 @@ $qStatus = q("SELECT STATUS FROM PROSES_STATUS");
         <input type="hidden" name="control_id" value="<?php echo $id_edit; ?>">
 
         <div class="row g-4">
-            
             <div class="col-lg-12">
                 <div class="card border-0 shadow-sm pt-2" style="border-top: 4px solid #8b5cf6 !important;">
                     <div class="card-body">
@@ -61,9 +60,9 @@ $qStatus = q("SELECT STATUS FROM PROSES_STATUS");
                             <div class="col-md-4">
                                 <label class="small fw-bold">Request By</label>
                                 <div class="mt-1">
-                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="internal" <?php echo ($dataEdit && empty($dataEdit['INTERNAL'])) ? '' : 'checked'; ?>> Internal</div>
-                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="customer" <?php echo ($dataEdit && !empty($dataEdit['CUSTOMER'])) ? 'checked' : ''; ?>> Customer</div>
-                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="supplier" <?php echo ($dataEdit && !empty($dataEdit['SUPPLIER'])) ? 'checked' : ''; ?>> Supplier</div>
+                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="internal" value="1" <?php echo ($dataEdit && empty($dataEdit['INTERNAL'])) ? '' : 'checked'; ?>> Internal</div>
+                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="customer" value="1" <?php echo ($dataEdit && !empty($dataEdit['CUSTOMER'])) ? 'checked' : ''; ?>> Customer</div>
+                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="supplier" value="1" <?php echo ($dataEdit && !empty($dataEdit['SUPPLIER'])) ? 'checked' : ''; ?>> Supplier</div>
                                 </div>
                             </div>
                             <div class="col-md-8">
@@ -101,34 +100,69 @@ $qStatus = q("SELECT STATUS FROM PROSES_STATUS");
                                     <?php endif; ?>
                                 </select>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <label class="small fw-bold">Model</label>
                                 <input type="text" name="model" class="form-control form-control-sm" value="<?php echo ($dataEdit && isset($dataEdit['MODEL'])) ? rtrim($dataEdit['MODEL']) : ''; ?>">
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-5">
                                 <label class="small fw-bold">Material (Teks Deskripsi)</label>
-                                <input type="text" name="material_id" class="form-control form-control-sm" value="<?php echo ($dataEdit && isset($dataEdit['MATERIAL_ID'])) ? rtrim($dataEdit['MATERIAL_ID']) : ''; ?>">
+                                <input type="text" name="material_txt" class="form-control form-control-sm" placeholder="Contoh: POM DURACON..." value="<?php echo ($dataEdit && isset($dataEdit['PE_REMARK'])) ? trim($dataEdit['PE_REMARK']) : ''; ?>">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="small fw-bold text-truncate">Need Cust Appr?</label>
+                                <select name="need_customer" class="form-select form-select-sm fw-bold">
+                                    <option value="1" <?php echo ($dataEdit && isset($dataEdit['NEED_CUSTOMER']) && $dataEdit['NEED_CUSTOMER'] == 1) ? 'selected' : ''; ?>>YES</option>
+                                    <option value="0" <?php echo ($dataEdit && isset($dataEdit['NEED_CUSTOMER']) && $dataEdit['NEED_CUSTOMER'] == 0) ? 'selected' : ''; ?>>NO</option>
+                                </select>
                             </div>
                         </div>
 
                         <div class="row g-3">
-                            <div class="col-md-6">
+                            <div class="col-md-7">
                                 <label class="small fw-bold border-bottom d-block mb-2">Item Change (4M Kategori)</label>
-                                <div class="d-flex flex-wrap gap-3">
-                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="man" <?php echo ($dataEdit && !empty($dataEdit['MAN'])) ? 'checked' : ''; ?>> Man</div>
-                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="machine" <?php echo ($dataEdit && !empty($dataEdit['MACHINE'])) ? 'checked' : ''; ?>> Machine</div>
-                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="method" <?php echo ($dataEdit && !empty($dataEdit['METHOD'])) ? 'checked' : ''; ?>> Method</div>
-                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="material_4m" <?php echo ($dataEdit && !empty($dataEdit['MATERIAL'])) ? 'checked' : ''; ?>> Material</div>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="man" value="1" <?php echo ($dataEdit && !empty($dataEdit['MAN'])) ? 'checked' : ''; ?>> Man</div>
+                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="machine" value="1" <?php echo ($dataEdit && !empty($dataEdit['MACHINE'])) ? 'checked' : ''; ?>> Machine</div>
+                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="method" value="1" <?php echo ($dataEdit && !empty($dataEdit['METHOD'])) ? 'checked' : ''; ?>> Method</div>
+                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="material_4m" value="1" <?php echo ($dataEdit && !empty($dataEdit['MATERIAL'])) ? 'checked' : ''; ?>> Material</div>
+                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="other" value="1" <?php echo ($dataEdit && !empty($dataEdit['OTHER'])) ? 'checked' : ''; ?>> Other</div>
                                 </div>
                             </div>
-                            <div class="col-md-6 border-start ps-4">
+                            <div class="col-md-5 border-start ps-3">
                                 <label class="small fw-bold border-bottom d-block mb-2">Changing Type</label>
                                 <div class="form-check small"><input class="form-check-input" type="radio" name="perm" value="1" <?php echo ($dataEdit && empty($dataEdit['PERMANENT_CHANGE'])) ? '' : 'checked'; ?>> Permanent Change</div>
                                 <div class="form-check small"><input class="form-check-input" type="radio" name="perm" value="0" <?php echo ($dataEdit && !empty($dataEdit['PERMANENT_CHANGE']) && $dataEdit['PERMANENT_CHANGE'] == 0) ? 'checked' : ''; ?>> Temporary Change</div>
                             </div>
                         </div>
 
-                        <div class="row g-3 mt-3">
+                        <div class="row g-2 border-top pt-3 mt-2">
+                            <div class="col-md-4">
+                                <label class="small fw-bold text-muted">SCHEDULE DATE</label>
+                                <input type="date" name="sch_change" class="form-control form-control-sm" value="<?php echo ($dataEdit && isset($dataEdit['SCH_CHANGE']) && $dataEdit['SCH_CHANGE'] instanceof DateTime) ? $dataEdit['SCH_CHANGE']->format('Y-m-d') : date('Y-m-d'); ?>">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="small fw-bold text-muted">START DATE</label>
+                                <input type="date" name="start_change" class="form-control form-control-sm" value="<?php echo ($dataEdit && isset($dataEdit['START_CHANGE']) && $dataEdit['START_CHANGE'] instanceof DateTime) ? $dataEdit['START_CHANGE']->format('Y-m-d') : date('Y-m-d'); ?>">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="small fw-bold text-muted">CLOSING DATE</label>
+                                <input type="date" name="close_change" class="form-control form-control-sm" value="<?php echo ($dataEdit && isset($dataEdit['CLOSE_CHANGE']) && $dataEdit['CLOSE_CHANGE'] instanceof DateTime) ? $dataEdit['CLOSE_CHANGE']->format('Y-m-d') : date('Y-m-d'); ?>">
+                            </div>
+                        </div>
+
+                        <div class="row g-3 border-top pt-3 mt-2">
+                            <div class="col-md-12">
+                                <label class="small fw-bold d-block mb-1 text-muted">Checklist Attachments</label>
+                                <div class="d-flex gap-4">
+                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_email" value="1" <?php echo ($dataEdit && !empty($dataEdit['EMAIL'])) ? 'checked' : ''; ?>> Email</div>
+                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_drawing" value="1" <?php echo ($dataEdit && !empty($dataEdit['DRAWING'])) ? 'checked' : ''; ?>> Drawing</div>
+                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_sample" value="1" <?php echo ($dataEdit && !empty($dataEdit['SAMPLE'])) ? 'checked' : ''; ?>> Sample</div>
+                                    <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_data" value="1" <?php echo ($dataEdit && !empty($dataEdit['DATA'])) ? 'checked' : ''; ?>> Data</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row g-3 mt-1">
                             <div class="col-md-12">
                                 <label class="small fw-bold">Reason / Purpose</label>
                                 <textarea name="reason" class="form-control form-control-sm" rows="2"><?php echo ($dataEdit && isset($dataEdit['REASON'])) ? trim($dataEdit['REASON']) : ''; ?></textarea>
@@ -149,25 +183,24 @@ $qStatus = q("SELECT STATUS FROM PROSES_STATUS");
             <div class="col-lg-5">
                 <div class="card border-0 shadow-sm mb-4">
                     <div class="card-header bg-white fw-bold small text-uppercase text-primary border-0 pt-3">
-                        <i class="bi bi-chat-square-text me-2"></i> Departmental Review
+                        <i class="bi bi-chat-square-text me-2"></i> Departmental Review Remarks
                     </div>
                     <div class="card-body">
                         <div class="row g-3 overflow-auto" style="max-height: 480px;">
                             <?php
-                            // Mapping disesuaikan presisi dengan penamaan Huruf Kapital Kolom SQL View mu!
+                            // SINKRONISASI: Khusus PE_REMARK dilewati karena sudah ditugaskan mengunci isi teks Material
                             $depts = [
-                                'PE' => 'PE_REMARK', 
                                 'QC' => 'QC_REMARK', 
-                                'MOLD' => 'MOLDSHOP_REMARK', 
+                                'MOLD SHOP' => 'MOLDSHOP_REMARK', 
                                 'PPIC' => 'PPIC_REMARK', 
-                                'PROD' => 'PRODUCTION_REMARK', 
-                                'MKT' => 'MARKETING_REMARK'
+                                'PRODUCTION' => 'PRODUCTION_REMARK', 
+                                'MARKETING' => 'MARKETING_REMARK'
                             ];
                             foreach($depts as $label => $col_name):
                             ?>
                             <div class="col-12 p-2 border-bottom">
                                 <label class="small fw-bold text-muted"><?php echo $label; ?> REMARK</label>
-                                <textarea name="<?php echo strtolower($label); ?>_remark" class="form-control form-control-sm mb-2" rows="2"><?php echo ($dataEdit && isset($dataEdit[$col_name])) ? trim($dataEdit[$col_name]) : ''; ?></textarea>
+                                <textarea name="<?php echo strtolower(str_replace(' ', '', $label)); ?>_remark" class="form-control form-control-sm mb-2" rows="2"><?php echo ($dataEdit && isset($dataEdit[$col_name])) ? trim($dataEdit[$col_name]) : ''; ?></textarea>
                             </div>
                             <?php endforeach; ?>
                         </div>
