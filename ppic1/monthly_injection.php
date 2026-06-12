@@ -24,6 +24,24 @@ function sql_error_text() {
     return print_r(sqlsrv_errors(), true);
 }
 
+function rowv($row, $name, $default = "") {
+    if (isset($row[$name])) {
+        return $row[$name];
+    }
+
+    $upper = strtoupper($name);
+    if (isset($row[$upper])) {
+        return $row[$upper];
+    }
+
+    $lower = strtolower($name);
+    if (isset($row[$lower])) {
+        return $row[$lower];
+    }
+
+    return $default;
+}
+
 function n0($value) {
     if ($value === null || $value === "") {
         return "-";
@@ -72,10 +90,6 @@ $tonaseFilter = get_value("tonase", "");
 $itemFilter = get_value("item", "");
 $export = strtolower(get_value("export", ""));
 
-/*
-    Kalau user klik ALL / isi '%' / nilai lama 'ALL TONASE',
-    jangan dipakai sebagai filter. Ini yang membuat data tidak muncul.
-*/
 if ($tonaseFilter == "%" || strtoupper($tonaseFilter) == "ALL TONASE") {
     $tonaseFilter = "";
 }
@@ -116,6 +130,7 @@ if ($stmtTonase !== false) {
 
 /* ======================================================
    LOAD DATA DARI sp_injection_report
+   SP baru sudah langsung SELECT, tidak perlu sqlsrv_next_result
 ====================================================== */
 $sql = "EXEC dbo.sp_injection_report ?, ?";
 $stmt = sqlsrv_query($conn, $sql, array($fromDate, $toDate));
@@ -124,46 +139,13 @@ if ($stmt === false) {
     die("<pre>Query sp_injection_report error:\n" . sql_error_text() . "</pre>");
 }
 
-/*
-    PENTING:
-    sp_injection_report menjalankan beberapa statement:
-    DROP TABLE, EXEC sp_injection1, EXEC sp_prod_sch, EXEC sp_injection2,
-    baru terakhir SELECT data.
-
-    Di PHP SQLSRV, hasil pertama bisa bukan SELECT final.
-    Kalau langsung fetch, data bisa terlihat kosong.
-    Jadi harus lompat ke result set yang punya kolom item_code / mag_station.
-*/
-$foundResult = false;
-do {
-    $meta = sqlsrv_field_metadata($stmt);
-
-    if (is_array($meta)) {
-        for ($i = 0; $i < count($meta); $i++) {
-            $colName = strtolower($meta[$i]["Name"]);
-            if ($colName == "item_code" || $colName == "mag_station") {
-                $foundResult = true;
-                break;
-            }
-        }
-    }
-
-    if ($foundResult) {
-        break;
-    }
-} while (sqlsrv_next_result($stmt));
-
-if (!$foundResult) {
-    die("<pre>Data SELECT final dari sp_injection_report tidak ditemukan. Cek apakah SP menghasilkan kolom item_code / mag_station.</pre>");
-}
-
 $groups = array();
 $totalRows = 0;
 
 while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-    $tonase = isset($r["mag_station"]) ? trim((string)$r["mag_station"]) : "";
-    $itemCode = isset($r["item_code"]) ? trim((string)$r["item_code"]) : "";
-    $itemName = isset($r["item_name"]) ? trim((string)$r["item_name"]) : "";
+    $tonase = trim((string)rowv($r, "MAG_STATION", ""));
+    $itemCode = trim((string)rowv($r, "ITEM_CODE", ""));
+    $itemName = trim((string)rowv($r, "ITEM_NAME", ""));
 
     if ($tonase == "") {
         $tonase = "*NONE*";
@@ -180,34 +162,25 @@ while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         }
     }
 
-    $cust = isset($r["cust_abbr"]) ? trim((string)$r["cust_abbr"]) : "";
-    $capd = isset($r["capd"]) ? floatval($r["capd"]) : 0;
-    $mc = isset($r["mac_code"]) ? trim((string)$r["mac_code"]) : "";
+    $cust = trim((string)rowv($r, "CUST_ABBR", ""));
+    $capd = floatval(rowv($r, "capd", 0));
+    $mc = trim((string)rowv($r, "MAC_CODE", ""));
 
-    $planQty = isset($r["ps"]) ? floatval($r["ps"]) : 0;
+    $planQty = floatval(rowv($r, "ps", 0));
     $planMcd = ($capd > 0) ? ($planQty / $capd) : 0;
 
-    $ok = isset($r["ok"]) ? floatval($r["ok"]) : 0;
-    $hold = isset($r["hold"]) ? floatval($r["hold"]) : 0;
-    $ng = isset($r["ng"]) ? floatval($r["ng"]) : 0;
-    $actualMcd = isset($r["hitung_pd_date"]) ? floatval($r["hitung_pd_date"]) : 0;
-    $ngRw = isset($r["ng_rw"]) ? floatval($r["ng_rw"]) : 0;
-    $purg = isset($r["purg"]) ? floatval($r["purg"]) : 0;
+    $ok = floatval(rowv($r, "ok", 0));
+    $hold = floatval(rowv($r, "hold", 0));
+    $ng = floatval(rowv($r, "ng", 0));
+    $actualMcd = floatval(rowv($r, "HITUNG_PD_DATE", 0));
+    $ngRw = floatval(rowv($r, "ng_rw", 0));
+    $purg = floatval(rowv($r, "purg", 0));
+    $price = floatval(rowv($r, "ITEM_COST", 0));
 
     $totalActual = $ok + $hold + $ng;
 
-    /*
-        Rumus default report:
-        PROD PLAN MCD = PS / CAPD
-        PROD AKTUAL MCD = HITUNG_PD_DATE dari SP
-        %EFF = OK / (CAPD x PROD_AKTUAL_MCD) x 100
-        %NG  = NG / (OK + HOLD + NG)
-        PURGING = PURG dari SP
-        PRICE belum ada di SP, default 0
-    */
     $effPct = ($capd > 0 && $actualMcd > 0) ? ($ok / ($capd * $actualMcd) * 100) : 0;
     $ngPct = ($totalActual > 0) ? ($ng / $totalActual) : 0;
-    $price = 0;
 
     if (!isset($groups[$tonase])) {
         $groups[$tonase] = array(
@@ -220,7 +193,8 @@ while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
             "SUM_NG" => 0,
             "SUM_ACT_MCD" => 0,
             "SUM_NG_RW" => 0,
-            "SUM_PURG" => 0
+            "SUM_PURG" => 0,
+            "SUM_PRICE" => 0
         );
     }
 
@@ -252,6 +226,7 @@ while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $groups[$tonase]["SUM_ACT_MCD"] += $actualMcd;
     $groups[$tonase]["SUM_NG_RW"] += $ngRw;
     $groups[$tonase]["SUM_PURG"] += $purg;
+    $groups[$tonase]["SUM_PRICE"] += $price;
 
     $totalRows++;
 }
@@ -295,7 +270,7 @@ if ($export == "excel") {
 <body>
 <table>
     <tr><td colspan="16" class="title">PT.IMC TEKNO INDONESIA</td></tr>
-    <tr><td colspan="16" class="title">MONTLY PRODUCTION INJECTION REPORT</td></tr>
+    <tr><td colspan="16" class="title">MONTHLY PRODUCTION INJECTION REPORT</td></tr>
     <tr><td colspan="16" class="info">Month : <?php echo h($monthLong); ?> | Export Date : <?php echo h($printDate); ?></td></tr>
     <tr><td colspan="16" class="info"></td></tr>
 
@@ -348,19 +323,6 @@ if ($export == "excel") {
             </tr>
             <?php $no++; ?>
         <?php } ?>
-        <tr class="total">
-            <td colspan="6">TOTAL <?php echo h($g["TONASE"]); ?></td>
-            <td class="num"><?php echo h(excel_num($g["SUM_PLAN"], 0)); ?></td>
-            <td class="num2"><?php echo h(excel_num($g["SUM_PLAN_MCD"], 2)); ?></td>
-            <td class="num"><?php echo h(excel_num($g["SUM_OK"], 0)); ?></td>
-            <td class="num"><?php echo h(excel_num($g["SUM_HOLD"], 0)); ?></td>
-            <td class="num"><?php echo h(excel_num($g["SUM_NG"], 0)); ?></td>
-            <td class="num"><?php echo h(excel_num($g["SUM_ACT_MCD"], 0)); ?></td>
-            <td class="num"><?php echo h(excel_num($g["SUM_NG_RW"], 0)); ?></td>
-            <td></td>
-            <td></td>
-            <td class="num2"><?php echo h(excel_num($g["SUM_PURG"], 2)); ?></td>
-        </tr>
     <?php } ?>
 </table>
 </body>
@@ -571,7 +533,7 @@ if ($export == "excel") {
 
 <div class="page">
     <div class="company">PT.IMC TEKNO INDONESIA</div>
-    <div class="title">MONTLY PRODUCTION INJECTION REPORT</div>
+    <div class="title">MONTHLY PRODUCTION INJECTION REPORT</div>
     <div class="month"><?php echo h($monthLong); ?></div>
 
     <?php if ($totalRows == 0) { ?>

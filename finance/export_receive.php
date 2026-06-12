@@ -13,6 +13,7 @@
 // H = ITEM_PRICE      -> RATE, ambil dari SQL apa adanya
 // J = TOTAL_HARGA2    -> AMOUNT inventory/accounting/batch, ambil dari SQL apa adanya
 // K = GROUP_TOTAL     -> AMOUNT party ledger, ambil dari SQL apa adanya
+// L = BC              -> NARRATION
 
 @ini_set('max_execution_time', '0');
 @ini_set('memory_limit', '1024M');
@@ -30,7 +31,7 @@ if (file_exists($config1)) {
 }
 
 /* =========================
-   AKSES KHUSUS P2
+   AKSES KHUSUS P1
    ========================= */
 
 $login_user = isset($_SESSION['db_user']) ? strtolower(trim($_SESSION['db_user'])) : '';
@@ -43,6 +44,7 @@ if (!($login_user == 'plant2' || $active_plant == 'p2')) {
     </script>";
     exit;
 }
+
 
 /* =========================
    HELPER
@@ -187,7 +189,8 @@ function defaultSqlQuery() {
     ITEM_PRICE,
     TOTAL_HARGA,
     TOTAL_HARGA2,
-    GROUP_TOTAL
+    GROUP_TOTAL,
+    BC
 FROM dbo.Tally_RECEIPT
 ORDER BY ICL_NO, NO_DS, ITEM_CODE";
 }
@@ -195,7 +198,7 @@ ORDER BY ICL_NO, NO_DS, ITEM_CODE";
 function getSetting() {
     ensureSettingTable();
 
-    $stmt = qx("SELECT TOP 1 * FROM dbo.Tally_Export_Setting WHERE SettingName = 'RECEIPT_P2_UDI_AK_RAW_PROGRESS'", array());
+    $stmt = qx("SELECT TOP 1 * FROM dbo.Tally_Export_Setting WHERE SettingName = 'RECEIPT_P2_UDI_AK_L_BC_RAW'", array());
     $r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
 
     if (!$r) {
@@ -211,7 +214,7 @@ function getSetting() {
             )
             VALUES
             (
-                'RECEIPT_P2_UDI_AK_RAW_PROGRESS',
+                'RECEIPT_P2_UDI_AK_L_BC_RAW',
                 'serplan1',
                 '9002',
                 ?,
@@ -220,7 +223,7 @@ function getSetting() {
             )
         ", array(defaultSqlQuery()));
 
-        $stmt = qx("SELECT TOP 1 * FROM dbo.Tally_Export_Setting WHERE SettingName = 'RECEIPT_P2_UDI_AK_RAW_PROGRESS'", array());
+        $stmt = qx("SELECT TOP 1 * FROM dbo.Tally_Export_Setting WHERE SettingName = 'RECEIPT_P2_UDI_AK_L_BC_RAW'", array());
         $r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
     }
 
@@ -236,8 +239,88 @@ function saveSetting($ip, $port, $sql) {
             TallyPort = ?,
             SqlQuery = ?,
             UpdatedAt = GETDATE()
-        WHERE SettingName = 'RECEIPT_P2_UDI_AK_RAW_PROGRESS'
+        WHERE SettingName = 'RECEIPT_P2_UDI_AK_L_BC_RAW'
     ", array($ip, $port, $sql));
+}
+
+
+function ensureTallyServerTable() {
+    qx("
+        IF OBJECT_ID('dbo.Tally_Server_Master', 'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.Tally_Server_Master
+            (
+                ID INT IDENTITY(1,1) PRIMARY KEY,
+                ServerName VARCHAR(100) NULL,
+                TallyIP VARCHAR(100) NOT NULL,
+                TallyPort VARCHAR(10) NOT NULL,
+                IsDefault BIT NOT NULL DEFAULT 0,
+                CreatedAt DATETIME NOT NULL DEFAULT GETDATE()
+            )
+        END
+    ", array());
+}
+
+function seedTallyServers() {
+    ensureTallyServerTable();
+
+    $cek = qx("SELECT COUNT(*) AS JML FROM dbo.Tally_Server_Master", array());
+    $r = sqlsrv_fetch_array($cek, SQLSRV_FETCH_ASSOC);
+
+    if ($r && (int)$r['JML'] == 0) {
+        qx("
+            INSERT INTO dbo.Tally_Server_Master
+            (ServerName, TallyIP, TallyPort, IsDefault)
+            VALUES
+            ('Localhost', '127.0.0.1', '9002', 0),
+            ('dianero99', 'dianero99', '9002', 1)
+        ", array());
+    }
+}
+
+function loadTallyServers() {
+    seedTallyServers();
+
+    $stmt = qx("
+        SELECT ID, ServerName, TallyIP, TallyPort, IsDefault
+        FROM dbo.Tally_Server_Master
+        ORDER BY IsDefault DESC, ServerName, TallyIP
+    ", array());
+
+    return fetchAllRows($stmt);
+}
+
+function saveTallyServer($serverName, $ip, $port, $isDefault) {
+    seedTallyServers();
+
+    $serverName = trim((string)$serverName);
+    $ip = trim((string)$ip);
+    $port = trim((string)$port);
+
+    if ($serverName == '') $serverName = $ip . ':' . $port;
+    if ($ip == '' || $port == '') return 'Nama/IP/Port Tally belum lengkap.';
+
+    if ($isDefault) {
+        qx("UPDATE dbo.Tally_Server_Master SET IsDefault = 0", array());
+    }
+
+    qx("
+        INSERT INTO dbo.Tally_Server_Master
+        (ServerName, TallyIP, TallyPort, IsDefault)
+        VALUES (?, ?, ?, ?)
+    ", array($serverName, $ip, $port, $isDefault ? 1 : 0));
+
+    return 'Server Tally berhasil disimpan.';
+}
+
+function deleteTallyServer($id) {
+    seedTallyServers();
+
+    $id = (int)$id;
+    if ($id <= 0) return 'ID server tidak valid.';
+
+    qx("DELETE FROM dbo.Tally_Server_Master WHERE ID = ?", array($id));
+    return 'Server Tally berhasil dihapus.';
 }
 
 function testTallyConnection($ip, $port) {
@@ -264,6 +347,7 @@ function buildReceiptXml($group) {
     $c_tanggal    = fmtTallyDateYmd($h['Tanggal']);
     $d_supplier   = rawVal($h['Supplier_Code']);
     $k_groupTotal = rawVal($h['GROUP_TOTAL']);
+    $l_bc         = isset($h['BC']) ? rawVal($h['BC']) : '';
 
     $guid = 'udi-purc-' . $a_iclNo . '-' . $b_noDs . '-' . $c_tanggal;
 
@@ -323,6 +407,7 @@ function buildReceiptXml($group) {
             <EFFECTIVEDATE>'.x($c_tanggal).'</EFFECTIVEDATE>
             <VOUCHERTYPENAME>Receipt Note</VOUCHERTYPENAME>
             <REFERENCE>'.x($b_noDs).'</REFERENCE>
+            <NARRATION>'.x($l_bc).'</NARRATION>
             <ISINVOICE>Yes</ISINVOICE>
 
             <LEDGERENTRIES.LIST>
@@ -350,6 +435,8 @@ $tally_ip = isset($setting['TallyIP']) ? $setting['TallyIP'] : 'serplan1';
 $tally_port = isset($setting['TallyPort']) ? $setting['TallyPort'] : '9002';
 $sql_query = isset($setting['SqlQuery']) ? $setting['SqlQuery'] : defaultSqlQuery();
 
+$tally_servers = loadTallyServers();
+
 $action = isset($_POST['action']) ? $_POST['action'] : '';
 $message = '';
 $resultRows = array();
@@ -367,10 +454,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $sql_query = isset($_POST['sql_query']) ? $_POST['sql_query'] : $sql_query;
 }
 
-if ($action == 'reset_sql') {
+if ($action == 'save_server') {
+    $serverName = isset($_POST['server_name']) ? trim($_POST['server_name']) : '';
+    $isDefault = isset($_POST['is_default_server']) ? 1 : 0;
+
+    $message = saveTallyServer($serverName, $tally_ip, $tally_port, $isDefault);
+    $tally_servers = loadTallyServers();
+
+    if ($isDefault) {
+        saveSetting($tally_ip, $tally_port, $sql_query);
+    }
+} elseif ($action == 'delete_server') {
+    $serverId = isset($_POST['server_id_delete']) ? (int)$_POST['server_id_delete'] : 0;
+    $message = deleteTallyServer($serverId);
+    $tally_servers = loadTallyServers();
+} elseif ($action == 'reset_sql') {
     $sql_query = defaultSqlQuery();
     saveSetting($tally_ip, $tally_port, $sql_query);
-    $message = 'SQL default UDI A-K berhasil di-reset.';
+    $message = 'SQL default UDI A-K + L berhasil di-reset.';
 } elseif ($action == 'save') {
     saveSetting($tally_ip, $tally_port, $sql_query);
     $message = 'Setting berhasil disimpan.';
@@ -447,7 +548,7 @@ if ($action == '') {
 <div class="container-fluid">
 
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="fw-bold text-dark mb-0">EXPORT RECEIVE NOTE TO TALLY P2 - UDI A-K RAW</h3>
+        <h3 class="fw-bold text-dark mb-0">EXPORT RECEIVE NOTE TO TALLY P2 - UDI A-K + L RAW</h3>
         <a href="dashboard.php" class="btn btn-secondary btn-sm">Kembali</a>
     </div>
 
@@ -457,9 +558,9 @@ if ($action == '') {
 
     <div class="alert alert-warning">
         Final sesuai template UDI Magic:
-        D=<b>Supplier_Code</b>, E=<b>ITEM_CODE</b>, G=<b>QTY angka asli</b>, H/J/K dikirim apa adanya dari SQL Server.
+        D=<b>Supplier_Code</b>, E=<b>ITEM_CODE</b>, G=<b>QTY angka asli</b>, H/J/K dikirim apa adanya dari SQL Server, L=<b>BC</b> untuk Narration.
         Setelah pasang file ini wajib klik <b>Reset SQL Default</b>.
-        Debug XML: <b>/msii/finance/debug_tally_xml/</b>.
+        Debug XML: <b>/msii/finance/debug_tally_xml/</b>. IP/Port Tally bisa disimpan ke master dan dipilih dari combo box.
     </div>
 
     <div id="exportProgressBox" class="card shadow-sm mb-3" style="display:none;">
@@ -481,13 +582,38 @@ if ($action == '') {
             <div class="card-body">
                 <div class="row g-3">
 
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Pilih Server Tally</label>
+                        <select id="server_combo" class="form-control" onchange="pilihServerTally()">
+                            <option value="">-- pilih server tally --</option>
+                            <?php foreach ($tally_servers as $srv) { ?>
+                                <?php
+                                $srvId = isset($srv['ID']) ? $srv['ID'] : '';
+                                $srvName = isset($srv['ServerName']) ? $srv['ServerName'] : '';
+                                $srvIp = isset($srv['TallyIP']) ? $srv['TallyIP'] : '';
+                                $srvPort = isset($srv['TallyPort']) ? $srv['TallyPort'] : '';
+                                $srvDefault = isset($srv['IsDefault']) ? (int)$srv['IsDefault'] : 0;
+                                $selectedServer = ($srvIp == $tally_ip && $srvPort == $tally_port) ? 'selected' : '';
+                                ?>
+                                <option value="<?php echo h($srvIp . '|' . $srvPort . '|' . $srvId); ?>" <?php echo $selectedServer; ?>>
+                                    <?php echo h(($srvDefault ? '[DEFAULT] ' : '') . $srvName . ' - ' . $srvIp . ':' . $srvPort); ?>
+                                </option>
+                            <?php } ?>
+                        </select>
+                    </div>
+
                     <div class="col-md-3">
+                        <label class="form-label fw-bold">Nama Server</label>
+                        <input type="text" name="server_name" id="server_name" class="form-control" placeholder="contoh: dianero99">
+                    </div>
+
+                    <div class="col-md-2">
                         <label class="form-label fw-bold">Tally IP Address</label>
                         <input type="text" name="tally_ip" id="tally_ip" class="form-control" value="<?php echo h($tally_ip); ?>">
                     </div>
 
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold">Tally Port</label>
+                    <div class="col-md-1">
+                        <label class="form-label fw-bold">Port</label>
                         <input type="text" name="tally_port" id="tally_port" class="form-control" value="<?php echo h($tally_port); ?>">
                     </div>
 
@@ -496,12 +622,21 @@ if ($action == '') {
                         <input type="number" name="batch_limit" id="batch_limit" class="form-control" value="<?php echo h($batch_limit); ?>">
                     </div>
 
-                    <div class="col-md-5 d-flex align-items-end gap-2">
+                    <div class="col-md-12 d-flex align-items-center gap-2 flex-wrap">
+                        <label class="form-check mb-0 me-2">
+                            <input type="checkbox" class="form-check-input" name="is_default_server" value="1">
+                            <span class="form-check-label">Jadikan Default</span>
+                        </label>
+
+                        <button type="button" class="btn btn-info" onclick="setAction('save_server')">Save IP/Port</button>
+                        <button type="button" class="btn btn-outline-danger" onclick="deleteSelectedServer()">Delete Server</button>
                         <button type="button" class="btn btn-secondary" onclick="setAction('test')">Test Connection</button>
-                        <button type="button" class="btn btn-success" onclick="setAction('save')">Save</button>
+                        <button type="button" class="btn btn-success" onclick="setAction('save')">Save Setting</button>
                         <button type="button" class="btn btn-warning" onclick="setAction('reset_sql')">Reset SQL Default</button>
                         <button type="button" class="btn btn-primary" onclick="setAction('preview')">Preview Query</button>
                         <button type="button" class="btn btn-danger" onclick="confirmExport()">Export to Tally</button>
+
+                        <input type="hidden" name="server_id_delete" id="server_id_delete" value="">
                     </div>
 
                 </div>
@@ -621,6 +756,35 @@ if ($action == '') {
 function setAction(a) {
     document.getElementById('action').value = a;
     document.getElementById('frmMagic').submit();
+}
+
+function pilihServerTally() {
+    var combo = document.getElementById('server_combo');
+    if (!combo || combo.value == '') return;
+
+    var p = combo.value.split('|');
+    document.getElementById('tally_ip').value = p[0];
+    document.getElementById('tally_port').value = p[1];
+
+    if (document.getElementById('server_id_delete')) {
+        document.getElementById('server_id_delete').value = p[2] || '';
+    }
+}
+
+function deleteSelectedServer() {
+    var combo = document.getElementById('server_combo');
+
+    if (!combo || combo.value == '') {
+        alert('Pilih server Tally dulu.');
+        return;
+    }
+
+    var p = combo.value.split('|');
+    document.getElementById('server_id_delete').value = p[2] || '';
+
+    if (confirm('Hapus server Tally yang dipilih?')) {
+        setAction('delete_server');
+    }
 }
 
 function showExportProgress() {

@@ -10,10 +10,15 @@ if ($no == '') {
 }
 
 // Query presisi menarik seluruh record PROSES_CHANGE beserta data view internal
-$sql = "SELECT P.*, V.PART_NAME, V.PART_NO, V.PART_CODE, V.CUST_COMP, V.CUST_ALIAS, D.DEP_NAME 
+$sql = "SELECT P.*, 
+        V.PART_NAME, V.PART_NO, V.PART_CODE, V.CUST_COMP, V.CUST_ALIAS, 
+        D.DEP_NAME,
+        MAT.ITEM_NAME AS MATERIAL_NAME,
+        MAT.ITEM_CODE AS MATERIAL_CODE
         FROM PROSES_CHANGE P
-        LEFT JOIN PC_ITEM_CUSTOMER_VIEW V ON P.ITEM_ID = V.ITEM_ID
+        LEFT JOIN ITEM_CUSTINFO_VIEW V ON P.ITEM_ID = V.ITEM_ID
         LEFT JOIN DEPT D ON P.DEP_CODE = D.DEP_CODE
+        LEFT JOIN ITEMS MAT ON P.MATERIAL_ID = MAT.ITEM_ID
         WHERE P.CONTROL_NO = ?";
 
 $stmt = q($sql, array($no));
@@ -84,13 +89,14 @@ function renderBox($checked) {
         <table>
             <tr>
                 <td width="8%" style="border:none;" class="lbl-bold">TO</td>
-                <td width="42%" style="border-bottom: 1px solid #000; border-top:none; border-left:none; border-right:none;"><?php echo htmlspecialchars($d['TO_PCIS'] ? 'ALL DEPARTEMENT' : ''); ?></td>
+                <td width="42%" style="border-bottom: 1px solid #000; border-top:none; border-left:none; border-right:none;"><?php echo htmlspecialchars(isset($d['TO_PCIS']) ? trim($d['TO_PCIS']) : ''); ?></td>
                 <td width="15%" style="border:none;" class="lbl-bold">CONTROL NO</td>
                 <td width="35%" style="border-bottom: 1px solid #000; border-top:none; border-left:none; border-right:none;" class="lbl-bold"><?php echo htmlspecialchars($d['CONTROL_NO']); ?></td>
             </tr>
             <tr>
                 <td style="border:none;" class="lbl-bold">CC</td>
-                <td style="border-bottom: 1px solid #000; border-top:none; border-left:none; border-right:none;"><?php echo htmlspecialchars($d['CC'] ? 'ALL HEAD DEPT' : ''); ?></td>
+                <td style="border-bottom: 1px solid #000; border-top:none; border-left:none; border-right:none;">```php
+<?php echo htmlspecialchars(isset($d['CC']) ? trim($d['CC']) : ''); ?></td>
                 <td style="border:none;" class="lbl-bold">CONTROL DATE</td>
                 <td style="border-bottom: 1px solid #000; border-top:none; border-left:none; border-right:none;"><?php echo fTgl($d['CONTROL_DATE1']); ?></td>
             </tr>
@@ -144,8 +150,8 @@ function renderBox($checked) {
                 <td>Customer</td>
             </tr>
             <tr class="text-center">
-                <td><?php echo htmlspecialchars($d['MATERIAL'] ? $d['MATERIAL'] : '-'); ?></td>
-                <td><?php echo htmlspecialchars($d['PART_CODE'] ? $d['PART_CODE'] : '-'); ?></td>
+                <td><?php echo htmlspecialchars($d['MATERIAL_NAME'] ? $d['MATERIAL_NAME'] : '-'); ?></td>
+                <td><?php echo htmlspecialchars($d['MATERIAL_CODE'] ? $d['MATERIAL_CODE'] : '-'); ?></td>
                 <td><?php echo htmlspecialchars($d['CUST_COMP'] ? $d['CUST_ALIAS'] : ''); ?></td>
             </tr>
         </table>
@@ -178,7 +184,7 @@ function renderBox($checked) {
             </tr>
             <tr>
                 <td style="border-top:none; padding: 6px;">
-                    <div class="content-block"><?php echo nl2br(htmlspecialchars($d['REASON'])); ?></div>
+                    <div class="content-block"><?php echo $d['REASON']; ?></div>
                 </td>
                 <td style="border-top:none; text-align: center; vertical-align: middle; padding-left: 10px;">
                     <div style="margin-bottom: 5px;"><?php echo renderBox($d['NEED_CUSTOMER'] ? 1 : 0); ?> Yes</div>
@@ -193,8 +199,8 @@ function renderBox($checked) {
                 <td width="50%" style="color: #15803d;">AFTER CHANGE</td>
             </tr>
             <tr>
-                <td><div style="min-height: 90px;" class="content-block"><?php echo nl2br(htmlspecialchars($d['BEF_CHANGE'])); ?></div></td>
-                <td><div style="min-height: 90px;" class="content-block"><?php echo nl2br(htmlspecialchars($d['AFT_CHANGE'])); ?></div></td>
+                <td><div style="min-height: 90px;" class="content-block"><?php echo nl2br($d['BEF_CHANGE']); ?></div></td>
+                <td><div style="min-height: 90px;" class="content-block"><?php echo nl2br($d['AFT_CHANGE']); ?></div></td>
             </tr>
         </table>
 
@@ -226,32 +232,32 @@ function renderBox($checked) {
             </tr>
             <tr>
                 <td class="lbl-bold" style="vertical-align: middle;">PPIC</td>
-                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['PPIC_REMARK'] ? $d['PPIC_REMARK'] : ''); ?></div></td>
+                <td><div style="min-height: 32px;" class="content-block"><?php echo $d['PPIC_REMARK'] ? $d['PPIC_REMARK'] : ''; ?></div></td>
                 <td></td>
             </tr>
             <tr>
                 <td class="lbl-bold" style="vertical-align: middle;">QC</td>
-                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['QC_REMARK'] ? $d['QC_REMARK'] : ''); ?></div></td>
+                <td><div style="min-height: 32px;" class="content-block"><?php echo $d['QC_REMARK'] ? $d['QC_REMARK'] : ''; ?></div></td>
                 <td></td>
             </tr>
             <tr>
                 <td class="lbl-bold" style="vertical-align: middle;">PRODUCTION</td>
-                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['PRODUCTION_REMARK'] ? $d['PRODUCTION_REMARK'] : ''); ?></div></td>
+                <td><div style="min-height: 32px;" class="content-block"><?php echo $d['PRODUCTION_REMARK'] ? $d['PRODUCTION_REMARK'] : ''; ?></div></td>
                 <td></td>
             </tr>
             <tr>
                 <td class="lbl-bold" style="vertical-align: middle;">MOLD SHOP</td>
-                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['MOLDSHOP_REMARK'] ? $d['MOLDSHOP_REMARK'] : ''); ?></div></td>
+                <td><div style="min-height: 32px;" class="content-block"><?php echo $d['MOLDSHOP_REMARK'] ? $d['MOLDSHOP_REMARK'] : ''; ?></div></td>
                 <td></td>
             </tr>
             <tr>
                 <td class="lbl-bold" style="vertical-align: middle;">PE</td>
-                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['PE_REMARK'] ? $d['PE_REMARK'] : ''); ?></div></td>
+                <td><div style="min-height: 32px;" class="content-block"><?php echo $d['PE_REMARK'] ? $d['PE_REMARK'] : ''; ?></div></td>
                 <td></td>
             </tr>
             <tr>
                 <td class="lbl-bold" style="vertical-align: middle;">MARKETING</td>
-                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['MARKETING_REMARK'] ? $d['MARKETING_REMARK'] : ''); ?></div></td>
+                <td><div style="min-height: 32px;" class="content-block"><?php echo $d['MARKETING_REMARK'] ? $d['MARKETING_REMARK'] : ''; ?></div></td>
                 <td></td>
             </tr>
         </table>
@@ -265,7 +271,7 @@ function renderBox($checked) {
             <tr>
                 <td style="padding: 5px;">
                     <span class="lbl-italic" style="font-size: 8pt; display:block; margin-bottom:2px;">Comment:</span>
-                    <div style="min-height: 35px; font-size:8pt; color:#475569;"><?php echo htmlspecialchars($d['CUSTOMER_COMMENT'] ? $d['CUSTOMER_COMMENT'] : ''); ?></div>
+                    <div style="min-height: 35px; font-size:8pt; color:#475569;"><?php echo $d['CUSTOMER_COMMENT'] ? $d['CUSTOMER_COMMENT'] : ''; ?></div>
                     <div class="text-right" style="padding-right: 15px; margin-top:2px;">
                         <span style="margin-right: 15px; font-weight:bold; font-size:10pt;"><?php echo renderBox($d['CUSTOMER_JUDGEMENT'] === 'OK'); ?> OK</span>
                         <span style="font-weight:bold; font-size:10pt;"><?php echo renderBox($d['CUSTOMER_JUDGEMENT'] === 'NG'); ?> NG</span>

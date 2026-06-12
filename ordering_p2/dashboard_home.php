@@ -265,12 +265,12 @@ function h($value) {
             </div>
 
             <div class="report-item">
-                <div class="report-name">Delivery Summary 3 Month USD</div>
+                <div class="report-name">Delivery Summary 3 Month </div>
                 <a class="button" href="delivery_summary_3month_report.php" target="_blank">OPEN</a>
             </div>
 
             <div class="report-item">
-                <div class="report-name">Delivery Summary 6 month USD</div>
+                <div class="report-name">Delivery Summary 6 month</div>
                 <a class="button" href="delivery_summary_6month_report.php" target="_blank">OPEN</a>
             </div>
 			
@@ -281,6 +281,11 @@ function h($value) {
 			<div class="report-item">
                 <div class="report-name">Delivery Summary 1 YEAR IDR</div>
                 <a class="button" href="DeliverySum12Month_idr.php" target="_blank">OPEN</a>
+            </div>
+			
+			<div class="report-item">
+                <div class="report-name">LOGICAL STOCK</div>
+                <a class="button" href="delivery_schedule_prod_report.php" target="_blank">OPEN</a>
             </div>
 
         </div>

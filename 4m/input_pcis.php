@@ -1,0 +1,521 @@
+<?php
+// FILE: msii/4m/input_pcis.php
+if (session_status() === PHP_SESSION_NONE) { session_start(); }
+if (!isset($_SESSION['erp_user'])) { $_SESSION['erp_user'] = 'Guest'; }
+
+require_once __DIR__ . '/../config/database.php';
+require_once 'pcis_functions.php';
+
+// =========================================================================
+// AJAX HANDLER UNTUK AUTOCOMPLETE CUST, PART, DAN MATERIAL
+// =========================================================================
+if (isset($_GET['ajax_search'])) {
+    while (ob_get_level()) { ob_end_clean(); } 
+    header('Content-Type: application/json');
+    $type = $_GET['ajax_search'];
+    $term = isset($_GET['term']) ? trim($_GET['term']) : '';
+    $res = [];
+    
+    if ($type == 'cust') {
+        $sql = "SELECT TOP 50 CUST_ID, CUST_COMP FROM CUST WHERE CUST_COMP LIKE ?";
+        $stmt = sqlsrv_query($conn, $sql, ["%$term%"]);
+        if($stmt) while($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) $res[] = ['label' => $r['CUST_COMP'], 'value' => $r['CUST_ID']];
+    } 
+// Pencarian Part (Disaring berdasarkan CUST_ID) - VERSI PALING AMAN (TANPA MODEL)
+    elseif ($type == 'part') {
+        $cust_id = isset($_GET['cust_id']) ? $_GET['cust_id'] : '';
+        
+        if (!empty($cust_id)) {
+            // KITA HAPUS 'MODEL' DARI SELECT AGAR TIDAK ERROR
+            $sql = "SELECT * FROM (
+                        SELECT ITEM_ID, CUST_ID, PART_CODE, PART_NAME 
+                        FROM ITEM_CUSTINFO_VIEW
+                    ) AS CustItems 
+                    WHERE CUST_ID = ? AND (PART_NAME LIKE ? OR PART_CODE LIKE ?)";
+            
+            $stmt = sqlsrv_query($conn, $sql, [$cust_id, "%$term%", "%$term%"]);
+            
+            if ($stmt === false) {
+                $err = sqlsrv_errors();
+                $res[] = ['label' => "Error SQL: " . $err[0]['message'], 'value' => ''];
+            } else {
+                while($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)){
+                    $res[] = [
+                        'label' => trim($r['PART_CODE']) . " - " . trim($r['PART_NAME']), 
+                        'value' => $r['ITEM_ID'], 
+                        'model' => '' // Dikosongkan agar tidak memicu error di JavaScript
+                    ];
+                }
+            }
+        }
+    }
+    // PENCARIAN MATERIAL BARU
+    elseif ($type == 'mat') {
+        $sql = "SELECT TOP 50 ITEM_ID, ITEM_CODE, ITEM_NAME FROM ITEMS WHERE ITEM_NAME LIKE ? OR ITEM_CODE LIKE ?";
+        $stmt = sqlsrv_query($conn, $sql, ["%$term%", "%$term%"]);
+        if($stmt) while($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) $res[] = ['label' => $r['ITEM_CODE'] . " - " . $r['ITEM_NAME'], 'value' => $r['ITEM_ID']];
+    }
+    echo json_encode($res);
+    exit;
+}
+
+// =========================================================================
+// PROSES SIMPAN / UPDATE DATABASE (BUG FIXED!)
+// =========================================================================
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
+    function val($k, $d = "") { return isset($_POST[$k]) ? $_POST[$k] : $d; }
+
+    $control_id   = intval(val('control_id', 0));
+    $control_no   = trim(val('control_no'));
+    $control_date = trim(val('control_date'));
+    $dep_code     = trim(val('dep_code'));
+    $pic_name     = trim(val('pic_name'));
+    $item_id      = intval(val('item_id', 0));
+    $model        = trim(val('model'));
+    
+    $material_id  = intval(val('material_id', 0)); // Ini masuk ke kolom MATERIAL_ID
+    
+    $reason       = trim(val('reason'));
+    $bef_change   = trim(val('bef_change'));
+    $aft_change   = trim(val('aft_change'));
+    $status       = trim(val('status'));
+    $prepared     = trim(val('prepared'));
+    
+    $pe_remark   = trim(val('pe_remark'));
+    $qc_remark   = trim(val('qc_remark'));
+    $mold_remark = trim(val('mold_remark'));
+    $ppic_remark = trim(val('ppic_remark'));
+    $prod_remark = trim(val('prod_remark'));
+    $mkt_remark  = trim(val('mkt_remark'));
+
+    $man         = isset($_POST['man']) ? 1 : 0;
+    $machine     = isset($_POST['machine']) ? 1 : 0;
+    $method      = isset($_POST['method']) ? 1 : 0;
+    $material_4m = isset($_POST['material_4m']) ? 1 : 0; // Ini masuk ke kolom MATERIAL (Checkbox 4M)
+    
+    $internal    = isset($_POST['internal']) ? 1 : 0;
+    $customer    = isset($_POST['customer']) ? 1 : 0;
+    $supplier    = isset($_POST['supplier']) ? 1 : 0;
+    $perm        = isset($_POST['perm']) ? intval($_POST['perm']) : 1;
+
+    // Tampung nilai TO_PCIS dan CC ke variabel dulu biar rapi
+    $to_pcis = trim(val('to_pcis'));
+    $cc_pcis = trim(val('cc_pcis'));
+
+    if ($control_id > 0) {
+        // --- MODE UPDATE ---
+        $sql = "UPDATE PROSES_CHANGE SET 
+                    CONTROL_NO = ?, CONTROL_DATE1 = ?, DEP_CODE = ?, PIC_NAME = ?, 
+                    ITEM_ID = ?, MODEL = ?, MATERIAL_ID = ?, TO_PCIS = ?, CC = ?, 
+                    MAN = ?, MACHINE = ?, METHOD = ?, MATERIAL = ?, INTERNAL = ?, CUSTOMER = ?, SUPPLIER = ?, 
+                    PERMANENT_CHANGE = ?, REASON = ?, BEF_CHANGE = ?, AFT_CHANGE = ?, STATUS = ?, IMC_PREPARED = ?,
+                    PE_REMARK = ?, QC_REMARK = ?, MOLDSHOP_REMARK = ?, PPIC_REMARK = ?, PRODUCTION_REMARK = ?, MARKETING_REMARK = ?
+                WHERE CONTROL_ID = ?";
+        
+        $params = array(
+            $control_no, $control_date, $dep_code, $pic_name, $item_id, $model, $material_id, $to_pcis, $cc_pcis,
+            $man, $machine, $method, $material_4m, $internal, $customer, $supplier, $perm, 
+            $reason, $bef_change, $aft_change, $status, $prepared,
+            $pe_remark, $qc_remark, $mold_remark, $ppic_remark, $prod_remark, $mkt_remark,
+            $control_id
+        );
+        $msg = "Data PCIS #{$control_no} berhasil diperbarui!";
+    } else {
+        // --- MODE INSERT ---
+        // Jumlah kolom: 28, Jumlah tanda tanya ?: 28
+        $sql = "INSERT INTO PROSES_CHANGE (
+                    CONTROL_NO, CONTROL_DATE1, DEP_CODE, PIC_NAME, ITEM_ID, MODEL, MATERIAL_ID, TO_PCIS, CC,
+                    MAN, MACHINE, METHOD, MATERIAL, INTERNAL, CUSTOMER, SUPPLIER, PERMANENT_CHANGE, 
+                    REASON, BEF_CHANGE, AFT_CHANGE, STATUS, IMC_PREPARED, PE_REMARK, QC_REMARK, MOLDSHOP_REMARK, PPIC_REMARK, PRODUCTION_REMARK, MARKETING_REMARK
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        
+        $params = array(
+            $control_no, $control_date, $dep_code, $pic_name, $item_id, $model, $material_id, $to_pcis, $cc_pcis,
+            $man, $machine, $method, $material_4m, $internal, $customer, $supplier, $perm, 
+            $reason, $bef_change, $aft_change, $status, $prepared,
+            $pe_remark, $qc_remark, $mold_remark, $ppic_remark, $prod_remark, $mkt_remark
+        );
+        $msg = "Data PCIS baru berhasil disimpan!";
+    }
+    
+    $stmt = q($sql, $params);
+    if ($stmt === false) { die(print_r(sqlsrv_errors(), true)); }
+    
+    $qId = q("SELECT CONTROL_ID FROM PROSES_CHANGE WHERE CONTROL_NO = ?", array($control_no));
+    $rId = sqlsrv_fetch_array($qId, SQLSRV_FETCH_ASSOC);
+    $redir_id = $rId ? $rId['CONTROL_ID'] : '';
+
+    echo "<script>alert('$msg'); window.location.href = 'input_pcis.php?id={$redir_id}';</script>";
+    exit();
+}
+
+$qDept = q("SELECT DEP_CODE, DEP_NAME FROM DEPT WHERE DEP_CODE IN ('MS','PE','PC','MK','PD','QC','MA','PU') ORDER BY DEP_NAME");
+$qStatus = q("SELECT STATUS FROM PROSES_STATUS");
+$autoControlNo = getNewControlNumber();
+?>
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Input PCIS (4M Change) - PE System</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+    <style>
+        body { background-color: #f4f7f6; font-family: "Segoe UI", Roboto, Arial, sans-serif; overflow-x: hidden; }
+        #sidebar { width: 260px; height: 100vh; background: #1f2a36; color: white; position: fixed; display: flex; flex-direction: column; z-index: 1050; box-shadow: 3px 0 10px rgba(0,0,0,0.2); }
+        #sidebar .brand { padding: 22px 20px; font-size: 16px; font-weight: 700; background: #8b5cf6; text-align: center; text-transform: uppercase; }
+        .nav-link { color: #aab0b6; padding: 12px 20px; font-size: 13.5px; border-left: 4px solid transparent; display: flex; align-items: center; gap: 10px; transition: 0.3s; }
+        .nav-link:hover, .nav-link.active { background: #2c3e50; color: #fff !important; border-left-color: #a78bfa; }
+        .menu-label { padding: 15px 20px 5px 20px; font-size: 11px; text-transform: uppercase; color: #5b6e80; font-weight: 800; }
+        #content { padding-left: 260px; transition: all 0.3s; }
+        .top-header { background: white; padding: 15px 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 25px; }
+        .card-custom { border: none; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.04); background: white; margin-bottom: 25px; overflow: hidden; }
+        .card-header-custom { background: #f8f9fa; padding: 15px 20px; border-bottom: 1px solid #eef0f3; font-weight: 700; color: #1f2a36; display: flex; align-items: center; }
+        .card-header-custom i { color: #8b5cf6; margin-right: 10px; font-size: 1.2rem; }
+        label { font-weight: 600; color: #495057; font-size: 0.82rem; margin-bottom: 4px; text-transform: uppercase;}
+        .form-control, .form-select { border-radius: 8px; border: 1px solid #ced4da; padding: 8px 12px; font-size: 0.9rem;}
+        .form-control:focus, .form-select:focus { box-shadow: 0 0 0 0.25rem rgba(139, 92, 246, 0.25); border-color: #8b5cf6; }
+        .btn-nav { border-radius: 8px; padding: 8px 16px; font-weight: 600; font-size: 0.9rem; }
+        .floating-action { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 -4px 15px rgba(0,0,0,0.05); position: sticky; bottom: 20px; z-index: 100;}
+        .ui-autocomplete { position: absolute; z-index: 9999 !important; background: #fff; border: 1px solid #ced4da; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-height: 200px; overflow-y: auto; padding: 5px 0; }
+        .ui-menu-item .ui-menu-item-wrapper { padding: 8px 15px; font-size: 0.88rem; cursor: pointer; }
+        .ui-menu-item .ui-menu-item-wrapper:hover, .ui-menu-item .ui-menu-item-wrapper.ui-state-active { background-color: #8b5cf6 !important; color: #fff !important; border: none; }
+    </style>
+</head>
+<body>
+
+<div class="d-flex w-100">
+    <div id="sidebar">
+        <div class="brand"><i class="bi bi-arrow-repeat me-2"></i>4M Change System</div>
+        <div class="py-2 overflow-auto h-100">
+            <ul class="nav flex-column">
+                <li class="nav-item"><a href="dashboard_4m.php?page=home" class="nav-link"><i class="bi bi-speedometer2"></i> Dashboard Overview</a></li>
+                <div class="menu-label fw-bold">PROSES PERUBAHAN</div>
+                <li class="nav-item"><a href="input_pcis.php" class="nav-link active"><i class="bi bi-plus-circle"></i> Input 4M Change</a></li>
+                <li class="nav-item"><a href="dashboard_4m.php?page=history" class="nav-link"><i class="bi bi-clock-history"></i> Riwayat Perubahan</a></li>
+                <li class="nav-item"><a href="dashboard_4m.php?page=rekap" class="nav-link"><i class="bi bi-journal-text"></i> Rekap Summary (SP)</a></li>
+            </ul>
+        </div>
+        <div class="sidebar-footer p-3 bg-dark mt-auto">
+            <small class="text-white-50 d-block mb-2"><i class="bi bi-person-circle me-1"></i> <?php echo $_SESSION['erp_user']; ?></small>
+            <a href="logout.php" class="btn btn-danger w-100 btn-sm"><i class="bi bi-box-arrow-right"></i> LOGOUT</a><hr class="border-secondary my-2">
+            <a href="../index.php" class="btn btn-sm btn-outline-light w-100"><i class="bi bi-box-arrow-left"></i> Kembali ke ERP</a>
+        </div>
+    </div>
+
+    <div id="content" class="w-100 pb-5">
+        <div class="top-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0 fw-bold text-dark"><i class="bi bi-file-earmark-plus text-primary me-2"></i> Pengajuan Formulir PCIS Baru</h4>
+            <a href="dashboard_4m.php?page=history" class="btn btn-outline-secondary btn-sm fw-bold"><i class="bi bi-arrow-left"></i> Riwayat</a>
+        </div>
+
+        <div class="container-fluid px-4">
+            <form method="POST" id="form4M">
+                <input type="hidden" name="control_id" id="CONTROL_ID" value="0">
+
+                <div class="card-custom mb-4" style="border-top: 4px solid #8b5cf6 !important;">
+                    <div class="card-body p-4">
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label>CONTROL NO</label>
+                                <input type="text" name="control_no" class="form-control fw-bold text-danger" readonly value="<?php echo $autoControlNo; ?>">
+                            </div>
+                            <div class="col-md-3">
+                                <label>CONTROL DATE</label>
+                                <input type="date" name="control_date" class="form-control" required value="<?php echo date('Y-m-d'); ?>">
+                            </div>
+                            <div class="col-md-3">
+                                <label>TO</label>
+                                <input type="text" name="to_pcis" class="form-control" value="ALL DEPARTEMENT">
+                            </div>
+                            <div class="col-md-3">
+                                <label>CC</label>
+                                <input type="text" name="cc_pcis" class="form-control" value="ALL HEAD DEPT">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-lg-8">
+                        <div class="card-custom">
+                            <div class="card-header-custom"><i class="bi bi-tools"></i> Technical Change Details</div>
+                            <div class="card-body p-4">
+                                <div class="row g-3 p-3 mb-4 rounded border bg-light">
+                                    <div class="col-md-4">
+                                        <label class="d-block mb-2">Request By</label>
+                                        <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="internal" checked> <label>Internal</label></div>
+                                        <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="customer"> <label>Customer</label></div>
+                                        <div class="form-check small"><input class="form-check-input" type="checkbox" name="supplier"> <label>Supplier</label></div>
+                                    </div>
+                                    <div class="col-md-8">
+                                        <label>Person in Charge (PIC)</label>
+                                        <input type="text" name="pic_name" class="form-control mb-2" placeholder="Ketik Nama PIC..." required>
+                                        <select name="dep_code" class="form-select" required>
+                                            <option value="">-- Pilih Departemen PIC --</option>
+                                            <?php while($d = sqlsrv_fetch_array($qDept, SQLSRV_FETCH_ASSOC)) echo "<option value='{$d['DEP_CODE']}'>{$d['DEP_NAME']}</option>"; ?>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="row g-3 mb-4">
+                                    <div class="col-md-6">
+                                        <label>Customer Name</label>
+                                        <input type="text" id="CUST_COMP" class="form-control border-primary" placeholder="Klik/Cari customer..." autocomplete="off" required>
+                                        <input type="hidden" name="cust_id" id="CUST_ID">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label>Part / Item Name</label>
+                                        <input type="text" id="PART_NAME" class="form-control border-primary" placeholder="Pilih customer, lalu klik ini..." autocomplete="off" required>
+                                        <input type="hidden" name="item_id" id="ITEM_ID">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label>Model</label>
+                                        <input type="text" name="model" id="MODEL" class="form-control" placeholder="Model item...">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label>Material Name (Autocomplete)</label>
+                                        <input type="text" id="MATERIAL_TEXT" class="form-control border-primary" placeholder="Klik/Cari nama material...">
+                                        <input type="hidden" name="material_id" id="MATERIAL_ID">
+                                    </div>
+                                </div>
+
+                                <div class="row g-3 p-3 mb-4 rounded border bg-light">
+                                    <div class="col-md-6">
+                                        <label class="border-bottom d-block pb-1 mb-2">Item Change (4M Kategori)</label>
+                                        <div class="d-flex gap-3">
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="man"> <label>Man</label></div>
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="machine"> <label>Machine</label></div>
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="method"> <label>Method</label></div>
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="material_4m"> <label>Material</label></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6 border-start ps-4">
+                                        <label class="border-bottom d-block pb-1 mb-2">Changing Type</label>
+                                        <div class="form-check form-check-inline small"><input class="form-check-input" type="radio" name="perm" value="1" checked> <label>Permanent</label></div>
+                                        <div class="form-check form-check-inline small"><input class="form-check-input" type="radio" name="perm" value="0"> <label>Temporary</label></div>
+                                    </div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label>Reason / Purpose</label>
+                                    <textarea name="reason" class="form-control" rows="2" placeholder="Tuliskan alasan modifikasi..."></textarea>
+                                </div>
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="text-danger fw-bold">BEFORE CHANGE</label>
+                                        <textarea name="bef_change" class="form-control border-danger-subtle" rows="3" placeholder="Kondisi awal sebelum perubahan..."></textarea>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="text-success fw-bold">AFTER CHANGE</label>
+                                        <textarea name="aft_change" class="form-control border-success-subtle" rows="3" placeholder="Kondisi target sesudah perubahan..."></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-4">
+                        <div class="card-custom mb-4">
+                            <div class="card-header-custom"><i class="bi bi-calendar3"></i> Schedule Target</div>
+                            <div class="card-body p-3">
+                                <div class="mb-2">
+                                    <label class="small text-muted">Schedule Proses Change</label>
+                                    <input type="date" name="sch_change" id="SCH_CHANGE" class="form-control form-control-sm">
+                                </div>
+                                <div class="mb-2">
+                                    <label class="small text-muted">Start Changing Date</label>
+                                    <input type="date" name="start_change" id="START_CHANGE" class="form-control form-control-sm">
+                                </div>
+                                <div class="mb-2">
+                                    <label class="small text-muted">Close Changing Date</label>
+                                    <input type="date" name="close_change" id="CLOSE_CHANGE" class="form-control form-control-sm">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card-custom mb-4">
+                            <div class="card-header-custom"><i class="bi bi-chat-square-text"></i> Departmental Review</div>
+                            <div class="card-body p-3 overflow-auto" style="max-height: 290px;">
+                                <?php foreach(['PE'=>'pe_remark','QC'=>'qc_remark','MOLD'=>'mold_remark','PPIC'=>'ppic_remark','PROD'=>'prod_remark','MKT'=>'mkt_remark'] as $lbl => $n): ?>
+                                <div class="mb-2 pb-2 border-bottom">
+                                    <label class="text-muted small" style="font-size:10px;"><?= $lbl ?> REMARK</label>
+                                    <textarea name="<?= $n ?>" class="form-control form-control-sm" rows="1"></textarea>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+
+                        <div class="card-custom bg-dark text-white p-3">
+                            <label class="text-warning small mb-2"><i class="bi bi-shield-check me-1"></i> Post Validation & Status</label>
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="text-white-50" style="font-size:10px;">PREPARED BY</label>
+                                    <input type="text" name="prepared" class="form-control form-control-sm bg-transparent text-white" value="<?php echo $_SESSION['erp_user']; ?>">
+                                </div>
+                                <div class="col-6">
+                                    <label class="text-white-50" style="font-size:10px;">STATUS</label>
+                                    <select name="status" class="form-select form-select-sm bg-warning border-0 fw-bold">
+                                        <?php while($s = sqlsrv_fetch_array($qStatus, SQLSRV_FETCH_ASSOC)) echo "<option value='{$s['STATUS']}'>{$s['STATUS']}</option>"; ?>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="floating-action d-flex justify-content-between align-items-center mt-4">
+                    <div>
+                        <button type="button" class="btn btn-outline-dark btn-nav shadow-sm" id="firstBtn">⏮ First</button>
+                        <button type="button" class="btn btn-outline-dark btn-nav shadow-sm" id="prevBtn">← Prev</button>
+                        <button type="button" class="btn btn-outline-dark btn-nav shadow-sm" id="nextBtn">Next →</button>
+                        <button type="button" class="btn btn-outline-dark btn-nav shadow-sm" id="lastBtn">Last ⏭</button>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-success btn-nav me-2 shadow-sm" id="newBtn"><i class="bi bi-plus-lg"></i> Form Baru</button>
+                        <button type="submit" name="btnSimpan" class="btn btn-primary btn-nav shadow"><i class="bi bi-save"></i> Simpan Laporan</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+let MIN_ID = "", MAX_ID = "";
+
+function loadMinMax() {
+    $.get("load_pcis.php", { mode: "minmax" }, function(r) {
+        if (r.status === "ok") { MIN_ID = r.min_id; MAX_ID = r.max_id; }
+    }, "json");
+}
+
+function updateNav(id) {
+    $("#firstBtn, #prevBtn").prop("disabled", id == MIN_ID);
+    $("#nextBtn, #lastBtn").prop("disabled", id == MAX_ID);
+}
+
+function fillForm(rec) {
+    $("#CONTROL_ID").val(rec.CONTROL_ID);
+    $("input[name='control_no']").val(rec.CONTROL_NO.trim());
+    $("input[name='control_date']").val(rec.CONTROL_DATE1);
+    $("input[name='to_pcis']").val(rec.TO_PCIS ? rec.TO_PCIS.trim() : '');
+    $("input[name='cc_pcis']").val(rec.CC ? rec.CC.trim() : '');
+    $("input[name='pic_name']").val(rec.PIC_NAME ? rec.PIC_NAME.trim() : '');
+    $("select[name='dep_code']").val(rec.DEP_CODE ? rec.DEP_CODE.trim() : '');
+    
+    $("#CUST_COMP").val(rec.CUST_COMP ? rec.CUST_COMP.trim() : '');
+    $("#CUST_ID").val(rec.CUST_ID || '');
+    $("#PART_NAME").val(rec.PART_NAME ? rec.PART_NAME.trim() : '');
+    $("#ITEM_ID").val(rec.ITEM_ID || '');
+    $("#MODEL").val(rec.MODEL ? rec.MODEL.trim() : '');
+    
+    // Ini menarik nama MATERIAL dari join database baru kita
+    $("#MATERIAL_TEXT").val(rec.MATERIAL_NAME ? rec.MATERIAL_NAME.trim() : '');
+    $("#MATERIAL_ID").val(rec.MATERIAL_ID || '');
+
+    $("input[name='internal']").prop('checked', rec.INTERNAL == 1);
+    $("input[name='customer']").prop('checked', rec.CUSTOMER == 1);
+    $("input[name='supplier']").prop('checked', rec.SUPPLIER == 1);
+    $("input[name='man']").prop('checked', rec.MAN == 1);
+    $("input[name='machine']").prop('checked', rec.MACHINE == 1);
+    $("input[name='method']").prop('checked', rec.METHOD == 1);
+    $("input[name='material_4m']").prop('checked', rec.MATERIAL == 1 || rec.MATERIAL === true);
+
+    if(rec.PERMANENT_CHANGE == 0) window.jQuery("input[name='perm'][value='0']").prop('checked', true);
+    else window.jQuery("input[name='perm'][value='1']").prop('checked', true);
+
+    $("textarea[name='reason']").val(rec.REASON ? rec.REASON.trim() : '');
+    $("textarea[name='bef_change']").val(rec.BEF_CHANGE ? rec.BEF_CHANGE.trim() : '');
+    $("textarea[name='aft_change']").val(rec.AFT_CHANGE ? rec.AFT_CHANGE.trim() : '');
+
+    $("#SCH_CHANGE").val(rec.SCH_CHANGE || '');
+    $("#START_CHANGE").val(rec.START_CHANGE || '');
+    $("#CLOSE_CHANGE").val(rec.CLOSE_CHANGE || '');
+
+    $("textarea[name='pe_remark']").val(rec.PE_REMARK ? rec.PE_REMARK.trim() : '');
+    $("textarea[name='qc_remark']").val(rec.QC_REMARK ? rec.QC_REMARK.trim() : '');
+    $("textarea[name='mold_remark']").val(rec.MOLDSHOP_REMARK ? rec.MOLDSHOP_REMARK.trim() : '');
+    $("textarea[name='ppic_remark']").val(rec.PPIC_REMARK ? rec.PPIC_REMARK.trim() : '');
+    $("textarea[name='prod_remark']").val(rec.PRODUCTION_REMARK ? rec.PRODUCTION_REMARK.trim() : '');
+    $("textarea[name='mkt_remark']").val(rec.MARKETING_REMARK ? rec.MARKETING_REMARK.trim() : '');
+
+    $("input[name='prepared']").val(rec.IMC_PREPARED ? rec.IMC_PREPARED.trim() : '');
+    $("select[name='status']").val(rec.STATUS ? rec.STATUS.trim() : 'OPEN');
+
+    updateNav(rec.CONTROL_ID);
+}
+
+$(document).ready(function() {
+    loadMinMax();
+
+    $("#firstBtn").click(function(){ $.get("load_pcis.php", {mode:"first"}, function(r){ if(r.status==="ok") fillForm(r.record);},"json"); });
+    $("#lastBtn").click(function(){ $.get("load_pcis.php", {mode:"last"}, function(r){ if(r.status==="ok") fillForm(r.record);},"json"); });
+    $("#nextBtn").click(function(){ let id=$("#CONTROL_ID").val()||0; $.get("load_pcis.php", {mode:"next", id:id}, function(r){ if(r.status==="ok") fillForm(r.record);},"json"); });
+    $("#prevBtn").click(function(){ let id=$("#CONTROL_ID").val()||0; $.get("load_pcis.php", {mode:"prev", id:id}, function(r){ if(r.status==="ok") fillForm(r.record);},"json"); });
+
+    // CUSTOMER AUTOCOMPLETE
+    $("#CUST_COMP").autocomplete({
+        minLength: 0, source: "?ajax_search=cust",
+        select: function(event, ui) {
+            $("#CUST_COMP").val(ui.item.label);
+            $("#CUST_ID").val(ui.item.value);
+            $("#PART_NAME, #ITEM_ID, #MODEL").val("");
+            return false;
+        }
+    }).on("focus click", function() { $(this).autocomplete("search", $(this).val()); });
+
+    // PART AUTOCOMPLETE
+    $("#PART_NAME").autocomplete({
+        minLength: 0,
+        source: function(req, res) {
+            let activeCust = $("#CUST_ID").val();
+            if(!activeCust) { res([{ label: "Silakan pilih Customer terlebih dahulu!", value: "" }]); return; }
+            $.ajax({
+                url: "?ajax_search=part", type: "GET", dataType: "json", data: { term: req.term, cust_id: activeCust },
+                success: function(data) {
+                    if (!data || data.length === 0) res([{ label: "- Part tidak ditemukan -", value: "" }]); else res(data);
+                }
+            });
+        },
+        select: function(event, ui) {
+            if(ui.item.value === "") return false;
+            $("#PART_NAME").val(ui.item.label);
+            $("#ITEM_ID").val(ui.item.value);
+            $("#MODEL").val(ui.item.model || '');
+            return false;
+        }
+    }).on("focus click", function() { $(this).autocomplete("search", $(this).val()); });
+
+    // MATERIAL AUTOCOMPLETE BARU
+    $("#MATERIAL_TEXT").autocomplete({
+        minLength: 0, source: "?ajax_search=mat",
+        select: function(event, ui) {
+            $("#MATERIAL_TEXT").val(ui.item.label);
+            $("#MATERIAL_ID").val(ui.item.value); // Simpan Integer ke Hidden Field
+            return false;
+        }
+    }).on("focus click", function() { $(this).autocomplete("search", $(this).val()); });
+
+    $("#newBtn").click(function(){
+        $("input[type='text'], input[type='date'], textarea").val("");
+        $("input[type='checkbox']").prop('checked', false);
+        $("select").val(""); $("#CONTROL_ID").val("0");
+        $.get("load_pcis.php", {mode:"last"}, function(r){ location.reload(); });
+    });
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if(urlParams.has('id')) {
+        let currentID = urlParams.get('id');
+        $.get("load_pcis.php", { mode: "load", id: currentID }, function(r){
+            if (r.status === "ok") fillForm(r.record);
+        },"json");
+    }
+});
+</script>
+</body>
+</html>

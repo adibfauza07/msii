@@ -168,6 +168,10 @@ header("Expires: 0");
             font-weight: bold;
             background: #f7f7f7;
         }
+		.minus {
+    color: red;
+    font-weight: bold;
+}
     </style>
 </head>
 
@@ -259,16 +263,23 @@ header("Expires: 0");
             <?php } ?>
         </tr>
 
-        <tr>
-            <td class="label">Bal</td>
-            <?php for ($i = 1; $i <= 31; $i++) { ?>
-                <?php
-                    $col = $i . "_BAL";
-                    $val = isset($hrow[$col]) ? $hrow[$col] : 0;
-                ?>
-                <td class="num"><?php echo h(excel_num_cell($val)); ?></td>
-            <?php } ?>
-        </tr>
+       <tr>
+    <td class="label">Bal</td>
+    <?php for ($i = 1; $i <= 31; $i++) { ?>
+        <?php
+            $col = $i . "_BAL";
+            $val = isset($hrow[$col]) ? $hrow[$col] : 0;
+
+            $class = "num";
+            if ((float)$val < 0) {
+                $class .= " minus";
+            }
+        ?>
+        <td class="<?php echo h($class); ?>">
+            <?php echo h(excel_num_cell($val)); ?>
+        </td>
+    <?php } ?>
+</tr>
 
         <tr>
             <td colspan="35">&nbsp;</td>

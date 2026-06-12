@@ -87,10 +87,16 @@ function fmt_num($value, $decimal = 0) {
 
 function fmt_price($value) {
     if ($value === null || $value === "") {
-        $value = 0;
+        return "-";
     }
 
-    return number_format((float)$value, 5, ".", ",");
+    $n = (float)$value;
+
+    if ($n == 0) {
+        return "-";
+    }
+
+    return rtrim(rtrim(number_format($n, 5, ".", ","), "0"), ".");
 }
 
 function fmt_amount($value) {
@@ -186,15 +192,15 @@ if ($is_filter) {
         }
 
         $currCode = safe_trim($r["CURR_CODE"]);
-        $factor = usd_factor($currCode, $r["CURR_VRATE"], $r["USDRATE"]);
+  
 
         $qty1 = isset($r["DQTY1"]) ? (float)$r["DQTY1"] : 0;
         $qty2 = isset($r["DQTY2"]) ? (float)$r["DQTY2"] : 0;
         $qty3 = isset($r["DQTY3"]) ? (float)$r["DQTY3"] : 0;
 
-        $amt1 = isset($r["AMT1"]) ? (float)$r["AMT1"] * $factor : 0;
-        $amt2 = isset($r["AMT2"]) ? (float)$r["AMT2"] * $factor : 0;
-        $amt3 = isset($r["AMT3"]) ? (float)$r["AMT3"] * $factor : 0;
+       $amt1 = isset($r["AMT1"]) ? (float)$r["AMT1"] : 0;
+$amt2 = isset($r["AMT2"]) ? (float)$r["AMT2"] : 0;
+$amt3 = isset($r["AMT3"]) ? (float)$r["AMT3"] : 0;
 
         $rows[] = array(
             "CUST_CODE"  => safe_trim($r["CUST_CODE"]),
@@ -739,18 +745,18 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                 <tr>
                     <th class="col-price">Price</th>
                     <th class="col-qty">QTY</th>
-                    <th class="col-amt month-border">AMT USD</th>
+                    <th class="col-amt month-border">AMT </th>
 
                     <th class="col-price">Price</th>
                     <th class="col-qty">QTY</th>
-                    <th class="col-amt month-border">AMT USD</th>
+                    <th class="col-amt month-border">AMT </th>
 
                     <th class="col-price">Price</th>
                     <th class="col-qty">QTY</th>
-                    <th class="col-amt month-border">AMT USD</th>
+                    <th class="col-amt month-border">AMT </th>
 
                     <th class="col-qty">QTY</th>
-                    <th class="col-amt">AMT USD</th>
+                    <th class="col-amt">AMT </th>
                 </tr>
             </thead>
 

@@ -29,7 +29,7 @@ $query = q($sql, $params);
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <a href="?page=input_change" class="btn btn-primary btn-sm fw-bold shadow-sm"><i class="bi bi-plus-lg me-1"></i> + Buat Pengajuan PCIS (4M)</a>
+    <a href="input_pcis.php" class="btn btn-primary btn-sm fw-bold shadow-sm"><i class="bi bi-plus-lg me-1"></i> + Buat Pengajuan PCIS (4M)</a>
     <a href="?page=rekap" class="btn btn-outline-success btn-sm fw-bold shadow-sm"><i class="bi bi-file-earmark-excel me-1"></i> Cetak Rekap / Summary</a>
 </div>
 
@@ -111,7 +111,7 @@ $query = q($sql, $params);
                         <td class="text-center">
                             <div class="btn-group">
                                 <a href="print_pcis.php?no=<?php echo $row['CONTROL_NO']; ?>" target="_blank" class="btn btn-outline-secondary btn-sm" title="Print"><i class="bi bi-printer"></i></a>
-                                <a href="?page=input_change&id=<?php echo $row['CONTROL_ID']; ?>" class="btn btn-outline-primary btn-sm" title="Edit"><i class="bi bi-pencil"></i></a>
+                                <a href="input_pcis.php?id=<?php echo $row['CONTROL_ID']; ?>" class="btn btn-outline-primary btn-sm" title="Edit"><i class="bi bi-pencil"></i></a>
                                 <a href="delete_4m.php?id=<?php echo $row['CONTROL_ID']; ?>" onclick="return confirm('Yakin hapus data ini?')" class="btn btn-outline-danger btn-sm" title="Hapus"><i class="bi bi-trash"></i></a>
                             </div>
                         </td>

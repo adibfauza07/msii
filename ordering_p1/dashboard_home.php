@@ -282,6 +282,10 @@ function h($value) {
                 <div class="report-name">Delivery Summary 1 YEAR IDR</div>
                 <a class="button" href="DeliverySum12Month_idr.php" target="_blank">OPEN</a>
             </div>
+			<div class="report-item">
+                <div class="report-name">LOGICAL STOCK</div>
+                <a class="button" href="delivery_schedule_prod_report.php" target="_blank">OPEN</a>
+            </div>
 
         </div>
     </div>

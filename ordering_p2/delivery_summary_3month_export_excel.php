@@ -13,7 +13,6 @@ function safe_trim($value) {
     if ($value === null) {
         return "";
     }
-
     return trim((string)$value);
 }
 
@@ -21,11 +20,9 @@ function get_param($name, $default = "") {
     if (isset($_GET[$name])) {
         return trim($_GET[$name]);
     }
-
     if (isset($_POST[$name])) {
         return trim($_POST[$name]);
     }
-
     return $default;
 }
 
@@ -45,7 +42,6 @@ function month_to_yyyymmdd($value) {
     }
 
     $ts = strtotime($value);
-
     if ($ts === false) {
         return "";
     }
@@ -59,31 +55,20 @@ function fmt_print_datetime() {
 
 function excel_num($value, $decimal = 0) {
     if ($value === null || $value === "") {
-        $value = 0;
+        return "";
     }
 
-    return number_format((float)$value, $decimal, ".", "");
-}
+    $n = (float)$value;
 
-function usd_factor($currCode, $currRate, $usdRate) {
-    $currCode = strtoupper(trim((string)$currCode));
-
-    if ($currCode == "USD") {
-        return 1;
+    if (abs($n) < 0.000001) {
+        return "";
     }
 
-    $currRate = (float)$currRate;
-    $usdRate  = (float)$usdRate;
-
-    if ($currRate == 0) {
-        $currRate = 1;
+    if ($decimal === "price") {
+        return rtrim(rtrim(number_format($n, 5, ".", ""), "0"), ".");
     }
 
-    if ($usdRate == 0) {
-        $usdRate = 1;
-    }
-
-    return $currRate / $usdRate;
+    return number_format($n, $decimal, ".", "");
 }
 
 $start_month = get_param("START_MONTH", "");
@@ -115,7 +100,6 @@ if ($stmt === false) {
 }
 
 $rows = array();
-
 $month1 = "";
 $month2 = "";
 $month3 = "";
@@ -128,15 +112,15 @@ while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     }
 
     $currCode = safe_trim($r["CURR_CODE"]);
-    $factor = usd_factor($currCode, $r["CURR_VRATE"], $r["USDRATE"]);
 
     $qty1 = isset($r["DQTY1"]) ? (float)$r["DQTY1"] : 0;
     $qty2 = isset($r["DQTY2"]) ? (float)$r["DQTY2"] : 0;
     $qty3 = isset($r["DQTY3"]) ? (float)$r["DQTY3"] : 0;
 
-    $amt1 = isset($r["AMT1"]) ? (float)$r["AMT1"] * $factor : 0;
-    $amt2 = isset($r["AMT2"]) ? (float)$r["AMT2"] * $factor : 0;
-    $amt3 = isset($r["AMT3"]) ? (float)$r["AMT3"] * $factor : 0;
+    // AMOUNT ASLI DARI SP, TIDAK DIKONVERSI USD
+    $amt1 = isset($r["AMT1"]) ? (float)$r["AMT1"] : 0;
+    $amt2 = isset($r["AMT2"]) ? (float)$r["AMT2"] : 0;
+    $amt3 = isset($r["AMT3"]) ? (float)$r["AMT3"] : 0;
 
     $rows[] = array(
         "CUST_CODE"  => safe_trim($r["CUST_CODE"]),
@@ -172,6 +156,8 @@ header("Content-Type: application/vnd.ms-excel; charset=utf-8");
 header("Content-Disposition: attachment; filename=\"" . $fileName . "\"");
 header("Pragma: no-cache");
 header("Expires: 0");
+
+echo "\xEF\xBB\xBF";
 ?>
 <!DOCTYPE html>
 <html>
@@ -196,6 +182,7 @@ header("Expires: 0");
         td {
             border: 1px solid #000000;
             vertical-align: top;
+            padding: 3px;
         }
 
         .title {
@@ -214,7 +201,7 @@ header("Expires: 0");
         }
 
         .price {
-            mso-number-format: "0.00000";
+            mso-number-format: "General";
             text-align: right;
         }
 
@@ -240,30 +227,30 @@ header("Expires: 0");
 
 <table>
     <tr>
-        <td colspan="17" class="title">DELIVERY HISTORY SUMMARY 3 MONTH</td>
+        <td colspan="14" class="title">DELIVERY HISTORY SUMMARY 3 MONTH</td>
     </tr>
 
     <tr>
-        <td colspan="17">P.T. IMC TEKNO INDONESIA - PPIC Department</td>
+        <td colspan="14">P.T. IMC TEKNO INDONESIA - PPIC Department</td>
     </tr>
 
     <tr>
-        <td colspan="17">Starting Month: <?php echo h($start_ymd); ?></td>
+        <td colspan="14">Starting Month: <?php echo h($start_ymd); ?></td>
     </tr>
 
     <tr>
-        <td colspan="17">
+        <td colspan="14">
             Customer:
             <?php echo h($cust_code == "%" ? "ALL CUSTOMER" : $cust_code); ?>
         </td>
     </tr>
 
     <tr>
-        <td colspan="17">Export Date: <?php echo h(fmt_print_datetime()); ?></td>
+        <td colspan="14">Export Date: <?php echo h(fmt_print_datetime()); ?></td>
     </tr>
 
     <tr>
-        <td colspan="17">&nbsp;</td>
+        <td colspan="14">&nbsp;</td>
     </tr>
 
     <tr>
@@ -281,13 +268,13 @@ header("Expires: 0");
 
     <tr>
         <th>Qty</th>
-        <th>Amount USD</th>
+        <th>Amount</th>
         <th>Qty</th>
-        <th>Amount USD</th>
+        <th>Amount</th>
         <th>Qty</th>
-        <th>Amount USD</th>
+        <th>Amount</th>
         <th>Qty</th>
-        <th>Amount USD</th>
+        <th>Amount</th>
     </tr>
 
     <?php if (count($rows) == 0) { ?>
@@ -319,7 +306,6 @@ header("Expires: 0");
 
     for ($i = 0; $i < count($rows); $i++) {
         $r = $rows[$i];
-
         $custKey = $r["CUST_CODE"] . "|" . $r["CUST_COMP"];
 
         if ($custKey != $lastCust) {
@@ -338,7 +324,6 @@ header("Expires: 0");
                 </tr>
                 <?php
             }
-
             ?>
             <tr class="customer-row">
                 <td class="text"><?php echo h($r["CUST_CODE"]); ?></td>
@@ -382,7 +367,7 @@ header("Expires: 0");
             <td class="text"><?php echo h($r["CUST_COMP"]); ?></td>
             <td class="text"><?php echo h($r["PART_NUM"]); ?></td>
             <td class="text"><?php echo h($r["PART_NAME"]); ?></td>
-            <td class="price"><?php echo h(excel_num($r["PRICE"], 5)); ?></td>
+            <td class="price"><?php echo h(excel_num($r["PRICE"], "price")); ?></td>
             <td class="text"><?php echo h($r["CURR_CODE"]); ?></td>
 
             <td class="num"><?php echo h(excel_num($r["QTY1"], 0)); ?></td>

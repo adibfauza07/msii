@@ -399,6 +399,10 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                 overflow: hidden;
             }
         }
+		.negative-balance {
+    color: red;
+    font-weight: bold;
+}
     </style>
 </head>
 
@@ -554,16 +558,21 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                             <?php } ?>
                         </tr>
 
-                        <tr>
-                            <td class="row-label">Bal</td>
-                            <?php for ($i = 1; $i <= 31; $i++) { ?>
-                                <?php
-                                    $col = $i . "_BAL";
-                                    $val = isset($hrow[$col]) ? $hrow[$col] : 0;
-                                ?>
-                                <td><?php echo h(fmt_num_cell($val)); ?></td>
-                            <?php } ?>
-                        </tr>
+                       <tr>
+    <td class="row-label">Bal</td>
+    <?php for ($i = 1; $i <= 31; $i++) { ?>
+        <?php
+            $col = $i . "_BAL";
+            $val = isset($hrow[$col]) ? $hrow[$col] : 0;
+
+            $class = ((float)$val < 0) ? "negative-balance" : "";
+        ?>
+        <td class="<?php echo $class; ?>">
+            <?php echo h(fmt_num_cell($val)); ?>
+        </td>
+    <?php } ?>
+</tr>
+					   
                     </tbody>
                 </table>
 

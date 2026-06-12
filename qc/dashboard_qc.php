@@ -92,20 +92,23 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
         <div class="menu-label">Menu Utama</div>
         <a href="?page=home" class="nav-link <?php echo $page=='home'?'active':''; ?>"><i class="bi bi-speedometer2"></i> Dashboard</a>
         
-        <div class="menu-label">PILIH LOKASI (PLANT)</div>
-        <a href="?page=kakotora&plant=p1" class="nav-link <?php echo ($page=='kakotora' && $active_plant=='p1')?'active':''; ?>">
-            <i class="bi bi-building text-primary"></i> Plant 1 (Claim)
-        </a>
-        <a href="?page=kakotora&plant=p2" class="nav-link <?php echo ($page=='kakotora' && $active_plant=='p2')?'active':''; ?>">
-            <i class="bi bi-building-fill text-warning"></i> Plant 2 (Claim)
-        </a>
+        <div class="menu-label">MENU OPERASIONAL</div>
         
-        <a href="?page=usulan_perubahan_p1&plant=p1" class="nav-link <?php echo (($page=='usulan_perubahan' || $page=='input_usulan' || $page=='edit_usulan') && $active_plant=='p1')?'active':''; ?>">
-            <i class="bi bi-file-earmark-text text-primary"></i> Usulan Perubahan Plant 1
-        </a>
-        <a href="?page=usulan_perubahan&plant=p2" class="nav-link <?php echo (($page=='usulan_perubahan' || $page=='input_usulan' || $page=='edit_usulan') && $active_plant=='p2')?'active':''; ?>">
-            <i class="bi bi-file-earmark-text-fill text-warning"></i> Usulan Perubahan Plant 2
-        </a>
+        <?php if ($active_plant == 'p1'): ?>
+            <a href="?page=kakotora&plant=p1" class="nav-link <?php echo ($page=='kakotora')?'active':''; ?>">
+                <i class="bi bi-building text-primary"></i> Data Claim (Plant 1)
+            </a>
+            <a href="?page=usulan_perubahan_p1&plant=p1" class="nav-link <?php echo (($page=='usulan_perubahan_p1' || $page=='input_usulan' || $page=='edit_usulan'))?'active':''; ?>">
+                <i class="bi bi-file-earmark-text text-primary"></i> Usulan Perubahan Plant 1
+            </a>
+        <?php else: ?>
+            <a href="?page=kakotora&plant=p2" class="nav-link <?php echo ($page=='kakotora')?'active':''; ?>">
+                <i class="bi bi-building-fill text-warning"></i> Data Claim (Plant 2)
+            </a>
+            <a href="?page=usulan_perubahan&plant=p2" class="nav-link <?php echo (($page=='usulan_perubahan' || $page=='input_usulan' || $page=='edit_usulan'))?'active':''; ?>">
+                <i class="bi bi-file-earmark-text-fill text-warning"></i> Usulan Perubahan Plant 2
+            </a>
+        <?php endif; ?>
         
         <div class="menu-label">Laporan</div>
         <a href="#" class="nav-link"><i class="bi bi-file-earmark-bar-graph"></i> Summary Report</a>

@@ -26,6 +26,7 @@ if (file_exists($config1)) {
     die('File config database_aging.php tidak ditemukan.');
 }
 
+
 /* =========================
    AKSES KHUSUS P2
    ========================= */
@@ -184,6 +185,34 @@ function responseOk($res) {
     return false;
 }
 
+function tallyLineError($res) {
+    if (preg_match_all('/<LINEERROR>(.*?)<\\/LINEERROR>/is', (string)$res, $m)) {
+        $msg = implode(' | ', $m[1]);
+        $msg = html_entity_decode($msg, ENT_QUOTES, 'UTF-8');
+        $msg = strip_tags($msg);
+        return trim($msg);
+    }
+
+    if (stripos((string)$res, 'CURL ERROR') !== false) {
+        return trim((string)$res);
+    }
+
+    return '';
+}
+
+function groupItemCodes($group) {
+    $items = array();
+
+    foreach ($group['rows'] as $r) {
+        $code = isset($r['ITEM_CODE']) ? trim((string)$r['ITEM_CODE']) : '';
+        if ($code != '') {
+            $items[] = $code;
+        }
+    }
+
+    return implode(', ', $items);
+}
+
 function saveDebugXml($voucherNo, $xml) {
     $dir = __DIR__ . '/debug_tally_xml_sop';
 
@@ -279,6 +308,98 @@ function saveSetting($ip, $port, $sql) {
     ", array($ip, $port, $sql));
 }
 
+
+function ensureTallyServerTable() {
+    qx("
+        IF OBJECT_ID('dbo.Tally_Server_Master', 'U') IS NULL
+        BEGIN
+            CREATE TABLE dbo.Tally_Server_Master
+            (
+                ID INT IDENTITY(1,1) PRIMARY KEY,
+                ServerName VARCHAR(100) NULL,
+                TallyIP VARCHAR(100) NOT NULL,
+                TallyPort VARCHAR(10) NOT NULL,
+                IsDefault BIT NOT NULL DEFAULT 0,
+                CreatedAt DATETIME NOT NULL DEFAULT GETDATE()
+            )
+        END
+    ", array());
+}
+
+function seedTallyServers() {
+    ensureTallyServerTable();
+
+    $cek = qx("SELECT COUNT(*) AS JML FROM dbo.Tally_Server_Master", array());
+    $r = sqlsrv_fetch_array($cek, SQLSRV_FETCH_ASSOC);
+
+    if ($r && (int)$r['JML'] == 0) {
+        qx("
+            INSERT INTO dbo.Tally_Server_Master
+            (ServerName, TallyIP, TallyPort, IsDefault)
+            VALUES
+            ('Localhost', '127.0.0.1', '9002', 0),
+            ('dianero99', 'dianero99', '9002', 1)
+        ", array());
+    }
+}
+
+function loadTallyServers() {
+    seedTallyServers();
+
+    $stmt = qx("
+        SELECT
+            ID,
+            ServerName,
+            TallyIP,
+            TallyPort,
+            IsDefault
+        FROM dbo.Tally_Server_Master
+        ORDER BY IsDefault DESC, ServerName, TallyIP
+    ", array());
+
+    return fetchAllRows($stmt);
+}
+
+function saveTallyServer($serverName, $ip, $port, $isDefault) {
+    seedTallyServers();
+
+    $serverName = trim((string)$serverName);
+    $ip = trim((string)$ip);
+    $port = trim((string)$port);
+
+    if ($serverName == '') {
+        $serverName = $ip . ':' . $port;
+    }
+
+    if ($ip == '' || $port == '') {
+        return 'Nama/IP/Port Tally belum lengkap.';
+    }
+
+    if ($isDefault) {
+        qx("UPDATE dbo.Tally_Server_Master SET IsDefault = 0", array());
+    }
+
+    qx("
+        INSERT INTO dbo.Tally_Server_Master
+        (ServerName, TallyIP, TallyPort, IsDefault)
+        VALUES (?, ?, ?, ?)
+    ", array($serverName, $ip, $port, $isDefault ? 1 : 0));
+
+    return 'Server Tally berhasil disimpan.';
+}
+
+function deleteTallyServer($id) {
+    seedTallyServers();
+
+    $id = (int)$id;
+    if ($id <= 0) {
+        return 'ID server tidak valid.';
+    }
+
+    qx("DELETE FROM dbo.Tally_Server_Master WHERE ID = ?", array($id));
+    return 'Server Tally berhasil dihapus.';
+}
+
 function testTallyConnection($ip, $port) {
     $fp = @fsockopen($ip, $port, $errno, $errstr, 3);
 
@@ -370,6 +491,8 @@ $tally_ip = isset($setting['TallyIP']) ? $setting['TallyIP'] : 'serplan1';
 $tally_port = isset($setting['TallyPort']) ? $setting['TallyPort'] : '9002';
 $sql_query = isset($setting['SqlQuery']) ? $setting['SqlQuery'] : defaultSqlQuery();
 
+$tally_servers = loadTallyServers();
+
 $action = isset($_POST['action']) ? $_POST['action'] : '';
 $message = '';
 $resultRows = array();
@@ -389,7 +512,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $sql_query = isset($_POST['sql_query']) ? $_POST['sql_query'] : $sql_query;
 }
 
-if ($action == 'reset_sql') {
+if ($action == 'save_server') {
+    $serverName = isset($_POST['server_name']) ? trim($_POST['server_name']) : '';
+    $isDefault = isset($_POST['is_default_server']) ? 1 : 0;
+
+    $message = saveTallyServer($serverName, $tally_ip, $tally_port, $isDefault);
+    $tally_servers = loadTallyServers();
+
+    if ($isDefault) {
+        saveSetting($tally_ip, $tally_port, $sql_query);
+    }
+} elseif ($action == 'delete_server') {
+    $serverId = isset($_POST['server_id_delete']) ? (int)$_POST['server_id_delete'] : 0;
+    $message = deleteTallyServer($serverId);
+    $tally_servers = loadTallyServers();
+} elseif ($action == 'reset_sql') {
     $sql_query = defaultSqlQuery();
     saveSetting($tally_ip, $tally_port, $sql_query);
     $message = 'SQL default SOP berhasil di-reset.';
@@ -413,11 +550,16 @@ if ($action == 'reset_sql') {
         $success = 0;
         $failed = 0;
         $processed = 0;
+        $totalVoucher = count($groups);
+        $totalToProcess = ($batch_limit < $totalVoucher) ? $batch_limit : $totalVoucher;
 
         foreach ($groups as $key => $group) {
             if ($processed >= $batch_limit) {
                 break;
             }
+
+            $counterNo = $processed + 1;
+            $remainingBefore = $totalToProcess - $processed;
 
             $xml = buildSopXml($group, $use_full_item_name);
             $voucherNoDebug = isset($group['header']['Nomor']) ? $group['header']['Nomor'] : '';
@@ -433,9 +575,15 @@ if ($action == 'reset_sql') {
             }
 
             $exportDetails[] = array(
+                'no' => $counterNo,
+                'remaining_before' => $remainingBefore,
+                'remaining_after' => $remainingBefore - 1,
+                'counter_text' => $ok ? ($counterNo . ' sukses') : ($counterNo . ' gagal'),
                 'voucher' => $voucherNoDebug,
                 'items' => count($group['rows']),
+                'item_codes' => groupItemCodes($group),
                 'ok' => $ok,
+                'error_msg' => tallyLineError($res),
                 'debug_file' => $debugFile,
                 'response' => $res
             );
@@ -446,6 +594,7 @@ if ($action == 'reset_sql') {
         $summary = array(
             'rows' => count($resultRows),
             'voucher' => count($groups),
+            'target' => $totalToProcess,
             'processed' => $processed,
             'remaining' => count($groups) - $processed,
             'success' => $success,
@@ -478,6 +627,20 @@ if ($action == '') {
     <div class="alert alert-warning">
         Test ini hanya import Stock Opname: Nomor, Tanggal, ITEM_CODE, ITEM_NAME, QTY.
         Tidak ada ledger, rate, amount. Debug XML: <b>/msii/finance/debug_tally_xml_sop/</b>.
+        Jika gagal, summary akan menampilkan ITEM_CODE dan LINEERROR dari Tally.
+        IP/Port Tally bisa disimpan ke master dan dipilih dari combo box.
+        Counter menampilkan hitungan mundur, contoh 900 → 899, dan status 1 sukses, 2 sukses, dst.
+    </div>
+
+    <div id="exportProgressBox" class="card shadow-sm mb-3" style="display:none;">
+        <div class="card-header fw-bold">Progress Import SOP</div>
+        <div class="card-body">
+            <div class="progress" style="height:26px;">
+                <div id="exportProgressBar" class="progress-bar progress-bar-striped progress-bar-animated"
+                     role="progressbar" style="width:5%">Preparing...</div>
+            </div>
+            <div id="exportProgressText" class="mt-2 text-muted">Mohon tunggu, sedang import ke Tally...</div>
+        </div>
     </div>
 
     <form method="post" id="frmSop">
@@ -488,13 +651,38 @@ if ($action == '') {
             <div class="card-body">
                 <div class="row g-3">
 
+                    <div class="col-md-4">
+                        <label class="form-label fw-bold">Pilih Server Tally</label>
+                        <select id="server_combo" class="form-control" onchange="pilihServerTally()">
+                            <option value="">-- pilih server tally --</option>
+                            <?php foreach ($tally_servers as $srv) { ?>
+                                <?php
+                                $srvId = isset($srv['ID']) ? $srv['ID'] : '';
+                                $srvName = isset($srv['ServerName']) ? $srv['ServerName'] : '';
+                                $srvIp = isset($srv['TallyIP']) ? $srv['TallyIP'] : '';
+                                $srvPort = isset($srv['TallyPort']) ? $srv['TallyPort'] : '';
+                                $srvDefault = isset($srv['IsDefault']) ? (int)$srv['IsDefault'] : 0;
+                                $selectedServer = ($srvIp == $tally_ip && $srvPort == $tally_port) ? 'selected' : '';
+                                ?>
+                                <option value="<?php echo h($srvIp . '|' . $srvPort . '|' . $srvId); ?>" <?php echo $selectedServer; ?>>
+                                    <?php echo h(($srvDefault ? '[DEFAULT] ' : '') . $srvName . ' - ' . $srvIp . ':' . $srvPort); ?>
+                                </option>
+                            <?php } ?>
+                        </select>
+                    </div>
+
                     <div class="col-md-3">
+                        <label class="form-label fw-bold">Nama Server</label>
+                        <input type="text" name="server_name" id="server_name" class="form-control" placeholder="contoh: dianero99">
+                    </div>
+
+                    <div class="col-md-2">
                         <label class="form-label fw-bold">Tally IP Address</label>
                         <input type="text" name="tally_ip" id="tally_ip" class="form-control" value="<?php echo h($tally_ip); ?>">
                     </div>
 
-                    <div class="col-md-2">
-                        <label class="form-label fw-bold">Tally Port</label>
+                    <div class="col-md-1">
+                        <label class="form-label fw-bold">Port</label>
                         <input type="text" name="tally_port" id="tally_port" class="form-control" value="<?php echo h($tally_port); ?>">
                     </div>
 
@@ -510,12 +698,21 @@ if ($action == '') {
                         </label>
                     </div>
 
-                    <div class="col-md-12 d-flex gap-2">
+                    <div class="col-md-12 d-flex align-items-center gap-2 flex-wrap">
+                        <label class="form-check mb-0 me-2">
+                            <input type="checkbox" class="form-check-input" name="is_default_server" value="1">
+                            <span class="form-check-label">Jadikan Default</span>
+                        </label>
+
+                        <button type="button" class="btn btn-info" onclick="setAction('save_server')">Save IP/Port</button>
+                        <button type="button" class="btn btn-outline-danger" onclick="deleteSelectedServer()">Delete Server</button>
                         <button type="button" class="btn btn-secondary" onclick="setAction('test')">Test Connection</button>
-                        <button type="button" class="btn btn-success" onclick="setAction('save')">Save</button>
+                        <button type="button" class="btn btn-success" onclick="setAction('save')">Save Setting</button>
                         <button type="button" class="btn btn-warning" onclick="setAction('reset_sql')">Reset SQL Default</button>
                         <button type="button" class="btn btn-primary" onclick="setAction('preview')">Preview Query</button>
                         <button type="button" class="btn btn-danger" onclick="confirmExport()">Import SOP to Tally</button>
+
+                        <input type="hidden" name="server_id_delete" id="server_id_delete" value="">
                     </div>
 
                 </div>
@@ -531,12 +728,29 @@ if ($action == '') {
     </form>
 
     <?php if ($summary !== null) { ?>
+        <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            var box = document.getElementById('exportProgressBox');
+            var bar = document.getElementById('exportProgressBar');
+            var txt = document.getElementById('exportProgressText');
+
+            if (box && bar) {
+                box.style.display = 'block';
+                bar.className = 'progress-bar';
+                bar.style.width = '100%';
+                bar.innerHTML = '100%';
+                if (txt) txt.innerHTML = 'Import selesai: <?php echo h($summary['processed']); ?> dari <?php echo h($summary['target']); ?> voucher. Sukses: <?php echo h($summary['success']); ?>, Gagal: <?php echo h($summary['failed']); ?>.';
+            }
+        });
+        </script>
+
         <div class="card shadow-sm mb-3">
             <div class="card-header fw-bold">Summary Import SOP</div>
             <div class="card-body">
                 <table class="table table-bordered table-sm w-auto">
                     <tr><th>Total Row</th><td><?php echo h($summary['rows']); ?></td></tr>
                     <tr><th>Total Voucher</th><td><?php echo h($summary['voucher']); ?></td></tr>
+                    <tr><th>Target Proses</th><td><?php echo h($summary['target']); ?></td></tr>
                     <tr><th>Diproses</th><td><?php echo h($summary['processed']); ?></td></tr>
                     <tr><th>Sisa</th><td><?php echo h($summary['remaining']); ?></td></tr>
                     <tr><th>Sukses</th><td><?php echo h($summary['success']); ?></td></tr>
@@ -547,9 +761,15 @@ if ($action == '') {
                     <table class="table table-bordered table-striped table-sm">
                         <thead class="table-dark sticky-top">
                             <tr>
+                                <th>No</th>
+                                <th>Sisa Sebelum</th>
+                                <th>Sisa Sesudah</th>
+                                <th>Counter</th>
                                 <th>Nomor</th>
                                 <th>Items</th>
+                                <th>ITEM_CODE</th>
                                 <th>Status</th>
+                                <th>Error Tally</th>
                                 <th>Debug XML</th>
                                 <th>Response Tally</th>
                             </tr>
@@ -557,9 +777,15 @@ if ($action == '') {
                         <tbody>
                             <?php foreach ($exportDetails as $d) { ?>
                                 <tr>
+                                    <td class="text-end"><?php echo h($d['no']); ?></td>
+                                    <td class="text-end"><?php echo h($d['remaining_before']); ?></td>
+                                    <td class="text-end"><?php echo h($d['remaining_after']); ?></td>
+                                    <td><?php echo h($d['counter_text']); ?></td>
                                     <td><?php echo h($d['voucher']); ?></td>
                                     <td class="text-end"><?php echo h($d['items']); ?></td>
+                                    <td style="min-width:220px;"><?php echo h($d['item_codes']); ?></td>
                                     <td><?php echo $d['ok'] ? '<span class="badge bg-success">OK</span>' : '<span class="badge bg-danger">GAGAL</span>'; ?></td>
+                                    <td style="min-width:260px;"><?php echo h($d['error_msg']); ?></td>
                                     <td><?php echo h(str_replace(__DIR__, '', $d['debug_file'])); ?></td>
                                     <td><pre style="white-space:pre-wrap;max-width:700px;"><?php echo h($d['response']); ?></pre></td>
                                 </tr>
@@ -618,9 +844,74 @@ function setAction(a) {
     document.getElementById('frmSop').submit();
 }
 
+function pilihServerTally() {
+    var combo = document.getElementById('server_combo');
+    if (!combo || combo.value == '') return;
+
+    var p = combo.value.split('|');
+    document.getElementById('tally_ip').value = p[0];
+    document.getElementById('tally_port').value = p[1];
+
+    if (document.getElementById('server_id_delete')) {
+        document.getElementById('server_id_delete').value = p[2] || '';
+    }
+}
+
+function deleteSelectedServer() {
+    var combo = document.getElementById('server_combo');
+
+    if (!combo || combo.value == '') {
+        alert('Pilih server Tally dulu.');
+        return;
+    }
+
+    var p = combo.value.split('|');
+    document.getElementById('server_id_delete').value = p[2] || '';
+
+    if (confirm('Hapus server Tally yang dipilih?')) {
+        setAction('delete_server');
+    }
+}
+
+function showExportProgress() {
+    var box = document.getElementById('exportProgressBox');
+    var bar = document.getElementById('exportProgressBar');
+    var txt = document.getElementById('exportProgressText');
+
+    if (box) box.style.display = 'block';
+
+    var pct = 5;
+
+    if (bar) {
+        bar.style.width = pct + '%';
+        bar.innerHTML = pct + '%';
+    }
+
+    if (txt) txt.innerHTML = 'Import sedang berjalan: mulai dari counter 1 sampai selesai. Jangan tutup browser.';
+
+    var liveCounter = 1;
+
+    window._progressTimer = setInterval(function () {
+        if (pct < 90) {
+            pct += 5;
+            liveCounter++;
+            if (bar) {
+                bar.style.width = pct + '%';
+                bar.innerHTML = pct + '%';
+            }
+            if (txt) {
+                txt.innerHTML = 'Import sedang berjalan... counter sekitar ' + liveCounter + ' diproses. Jangan tutup browser.';
+            }
+        }
+    }, 700);
+}
+
 function confirmExport() {
     if (confirm('Import SOP ke Tally sekarang?')) {
-        setAction('export');
+        showExportProgress();
+        setTimeout(function () {
+            setAction('export');
+        }, 200);
     }
 }
 </script>

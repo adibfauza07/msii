@@ -1,55 +1,25 @@
 <?php
 require_once __DIR__ . "/../config/database_ordering.php";
 
-if ($conn === false) {
-    die("Koneksi database gagal.");
-}
+if ($conn === false) die("Koneksi database gagal.");
 
-function h($value) {
-    return htmlspecialchars((string)$value, ENT_QUOTES, "UTF-8");
-}
-
-function safe_trim($value) {
-    if ($value === null) {
-        return "";
-    }
-
-    return trim((string)$value);
-}
+function h($v){ return htmlspecialchars((string)$v, ENT_QUOTES, "UTF-8"); }
+function safe_trim($v){ return $v === null ? "" : trim((string)$v); }
 
 function get_param($name, $default = "") {
-    if (isset($_GET[$name])) {
-        return trim($_GET[$name]);
-    }
-
-    if (isset($_POST[$name])) {
-        return trim($_POST[$name]);
-    }
-
+    if (isset($_GET[$name])) return trim($_GET[$name]);
+    if (isset($_POST[$name])) return trim($_POST[$name]);
     return $default;
 }
 
 function month_to_yyyymmdd($value) {
     $value = trim($value);
-
-    if ($value == "") {
-        return "";
-    }
-
-    if (preg_match('/^\d{4}-\d{2}$/', $value)) {
-        return str_replace("-", "", $value) . "01";
-    }
-
-    if (preg_match('/^\d{8}$/', $value)) {
-        return $value;
-    }
+    if ($value == "") return "";
+    if (preg_match('/^\d{4}-\d{2}$/', $value)) return str_replace("-", "", $value) . "01";
+    if (preg_match('/^\d{8}$/', $value)) return $value;
 
     $ts = strtotime($value);
-
-    if ($ts === false) {
-        return "";
-    }
-
+    if ($ts === false) return "";
     return date("Ymd", $ts);
 }
 
@@ -58,50 +28,28 @@ function fmt_print_datetime() {
 }
 
 function excel_num($value, $decimal = 0) {
-    if ($value === null || $value === "") {
-        $value = 0;
+    if ($value === null || $value === "") return "";
+
+    $n = (float)$value;
+    if (abs($n) < 0.000001) return "";
+
+    if ($decimal === "price") {
+        return rtrim(rtrim(number_format($n, 5, ".", ""), "0"), ".");
     }
 
-    return number_format((float)$value, $decimal, ".", "");
-}
-
-function usd_factor($currCode, $currRate, $usdRate) {
-    $currCode = strtoupper(trim((string)$currCode));
-
-    if ($currCode == "USD") {
-        return 1;
-    }
-
-    $currRate = (float)$currRate;
-    $usdRate  = (float)$usdRate;
-
-    if ($currRate == 0) {
-        $currRate = 1;
-    }
-
-    if ($usdRate == 0) {
-        $usdRate = 1;
-    }
-
-    return $currRate / $usdRate;
+    return number_format($n, $decimal, ".", "");
 }
 
 $start_month = get_param("START_MONTH", "");
 $cust_code   = get_param("CUST_CODE", "");
 
-if ($start_month == "") {
-    die("Starting Month belum dipilih.");
-}
-
-if ($cust_code == "") {
-    die("Customer belum diisi.");
-}
+if ($start_month == "") die("Starting Month belum dipilih.");
+if ($cust_code == "") die("Customer belum diisi.");
 
 $start_ymd = month_to_yyyymmdd($start_month);
+if ($start_ymd == "") die("Starting Month tidak valid.");
 
-if ($start_ymd == "") {
-    die("Starting Month tidak valid.");
-}
+$period = 6;
 
 $sql = "
     SET NOCOUNT ON;
@@ -115,17 +63,20 @@ if ($stmt === false) {
 }
 
 $rows = array();
-$months = array("", "", "", "", "", "");
+$months = array();
+
+for ($i = 1; $i <= $period; $i++) {
+    $months[$i] = "";
+}
 
 while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-    if ($months[0] == "" && isset($r["Month1"])) {
-        for ($m = 1; $m <= 6; $m++) {
-            $months[$m - 1] = safe_trim($r["Month" . $m]);
+    for ($i = 1; $i <= $period; $i++) {
+        if ($months[$i] == "" && isset($r["Month" . $i])) {
+            $months[$i] = safe_trim($r["Month" . $i]);
         }
     }
 
     $currCode = safe_trim($r["CURR_CODE"]);
-    $factor = usd_factor($currCode, $r["CURR_VRATE"], $r["USDRATE"]);
 
     $row = array(
         "CUST_CODE" => safe_trim($r["CUST_CODE"]),
@@ -133,34 +84,31 @@ while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         "PART_NUM"  => safe_trim($r["PART_NUM"]),
         "PART_NAME" => safe_trim($r["PART_NAME"]),
         "PRICE"     => isset($r["PART_PRICE"]) ? (float)$r["PART_PRICE"] : 0,
-        "CURR_CODE" => $currCode
+        "CURR_CODE" => $currCode,
+        "TOTAL_QTY" => 0,
+        "TOTAL_AMT" => 0
     );
 
-    $totalQty = 0;
-    $totalAmt = 0;
+    for ($i = 1; $i <= $period; $i++) {
+        $qty = isset($r["DQTY" . $i]) ? (float)$r["DQTY" . $i] : 0;
 
-    for ($m = 1; $m <= 6; $m++) {
-        $qty = isset($r["DQTY" . $m]) ? (float)$r["DQTY" . $m] : 0;
-        $amt = isset($r["AMT" . $m]) ? (float)$r["AMT" . $m] * $factor : 0;
+        // AMOUNT ASLI DARI SP, TIDAK KONVERSI USD
+        $amt = isset($r["AMT" . $i]) ? (float)$r["AMT" . $i] : 0;
 
-        $row["QTY" . $m] = $qty;
-        $row["AMT" . $m] = $amt;
-
-        $totalQty += $qty;
-        $totalAmt += $amt;
+        $row["QTY" . $i] = $qty;
+        $row["AMT" . $i] = $amt;
+        $row["TOTAL_QTY"] += $qty;
+        $row["TOTAL_AMT"] += $amt;
     }
-
-    $row["TOTAL_QTY"] = $totalQty;
-    $row["TOTAL_AMT"] = $totalAmt;
 
     $rows[] = $row;
 }
 
-if ($months[0] == "") {
-    $ts = strtotime(substr($start_ymd, 0, 4) . "-" . substr($start_ymd, 4, 2) . "-01");
+$tsStart = strtotime(substr($start_ymd, 0, 4) . "-" . substr($start_ymd, 4, 2) . "-01");
 
-    for ($m = 0; $m < 6; $m++) {
-        $months[$m] = date("F Y", strtotime("+" . $m . " month", $ts));
+for ($i = 1; $i <= $period; $i++) {
+    if ($months[$i] == "") {
+        $months[$i] = date("F Y", strtotime("+" . ($i - 1) . " month", $tsStart));
     }
 }
 
@@ -171,244 +119,166 @@ header("Content-Type: application/vnd.ms-excel; charset=utf-8");
 header("Content-Disposition: attachment; filename=\"" . $fileName . "\"");
 header("Pragma: no-cache");
 header("Expires: 0");
+
+echo "\xEF\xBB\xBF";
 ?>
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <title>Delivery Summary 6 Month Export</title>
-
-    <style>
-        table {
-            border-collapse: collapse;
-            font-family: Arial, sans-serif;
-            font-size: 10pt;
-        }
-
-        th {
-            background: #d9eaf7;
-            font-weight: bold;
-            border: 1px solid #000000;
-            text-align: center;
-        }
-
-        td {
-            border: 1px solid #000000;
-            vertical-align: top;
-        }
-
-        .title {
-            font-size: 16pt;
-            font-weight: bold;
-            text-align: center;
-        }
-
-        .text {
-            mso-number-format: "\@";
-        }
-
-        .num {
-            mso-number-format: "#,##0";
-            text-align: right;
-        }
-
-        .price {
-            mso-number-format: "0.00000";
-            text-align: right;
-        }
-
-        .money {
-            mso-number-format: "#,##0.00";
-            text-align: right;
-        }
-
-        .customer-row,
-        .customer-total-row {
-            background: #eeeeee;
-            font-weight: bold;
-        }
-
-        .grand-total-row {
-            background: #d9eaf7;
-            font-weight: bold;
-        }
-    </style>
+<meta charset="utf-8">
+<title>Delivery Summary 6 Month Export</title>
+<style>
+table { border-collapse: collapse; font-family: Arial, sans-serif; font-size: 10pt; }
+th { background: #d9eaf7; font-weight: bold; border: 1px solid #000; text-align: center; }
+td { border: 1px solid #000; vertical-align: top; padding: 3px; }
+.title { font-size: 16pt; font-weight: bold; text-align: center; }
+.text { mso-number-format: "\@"; }
+.num { mso-number-format: "#,##0"; text-align: right; }
+.price { mso-number-format: "General"; text-align: right; }
+.money { mso-number-format: "#,##0.00"; text-align: right; }
+.customer-row, .customer-total-row { background: #eeeeee; font-weight: bold; }
+.grand-total-row { background: #d9eaf7; font-weight: bold; }
+</style>
 </head>
-
 <body>
 
 <table>
-    <tr>
-        <td colspan="20" class="title">DELIVERY HISTORY SUMMARY 6 MONTH</td>
-    </tr>
+<tr><td colspan="<?php echo 6 + ($period * 2) + 2; ?>" class="title">DELIVERY HISTORY SUMMARY 6 MONTH</td></tr>
+<tr><td colspan="<?php echo 6 + ($period * 2) + 2; ?>">P.T. IMC TEKNO INDONESIA - PPIC Department</td></tr>
+<tr><td colspan="<?php echo 6 + ($period * 2) + 2; ?>">Starting Month: <?php echo h($start_ymd); ?></td></tr>
+<tr><td colspan="<?php echo 6 + ($period * 2) + 2; ?>">Customer: <?php echo h($cust_code == "%" ? "ALL CUSTOMER" : $cust_code); ?></td></tr>
+<tr><td colspan="<?php echo 6 + ($period * 2) + 2; ?>">Export Date: <?php echo h(fmt_print_datetime()); ?></td></tr>
+<tr><td colspan="<?php echo 6 + ($period * 2) + 2; ?>">&nbsp;</td></tr>
 
-    <tr>
-        <td colspan="20">P.T. IMC TEKNO INDONESIA - PPIC Department</td>
-    </tr>
-
-    <tr>
-        <td colspan="20">Starting Month: <?php echo h($start_ymd); ?></td>
-    </tr>
-
-    <tr>
-        <td colspan="20">
-            Customer:
-            <?php echo h($cust_code == "%" ? "ALL CUSTOMER" : $cust_code); ?>
-        </td>
-    </tr>
-
-    <tr>
-        <td colspan="20">Export Date: <?php echo h(fmt_print_datetime()); ?></td>
-    </tr>
-
-    <tr>
-        <td colspan="20">&nbsp;</td>
-    </tr>
-
-    <tr>
-        <th rowspan="2">Customer Code</th>
-        <th rowspan="2">Customer Name</th>
-        <th rowspan="2">Item Code</th>
-        <th rowspan="2">Item Name</th>
-        <th rowspan="2">Price Original</th>
-        <th rowspan="2">Curr</th>
-
-        <?php for ($m = 0; $m < 6; $m++) { ?>
-            <th colspan="2"><?php echo h($months[$m]); ?></th>
-        <?php } ?>
-
-        <th colspan="2">Total</th>
-    </tr>
-
-    <tr>
-        <?php for ($m = 1; $m <= 6; $m++) { ?>
-            <th>Qty</th>
-            <th>Amount USD</th>
-        <?php } ?>
-
+<tr>
+    <th rowspan="2">Customer Code</th>
+    <th rowspan="2">Customer Name</th>
+    <th rowspan="2">Item Code</th>
+    <th rowspan="2">Item Name</th>
+    <th rowspan="2">Price Original</th>
+    <th rowspan="2">Curr</th>
+    <?php for ($i = 1; $i <= $period; $i++) { ?>
+        <th colspan="2"><?php echo h($months[$i]); ?></th>
+    <?php } ?>
+    <th colspan="2">Total</th>
+</tr>
+<tr>
+    <?php for ($i = 1; $i <= $period; $i++) { ?>
         <th>Qty</th>
-        <th>Amount USD</th>
-    </tr>
-
-    <?php if (count($rows) == 0) { ?>
-        <tr>
-            <td colspan="20">Data delivery summary 6 month tidak ditemukan.</td>
-        </tr>
+        <th>Amount</th>
     <?php } ?>
+    <th>Qty</th>
+    <th>Amount</th>
+</tr>
 
-    <?php
-    $lastCust = "";
+<?php if (count($rows) == 0) { ?>
+<tr><td colspan="<?php echo 6 + ($period * 2) + 2; ?>">Data delivery summary 6 month tidak ditemukan.</td></tr>
+<?php } ?>
 
-    $custQ = array(1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0, 6 => 0);
-    $custA = array(1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0, 6 => 0);
-    $custTQty = 0;
-    $custTAmt = 0;
+<?php
+$lastCust = "";
+$custQ = array();
+$custA = array();
+$grandQ = array();
+$grandA = array();
 
-    $grandQ = array(1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0, 6 => 0);
-    $grandA = array(1 => 0, 2 => 0, 3 => 0, 4 => 0, 5 => 0, 6 => 0);
-    $grandTQty = 0;
-    $grandTAmt = 0;
+for ($i = 1; $i <= $period; $i++) {
+    $custQ[$i] = 0; $custA[$i] = 0;
+    $grandQ[$i] = 0; $grandA[$i] = 0;
+}
 
-    for ($i = 0; $i < count($rows); $i++) {
-        $r = $rows[$i];
-        $custKey = $r["CUST_CODE"] . "|" . $r["CUST_COMP"];
+$custTQty = 0;
+$custTAmt = 0;
+$grandTQty = 0;
+$grandTAmt = 0;
 
-        if ($custKey != $lastCust) {
-            if ($lastCust != "") {
-                ?>
-                <tr class="customer-total-row">
-                    <td colspan="6" style="text-align:right;">TOTAL CUSTOMER</td>
+for ($x = 0; $x < count($rows); $x++) {
+    $r = $rows[$x];
+    $custKey = $r["CUST_CODE"] . "|" . $r["CUST_COMP"];
 
-                    <?php for ($m = 1; $m <= 6; $m++) { ?>
-                        <td class="num"><?php echo h(excel_num($custQ[$m], 0)); ?></td>
-                        <td class="money"><?php echo h(excel_num($custA[$m], 2)); ?></td>
-                    <?php } ?>
-
-                    <td class="num"><?php echo h(excel_num($custTQty, 0)); ?></td>
-                    <td class="money"><?php echo h(excel_num($custTAmt, 2)); ?></td>
-                </tr>
-                <?php
-            }
-
-            ?>
-            <tr class="customer-row">
-                <td class="text"><?php echo h($r["CUST_CODE"]); ?></td>
-                <td colspan="19"><?php echo h($r["CUST_COMP"]); ?></td>
-            </tr>
-            <?php
-
-            $lastCust = $custKey;
-
-            for ($m = 1; $m <= 6; $m++) {
-                $custQ[$m] = 0;
-                $custA[$m] = 0;
-            }
-
-            $custTQty = 0;
-            $custTAmt = 0;
+    if ($custKey != $lastCust) {
+        if ($lastCust != "") {
+?>
+<tr class="customer-total-row">
+    <td colspan="6" style="text-align:right;">TOTAL CUSTOMER</td>
+    <?php for ($i = 1; $i <= $period; $i++) { ?>
+        <td class="num"><?php echo h(excel_num($custQ[$i], 0)); ?></td>
+        <td class="money"><?php echo h(excel_num($custA[$i], 2)); ?></td>
+    <?php } ?>
+    <td class="num"><?php echo h(excel_num($custTQty, 0)); ?></td>
+    <td class="money"><?php echo h(excel_num($custTAmt, 2)); ?></td>
+</tr>
+<?php
         }
 
-        for ($m = 1; $m <= 6; $m++) {
-            $custQ[$m] += $r["QTY" . $m];
-            $custA[$m] += $r["AMT" . $m];
+        echo '<tr class="customer-row">';
+        echo '<td class="text">' . h($r["CUST_CODE"]) . '</td>';
+        echo '<td colspan="' . (5 + ($period * 2) + 2) . '">' . h($r["CUST_COMP"]) . '</td>';
+        echo '</tr>';
 
-            $grandQ[$m] += $r["QTY" . $m];
-            $grandA[$m] += $r["AMT" . $m];
+        $lastCust = $custKey;
+
+        for ($i = 1; $i <= $period; $i++) {
+            $custQ[$i] = 0;
+            $custA[$i] = 0;
         }
 
-        $custTQty += $r["TOTAL_QTY"];
-        $custTAmt += $r["TOTAL_AMT"];
+        $custTQty = 0;
+        $custTAmt = 0;
+    }
 
-        $grandTQty += $r["TOTAL_QTY"];
-        $grandTAmt += $r["TOTAL_AMT"];
-        ?>
+    for ($i = 1; $i <= $period; $i++) {
+        $custQ[$i] += $r["QTY" . $i];
+        $custA[$i] += $r["AMT" . $i];
+        $grandQ[$i] += $r["QTY" . $i];
+        $grandA[$i] += $r["AMT" . $i];
+    }
 
-        <tr>
-            <td class="text"><?php echo h($r["CUST_CODE"]); ?></td>
-            <td class="text"><?php echo h($r["CUST_COMP"]); ?></td>
-            <td class="text"><?php echo h($r["PART_NUM"]); ?></td>
-            <td class="text"><?php echo h($r["PART_NAME"]); ?></td>
-            <td class="price"><?php echo h(excel_num($r["PRICE"], 5)); ?></td>
-            <td class="text"><?php echo h($r["CURR_CODE"]); ?></td>
+    $custTQty += $r["TOTAL_QTY"];
+    $custTAmt += $r["TOTAL_AMT"];
+    $grandTQty += $r["TOTAL_QTY"];
+    $grandTAmt += $r["TOTAL_AMT"];
+?>
+<tr>
+    <td class="text"><?php echo h($r["CUST_CODE"]); ?></td>
+    <td class="text"><?php echo h($r["CUST_COMP"]); ?></td>
+    <td class="text"><?php echo h($r["PART_NUM"]); ?></td>
+    <td class="text"><?php echo h($r["PART_NAME"]); ?></td>
+    <td class="price"><?php echo h(excel_num($r["PRICE"], "price")); ?></td>
+    <td class="text"><?php echo h($r["CURR_CODE"]); ?></td>
 
-            <?php for ($m = 1; $m <= 6; $m++) { ?>
-                <td class="num"><?php echo h(excel_num($r["QTY" . $m], 0)); ?></td>
-                <td class="money"><?php echo h(excel_num($r["AMT" . $m], 2)); ?></td>
-            <?php } ?>
-
-            <td class="num"><?php echo h(excel_num($r["TOTAL_QTY"], 0)); ?></td>
-            <td class="money"><?php echo h(excel_num($r["TOTAL_AMT"], 2)); ?></td>
-        </tr>
-
+    <?php for ($i = 1; $i <= $period; $i++) { ?>
+        <td class="num"><?php echo h(excel_num($r["QTY" . $i], 0)); ?></td>
+        <td class="money"><?php echo h(excel_num($r["AMT" . $i], 2)); ?></td>
     <?php } ?>
 
-    <?php if ($lastCust != "") { ?>
-        <tr class="customer-total-row">
-            <td colspan="6" style="text-align:right;">TOTAL CUSTOMER</td>
+    <td class="num"><?php echo h(excel_num($r["TOTAL_QTY"], 0)); ?></td>
+    <td class="money"><?php echo h(excel_num($r["TOTAL_AMT"], 2)); ?></td>
+</tr>
+<?php } ?>
 
-            <?php for ($m = 1; $m <= 6; $m++) { ?>
-                <td class="num"><?php echo h(excel_num($custQ[$m], 0)); ?></td>
-                <td class="money"><?php echo h(excel_num($custA[$m], 2)); ?></td>
-            <?php } ?>
-
-            <td class="num"><?php echo h(excel_num($custTQty, 0)); ?></td>
-            <td class="money"><?php echo h(excel_num($custTAmt, 2)); ?></td>
-        </tr>
-
-        <tr class="grand-total-row">
-            <td colspan="6" style="text-align:right;">GRAND TOTAL</td>
-
-            <?php for ($m = 1; $m <= 6; $m++) { ?>
-                <td class="num"><?php echo h(excel_num($grandQ[$m], 0)); ?></td>
-                <td class="money"><?php echo h(excel_num($grandA[$m], 2)); ?></td>
-            <?php } ?>
-
-            <td class="num"><?php echo h(excel_num($grandTQty, 0)); ?></td>
-            <td class="money"><?php echo h(excel_num($grandTAmt, 2)); ?></td>
-        </tr>
+<?php if ($lastCust != "") { ?>
+<tr class="customer-total-row">
+    <td colspan="6" style="text-align:right;">TOTAL CUSTOMER</td>
+    <?php for ($i = 1; $i <= $period; $i++) { ?>
+        <td class="num"><?php echo h(excel_num($custQ[$i], 0)); ?></td>
+        <td class="money"><?php echo h(excel_num($custA[$i], 2)); ?></td>
     <?php } ?>
+    <td class="num"><?php echo h(excel_num($custTQty, 0)); ?></td>
+    <td class="money"><?php echo h(excel_num($custTAmt, 2)); ?></td>
+</tr>
+
+<tr class="grand-total-row">
+    <td colspan="6" style="text-align:right;">GRAND TOTAL</td>
+    <?php for ($i = 1; $i <= $period; $i++) { ?>
+        <td class="num"><?php echo h(excel_num($grandQ[$i], 0)); ?></td>
+        <td class="money"><?php echo h(excel_num($grandA[$i], 2)); ?></td>
+    <?php } ?>
+    <td class="num"><?php echo h(excel_num($grandTQty, 0)); ?></td>
+    <td class="money"><?php echo h(excel_num($grandTAmt, 2)); ?></td>
+</tr>
+<?php } ?>
 
 </table>
-
 </body>
 </html>

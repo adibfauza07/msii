@@ -48,7 +48,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
             <ul class="nav flex-column">
                 <li class="nav-item"><a href="?page=home" class="nav-link <?php echo ($page=='home')?'active':''; ?>"><i class="bi bi-speedometer2"></i> Dashboard Overview</a></li>
                 <div class="menu-label fw-bold">PROSES PERUBAHAN</div>
-                <li class="nav-item"><a href="?page=input_change" class="nav-link <?php echo ($page=='input_change')?'active':''; ?>"><i class="bi bi-plus-circle"></i> Input 4M Change</a></li>
+                <li class="nav-item"><a href="input_pcis.php" class="nav-link <?php echo ($page=='input_pcis')?'active':''; ?>"><i class="bi bi-plus-circle"></i> Input 4M Change</a></li>
                 <li class="nav-item"><a href="?page=history" class="nav-link <?php echo ($page=='history')?'active':''; ?>"><i class="bi bi-clock-history"></i> Riwayat Perubahan</a></li>
                 <li class="nav-item"><a href="?page=rekap" class="nav-link <?php echo ($page=='rekap')?'active':''; ?>"><i class="bi bi-journal-text"></i> Rekap Summary (SP)</a></li>
             </ul>
@@ -71,7 +71,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
         }
 
         switch ($page) {
-            case 'input_change':
+            case 'input_pcis':
                 include file_exists("page_input_4m.php") ? "page_input_4m.php" : "rekap_4m.php";
                 break;
             case 'history':

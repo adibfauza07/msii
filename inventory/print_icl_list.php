@@ -76,6 +76,7 @@ $companyName = isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 
 
     <div class="no-print">
         <button class="btn" onclick="window.print()">Print Report</button>
+        <a href="export_icl_list.php?start_date=<?php echo htmlspecialchars($startDate); ?>&end_date=<?php echo htmlspecialchars($endDate); ?>" class="btn" style="text-decoration:none; color:black;">Export to Excel</a>
         <button class="btn" onclick="window.close()">Tutup</button>
     </div>
 

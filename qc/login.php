@@ -14,23 +14,34 @@ $error = "";
 if (isset($_POST['btnMasuk'])) {
     $temp_username = trim($_POST['username']);
     $temp_password = $_POST['password'];
-    $selected_plant = $_POST['plant']; // Tangkap pilihan plant
+    $selected_plant = $_POST['plant']; 
     $is_login_process = true;
 
     $conn = false;
 
     // --- LOGIKA PEMILIHAN SERVER ---
     if ($selected_plant == 'p1') {
-        // PLANT 1: Gunakan file konfigurasi yang sudah ada
+        // PERBAIKAN: Suntikkan session sementara sebelum memanggil config P1
+        $_SESSION['db_user'] = $temp_username;
+        $_SESSION['db_pass'] = $temp_password;
+        $_SESSION['active_plant'] = 'p1';
+
         $db_file = __DIR__ . '/../config/database_p1.php';
         if (file_exists($db_file)) {
-            require_once $db_file; // Ini akan mengisi variabel $conn
+            require_once $db_file; // Akan terhubung menggunakan session di atas
         } else {
             $error = "Config P1 tidak ditemukan!";
         }
+
+        // Jika koneksi gagal (password memang salah), bersihkan session agar tidak nyangkut
+        if (!$conn) {
+            unset($_SESSION['db_user']);
+            unset($_SESSION['db_pass']);
+            unset($_SESSION['active_plant']);
+        }
     } 
     elseif ($selected_plant == 'p2') {
-        // PLANT 2: Koneksi Manual (Karena database.php butuh session yg belum ada)
+        // PLANT 2: Koneksi Manual
         // !!! GANTI IP INI DENGAN IP SERVER PLANT 2 !!!
         $serverName = "192.168.0.9"; 
         
@@ -50,18 +61,16 @@ if (isset($_POST['btnMasuk'])) {
         // LOGIN SUKSES
         $_SESSION['db_user'] = $temp_username;
         $_SESSION['db_pass'] = $temp_password;
-        
-        // Simpan plant aktif agar dashboard langsung tahu
         $_SESSION['active_plant'] = $selected_plant; 
         
         // Khusus P2, kita set parameter tambahan untuk database.php nanti
         if ($selected_plant == 'p2') {
             $_SESSION['erp_user'] = $temp_username;
             $_SESSION['erp_pass'] = $temp_password;
-            $_SESSION['server_sql'] = $serverName; // Simpan IP P2
+            $_SESSION['server_sql'] = "192.168.0.9"; // Simpan IP P2
         }
 
-        // Redirect
+        // Redirect ke dashboard
         header("Location: dashboard_qc.php");
         exit();
     } else {
@@ -130,7 +139,6 @@ if (isset($_SESSION['db_user'])) {
 
         <form method="POST" action="">
             
-            <!-- PILIH PLANT -->
             <div class="mb-3">
                 <label class="form-label small fw-bold text-secondary">PILIH (PLANT)</label>
                 <select name="plant" class="form-select bg-light border-0 fw-bold text-dark" required>

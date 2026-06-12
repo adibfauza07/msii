@@ -227,25 +227,99 @@ function loadReceiptRows($fromDate, $toDate) {
     return fetchRows($stmt);
 }
 
-function loadSalesRows($fromDate, $toDate, $custId, $invNo) {
+function loadPoRows($fromDate, $toDate, $custId) {
+    if ($custId == '') {
+        return array();
+    }
+
+    $stmt = q("
+        SELECT DISTINCT
+            O.ORDR_PO
+        FROM dbo.CUST C
+        INNER JOIN dbo.DI D
+            ON C.CUST_ID = D.CUST_ID
+        INNER JOIN dbo.DIPA_PAR DP
+            ON D.DI_ID = DP.DI_ID
+        INNER JOIN dbo.ORDERS O
+            ON O.ORDR_ID = DP.ORDR_ID
+        WHERE D.DI_DATE BETWEEN ? AND ?
+          AND C.CUST_ID = ?
+          AND ISNULL(O.ORDR_PO, '') <> ''
+        ORDER BY O.ORDR_PO
+    ", array($fromDate, $toDate, $custId));
+
+    return fetchRows($stmt);
+}
+
+function loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo) {
     if ($custId == '') {
         return array();
     }
 
     $invNo = trim((string)$invNo);
+    $poNo = trim((string)$poNo);
 
     /*
-       Ikuti Delphi 7:
-       - Jika invoice kosong, load semua invoice customer.
-       - Jika invoice dipilih, gunakan SP_TALLY_SALES_CUST_INVOICE.
-         ENDDATE dipakai untuk rate.
+       Sales P2 + filter PO.
+       Source query mengikuti query user:
+       PO = ORDERS.ORDR_PO.
     */
+    $where = "
+        WHERE D.DI_DATE BETWEEN ? AND ?
+          AND C.CUST_ID = ?
+    ";
+
+    $params = array($fromDate, $toDate, $custId);
+
     if ($invNo != '') {
-        $stmt = q("EXECUTE SP_TALLY_SALES_CUST_INVOICE ?, ?, ?", array($toDate, $custId, $invNo));
-        return fetchRows($stmt);
+        $where .= " AND D.DI_INVNO = ? ";
+        $params[] = $invNo;
     }
 
-    $stmt = q("EXECUTE SP_TALLY_SALES ?, ?, ?", array($fromDate, $toDate, $custId));
+    if ($poNo != '') {
+        $where .= " AND O.ORDR_PO LIKE ? ";
+        $params[] = '%' . $poNo . '%';
+    }
+
+    $sql = "
+        SELECT
+            D.DI_INVNO,
+            D.DI_DSNO,
+            D.DI_DATE AS TRAN_DATE,
+            C.CUST_CODE,
+            PV.PART_CODE AS ITEM_CODE,
+            PV.PART_NAME AS ITEM_NAME,
+            DP.QTY,
+            DP.PART_PRICE AS ITEM_COST,
+            PV.CURR_CODE AS ITEM_CUR,
+            PV.PART_UNIT AS ITEM_UNIT,
+            CRAT.CURR_RP,
+            CRAT.CURR_USD,
+            REPLACE(ISNULL(BC.JENIS_BC, ''), ' ', '') + '/' + ISNULL(BC.NOMOR_BC, '') AS BC,
+            PV.PART_NO,
+            O.ORDR_PO
+        FROM dbo.CUST C
+        INNER JOIN dbo.DI D
+            ON C.CUST_ID = D.CUST_ID
+        INNER JOIN dbo.DIPA_PAR DP
+            ON D.DI_ID = DP.DI_ID
+        INNER JOIN dbo.ORDR_PAR OP
+            ON DP.ORDR_ID = OP.ORDR_ID
+           AND DP.ORDP_LINO = OP.ORDP_LINO
+        INNER JOIN dbo.PART_VIEW PV
+            ON PV.PRICE_ID = OP.PRICE_ID
+        INNER JOIN dbo.ORDERS O
+            ON O.ORDR_ID = DP.ORDR_ID
+        INNER JOIN dbo.CURR_RAT_TALLY CRAT
+            ON CRAT.CURR_CODE = PV.CURR_CODE
+           AND D.DI_DATE BETWEEN CRAT.CURR_SDATE AND CRAT.CURR_EDATE
+        LEFT OUTER JOIN dbo.BC_TRANS BC
+            ON BC.NO_TRANS = D.DI_DSNO
+        " . $where . "
+        ORDER BY D.DI_INVNO, D.DI_DSNO, O.ORDR_PO, PV.PART_CODE
+    ";
+
+    $stmt = q($sql, $params);
     return fetchRows($stmt);
 }
 
@@ -672,8 +746,8 @@ function importReceipt($fromDate, $toDate) {
    - NO_DS ambil dari nomor DO
    ========================= */
 
-function importSales($fromDate, $toDate, $custId, $invNo) {
-    $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo);
+function importSales($fromDate, $toDate, $custId, $invNo, $poNo, $overrideInvNo, $overrideDsNo) {
+    $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo);
 
     q("DELETE FROM dbo.Tally_SALES", array());
 
@@ -690,7 +764,7 @@ function importSales($fromDate, $toDate, $custId, $invNo) {
     $groups = array();
 
     foreach ($rows as $r) {
-        $invKey = getInvNoP2($r, $invNo);
+        $invKey = ($overrideInvNo != '') ? $overrideInvNo : getInvNoP2($r, $invNo);
 
         if ($invKey == '') {
             die('DI_INVNO kosong. GROUP_TOTAL tidak bisa dihitung per invoice.');
@@ -756,8 +830,9 @@ function importSales($fromDate, $toDate, $custId, $invNo) {
     $count = 0;
 
     foreach ($rows as $r) {
-        $invKey = getInvNoP2($r, $invNo);
+        $invKey = ($overrideInvNo != '') ? $overrideInvNo : getInvNoP2($r, $invNo);
         $inv = $invKey;
+        $dsNoFinal = ($overrideDsNo != '') ? $overrideDsNo : getDoNoP2($r);
 
         if ($invKey == '') {
             die('DI_INVNO kosong. GROUP_TOTAL tidak bisa dihitung per invoice.');
@@ -802,7 +877,7 @@ function importSales($fromDate, $toDate, $custId, $invNo) {
 
         q($sqlInsert, array(
             $inv,
-            getDoNoP2($r),
+            $dsNoFinal,
             fmtTallyDate(gv($r, 'TRAN_DATE', '')),
             gv($r, 'CUST_CODE', ''),
             gv($r, 'ITEM_CODE', ''),
@@ -901,6 +976,9 @@ $action = isset($_POST['action']) ? $_POST['action'] : '';
 
 $custId = isset($_POST['cust_id']) ? trim($_POST['cust_id']) : '';
 $invNo = isset($_POST['inv_no']) ? trim($_POST['inv_no']) : '';
+$poNo = isset($_POST['po_no']) ? trim($_POST['po_no']) : '';
+$overrideInvNo = isset($_POST['override_inv_no']) ? trim($_POST['override_inv_no']) : '';
+$overrideDsNo = isset($_POST['override_ds_no']) ? trim($_POST['override_ds_no']) : '';
 
 $rateCurr = '';
 if (isset($_POST['rate_curr_selected'])) {
@@ -915,9 +993,62 @@ $currRows = array();
 $rateRows = array();
 $customers = loadCustomers();
 $invoices = array();
+$poRows = array();
+
+/* =========================
+   AJAX AUTOCOMPLETE PO
+   ========================= */
+if (isset($_GET['ajax_po']) && $_GET['ajax_po'] == '1') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $ajaxCust = isset($_GET['cust_id']) ? trim($_GET['cust_id']) : '';
+    $ajaxFrom = isset($_GET['from_date']) ? trim($_GET['from_date']) : date('Y-m-01');
+    $ajaxTo = isset($_GET['to_date']) ? trim($_GET['to_date']) : date('Y-m-d');
+    $term = isset($_GET['term']) ? trim($_GET['term']) : '';
+
+    if ($ajaxCust == '') {
+        echo json_encode(array());
+        exit;
+    }
+
+    $params = array($ajaxFrom, $ajaxTo, $ajaxCust);
+    $whereTerm = '';
+
+    if ($term != '') {
+        $whereTerm = " AND O.ORDR_PO LIKE ? ";
+        $params[] = '%' . $term . '%';
+    }
+
+    $stmtPo = q("
+        SELECT TOP 30
+            O.ORDR_PO
+        FROM dbo.CUST C
+        INNER JOIN dbo.DI D
+            ON C.CUST_ID = D.CUST_ID
+        INNER JOIN dbo.DIPA_PAR DP
+            ON D.DI_ID = DP.DI_ID
+        INNER JOIN dbo.ORDERS O
+            ON O.ORDR_ID = DP.ORDR_ID
+        WHERE D.DI_DATE BETWEEN ? AND ?
+          AND C.CUST_ID = ?
+          AND ISNULL(O.ORDR_PO, '') <> ''
+          " . $whereTerm . "
+        GROUP BY O.ORDR_PO
+        ORDER BY O.ORDR_PO
+    ", $params);
+
+    $out = array();
+    while ($rp = sqlsrv_fetch_array($stmtPo, SQLSRV_FETCH_ASSOC)) {
+        $out[] = gv($rp, 'ORDR_PO', '');
+    }
+
+    echo json_encode($out);
+    exit;
+}
 
 if ($custId != '') {
     $invoices = loadInvoices($fromDate, $toDate, $custId);
+    $poRows = loadPoRows($fromDate, $toDate, $custId);
 }
 
 if ($action == 'save_curr') {
@@ -944,13 +1075,17 @@ if ($action == 'save_curr') {
     $rows = loadReceiptRows($fromDate, $toDate);
 } elseif ($action == 'load_sales') {
     $tab = 'sales';
-    $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo);
+    $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo);
     $invoices = loadInvoices($fromDate, $toDate, $custId);
+    $poRows = loadPoRows($fromDate, $toDate, $custId);
 } elseif ($action == 'import_sales') {
     $tab = 'sales';
-    $count = importSales($fromDate, $toDate, $custId, $invNo);
+    $count = importSales($fromDate, $toDate, $custId, $invNo, $poNo, $overrideInvNo, $overrideDsNo);
     $message = 'Import Sales P2 selesai. Total baris: ' . $count;
-    $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo);
+    if ($overrideInvNo != '' || $overrideDsNo != '' || $poNo != '') {
+        $message .= ' | Invoice override: ' . $overrideInvNo . ' | DS override: ' . $overrideDsNo . ' | PO: ' . $poNo;
+    }
+    $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo);
     $invoices = loadInvoices($fromDate, $toDate, $custId);
 } elseif ($action == 'load_invoice') {
     $tab = 'sales';
@@ -993,11 +1128,19 @@ if ($tab == 'rate') {
         </div>
     <?php } ?>
 
+    <div class="alert alert-warning">
+        Sales P2 sudah ditambah filter <b>PO Optional</b> dari <b>ORDERS.ORDR_PO</b> dengan autocomplete.
+        Alur: <b>Load Sales</b> → ubah Invoice/DS di tabel → klik <b>Copy Invoice/DS ke Semua Baris</b> → pilih/ketik PO → <b>Import Sales</b>.
+        Import akan menyimpan hasil edit Invoice/DS + filter PO ke tabel <b>Tally_SALES</b>.
+    </div>
+
     <div class="card shadow-sm mb-3">
         <div class="card-body">
             <form method="post" id="frmTally">
                 <input type="hidden" name="tab" id="tab" value="<?php echo h($tab); ?>">
                 <input type="hidden" name="action" id="action" value="">
+                <input type="hidden" name="override_inv_no" id="override_inv_no" value="">
+                <input type="hidden" name="override_ds_no" id="override_ds_no" value="">
 
                 <div class="row g-3 align-items-end">
                     <div class="col-md-2">
@@ -1034,7 +1177,7 @@ if ($tab == 'rate') {
                         </select>
                     </div>
 
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label class="form-label fw-bold">Invoice Optional</label>
                         <select name="inv_no" id="inv_no" class="form-control">
                             <option value="">ALL Invoice</option>
@@ -1050,9 +1193,23 @@ if ($tab == 'rate') {
                         </select>
                     </div>
 
+                    <div class="col-md-3 position-relative">
+                        <label class="form-label fw-bold">PO Optional</label>
+                        <input type="text"
+                               name="po_no"
+                               id="po_no"
+                               class="form-control"
+                               placeholder="ALL PO / ketik ORDR_PO"
+                               autocomplete="off"
+                               value="<?php echo h($poNo); ?>">
+                        <div id="po_suggestions"
+                             class="list-group position-absolute w-100 shadow-sm"
+                             style="z-index:9999; display:none; max-height:220px; overflow:auto;"></div>
+                    </div>
+
                     <div class="col-md-2">
                         <button type="button" class="btn btn-outline-primary w-100" onclick="submitTally('load_invoice')">
-                            Load Invoice
+                            Load Invoice/PO
                         </button>
                     </div>
                 </div>
@@ -1397,6 +1554,19 @@ function validateSalesImport(actionName) {
         return;
     }
 
+    // Ambil hasil edit/copy Invoice dan DS dari tabel preview.
+    // Karena form utama yang diposting adalah frmTally, nilai tabel harus ditaruh ke hidden input.
+    var invInputs = document.getElementsByClassName('edit-inv');
+    var dsInputs = document.getElementsByClassName('edit-ds');
+
+    if (invInputs.length > 0 && document.getElementById('override_inv_no')) {
+        document.getElementById('override_inv_no').value = invInputs[0].value;
+    }
+
+    if (dsInputs.length > 0 && document.getElementById('override_ds_no')) {
+        document.getElementById('override_ds_no').value = dsInputs[0].value;
+    }
+
     confirmImport(actionName);
 }
 
@@ -1418,6 +1588,14 @@ function copyFirstInvoiceDs() {
 
     for (var j = 0; j < dsInputs.length; j++) {
         dsInputs[j].value = ds;
+    }
+
+    if (document.getElementById('override_inv_no')) {
+        document.getElementById('override_inv_no').value = inv;
+    }
+
+    if (document.getElementById('override_ds_no')) {
+        document.getElementById('override_ds_no').value = ds;
     }
 }
 
@@ -1464,6 +1642,87 @@ function clearRateForm() {
 
     document.getElementById('rate_sdate').focus();
 }
+
+/* =========================
+   PO AUTOCOMPLETE
+   ========================= */
+var poTimer = null;
+
+function setupPoAutocomplete() {
+    var input = document.getElementById('po_no');
+    var box = document.getElementById('po_suggestions');
+
+    if (!input || !box) {
+        return;
+    }
+
+    input.addEventListener('input', function () {
+        clearTimeout(poTimer);
+        poTimer = setTimeout(function () {
+            searchPoSuggestions(input.value);
+        }, 250);
+    });
+
+    input.addEventListener('focus', function () {
+        searchPoSuggestions(input.value);
+    });
+
+    document.addEventListener('click', function (e) {
+        if (e.target !== input && !box.contains(e.target)) {
+            box.style.display = 'none';
+        }
+    });
+}
+
+function searchPoSuggestions(term) {
+    var input = document.getElementById('po_no');
+    var box = document.getElementById('po_suggestions');
+    var cust = document.getElementById('cust_id') ? document.getElementById('cust_id').value : '';
+    var fromDate = document.getElementById('from_date') ? document.getElementById('from_date').value : '';
+    var toDate = document.getElementById('to_date') ? document.getElementById('to_date').value : '';
+
+    if (!input || !box || cust === '') {
+        if (box) box.style.display = 'none';
+        return;
+    }
+
+    var url = 'tally_import_p2.php?ajax_po=1'
+        + '&cust_id=' + encodeURIComponent(cust)
+        + '&from_date=' + encodeURIComponent(fromDate)
+        + '&to_date=' + encodeURIComponent(toDate)
+        + '&term=' + encodeURIComponent(term);
+
+    fetch(url)
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            box.innerHTML = '';
+
+            if (!data || data.length === 0) {
+                box.style.display = 'none';
+                return;
+            }
+
+            for (var i = 0; i < data.length; i++) {
+                var a = document.createElement('button');
+                a.type = 'button';
+                a.className = 'list-group-item list-group-item-action';
+                a.textContent = data[i];
+                a.onclick = function () {
+                    input.value = this.textContent;
+                    box.style.display = 'none';
+                };
+                box.appendChild(a);
+            }
+
+            box.style.display = 'block';
+        })
+        .catch(function () {
+            box.style.display = 'none';
+        });
+}
+
+document.addEventListener('DOMContentLoaded', setupPoAutocomplete);
+
 </script>
 
 </body>
@@ -1493,6 +1752,7 @@ function renderReceiptTable($rows) {
     echo '<th>Qty</th>';
     echo '<th>Harga per pcs</th>';
     echo '<th>Currency</th>';
+    echo '<th>PO</th>';
     echo '</tr>';
     echo '</thead><tbody>';
 
@@ -1533,6 +1793,7 @@ function renderSalesTable($rows) {
     echo '<th>Harga per pcs</th>';
     echo '<th>Unit</th>';
     echo '<th>Currency</th>';
+    echo '<th>PO</th>';
     echo '</tr>';
     echo '</thead><tbody>';
 
@@ -1548,6 +1809,7 @@ function renderSalesTable($rows) {
         echo '<td class="text-end">' . h(gv($r, 'ITEM_COST', '')) . '</td>';
         echo '<td>' . h(gv($r, 'ITEM_UNIT', '')) . '</td>';
         echo '<td>' . h(gv($r, 'ITEM_CUR', '')) . '</td>';
+        echo '<td>' . h(gv($r, 'ORDR_PO', '')) . '</td>';
         echo '</tr>';
     }
 

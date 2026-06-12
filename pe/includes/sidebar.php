@@ -28,9 +28,9 @@
             </li>
             
             <li class="nav-item">
-                <a href="report_trial_pe.php" class="nav-link <?= (basename($_SERVER['PHP_SELF']) == 'report_trial_pe.php') ? 'active' : ''; ?>">
+                <!-- <a href="report_trial_pe.php" class="nav-link <?= (basename($_SERVER['PHP_SELF']) == 'report_trial_pe.php') ? 'active' : ''; ?>">
                     <i class="bi bi-file-earmark-pdf"></i> Rekap Report
-                </a>
+                </a> -->
             </li>
         </ul>
     </div>

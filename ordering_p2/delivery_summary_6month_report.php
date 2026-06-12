@@ -10,31 +10,19 @@ function h($value) {
 }
 
 function safe_trim($value) {
-    if ($value === null) {
-        return "";
-    }
-
-    return trim((string)$value);
+    return $value === null ? "" : trim((string)$value);
 }
 
 function get_param($name, $default = "") {
-    if (isset($_GET[$name])) {
-        return trim($_GET[$name]);
-    }
-
-    if (isset($_POST[$name])) {
-        return trim($_POST[$name]);
-    }
-
+    if (isset($_GET[$name])) return trim($_GET[$name]);
+    if (isset($_POST[$name])) return trim($_POST[$name]);
     return $default;
 }
 
 function month_to_yyyymmdd($value) {
     $value = trim($value);
 
-    if ($value == "") {
-        return "";
-    }
+    if ($value == "") return "";
 
     if (preg_match('/^\d{4}-\d{2}$/', $value)) {
         return str_replace("-", "", $value) . "01";
@@ -45,10 +33,7 @@ function month_to_yyyymmdd($value) {
     }
 
     $ts = strtotime($value);
-
-    if ($ts === false) {
-        return "";
-    }
+    if ($ts === false) return "";
 
     return date("Ymd", $ts);
 }
@@ -56,19 +41,14 @@ function month_to_yyyymmdd($value) {
 function yyyymmdd_to_month_input($value) {
     $value = trim($value);
 
-    if ($value == "") {
-        return date("Y-m");
-    }
+    if ($value == "") return date("Y-m");
 
     if (preg_match('/^\d{8}$/', $value)) {
         return substr($value, 0, 4) . "-" . substr($value, 4, 2);
     }
 
     $ts = strtotime($value);
-
-    if ($ts === false) {
-        return date("Y-m");
-    }
+    if ($ts === false) return date("Y-m");
 
     return date("Y-m", $ts);
 }
@@ -87,10 +67,16 @@ function fmt_num($value, $decimal = 0) {
 
 function fmt_price($value) {
     if ($value === null || $value === "") {
-        $value = 0;
+        return "-";
     }
 
-    return number_format((float)$value, 5, ".", ",");
+    $n = (float)$value;
+
+    if ($n == 0) {
+        return "-";
+    }
+
+    return rtrim(rtrim(number_format($n, 5, ".", ","), "0"), ".");
 }
 
 function fmt_amount($value) {
@@ -113,27 +99,6 @@ function fmt_zero_dash($value, $decimal = 0) {
     }
 
     return number_format($n, $decimal, ".", ",");
-}
-
-function usd_factor($currCode, $currRate, $usdRate) {
-    $currCode = strtoupper(trim((string)$currCode));
-
-    if ($currCode == "USD") {
-        return 1;
-    }
-
-    $currRate = (float)$currRate;
-    $usdRate  = (float)$usdRate;
-
-    if ($currRate == 0) {
-        $currRate = 1;
-    }
-
-    if ($usdRate == 0) {
-        $usdRate = 1;
-    }
-
-    return $currRate / $usdRate;
 }
 
 $is_filter = get_param("RUN", "") == "1";
@@ -183,7 +148,6 @@ if ($is_filter) {
         }
 
         $currCode = safe_trim($r["CURR_CODE"]);
-        $factor = usd_factor($currCode, $r["CURR_VRATE"], $r["USDRATE"]);
 
         $row = array(
             "CUST_CODE" => safe_trim($r["CUST_CODE"]),
@@ -199,7 +163,9 @@ if ($is_filter) {
 
         for ($m = 1; $m <= 6; $m++) {
             $qty = isset($r["DQTY" . $m]) ? (float)$r["DQTY" . $m] : 0;
-            $amt = isset($r["AMT" . $m]) ? (float)$r["AMT" . $m] * $factor : 0;
+
+            /* AMOUNT ASLI DARI SP, TIDAK KONVERSI USD */
+            $amt = isset($r["AMT" . $m]) ? (float)$r["AMT" . $m] : 0;
 
             $row["QTY" . $m] = $qty;
             $row["AMT" . $m] = $amt;
@@ -719,10 +685,10 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                 <tr>
                     <?php for ($m = 1; $m <= 6; $m++) { ?>
                         <th class="col-qty">QTY</th>
-                        <th class="col-amt month-border">AMT USD</th>
+                        <th class="col-amt month-border">AMT</th>
                     <?php } ?>
                     <th class="col-qty">QTY</th>
-                    <th class="col-amt">AMT USD</th>
+                    <th class="col-amt">AMT</th>
                 </tr>
             </thead>
 
@@ -823,8 +789,7 @@ function closeReport() {
             window.location.href = "dashboard_home.php";
             return;
         }
-    } catch (e) {
-    }
+    } catch (e) {}
 
     window.open("", "_self");
     window.close();
@@ -880,13 +845,8 @@ function setActiveCust(index) {
         return;
     }
 
-    if (index < 0) {
-        index = items.length - 1;
-    }
-
-    if (index >= items.length) {
-        index = 0;
-    }
+    if (index < 0) index = items.length - 1;
+    if (index >= items.length) index = 0;
 
     for (var i = 0; i < items.length; i++) {
         items[i].className = "autocomplete-item";
@@ -897,9 +857,7 @@ function setActiveCust(index) {
 }
 
 function chooseCust(index) {
-    if (index < 0 || index >= custRows.length) {
-        return;
-    }
+    if (index < 0 || index >= custRows.length) return;
 
     var r = custRows[index];
 
