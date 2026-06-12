@@ -56,7 +56,7 @@ while ($row = sqlsrv_fetch_array($qDet, SQLSRV_FETCH_ASSOC)) {
 
 // Nama Perusahaan berdasarkan Session (Plant 1 atau Plant 2)
 $companyName = "PT. IMC TEKNO INDONESIA PLANT 1";
-$companyAddress = "Kawasan Industri Mitra Karawang<br>ST-1 Blok A-III Lot No. 15E - 15F Dangdeur Bungursari<br>Kab. Purwakarta Jawa Barat 41181<br>Phone (0264) 351441";
+$companyAddress = "Kawasan Industri Bukit Indah<br>ST-1 Blok A-III Lot No. 15E - 15F Dangdeur Bungursari<br>Kab. Purwakarta Jawa Barat 41181<br>Phone (0264) 351441";
 
 if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
     $companyName = "PT. IMC TEKNO INDONESIA PLANT 2";
