@@ -1,116 +1,229 @@
 <?php
-// 1. CEK SESI & KONEKSI
-if (session_status() == PHP_SESSION_NONE) { session_start(); }
-if (!isset($_SESSION['db_user'])) { header("Location: ../login.php"); exit(); }
+if (session_id() == "") {
+    session_start();
+}
 
-require_once __DIR__ . '/../config/database_p1.php';
-$page = isset($_GET['page']) ? $_GET['page'] : 'home';
+require_once __DIR__ . "/../config/database_p1.php";
+
+if ($conn === false) {
+    header("Location: login.php?error=session_expired");
+    exit();
+}
+
+$dbUser = isset($_SESSION["db_user"]) ? $_SESSION["db_user"] : "";
+$loginTime = isset($_SESSION["login_time"]) ? $_SESSION["login_time"] : "";
+
+function h($value) {
+    return htmlspecialchars((string)$value, ENT_QUOTES, "UTF-8");
+}
 ?>
-
 <!DOCTYPE html>
-<html lang="id">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>ERP System - Exim Department</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
-
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <meta charset="utf-8">
+    <title>EXIM System - Plant 2</title>
 
     <style>
-        /* Mengadopsi Style dari dashboard_inv.php */
-        body { background: #f4f6f9; font-family: -apple-system, sans-serif; overflow-x: hidden; }
-        #sidebar { 
-            width: 240px; height: 100vh; background: #1a1a2e; /* Warna lebih gelap untuk Exim */
-            color: white; position: fixed; z-index: 1050; transition: all 0.3s;
-            display: flex; flex-direction: column; box-shadow: 2px 0 10px rgba(0,0,0,0.3);
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: #d4d0c8;
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 12px;
+            color: #000000;
+            overflow: hidden;
         }
-        #sidebar .brand { 
-            padding: 20px; font-size: 17px; font-weight: 600; background: #16213e; 
-            text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05);
+
+        .layout {
+            display: flex;
+            width: 100%;
+            height: 100vh;
         }
-        .nav-link { color: #aab0b6; padding: 12px 20px; border-left: 3px solid transparent; }
-        .nav-link:hover, .nav-link.active { 
-            background: #0f3460; color: #fff !important; border-left-color: #e94560; 
+
+        .sidebar {
+            width: 230px;
+            min-width: 230px;
+            height: 100vh;
+            background: #1d2a3d;
+            color: #ffffff;
+            box-sizing: border-box;
+            padding: 18px 14px;
+            overflow-y: auto;
         }
-        #content { width: 100%; padding: 25px; padding-left: 265px; transition: all 0.3s; }
-        .menu-label { padding: 15px 20px 5px; font-size: 11px; color: #5b6e80; font-weight: 700; text-transform: uppercase; }
-        
-        @media (max-width: 768px) {
-            #sidebar { margin-left: -240px; }
-            #sidebar.active { margin-left: 0; }
-            #content { padding-left: 20px; padding-top: 60px; }
+
+        .sidebar-title {
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 18px;
+            text-align: center;
+            line-height: 23px;
+            letter-spacing: 1px;
+        }
+
+        .user-box {
+            background: #263850;
+            border: 1px solid #425a78;
+            border-radius: 4px;
+            padding: 8px;
+            margin-bottom: 16px;
+            font-size: 11px;
+            line-height: 17px;
+        }
+
+        .menu-section {
+            font-size: 11px;
+            color: #b8c7dd;
+            margin: 14px 0 6px 2px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .menu-link {
+            display: block;
+            color: #ffffff;
+            text-decoration: none;
+            padding: 11px 10px;
+            margin-bottom: 6px;
+            border-radius: 4px;
+            font-size: 12px;
+            background: transparent;
+        }
+
+        .menu-link:hover {
+            background: #2f65d9;
+        }
+
+        .menu-link.active {
+            background: #2f65d9;
+            font-weight: bold;
+        }
+
+        .menu-link.logout {
+            background: #7a1f1f;
+            margin-top: 14px;
+        }
+
+        .menu-link.logout:hover {
+            background: #b32626;
+        }
+
+        .main {
+            flex: 1;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background: #d4d0c8;
+            overflow: hidden;
+        }
+
+        .topbar {
+            height: 38px;
+            line-height: 38px;
+            background: #000080;
+            color: #ffffff;
+            font-weight: bold;
+            text-align: center;
+            font-size: 16px;
+            letter-spacing: 1px;
+            flex-shrink: 0;
+            position: relative;
+        }
+
+        .topbar-right {
+            position: absolute;
+            right: 12px;
+            top: 0;
+            font-size: 11px;
+            font-weight: normal;
+            letter-spacing: 0;
+        }
+
+        .frame-area {
+            flex: 1;
+            overflow: hidden;
+            background: #d4d0c8;
+        }
+
+        #mainFrame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: #d4d0c8;
         }
     </style>
 </head>
+
 <body>
 
-    <button class="btn btn-dark position-fixed d-md-none" style="top:15px; left:15px; z-index:2000" id="mobileToggle">
-        <i class="bi bi-list"></i>
-    </button>
+<div class="layout">
 
-    <div id="sidebar">
-        <div class="brand"><i class="bi bi-ship"></i> EXIM MODULE</div>
-        <div class="py-2 overflow-auto h-100">
-            <ul class="nav flex-column">
-                <li class="nav-item">
-                    <a href="?page=home" class="nav-link <?php echo ($page=='home')?'active':''; ?>">
-                        <i class="bi bi-speedometer2"></i> Dashboard
-                    </a>
-                </li>
-                <div class="menu-label">Dokumen Pabean</div>
-                <li class="nav-item">
-                    <a href="?page=bc27" class="nav-link <?php echo ($page=='bc27')?'active':''; ?>">
-                        <i class="bi bi-file-earmark-text"></i> BC 2.7 (TPB)
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a href="?page=status" class="nav-link <?php echo ($page=='status')?'active':''; ?>">
-                        <i class="bi bi-cloud-arrow-up"></i> Ceisa Status
-                    </a>
-                </li>
-            </ul>
+    <div class="sidebar">
+        <div class="sidebar-title">
+            MENU<br>
+            EXIM SYSTEM
         </div>
-        <div class="sidebar-footer p-3 bg-dark">
-            <small class="text-white-50 d-block mb-2">User: <?php echo $_SESSION['db_user']; ?></small>
-            <a href="../index.php" class="btn btn-outline-light btn-sm w-100 mb-2">Kembali ke ERP</a>
-            <a href="logout.php" class="btn btn-danger btn-sm w-100">Logout</a>
+
+        <div class="user-box">
+            User: <?php echo h($dbUser); ?><br>
+            Login: <?php echo h($loginTime); ?>
+        </div>
+
+        <div class="menu-section">Main</div>
+        <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Dashboard / Report</a>
+
+        <div class="menu-section">PURCHASING Entry</div>
+        <a class="menu-link" href="kontrak.php" target="mainFrame">KONTRAK SUBKON</a>
+        <a class="menu-link" href="quotation.php" target="mainFrame">QUOTATION</a>
+        <a class="menu-link" href="po.php" target="mainFrame">PURCHASE ORDER</a>
+		 <a class="menu-link" href="label_plant2.php" target="mainFrame">RECEIVE</a>
+        
+        <div class="menu-section">Master</div>
+        <a class="menu-link" href="master_supplier.php" target="mainFrame">MASTER SUPPLIER </a>
+        
+
+       
+
+        <a class="menu-link logout" href="http://103.136.170.125:81/msii/index.php?logout=1" target="_top">Logout</a>
+    </div>
+
+    <div class="main">
+        <div class="topbar">
+          EXIM SYSTEM - PLANT 1
+            <div class="topbar-right">
+                <?php echo h(date("d-M-Y H:i")); ?>
+            </div>
+        </div>
+
+        <div class="frame-area">
+            <iframe id="mainFrame" name="mainFrame" src="dashboard_home.php"></iframe>
         </div>
     </div>
 
-    <div id="content">
-        <?php
-        switch ($page) {
-            case 'status': include "page_status.php"; break;
-            case 'bc27': include "page_bc27.php"; break;
-            case 'home': default:
-                ?>
-                <h3 class="mb-4"><i class="bi bi-house"></i> Exim Overview</h3>
-                <div class="row g-4">
-                    <div class="col-md-4">
-                        <div class="card border-0 shadow-sm p-3" style="border-left: 4px solid #e94560;">
-                            <div class="text-muted small fw-bold">DRAFT BC 2.7</div>
-                            <div class="fs-3 fw-bold">12</div>
-                        </div>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="card border-0 shadow-sm p-3" style="border-left: 4px solid #0d6efd;">
-                            <div class="text-muted small fw-bold">TERKIRIM KE CEISA</div>
-                            <div class="fs-3 fw-bold">45</div>
-                        </div>
-                    </div>
-                </div>
-                <?php break;
+</div>
+
+<script>
+var menuLinks = document.getElementsByClassName("menu-link");
+
+for (var i = 0; i < menuLinks.length; i++) {
+    menuLinks[i].onclick = function () {
+        if (this.getAttribute("target") == "_top") {
+            return true;
         }
-        ?>
-    </div>
 
-    <script>
-        $('#mobileToggle').click(function() { $('#sidebar').toggleClass('active'); });
-    </script>
+        for (var j = 0; j < menuLinks.length; j++) {
+            menuLinks[j].className = menuLinks[j].className.replace(" active", "");
+        }
+
+        if (this.className.indexOf("active") < 0) {
+            this.className = this.className + " active";
+        }
+
+        return true;
+    };
+}
+</script>
+
 </body>
 </html>

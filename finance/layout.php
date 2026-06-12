@@ -47,7 +47,10 @@ if (!isset($_SESSION['db_user'])) header("Location: login.php");
     <a href="dashboard.php"><i class="bi bi-speedometer2 me-2"></i> Dashboard</a>
     <a href="aging_sales.php"><i class="bi bi-graph-up-arrow me-2"></i> Aging Sales</a>
     <a href="aging_ap.php"><i class="bi bi-graph-down-arrow me-2"></i> Aging AP</a>
-	<a href="inv_coretax.php" class="nav-link">
+	<a href="export_receive.php"><i class="bi bi-graph-down-arrow me-2"></i> EXPOR RECEIVE NOTE TO TALLY</a>
+	<a href="export_receive_p1.php"><i class="bi bi-graph-down-arrow me-2"></i> EXPOR RECEIVE NOTE TO TALLY P1</a>
+	<a href="import_sop2.php"><i class="bi bi-graph-down-arrow me-2"></i> EXPOR SOP TO TALLY</a>
+    <a href="inv_coretax.php" class="nav-link">
     <i class="bi bi-file-earmark-excel"></i> Invoice Coretax
 	<a href="inv_coretax_monthly.php" class="nav-link">
     <i class="bi bi-calendar-range"></i> Coretax By Date

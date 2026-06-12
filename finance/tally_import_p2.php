@@ -150,6 +150,28 @@ function getDoNoP2($r) {
     ), '');
 }
 
+/*
+   Ambil nomor invoice Sales dengan beberapa kemungkinan nama kolom.
+   Jika invoice dipilih dari filter, nilai filter dipakai sebagai fallback.
+*/
+function getInvNoP2($r, $fallback) {
+    $inv = gv($r, array(
+        'DI_INVNO',
+        'INVNO',
+        'INV_NO',
+        'NO_INVOICE',
+        'INVOICE_NO'
+    ), '');
+
+    $inv = trim((string)$inv);
+
+    if ($inv == '' && $fallback != '') {
+        $inv = trim((string)$fallback);
+    }
+
+    return $inv;
+}
+
 function fetchRows($stmt) {
     $rows = array();
 
@@ -210,28 +232,21 @@ function loadSalesRows($fromDate, $toDate, $custId, $invNo) {
         return array();
     }
 
+    $invNo = trim((string)$invNo);
+
     /*
-       Query P2 sesuai request:
-       EXECUTE SP_TALLY_SALES :STARTDATE, :ENDDATE, :CUST_ID
-
-       Jika invoice dipilih, hasilnya difilter di PHP berdasarkan DI_INVNO.
+       Ikuti Delphi 7:
+       - Jika invoice kosong, load semua invoice customer.
+       - Jika invoice dipilih, gunakan SP_TALLY_SALES_CUST_INVOICE.
+         ENDDATE dipakai untuk rate.
     */
-    $stmt = q("EXECUTE SP_TALLY_SALES ?, ?, ?", array($fromDate, $toDate, $custId));
-    $rows = fetchRows($stmt);
-
     if ($invNo != '') {
-        $filtered = array();
-
-        foreach ($rows as $r) {
-            if (trim((string)gv($r, 'DI_INVNO', '')) == trim((string)$invNo)) {
-                $filtered[] = $r;
-            }
-        }
-
-        return $filtered;
+        $stmt = q("EXECUTE SP_TALLY_SALES_CUST_INVOICE ?, ?, ?", array($toDate, $custId, $invNo));
+        return fetchRows($stmt);
     }
 
-    return $rows;
+    $stmt = q("EXECUTE SP_TALLY_SALES ?, ?, ?", array($fromDate, $toDate, $custId));
+    return fetchRows($stmt);
 }
 
 function loadSopRows($fromDate) {
@@ -430,6 +445,63 @@ function deleteRateAction() {
    - NO_DS ambil dari nomor DO
    ========================= */
 
+/*
+   Ambil nomor BC Receipt dengan beberapa kemungkinan nama kolom.
+   Untuk P2 normalnya tidak dipakai di insert, tetapi dipakai sebagai bagian key
+   bila SP mengirim kolom BC agar GROUP_TOTAL tidak tercampur.
+*/
+function getBcNoReceiptP2($r) {
+    return gv($r, array(
+        'BC_NO',
+        'NO_BC',
+        'BCNO',
+        'BC_NUMBER',
+        'NOMOR_BC',
+        'RCV_BCNO',
+        'BC_DOC',
+        'BC_TYPE_NO'
+    ), '');
+}
+
+/*
+   Key GROUP_TOTAL Receipt.
+
+   Rumus nilai:
+   - IDR : SUM(QTY x POD_PRICE)
+   - USD : SUM(QTY x POD_PRICE)
+   - Konversi IDR/USD memakai CURR_RP
+
+   Key group dibuat lebih lengkap daripada RCV_NO saja supaya hasil PHP
+   mengikuti hasil Delphi/Tally ketika 1 RCV_NO berisi beberapa dokumen/kelompok.
+   Jika kolom-kolom tambahan tidak ada dari SP, otomatis fallback ke RCV_NO.
+*/
+function getReceiptGroupKeyP2($r) {
+    $rcvNo = trim((string)gv($r, 'RCV_NO', ''));
+    $doNo  = trim((string)getDoNoP2($r));
+    $bcNo  = trim((string)getBcNoReceiptP2($r));
+
+    $poNo = trim((string)gv($r, array(
+        'PO_NO',
+        'PONO',
+        'POD_PONO',
+        'POM_NO',
+        'POM_PONO',
+        'RCV_PONO',
+        'RCV_PO_NO',
+        'NO_PO'
+    ), ''));
+
+    $invNo = trim((string)gv($r, array(
+        'INV_NO',
+        'INVOICE_NO',
+        'SUP_INVNO',
+        'SUPPLIER_INVNO',
+        'NO_INVOICE'
+    ), ''));
+
+    return $rcvNo . '|' . $doNo . '|' . $bcNo . '|' . $poNo . '|' . $invNo;
+}
+
 function importReceipt($fromDate, $toDate) {
     $rows = loadReceiptRows($fromDate, $toDate);
 
@@ -439,17 +511,23 @@ function importReceipt($fromDate, $toDate) {
         return 0;
     }
 
+    /*
+       Hitung GROUP_TOTAL dulu.
+       Jangan hanya GROUP BY RCV_NO, karena dalam data Tally lama satu RCV_NO
+       bisa pecah menjadi beberapa group berdasarkan DO/BC/PO/Invoice.
+    */
     $groups = array();
 
     foreach ($rows as $r) {
-        $rcvNo = gv($r, 'RCV_NO', '');
-        $cur = gv($r, 'PO_CUR', '');
+        $groupKey = getReceiptGroupKeyP2($r);
+
+        $cur = strtoupper(trim((string)gv($r, 'PO_CUR', '')));
         $qty = nval(gv($r, 'QTY', 0));
         $price = nval(gv($r, 'POD_PRICE', 0));
         $rate = nval(gv($r, 'CURR_RP', 0));
 
-        if (!isset($groups[$rcvNo])) {
-            $groups[$rcvNo] = array(
+        if (!isset($groups[$groupKey])) {
+            $groups[$groupKey] = array(
                 'IDR' => 0,
                 'USD' => 0,
                 'CUR' => $cur,
@@ -457,21 +535,41 @@ function importReceipt($fromDate, $toDate) {
             );
         }
 
+        /*
+           Rumus item:
+           TOTAL = QTY x PRICE
+
+           Jika IDR:
+             GTOTAL_IDR += TOTAL_IDR
+             GTOTAL_USD += TOTAL_IDR / RATE
+
+           Jika USD:
+             GTOTAL_USD += TOTAL_USD
+             GTOTAL_IDR dihitung di bawah setelah group selesai
+        */
         if ($cur == 'IDR') {
             $totalIDR = round4($qty * $price);
-            $groups[$rcvNo]['IDR'] += $totalIDR;
+            $groups[$groupKey]['IDR'] += $totalIDR;
 
             if ($rate != 0) {
-                $groups[$rcvNo]['USD'] += round4($totalIDR / $rate);
+                $groups[$groupKey]['USD'] += round4($totalIDR / $rate);
             }
         } elseif ($cur == 'USD') {
-            $groups[$rcvNo]['USD'] += round4($qty * $price);
+            $totalUSD = round4($qty * $price);
+            $groups[$groupKey]['USD'] += $totalUSD;
+        } else {
+            die('UNEXPECTED CURRENCY RECEIPT: ' . h($cur));
         }
     }
 
-    foreach ($groups as $rcvNo => $g) {
-        if ($g['CUR'] == 'USD') {
-            $groups[$rcvNo]['IDR'] = round4($g['USD'] * $g['RATE']);
+    /*
+       Lengkapi nilai IDR untuk group USD.
+       Sama seperti Delphi:
+       Gtotal_IDR = Gtotal_USD x CURR_RP
+    */
+    foreach ($groups as $groupKey => $g) {
+        if ($g['CUR'] == 'USD' && $g['RATE'] != 0) {
+            $groups[$groupKey]['IDR'] = round4($g['USD'] * $g['RATE']);
         }
     }
 
@@ -501,8 +599,10 @@ function importReceipt($fromDate, $toDate) {
     $count = 0;
 
     foreach ($rows as $r) {
+        $groupKey = getReceiptGroupKeyP2($r);
+
         $rcvNo = gv($r, 'RCV_NO', '');
-        $cur = gv($r, 'PO_CUR', '');
+        $cur = strtoupper(trim((string)gv($r, 'PO_CUR', '')));
         $qty = nval(gv($r, 'QTY', 0));
         $price = nval(gv($r, 'POD_PRICE', 0));
         $rate = nval(gv($r, 'CURR_RP', 0));
@@ -510,29 +610,39 @@ function importReceipt($fromDate, $toDate) {
         $currUsd = gv($r, 'CURR_USD', '');
         $currRp = gv($r, 'CURR_RP', '');
 
+        if (!isset($groups[$groupKey])) {
+            die('GROUP_TOTAL Receipt tidak ditemukan untuk key: ' . h($groupKey));
+        }
+
         if ($cur == 'IDR') {
-            $unitIDR = $price;
-            $unitUSD = ($rate != 0) ? ($price / $rate) : 0;
-            $totalIDR = $qty * $price;
-            $totalUSD = ($rate != 0) ? ($totalIDR / $rate) : 0;
+            $unitIDR = round4($price);
+            $unitUSD = ($rate != 0) ? round4($price / $rate) : 0;
 
-            $itemPrice = resultIDR(round4($unitIDR), $currUsd, $currRp, round4($unitUSD), 'positif');
-            $totalHarga = resultIDR(round4($totalIDR), $currUsd, $currRp, round4($totalUSD), 'positif');
-            $totalHarga2 = resultIDR(round4($totalIDR), $currUsd, $currRp, round4($totalUSD), 'negatif');
-            $groupTotal = resultIDR(round4($groups[$rcvNo]['IDR']), $currUsd, $currRp, round4($groups[$rcvNo]['USD']), 'positif');
+            $totalIDR = round4($qty * $price);
+            $totalUSD = ($rate != 0) ? round4($totalIDR / $rate) : 0;
+
+            $itemPrice = resultIDR($unitIDR, $currUsd, $currRp, $unitUSD, 'positif');
+            $totalHarga = resultIDR($totalIDR, $currUsd, $currRp, $totalUSD, 'positif');
+            $totalHarga2 = resultIDR($totalIDR, $currUsd, $currRp, $totalUSD, 'negatif');
+
+            $groupTotal = resultIDR(
+                round4($groups[$groupKey]['IDR']),
+                $currUsd,
+                $currRp,
+                round4($groups[$groupKey]['USD']),
+                'positif'
+            );
         } elseif ($cur == 'USD') {
-            $unitUSD = $price;
-            $totalUSD = $qty * $price;
+            $unitUSD = round4($price);
+            $totalUSD = round4($qty * $price);
 
-            $itemPrice = round4($unitUSD);
-            $totalHarga = round4($totalUSD);
-            $totalHarga2 = '-' . round4($totalUSD);
-            $groupTotal = round4($groups[$rcvNo]['USD']);
+            $itemPrice = $unitUSD;
+            $totalHarga = $totalUSD;
+            $totalHarga2 = '-' . $totalUSD;
+
+            $groupTotal = round4($groups[$groupKey]['USD']);
         } else {
-            $itemPrice = 0;
-            $totalHarga = 0;
-            $totalHarga2 = 0;
-            $groupTotal = 0;
+            die('UNEXPECTED CURRENCY RECEIPT: ' . h($cur));
         }
 
         q($sqlInsert, array(
@@ -571,17 +681,28 @@ function importSales($fromDate, $toDate, $custId, $invNo) {
         return 0;
     }
 
+    /*
+       GROUP_TOTAL Sales mengikuti Delphi 7.
+       Kunci group wajib per invoice, yaitu DI_INVNO.
+       Jika invoice dipilih, nilai invoice pilihan dipakai sebagai fallback.
+       Ini mencegah GROUP_TOTAL terbuka menjadi total semua invoice.
+    */
     $groups = array();
 
     foreach ($rows as $r) {
-        $inv = gv($r, 'DI_INVNO', '');
-        $cur = gv($r, 'ITEM_CUR', '');
+        $invKey = getInvNoP2($r, $invNo);
+
+        if ($invKey == '') {
+            die('DI_INVNO kosong. GROUP_TOTAL tidak bisa dihitung per invoice.');
+        }
+
+        $cur = strtoupper(trim((string)gv($r, 'ITEM_CUR', '')));
         $qty = nval(gv($r, 'QTY', 0));
         $price = nval(gv($r, 'ITEM_COST', 0));
         $rate = nval(gv($r, 'CURR_RP', 0));
 
-        if (!isset($groups[$inv])) {
-            $groups[$inv] = array(
+        if (!isset($groups[$invKey])) {
+            $groups[$invKey] = array(
                 'IDR' => 0,
                 'USD' => 0,
                 'CUR' => $cur,
@@ -591,19 +712,21 @@ function importSales($fromDate, $toDate, $custId, $invNo) {
 
         if ($cur == 'IDR') {
             $totalIDR = round4($qty * $price);
-            $groups[$inv]['IDR'] += $totalIDR;
+            $groups[$invKey]['IDR'] += $totalIDR;
 
             if ($rate != 0) {
-                $groups[$inv]['USD'] += round4($totalIDR / $rate);
+                $groups[$invKey]['USD'] += round4($totalIDR / $rate);
             }
         } elseif ($cur == 'USD') {
-            $groups[$inv]['USD'] += round4($qty * $price);
+            $groups[$invKey]['USD'] += round4($qty * $price);
+        } else {
+            die('UNEXPECTED CURRENCY SALES: ' . h($cur));
         }
     }
 
-    foreach ($groups as $inv => $g) {
-        if ($g['CUR'] == 'USD') {
-            $groups[$inv]['IDR'] = round4($g['USD'] * $g['RATE']);
+    foreach ($groups as $invKey => $g) {
+        if ($g['CUR'] == 'USD' && $g['RATE'] != 0) {
+            $groups[$invKey]['IDR'] = round4($g['USD'] * $g['RATE']);
         }
     }
 
@@ -633,8 +756,14 @@ function importSales($fromDate, $toDate, $custId, $invNo) {
     $count = 0;
 
     foreach ($rows as $r) {
-        $inv = gv($r, 'DI_INVNO', '');
-        $cur = gv($r, 'ITEM_CUR', '');
+        $invKey = getInvNoP2($r, $invNo);
+        $inv = $invKey;
+
+        if ($invKey == '') {
+            die('DI_INVNO kosong. GROUP_TOTAL tidak bisa dihitung per invoice.');
+        }
+
+        $cur = strtoupper(trim((string)gv($r, 'ITEM_CUR', '')));
         $qty = nval(gv($r, 'QTY', 0));
         $price = nval(gv($r, 'ITEM_COST', 0));
         $rate = nval(gv($r, 'CURR_RP', 0));
@@ -651,7 +780,14 @@ function importSales($fromDate, $toDate, $custId, $invNo) {
             $itemPrice = resultIDR(round4($unitIDR), $currUsd, $currRp, round4($unitUSD), 'positif');
             $totalHarga = resultIDR(round4($totalIDR), $currUsd, $currRp, round4($totalUSD), 'positif');
             $totalHarga2 = resultIDR(round4($totalIDR), $currUsd, $currRp, round4($totalUSD), 'positif');
-            $groupTotal = resultIDR(round4($groups[$inv]['IDR']), $currUsd, $currRp, round4($groups[$inv]['USD']), 'negatif');
+
+            $groupTotal = resultIDR(
+                round4($groups[$invKey]['IDR']),
+                $currUsd,
+                $currRp,
+                round4($groups[$invKey]['USD']),
+                'negatif'
+            );
         } elseif ($cur == 'USD') {
             $unitUSD = $price;
             $totalUSD = $qty * $price;
@@ -659,12 +795,9 @@ function importSales($fromDate, $toDate, $custId, $invNo) {
             $itemPrice = round4($unitUSD);
             $totalHarga = round4($totalUSD);
             $totalHarga2 = round4($totalUSD);
-            $groupTotal = '-' . round4($groups[$inv]['USD']);
+            $groupTotal = '-' . round4($groups[$invKey]['USD']);
         } else {
-            $itemPrice = 0;
-            $totalHarga = 0;
-            $totalHarga2 = 0;
-            $groupTotal = 0;
+            die('UNEXPECTED CURRENCY SALES: ' . h($cur));
         }
 
         q($sqlInsert, array(
@@ -1405,7 +1538,7 @@ function renderSalesTable($rows) {
 
     foreach ($rows as $r) {
         echo '<tr>';
-        echo '<td><input type="text" class="form-control form-control-sm edit-inv" value="' . h(gv($r, 'DI_INVNO', '')) . '" style="width:130px;"></td>';
+        echo '<td><input type="text" class="form-control form-control-sm edit-inv" value="' . h(getInvNoP2($r, '')) . '" style="width:130px;"></td>';
         echo '<td><input type="text" class="form-control form-control-sm edit-ds" value="' . h(getDoNoP2($r)) . '" style="width:130px;"></td>';
         echo '<td>' . h(fmtDateView(gv($r, 'TRAN_DATE', ''))) . '</td>';
         echo '<td>' . h(gv($r, 'CUST_CODE', '')) . '</td>';

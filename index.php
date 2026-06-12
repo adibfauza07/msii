@@ -169,6 +169,13 @@
       </div>
 
       <div class="col">
+        <a href="exim/dashboard_exim.php" class="card-division">
+          <div class="icon-box bg-production"><i class="bi bi-airplane"></i></div>
+          <span class="division-name">Exim</span>
+        </a>
+      </div>
+
+      <div class="col">
         <a href="finance/dashboard.php" class="card-division">
           <div class="icon-box bg-finance"><i class="bi bi-wallet2"></i></div>
           <span class="division-name">Finance</span>
@@ -190,7 +197,7 @@
       </div>
 
       <div class="col">
-        <a href="marketing/dashboard_marketing.php" class="card-division">
+        <a href="marketing/login.php" class="card-division">
           <div class="icon-box bg-marketing"><i class="bi bi-megaphone"></i></div>
           <span class="division-name">Marketing</span>
         </a>
@@ -198,20 +205,20 @@
 
       <div class="col">
     <a href="ordering_p2/login.php" class="card-division">
-        <div class="icon-box bg-production"><i class="bi bi-cart-check"></i></div>
-        <span class="division-name">Ordering Plant 2</span>
+        <div class="icon-box bg-production"><i class="bi bi-bag-check"></i></div>
+        <span class="division-name">Ordering</span>
     </a>
 </div>
 
 <div class="col">
         <a href="pica/login.php" class="card-division">
-          <div class="icon-box bg-pica"><i class="bi bi-asterisk"></i></div>
+          <div class="icon-box bg-marketing"><i class="bi bi-asterisk"></i></div>
           <span class="division-name">PICA</span>
         </a>
       </div>
 
       <div class="col">
-        <a href="ppic/login.php" class="card-division">
+        <a href="ppic2/login.php" class="card-division">
           <div class="icon-box bg-ppic"><i class="bi bi-calendar3"></i></div>
           <span class="division-name">PPIC</span>
         </a>
@@ -261,7 +268,7 @@
 
       <div class="col">
         <a href="4m/login.php" class="card-division">
-          <div class="icon-box bg-4m"><i class="bi bi-gear-fill"></i></div>
+          <div class="icon-box bg-warehouse"><i class="bi bi-gear-fill"></i></div>
           <span class="division-name">4M Change</span>
         </a>
       </div>

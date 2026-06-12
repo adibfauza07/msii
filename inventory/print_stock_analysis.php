@@ -2,10 +2,44 @@
 require_once __DIR__ . '/../config/database_p1.php';
 
 // 1. Tangkap Parameter
-$itemId    = isset($_GET['item_id']) ? (int)$_GET['item_id'] : 0;
+require_once __DIR__ . '/../config/database_p1.php';
+
+// 1. Tangkap Parameter 
+$passedItem = isset($_GET['item_id']) ? trim($_GET['item_id']) : '0';
 $startDate = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d');
 $period    = isset($_GET['period']) ? (int)$_GET['period'] : 1;
 
+$itemId = 0;
+$itemCodeDisplay = "ALL ITEMS";
+
+// TRANSLATOR: Ubah ITEM_CODE menjadi ITEM_ID dengan sangat aman
+if ($passedItem !== '0' && $passedItem !== '') {
+    // Cari berdasarkan ITEM_CODE terlebih dahulu
+    $qFind = sqlsrv_query($conn, "SELECT TOP 1 ITEM_ID, ITEM_CODE FROM ITEMS WHERE ITEM_CODE = ?", array($passedItem));
+    
+    if ($qFind && $rFind = sqlsrv_fetch_array($qFind, SQLSRV_FETCH_ASSOC)) {
+        $itemId = $rFind['ITEM_ID'];
+        $itemCodeDisplay = $rFind['ITEM_CODE'];
+    } else {
+        // Jika tidak ketemu, cek apakah parameter murni angka (berarti itu memang ITEM_ID)
+        if (is_numeric($passedItem)) {
+            $itemId = (int)$passedItem;
+            
+            // Ambil kodenya buat ditampilkan di header laporan
+            $qName = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_ID = ?", array($itemId));
+            if ($qName && $rName = sqlsrv_fetch_array($qName, SQLSRV_FETCH_ASSOC)) {
+                $itemCodeDisplay = $rName['ITEM_CODE'];
+            } else {
+                $itemCodeDisplay = "ID: " . $itemId;
+            }
+        } else {
+            $itemId = -999; // Dibuat minus agar tidak nyasar ke barang lain
+            $itemCodeDisplay = "ITEM NOT FOUND";
+        }
+    }
+}
+
+// Format StartDate menjadi 'YYYYMMDD' untuk Stored Procedure
 $startDateFormatted = date('Ymd', strtotime($startDate));
 
 // 2. Eksekusi Stored Procedure

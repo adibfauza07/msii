@@ -7,10 +7,16 @@ if (session_status() == PHP_SESSION_NONE) {
 // ====================================================================
 // PERBAIKAN: SERVER DINAMIS BERDASARKAN SESSION 'active_plant'
 // ====================================================================
-$serverName = "192.168.0.4"; // Default ke Plant 1
+switch (isset($_SESSION['active_plant']) ? $_SESSION['active_plant'] : 'p1')
+{
+    case 'p2':
+        $serverName = "192.168.0.9";
+        break;
 
-if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
-    $serverName = "192.168.0.9"; // Jika Login memilih Plant 2
+    case 'p1':
+    default:
+        $serverName = "192.168.0.4";
+        break;
 }
 // ====================================================================
 
