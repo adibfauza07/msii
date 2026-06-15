@@ -274,6 +274,7 @@ function h($value) {
                 <a class="button" href="delivery_summary_6month_report.php" target="_blank">OPEN</a>
             </div>
 			
+			
 			<div class="report-item">
                 <div class="report-name">Delivery Summary 1 YEAR USD</div>
                 <a class="button" href="delivery_summary_12month.php" target="_blank">OPEN</a>

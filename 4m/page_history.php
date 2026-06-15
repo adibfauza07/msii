@@ -29,7 +29,7 @@ $query = q($sql, $params);
 </style>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <a href="input_pcis.php" class="btn btn-primary btn-sm fw-bold shadow-sm"><i class="bi bi-plus-lg me-1"></i> + Buat Pengajuan PCIS (4M)</a>
+    <a href="input_pcis.php" class="btn btn-primary btn-sm fw-bold shadow-sm"><i class="bi bi-plus-lg me-1"></i>Buat Pengajuan PCIS (4M)</a>
     <a href="?page=rekap" class="btn btn-outline-success btn-sm fw-bold shadow-sm"><i class="bi bi-file-earmark-excel me-1"></i> Cetak Rekap / Summary</a>
 </div>
 

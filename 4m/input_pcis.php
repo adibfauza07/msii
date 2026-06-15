@@ -21,35 +21,25 @@ if (isset($_GET['ajax_search'])) {
         $stmt = sqlsrv_query($conn, $sql, ["%$term%"]);
         if($stmt) while($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) $res[] = ['label' => $r['CUST_COMP'], 'value' => $r['CUST_ID']];
     } 
-// Pencarian Part (Disaring berdasarkan CUST_ID) - VERSI PALING AMAN (TANPA MODEL)
     elseif ($type == 'part') {
         $cust_id = isset($_GET['cust_id']) ? $_GET['cust_id'] : '';
-        
         if (!empty($cust_id)) {
-            // KITA HAPUS 'MODEL' DARI SELECT AGAR TIDAK ERROR
             $sql = "SELECT * FROM (
                         SELECT ITEM_ID, CUST_ID, PART_CODE, PART_NAME 
                         FROM ITEM_CUSTINFO_VIEW
                     ) AS CustItems 
                     WHERE CUST_ID = ? AND (PART_NAME LIKE ? OR PART_CODE LIKE ?)";
-            
             $stmt = sqlsrv_query($conn, $sql, [$cust_id, "%$term%", "%$term%"]);
-            
             if ($stmt === false) {
                 $err = sqlsrv_errors();
                 $res[] = ['label' => "Error SQL: " . $err[0]['message'], 'value' => ''];
             } else {
-                while($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)){
-                    $res[] = [
-                        'label' => trim($r['PART_CODE']) . " - " . trim($r['PART_NAME']), 
-                        'value' => $r['ITEM_ID'], 
-                        'model' => '' // Dikosongkan agar tidak memicu error di JavaScript
-                    ];
+                while($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+                    $res[] = ['label' => trim($r['PART_CODE']) . " - " . trim($r['PART_NAME']), 'value' => $r['ITEM_ID'], 'model' => ''];
                 }
             }
         }
     }
-    // PENCARIAN MATERIAL BARU
     elseif ($type == 'mat') {
         $sql = "SELECT TOP 50 ITEM_ID, ITEM_CODE, ITEM_NAME FROM ITEMS WHERE ITEM_NAME LIKE ? OR ITEM_CODE LIKE ?";
         $stmt = sqlsrv_query($conn, $sql, ["%$term%", "%$term%"]);
@@ -60,7 +50,7 @@ if (isset($_GET['ajax_search'])) {
 }
 
 // =========================================================================
-// PROSES SIMPAN / UPDATE DATABASE (BUG FIXED!)
+// PROSES SIMPAN / UPDATE DATABASE
 // =========================================================================
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
     function val($k, $d = "") { return isset($_POST[$k]) ? $_POST[$k] : $d; }
@@ -72,14 +62,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
     $pic_name     = trim(val('pic_name'));
     $item_id      = intval(val('item_id', 0));
     $model        = trim(val('model'));
+    $material_id  = intval(val('material_id', 0)); 
     
-    $material_id  = intval(val('material_id', 0)); // Ini masuk ke kolom MATERIAL_ID
+    // Penambahan variabel TO dan CC
+    $to_pcis      = trim(val('to_pcis'));
+    $cc_pcis      = trim(val('cc_pcis'));
     
     $reason       = trim(val('reason'));
     $bef_change   = trim(val('bef_change'));
     $aft_change   = trim(val('aft_change'));
     $status       = trim(val('status'));
+    
+    // Penambahan Variabel Status Post / Otorisasi
     $prepared     = trim(val('prepared'));
+    $imc_checked  = trim(val('imc_checked'));
+    $imc_aprove   = trim(val('imc_aprove'));
     
     $pe_remark   = trim(val('pe_remark'));
     $qc_remark   = trim(val('qc_remark'));
@@ -91,48 +88,47 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
     $man         = isset($_POST['man']) ? 1 : 0;
     $machine     = isset($_POST['machine']) ? 1 : 0;
     $method      = isset($_POST['method']) ? 1 : 0;
-    $material_4m = isset($_POST['material_4m']) ? 1 : 0; // Ini masuk ke kolom MATERIAL (Checkbox 4M)
+    $material_4m = isset($_POST['material_4m']) ? 1 : 0; 
     
     $internal    = isset($_POST['internal']) ? 1 : 0;
     $customer    = isset($_POST['customer']) ? 1 : 0;
     $supplier    = isset($_POST['supplier']) ? 1 : 0;
     $perm        = isset($_POST['perm']) ? intval($_POST['perm']) : 1;
 
-    // Tampung nilai TO_PCIS dan CC ke variabel dulu biar rapi
-    $to_pcis = trim(val('to_pcis'));
-    $cc_pcis = trim(val('cc_pcis'));
-
     if ($control_id > 0) {
-        // --- MODE UPDATE ---
         $sql = "UPDATE PROSES_CHANGE SET 
                     CONTROL_NO = ?, CONTROL_DATE1 = ?, DEP_CODE = ?, PIC_NAME = ?, 
                     ITEM_ID = ?, MODEL = ?, MATERIAL_ID = ?, TO_PCIS = ?, CC = ?, 
                     MAN = ?, MACHINE = ?, METHOD = ?, MATERIAL = ?, INTERNAL = ?, CUSTOMER = ?, SUPPLIER = ?, 
-                    PERMANENT_CHANGE = ?, REASON = ?, BEF_CHANGE = ?, AFT_CHANGE = ?, STATUS = ?, IMC_PREPARED = ?,
+                    PERMANENT_CHANGE = ?, REASON = ?, BEF_CHANGE = ?, AFT_CHANGE = ?, STATUS = ?, 
+                    IMC_PREPARED = ?, IMC_CHECKED = ?, IMC_APROVE = ?,
                     PE_REMARK = ?, QC_REMARK = ?, MOLDSHOP_REMARK = ?, PPIC_REMARK = ?, PRODUCTION_REMARK = ?, MARKETING_REMARK = ?
                 WHERE CONTROL_ID = ?";
         
         $params = array(
             $control_no, $control_date, $dep_code, $pic_name, $item_id, $model, $material_id, $to_pcis, $cc_pcis,
             $man, $machine, $method, $material_4m, $internal, $customer, $supplier, $perm, 
-            $reason, $bef_change, $aft_change, $status, $prepared,
+            $reason, $bef_change, $aft_change, $status, 
+            $prepared, $imc_checked, $imc_aprove,
             $pe_remark, $qc_remark, $mold_remark, $ppic_remark, $prod_remark, $mkt_remark,
             $control_id
         );
         $msg = "Data PCIS #{$control_no} berhasil diperbarui!";
     } else {
-        // --- MODE INSERT ---
-        // Jumlah kolom: 28, Jumlah tanda tanya ?: 28
+        // Kolom dan parameter diatur akurat berjumlah 30
         $sql = "INSERT INTO PROSES_CHANGE (
                     CONTROL_NO, CONTROL_DATE1, DEP_CODE, PIC_NAME, ITEM_ID, MODEL, MATERIAL_ID, TO_PCIS, CC,
                     MAN, MACHINE, METHOD, MATERIAL, INTERNAL, CUSTOMER, SUPPLIER, PERMANENT_CHANGE, 
-                    REASON, BEF_CHANGE, AFT_CHANGE, STATUS, IMC_PREPARED, PE_REMARK, QC_REMARK, MOLDSHOP_REMARK, PPIC_REMARK, PRODUCTION_REMARK, MARKETING_REMARK
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    REASON, BEF_CHANGE, AFT_CHANGE, STATUS, 
+                    IMC_PREPARED, IMC_CHECKED, IMC_APROVE, 
+                    PE_REMARK, QC_REMARK, MOLDSHOP_REMARK, PPIC_REMARK, PRODUCTION_REMARK, MARKETING_REMARK
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         $params = array(
             $control_no, $control_date, $dep_code, $pic_name, $item_id, $model, $material_id, $to_pcis, $cc_pcis,
             $man, $machine, $method, $material_4m, $internal, $customer, $supplier, $perm, 
-            $reason, $bef_change, $aft_change, $status, $prepared,
+            $reason, $bef_change, $aft_change, $status, 
+            $prepared, $imc_checked, $imc_aprove,
             $pe_remark, $qc_remark, $mold_remark, $ppic_remark, $prod_remark, $mkt_remark
         );
         $msg = "Data PCIS baru berhasil disimpan!";
@@ -149,8 +145,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
     exit();
 }
 
-$qDept = q("SELECT DEP_CODE, DEP_NAME FROM DEPT WHERE DEP_CODE IN ('MS','PE','PC','MK','PD','QC','MA','PU') ORDER BY DEP_NAME");
+// === LOAD SELECTION DROPDOWN MASTER ===
+$qDept = q("
+SELECT DEP_CODE, DEP_NAME
+FROM DEPT
+ORDER BY DEP_NAME
+");
 $qStatus = q("SELECT STATUS FROM PROSES_STATUS");
+
+// === TARIK SEMUA NAMA UNIK DARI DATABASE UNTUK DROPDOWN ===
+$qUsers = q("
+    SELECT DISTINCT nama FROM (
+        SELECT IMC_PREPARED AS nama FROM PROSES_CHANGE
+        UNION 
+        SELECT IMC_CHECKED AS nama FROM PROSES_CHANGE
+        UNION 
+        SELECT IMC_APROVE AS nama FROM PROSES_CHANGE
+    ) AS t WHERE nama IS NOT NULL AND RTRIM(nama) <> '' ORDER BY nama ASC
+");
+$list_users = [];
+if($qUsers) {
+    while($u = sqlsrv_fetch_array($qUsers, SQLSRV_FETCH_ASSOC)) {
+        $list_users[] = trim($u['nama']);
+    }
+}
+
 $autoControlNo = getNewControlNumber();
 ?>
 <!DOCTYPE html>
@@ -350,18 +369,32 @@ $autoControlNo = getNewControlNumber();
                             </div>
                         </div>
 
+                        <datalist id="list_nama_pegawai">
+                            <?php foreach($list_users as $nama): ?>
+                                <option value="<?php echo htmlspecialchars($nama); ?>">
+                            <?php endforeach; ?>
+                        </datalist>
+
                         <div class="card-custom bg-dark text-white p-3">
-                            <label class="text-warning small mb-2"><i class="bi bi-shield-check me-1"></i> Post Validation & Status</label>
-                            <div class="row g-2">
-                                <div class="col-6">
-                                    <label class="text-white-50" style="font-size:10px;">PREPARED BY</label>
-                                    <input type="text" name="prepared" class="form-control form-control-sm bg-transparent text-white" value="<?php echo $_SESSION['erp_user']; ?>">
-                                </div>
+                            <label class="text-warning small mb-3"><i class="bi bi-shield-check me-1"></i> Post Validation & Status</label>
+                            <div class="row g-3">
                                 <div class="col-6">
                                     <label class="text-white-50" style="font-size:10px;">STATUS</label>
-                                    <select name="status" class="form-select form-select-sm bg-warning border-0 fw-bold">
+                                    <select name="status" class="form-select form-select-sm bg-warning text-dark border-0 fw-bold">
                                         <?php while($s = sqlsrv_fetch_array($qStatus, SQLSRV_FETCH_ASSOC)) echo "<option value='{$s['STATUS']}'>{$s['STATUS']}</option>"; ?>
                                     </select>
+                                </div>
+                                <div class="col-6">
+                                    <label class="text-white-50" style="font-size:10px;">PREPARED BY</label>
+                                    <input type="text" name="prepared" list="list_nama_pegawai" class="form-control form-control-sm bg-secondary text-white border-0" value="<?php echo $_SESSION['erp_user']; ?>" placeholder="Pilih / Ketik...">
+                                </div>
+                                <div class="col-6">
+                                    <label class="text-white-50" style="font-size:10px;">CHECKED BY</label>
+                                    <input type="text" name="imc_checked" list="list_nama_pegawai" class="form-control form-control-sm bg-secondary text-white border-0" placeholder="Pilih / Ketik...">
+                                </div>
+                                <div class="col-6">
+                                    <label class="text-white-50" style="font-size:10px;">APPROVED BY</label>
+                                    <input type="text" name="imc_aprove" list="list_nama_pegawai" class="form-control form-control-sm bg-secondary text-white border-0" placeholder="Pilih / Ketik...">
                                 </div>
                             </div>
                         </div>
@@ -414,7 +447,6 @@ function fillForm(rec) {
     $("#ITEM_ID").val(rec.ITEM_ID || '');
     $("#MODEL").val(rec.MODEL ? rec.MODEL.trim() : '');
     
-    // Ini menarik nama MATERIAL dari join database baru kita
     $("#MATERIAL_TEXT").val(rec.MATERIAL_NAME ? rec.MATERIAL_NAME.trim() : '');
     $("#MATERIAL_ID").val(rec.MATERIAL_ID || '');
 
@@ -444,7 +476,10 @@ function fillForm(rec) {
     $("textarea[name='prod_remark']").val(rec.PRODUCTION_REMARK ? rec.PRODUCTION_REMARK.trim() : '');
     $("textarea[name='mkt_remark']").val(rec.MARKETING_REMARK ? rec.MARKETING_REMARK.trim() : '');
 
+    // Autorisasi
     $("input[name='prepared']").val(rec.IMC_PREPARED ? rec.IMC_PREPARED.trim() : '');
+    $("input[name='imc_checked']").val(rec.IMC_CHECKED ? rec.IMC_CHECKED.trim() : '');
+    $("input[name='imc_aprove']").val(rec.IMC_APROVE ? rec.IMC_APROVE.trim() : '');
     $("select[name='status']").val(rec.STATUS ? rec.STATUS.trim() : 'OPEN');
 
     updateNav(rec.CONTROL_ID);
@@ -458,7 +493,6 @@ $(document).ready(function() {
     $("#nextBtn").click(function(){ let id=$("#CONTROL_ID").val()||0; $.get("load_pcis.php", {mode:"next", id:id}, function(r){ if(r.status==="ok") fillForm(r.record);},"json"); });
     $("#prevBtn").click(function(){ let id=$("#CONTROL_ID").val()||0; $.get("load_pcis.php", {mode:"prev", id:id}, function(r){ if(r.status==="ok") fillForm(r.record);},"json"); });
 
-    // CUSTOMER AUTOCOMPLETE
     $("#CUST_COMP").autocomplete({
         minLength: 0, source: "?ajax_search=cust",
         select: function(event, ui) {
@@ -469,7 +503,6 @@ $(document).ready(function() {
         }
     }).on("focus click", function() { $(this).autocomplete("search", $(this).val()); });
 
-    // PART AUTOCOMPLETE
     $("#PART_NAME").autocomplete({
         minLength: 0,
         source: function(req, res) {
@@ -491,20 +524,16 @@ $(document).ready(function() {
         }
     }).on("focus click", function() { $(this).autocomplete("search", $(this).val()); });
 
-    // MATERIAL AUTOCOMPLETE BARU
     $("#MATERIAL_TEXT").autocomplete({
         minLength: 0, source: "?ajax_search=mat",
         select: function(event, ui) {
             $("#MATERIAL_TEXT").val(ui.item.label);
-            $("#MATERIAL_ID").val(ui.item.value); // Simpan Integer ke Hidden Field
+            $("#MATERIAL_ID").val(ui.item.value); 
             return false;
         }
     }).on("focus click", function() { $(this).autocomplete("search", $(this).val()); });
 
     $("#newBtn").click(function(){
-        $("input[type='text'], input[type='date'], textarea").val("");
-        $("input[type='checkbox']").prop('checked', false);
-        $("select").val(""); $("#CONTROL_ID").val("0");
         $.get("load_pcis.php", {mode:"last"}, function(r){ location.reload(); });
     });
 

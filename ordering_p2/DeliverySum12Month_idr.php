@@ -150,7 +150,7 @@ $printRows = array();
 $pages = array();
 
 $totalPages = 0;
-$rowsPerPage = 50;
+$rowsPerPage = 100;
 
 if ($is_filter) {
     if ($start_ymd == "") {
@@ -354,136 +354,289 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
     <title>Delivery History Summary 12 Month</title>
 
     <style>
-        @page { size: A4 landscape; margin: 4mm; }
+      @page{
+    size:A3 landscape;
+    margin:5mm;
+}
 
-        body {
-            margin: 0;
-            background: #9a9a9a;
-            font-family: "Courier New", monospace;
-            font-size: 6px;
-            color: #000000;
-        }
+body{
+    margin:0;
+    background:#9a9a9a;
+    font-family:"Courier New",monospace;
+    font-size:8px;
+    color:#000;
+}
 
-        .filter-bar {
-            width: 289mm;
-            margin: 8px auto;
-            background: #d4d0c8;
-            border: 1px solid #666666;
-            padding: 6px;
-            box-sizing: border-box;
-            font-family: Tahoma, Arial, sans-serif;
-            font-size: 12px;
-        }
+/* FILTER */
+.filter-bar{
+    width:400mm;
+    margin:5px auto;
+    background:#d4d0c8;
+    border:1px solid #666;
+    padding:4px;
+    box-sizing:border-box;
+    font-family:Tahoma,Arial,sans-serif;
+    font-size:11px;
+}
 
-        .filter-bar input {
-            height: 24px;
-            border: 1px solid #777777;
-            font-size: 12px;
-            padding: 2px 4px;
-            box-sizing: border-box;
-        }
+.filter-bar input{
+    height:22px;
+    border:1px solid #777;
+    font-size:11px;
+    padding:2px 4px;
+}
 
-        .filter-month { width: 130px; }
-        .filter-cust { width: 160px; }
+.filter-month{
+    width:120px;
+}
 
-        .filter-bar button {
-            height: 26px;
-            font-size: 12px;
-            cursor: pointer;
-            margin-left: 4px;
-        }
+.filter-cust{
+    width:180px;
+}
 
-        .autocomplete-wrap { position: relative; display: inline-block; }
-        .autocomplete-list {
-            position: absolute;
-            top: 24px;
-            left: 0;
-            width: 430px;
-            max-height: 230px;
-            overflow-y: auto;
-            background: #ffffff;
-            border: 1px solid #444444;
-            z-index: 9999;
-            display: none;
-        }
-        .autocomplete-item {
-            padding: 5px 7px;
-            border-bottom: 1px solid #dddddd;
-            cursor: pointer;
-            line-height: 16px;
-            font-family: Tahoma, Arial, sans-serif;
-            font-size: 12px;
-        }
-        .autocomplete-item:hover,
-        .autocomplete-item.active { background: #2f70c9; color: #ffffff; }
+.filter-bar button{
+    height:24px;
+    font-size:11px;
+    cursor:pointer;
+}
 
-        .print-bar { width: 289mm; margin: 8px auto; text-align: right; }
-        .print-bar button { padding: 6px 14px; font-size: 11px; cursor: pointer; font-family: Arial, sans-serif; }
+/* AUTOCOMPLETE */
+.autocomplete-wrap{
+    position:relative;
+    display:inline-block;
+}
 
-        .page {
-            width: 289mm;
-            min-height: 201mm;
-            margin: 10px auto;
-            background: #ffffff;
-            border: 2px solid #000000;
-            padding: 4mm;
-            box-sizing: border-box;
-            page-break-after: always;
-            overflow: hidden;
-        }
-        .page:last-child { page-break-after: auto; }
+.autocomplete-list{
+    position:absolute;
+    top:22px;
+    left:0;
+    width:420px;
+    max-height:250px;
+    overflow-y:auto;
+    background:#fff;
+    border:1px solid #444;
+    z-index:9999;
+    display:none;
+}
 
-        .header { width: 100%; border-collapse: collapse; margin-bottom: 6px; }
-        .header td { border: none; vertical-align: top; }
-        .company { width: 27%; font-family: Arial, sans-serif; font-size: 10px; line-height: 13px; }
-        .company-title { font-size: 14px; font-weight: normal; }
-        .title-area { width: 46%; text-align: center; font-family: Arial, sans-serif; }
-        .report-title { font-size: 18px; font-weight: normal; margin-top: 4px; }
-        .start-month { font-size: 10px; margin-top: 4px; }
-        .right-info { width: 27%; text-align: right; font-family: Arial, sans-serif; font-size: 10px; line-height: 16px; }
+.autocomplete-item{
+    padding:4px 6px;
+    border-bottom:1px solid #ddd;
+    cursor:pointer;
+    font-size:11px;
+}
 
-        .summary-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        .summary-table th,
-        .summary-table td {
-            border: none;
-            padding: 0 1px;
-            height: 10px;
-            line-height: 8px;
-            box-sizing: border-box;
-            vertical-align: middle;
-            white-space: nowrap;
-            overflow: hidden;
-            font-size: 6px;
-        }
-        .summary-table thead th {
-            border-top: 1px solid #000000;
-            border-bottom: 1px solid #000000;
-            font-weight: normal;
-            text-align: center;
-            font-size: 6px;
-        }
+.autocomplete-item:hover,
+.autocomplete-item.active{
+    background:#2f70c9;
+    color:#fff;
+}
 
-        .col-code { width: 5%; text-align: left !important; }
-        .col-no { width: 7%; text-align: left !important; }
-        .col-name { width: 9%; text-align: left !important; border-right: 1px dashed #000000 !important; }
-        .col-price { width: 4%; text-align: right; }
-        .col-curr { width: 2%; text-align: center; }
-        .col-qty { width: 2.4%; text-align: right; }
-        .col-amt { width: 3.4%; text-align: right; }
-        .month-border { border-right: 1px dashed #000000 !important; }
+/* BUTTON */
+.print-bar{
+    width:400mm;
+    margin:5px auto;
+    text-align:right;
+}
 
-        .customer-row td { background: #bfbfbf; font-weight: bold; font-size: 7px; }
-        .customer-total-row td { font-weight: bold; }
-        .grand-total-row td { font-weight: bold; border-top: 2px solid #000000; border-bottom: 2px solid #000000; }
-        .num { text-align: right; }
-        .center { text-align: center; }
-        .no-data { font-family: Arial, sans-serif; font-size: 14px; text-align: center; margin-top: 70px; line-height: 24px; }
+.print-bar button{
+    padding:4px 10px;
+    font-size:11px;
+}
 
-        @media print {
-            html, body { width: 297mm; min-height: 210mm; background: #ffffff; }
-            .filter-bar, .print-bar { display: none; }
-            .page { width: 289mm; min-height: 201mm; margin: 0 auto; border: none; padding: 3mm; overflow: hidden; }
-        }
+/* PAGE */
+.page{
+    width:400mm;
+    min-height:285mm;
+    margin:5px auto;
+    background:#fff;
+    border:1px solid #000;
+    padding:4mm;
+    box-sizing:border-box;
+    page-break-after:always;
+}
+
+.page:last-child{
+    page-break-after:auto;
+}
+
+/* HEADER */
+.header{
+    width:100%;
+    border-collapse:collapse;
+    margin-bottom:4px;
+}
+
+.header td{
+    border:none;
+    vertical-align:top;
+}
+
+.company{
+    width:28%;
+    font-family:Arial,sans-serif;
+    font-size:10px;
+    line-height:12px;
+}
+
+.company-title{
+    font-size:14px;
+    font-weight:bold;
+}
+
+.title-area{
+    width:44%;
+    text-align:center;
+}
+
+.report-title{
+    font-family:Arial,sans-serif;
+    font-size:18px;
+    font-weight:bold;
+}
+
+.start-month{
+    font-family:Arial,sans-serif;
+    font-size:10px;
+}
+
+.right-info{
+    width:28%;
+    text-align:right;
+    font-family:Arial,sans-serif;
+    font-size:10px;
+}
+
+/* TABLE */
+.summary-table{
+    width:100%;
+    border-collapse:collapse;
+    table-layout:fixed;
+}
+
+.summary-table th,
+.summary-table td{
+    padding:1px 2px;
+    height:11px;
+    line-height:9px;
+    white-space:nowrap;
+    overflow:hidden;
+    font-size:7px;
+}
+
+.summary-table thead th{
+    border-top:1px solid #000;
+    border-bottom:1px solid #000;
+    text-align:center;
+    font-weight:bold;
+    font-size:7px;
+}
+
+/* COLUMN */
+.col-item{
+    width:23%;
+    text-align:left !important;
+    border-right:1px dashed #000;
+    padding-left:3px;
+}
+
+.col-price{
+    width:4%;
+    text-align:right !important;
+}
+
+.col-curr{
+    width:3%;
+    text-align:center !important;
+}
+
+.col-qty{
+    width:3.5%;
+    text-align:right !important;
+}
+
+.col-amt{
+    width:5%;
+    text-align:right !important;
+}
+
+.month-border{
+    border-right:1px dashed #000;
+}
+
+/* NUMBER */
+.num{
+    text-align:right !important;
+    padding-right:2px;
+    font-size:7px;
+    font-variant-numeric:tabular-nums;
+}
+
+/* CUSTOMER */
+.customer-row td{
+    background:#c0c0c0;
+    font-weight:bold;
+    font-size:8px;
+    padding-top:2px;
+    padding-bottom:2px;
+}
+
+.customer-total-row td{
+    font-weight:bold;
+    font-size:7px;
+    border-top:1px solid #000;
+}
+
+.customer-total-row td:first-child{
+    text-align:left !important;
+}
+
+.grand-total-row td{
+    font-weight:bold;
+    font-size:8px;
+    border-top:2px solid #000;
+    border-bottom:2px solid #000;
+}
+
+.grand-total-row td:first-child{
+    text-align:left !important;
+}
+
+/* ALIGN */
+.center{
+    text-align:center;
+}
+
+.no-data{
+    text-align:center;
+    margin-top:60px;
+    font-family:Arial,sans-serif;
+    font-size:12px;
+}
+
+/* PRINT */
+@media print{
+
+    html,
+    body{
+        width:420mm;
+        min-height:297mm;
+        background:#fff;
+    }
+
+    .filter-bar,
+    .print-bar{
+        display:none;
+    }
+
+    .page{
+        width:400mm;
+        min-height:285mm;
+        border:none;
+        margin:0;
+        padding:3mm;
+    }
+}
     </style>
 </head>
 <body>

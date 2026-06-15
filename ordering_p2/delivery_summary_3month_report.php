@@ -374,270 +374,301 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
     <title>Delivery History Summary 3 Month</title>
 
     <style>
-        @page {
-            size: A4 landscape;
-            margin: 6mm;
-        }
+       @page {
+    size: A3 landscape;
+    margin: 6mm;
+}
 
-        body {
-            margin: 0;
-            background: #9a9a9a;
-            font-family: "Courier New", monospace;
-            font-size: 9px;
-            color: #000000;
-        }
+body {
+    margin: 0;
+    background: #9a9a9a;
+    font-family: "Courier New", monospace;
+    font-size: 11px;
+    color: #000000;
+}
 
-        .filter-bar {
-            width: 285mm;
-            margin: 8px auto;
-            background: #d4d0c8;
-            border: 1px solid #666666;
-            padding: 6px;
-            box-sizing: border-box;
-            font-family: Tahoma, Arial, sans-serif;
-            font-size: 12px;
-        }
+/* FILTER */
+.filter-bar {
+    width: 400mm;
+    margin: 8px auto;
+    background: #d4d0c8;
+    border: 1px solid #666666;
+    padding: 6px;
+    box-sizing: border-box;
+    font-family: Tahoma, Arial, sans-serif;
+    font-size: 12px;
+}
 
-        .filter-bar input {
-            height: 24px;
-            border: 1px solid #777777;
-            font-size: 12px;
-            padding: 2px 4px;
-            box-sizing: border-box;
-        }
+.filter-bar input {
+    height: 24px;
+    border: 1px solid #777777;
+    font-size: 12px;
+    padding: 2px 4px;
+    box-sizing: border-box;
+}
 
-        .filter-month {
-            width: 130px;
-        }
+.filter-month {
+    width: 130px;
+}
 
-        .filter-cust {
-            width: 160px;
-        }
+.filter-cust {
+    width: 160px;
+}
 
-        .filter-bar button {
-            height: 26px;
-            font-size: 12px;
-            cursor: pointer;
-            margin-left: 4px;
-        }
+.filter-bar button {
+    height: 26px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-left: 4px;
+}
 
-        .autocomplete-wrap {
-            position: relative;
-            display: inline-block;
-        }
+/* AUTOCOMPLETE */
+.autocomplete-wrap {
+    position: relative;
+    display: inline-block;
+}
 
-        .autocomplete-list {
-            position: absolute;
-            top: 24px;
-            left: 0;
-            width: 430px;
-            max-height: 230px;
-            overflow-y: auto;
-            background: #ffffff;
-            border: 1px solid #444444;
-            z-index: 9999;
-            display: none;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.25);
-        }
+.autocomplete-list {
+    position: absolute;
+    top: 24px;
+    left: 0;
+    width: 430px;
+    max-height: 230px;
+    overflow-y: auto;
+    background: #ffffff;
+    border: 1px solid #444444;
+    z-index: 9999;
+    display: none;
+    box-shadow: 2px 2px 5px rgba(0,0,0,0.25);
+}
 
-        .autocomplete-item {
-            padding: 5px 7px;
-            border-bottom: 1px solid #dddddd;
-            cursor: pointer;
-            line-height: 16px;
-            font-family: Tahoma, Arial, sans-serif;
-            font-size: 12px;
-        }
+.autocomplete-item {
+    padding: 5px 7px;
+    border-bottom: 1px solid #dddddd;
+    cursor: pointer;
+    line-height: 16px;
+    font-family: Tahoma, Arial, sans-serif;
+    font-size: 12px;
+}
 
-        .autocomplete-item:hover,
-        .autocomplete-item.active {
-            background: #2f70c9;
-            color: #ffffff;
-        }
+.autocomplete-item:hover,
+.autocomplete-item.active {
+    background: #2f70c9;
+    color: #ffffff;
+}
 
-        .print-bar {
-            width: 285mm;
-            margin: 8px auto;
-            text-align: right;
-        }
+/* PRINT BAR */
+.print-bar {
+    width: 400mm;
+    margin: 8px auto;
+    text-align: right;
+}
 
-        .print-bar button {
-            padding: 6px 14px;
-            font-size: 11px;
-            cursor: pointer;
-            font-family: Arial, sans-serif;
-        }
+.print-bar button {
+    padding: 6px 14px;
+    font-size: 11px;
+    cursor: pointer;
+    font-family: Arial, sans-serif;
+}
 
-        .page {
-            width: 285mm;
-            min-height: 198mm;
-            margin: 10px auto;
-            background: #ffffff;
-            border: 2px solid #000000;
-            padding: 6mm;
-            box-sizing: border-box;
-            page-break-after: always;
-            overflow: hidden;
-        }
+/* PAGE A3 */
+.page {
+    width: 400mm;
+    min-height: 285mm;
+    margin: 10px auto;
+    background: #ffffff;
+    border: 2px solid #000000;
+    padding: 6mm;
+    box-sizing: border-box;
+    page-break-after: always;
+    overflow: hidden;
+}
 
-        .page:last-child {
-            page-break-after: auto;
-        }
+.page:last-child {
+    page-break-after: auto;
+}
 
-        .header {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 8px;
-        }
+/* HEADER */
+.header {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 8px;
+}
 
-        .header td {
-            border: none;
-            vertical-align: top;
-        }
+.header td {
+    border: none;
+    vertical-align: top;
+}
 
-        .company {
-            width: 28%;
-            font-family: Arial, sans-serif;
-            font-size: 11px;
-            line-height: 14px;
-        }
+.company {
+    width: 28%;
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    line-height: 18px;
+}
 
-        .company-title {
-            font-size: 14px;
-            font-weight: normal;
-        }
+.company-title {
+    font-size: 18px;
+    font-weight: bold;
+}
 
-        .title-area {
-            width: 44%;
-            text-align: center;
-            font-family: Arial, sans-serif;
-        }
+.title-area {
+    width: 44%;
+    text-align: center;
+    font-family: Arial, sans-serif;
+}
 
-        .report-title {
-            font-size: 20px;
-            font-weight: normal;
-            margin-top: 4px;
-        }
+.report-title {
+    font-size: 26px;
+    font-weight: bold;
+    margin-top: 4px;
+}
 
-        .start-month {
-            font-size: 11px;
-            margin-top: 4px;
-        }
+.start-month {
+    font-size: 13px;
+    margin-top: 4px;
+}
 
-        .right-info {
-            width: 28%;
-            text-align: right;
-            font-family: Arial, sans-serif;
-            font-size: 11px;
-            line-height: 18px;
-        }
+.right-info {
+    width: 28%;
+    text-align: right;
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    line-height: 18px;
+}
 
-        .summary-table {
-            width: 100%;
-            border-collapse: collapse;
-            table-layout: fixed;
-        }
+/* TABLE */
+.summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
 
-        .summary-table th,
-        .summary-table td {
-            border: none;
-            padding: 1px 2px;
-            height: 15px;
-            line-height: 11px;
-            box-sizing: border-box;
-            vertical-align: middle;
-            white-space: nowrap;
-            overflow: hidden;
-            font-size: 8px;
-        }
+.summary-table th,
+.summary-table td {
+    border: none;
+    padding: 2px 6px;
+    height: 18px;
+    line-height: 15px;
+    box-sizing: border-box;
+    vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+    font-size: 10px;
+}
 
-        .summary-table thead th {
-            border-top: 1px solid #000000;
-            border-bottom: 1px solid #000000;
-            font-weight: normal;
-            text-align: center;
-            font-size: 9px;
-        }
+.summary-table thead th {
+    border-top: 1px solid #000000;
+    border-bottom: 1px solid #000000;
+    font-weight: bold;
+    text-align: center;
+    font-size: 11px;
+}
 
-        .col-item {
-            width: 27%;
-            text-align: left !important;
-            border-right: 1px dashed #000000 !important;
-        }
+/* COLUMN WIDTH */
+.col-item {
+    width: 21%;
+    text-align: left !important;
+    border-right: 1px dashed #000000 !important;
+    padding-left: 4px !important;
+}
 
-        .col-price {
-            width: 6%;
-            text-align: right;
-        }
+.col-price {
+    width: 7%;
+    text-align: right !important;
+    padding-right: 6px !important;
+}
 
-        .col-qty {
-            width: 6%;
-            text-align: right;
-        }
+.col-qty {
+    width: 7%;
+    text-align: right !important;
+    padding-right: 6px !important;
+}
 
-        .col-amt {
-            width: 8%;
-            text-align: right;
-        }
+.col-amt {
+    width: 10%;
+    text-align: right !important;
+    padding-right: 6px !important;
+}
 
-        .month-border {
-            border-right: 1px dashed #000000 !important;
-        }
+.month-border {
+    border-right: 1px dashed #000000 !important;
+}
 
-        .customer-row td {
-            background: #bfbfbf;
-            font-weight: bold;
-            font-size: 10px;
-        }
+/* NUMBER ALIGNMENT */
+.num {
+    text-align: right !important;
+    padding-right: 6px !important;
+    font-variant-numeric: tabular-nums;
+}
 
-        .customer-total-row td {
-            font-weight: bold;
-        }
+/* ROW STYLE */
+.customer-row td {
+    background: #bfbfbf;
+    font-weight: bold;
+    font-size: 12px;
+    text-align: left;
+}
 
-        .grand-total-row td {
-            font-weight: bold;
-            border-top: 2px solid #000000;
-            border-bottom: 2px solid #000000;
-        }
+.customer-total-row td {
+    font-weight: bold;
+    font-size: 11px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
 
-        .num {
-            text-align: right;
-        }
+.customer-total-row td:first-child {
+    text-align: left !important;
+}
 
-        .center {
-            text-align: center;
-        }
+.grand-total-row td {
+    font-weight: bold;
+    font-size: 11px;
+    text-align: right;
+    border-top: 2px solid #000000;
+    border-bottom: 2px solid #000000;
+    font-variant-numeric: tabular-nums;
+}
 
-        .no-data {
-            font-family: Arial, sans-serif;
-            font-size: 14px;
-            text-align: center;
-            margin-top: 70px;
-            line-height: 24px;
-        }
+.grand-total-row td:first-child {
+    text-align: left !important;
+}
 
-        @media print {
-            html,
-            body {
-                width: 297mm;
-                min-height: 210mm;
-                background: #ffffff;
-            }
+.center {
+    text-align: center;
+}
 
-            .filter-bar,
-            .print-bar {
-                display: none;
-            }
+.no-data {
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    text-align: center;
+    margin-top: 70px;
+    line-height: 24px;
+}
 
-            .page {
-                width: 285mm;
-                min-height: 198mm;
-                margin: 0 auto;
-                border: none;
-                padding: 4mm;
-                overflow: hidden;
-            }
-        }
+/* PRINT */
+@media print {
+    html,
+    body {
+        width: 420mm;
+        min-height: 297mm;
+        background: #ffffff;
+    }
+
+    .filter-bar,
+    .print-bar {
+        display: none;
+    }
+
+    .page {
+        width: 400mm;
+        min-height: 285mm;
+        margin: 0 auto;
+        border: none;
+        padding: 4mm;
+        overflow: hidden;
+    }
+}
     </style>
 </head>
 

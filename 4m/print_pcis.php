@@ -95,8 +95,7 @@ function renderBox($checked) {
             </tr>
             <tr>
                 <td style="border:none;" class="lbl-bold">CC</td>
-                <td style="border-bottom: 1px solid #000; border-top:none; border-left:none; border-right:none;">```php
-<?php echo htmlspecialchars(isset($d['CC']) ? trim($d['CC']) : ''); ?></td>
+                <td style="border: none; border-bottom: 1px solid #000; padding-left: 5px;"><?php echo htmlspecialchars(isset($d['CC']) ? trim($d['CC']) : ''); ?></td>
                 <td style="border:none;" class="lbl-bold">CONTROL DATE</td>
                 <td style="border-bottom: 1px solid #000; border-top:none; border-left:none; border-right:none;"><?php echo fTgl($d['CONTROL_DATE1']); ?></td>
             </tr>
