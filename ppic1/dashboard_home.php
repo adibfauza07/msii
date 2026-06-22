@@ -228,7 +228,10 @@ function h($value) {
                 <div class="report-name">SALES & MATERIAL USE ACTUAL IDR</div>
                 <a class="button" href="actual_material_cost_idr.php" target="_blank">OPEN</a>
             </div>
-
+            <div class="report-item">
+                <div class="report-name">INSTRUCTION MATERIAL CHILD PART</div>
+                <a class="button" href="report_material_child.php" target="_blank">OPEN</a>
+            </div>
             
 
         </div>

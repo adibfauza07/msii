@@ -175,6 +175,11 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
                         <i class="bi bi-arrow-left-right"></i> Transaksi General
                     </a>
                 </li>
+                <li class="nav-item">
+    <a class="nav-link" href="?page=kumpulan_report">
+        <i class="bi bi-folder2-open"></i> Kumpulan Report
+    </a>
+</li>
             </ul>
         </div>
 
@@ -199,6 +204,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
             case 'master': include "page_master.php"; break;
             case 'sop': include "page_sop.php"; break;
             case 'transaksi': include "page_transaksi.php"; break;
+            case 'kumpulan_report': include 'page_kumpulan_report.php'; break;
             case 'home': default:
                 ?>
                 <h3 class="mb-4" style="font-weight: 600; color: #333;"><i class="bi bi-house"></i> Dashboard Overview</h3>

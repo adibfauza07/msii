@@ -204,6 +204,16 @@
       </div>
 
       <div class="col">
+        <a href="mold/login.php" class="card-division">
+          <div class="icon-box bg-marketing"><i class="bi bi-mold"></i></div>
+          <span class="division-name">Moldshop</span>
+        </a>
+      </div>
+
+
+
+
+      <div class="col">
     <a href="ordering_p2/login.php" class="card-division">
         <div class="icon-box bg-production"><i class="bi bi-bag-check"></i></div>
         <span class="division-name">Ordering</span>
