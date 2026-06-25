@@ -45,6 +45,7 @@
                             <select name="curr_code" class="form-select">
                                 <option value="IDR">IDR</option>
                                 <option value="USD">USD</option>
+                                <option value="JPY">JPY</option>
                             </select>
                         </div>
                         <div class="col-md-8">
@@ -122,7 +123,6 @@
                             <label class="small fw-bold">Faktur Pajak</label>
                             <input type="text" name="faktur_pajak" id="edit_faktur_pajak" class="form-control">
                         </div>
-
                         <div class="col-md-6">
                             <label class="small fw-bold">Tgl Invoice</label>
                             <input type="date" name="invoice_date" id="edit_invoice_date" class="form-control" required>
@@ -137,6 +137,8 @@
                             <select name="curr_code" id="edit_curr_code" class="form-select">
                                 <option value="IDR">IDR</option>
                                 <option value="USD">USD</option>
+                                <option value="JPY">JPY</option>
+                                
                             </select>
                         </div>
                         <div class="col-md-8">

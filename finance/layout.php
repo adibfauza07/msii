@@ -116,6 +116,10 @@ $plantLabel = isset($_SESSION['active_plant']) ? strtoupper($_SESSION['active_pl
         <i class="bi bi-graph-down-arrow me-2"></i> Aging AP
     </a>
 
+    <a href="material_consumption.php">
+        <i class="bi bi-layer-backward me-2"></i> Material Consumption
+    </a>
+
     <?php if ($isP1) { ?>
         <a href="export_receive_p1.php">
             <i class="bi bi-box-arrow-in-down me-2"></i> IMPORT RECEIVE NOTE TO TALLY P1

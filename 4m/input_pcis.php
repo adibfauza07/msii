@@ -64,7 +64,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
     $model        = trim(val('model'));
     $material_id  = intval(val('material_id', 0)); 
     
-    // Penambahan variabel TO dan CC
     $to_pcis      = trim(val('to_pcis'));
     $cc_pcis      = trim(val('cc_pcis'));
     
@@ -73,7 +72,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
     $aft_change   = trim(val('aft_change'));
     $status       = trim(val('status'));
     
-    // Penambahan Variabel Status Post / Otorisasi
     $prepared     = trim(val('prepared'));
     $imc_checked  = trim(val('imc_checked'));
     $imc_aprove   = trim(val('imc_aprove'));
@@ -89,47 +87,64 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
     $machine     = isset($_POST['machine']) ? 1 : 0;
     $method      = isset($_POST['method']) ? 1 : 0;
     $material_4m = isset($_POST['material_4m']) ? 1 : 0; 
+    $other       = isset($_POST['other']) ? 1 : 0;
     
     $internal    = isset($_POST['internal']) ? 1 : 0;
     $customer    = isset($_POST['customer']) ? 1 : 0;
     $supplier    = isset($_POST['supplier']) ? 1 : 0;
     $perm        = isset($_POST['perm']) ? intval($_POST['perm']) : 1;
 
+    // PENAMBAHAN INPUT: Capture data dari inputan baru bertanda kotak merah
+    $need_cust   = isset($_POST['need_customer']) ? intval($_POST['need_customer']) : 1;
+    $f_email     = isset($_POST['attach_email']) ? 1 : 0;
+    $f_drawing   = isset($_POST['attach_drawing']) ? 1 : 0;
+    $f_sample    = isset($_POST['attach_sample']) ? 1 : 0;
+    $f_data      = isset($_POST['attach_data']) ? 1 : 0;
+
+    $sch_change   = !empty($_POST['sch_change']) ? $_POST['sch_change'] : null;
+    $start_change = !empty($_POST['start_change']) ? $_POST['start_change'] : null;
+    $close_change = !empty($_POST['close_change']) ? $_POST['close_change'] : null;
+
     if ($control_id > 0) {
         $sql = "UPDATE PROSES_CHANGE SET 
                     CONTROL_NO = ?, CONTROL_DATE1 = ?, DEP_CODE = ?, PIC_NAME = ?, 
                     ITEM_ID = ?, MODEL = ?, MATERIAL_ID = ?, TO_PCIS = ?, CC = ?, 
-                    MAN = ?, MACHINE = ?, METHOD = ?, MATERIAL = ?, INTERNAL = ?, CUSTOMER = ?, SUPPLIER = ?, 
+                    MAN = ?, MACHINE = ?, METHOD = ?, MATERIAL = ?, OTHER = ?, INTERNAL = ?, CUSTOMER = ?, SUPPLIER = ?, 
                     PERMANENT_CHANGE = ?, REASON = ?, BEF_CHANGE = ?, AFT_CHANGE = ?, STATUS = ?, 
                     IMC_PREPARED = ?, IMC_CHECKED = ?, IMC_APROVE = ?,
-                    PE_REMARK = ?, QC_REMARK = ?, MOLDSHOP_REMARK = ?, PPIC_REMARK = ?, PRODUCTION_REMARK = ?, MARKETING_REMARK = ?
+                    PE_REMARK = ?, QC_REMARK = ?, MOLDSHOP_REMARK = ?, PPIC_REMARK = ?, PRODUCTION_REMARK = ?, MARKETING_REMARK = ?,
+                    NEED_CUSTOMER = ?, EMAIL = ?, DRAWING = ?, SAMPLE = ?, DATA = ?,
+                    SCH_CHANGE = ?, START_CHANGE = ?, CLOSE_CHANGE = ?
                 WHERE CONTROL_ID = ?";
         
         $params = array(
             $control_no, $control_date, $dep_code, $pic_name, $item_id, $model, $material_id, $to_pcis, $cc_pcis,
-            $man, $machine, $method, $material_4m, $internal, $customer, $supplier, $perm, 
+            $man, $machine, $method, $material_4m, $other, $internal, $customer, $supplier, $perm, 
             $reason, $bef_change, $aft_change, $status, 
             $prepared, $imc_checked, $imc_aprove,
             $pe_remark, $qc_remark, $mold_remark, $ppic_remark, $prod_remark, $mkt_remark,
+            $need_cust, $f_email, $f_drawing, $f_sample, $f_data,
+            $sch_change, $start_change, $close_change,
             $control_id
         );
         $msg = "Data PCIS #{$control_no} berhasil diperbarui!";
     } else {
-        // Kolom dan parameter diatur akurat berjumlah 30
         $sql = "INSERT INTO PROSES_CHANGE (
                     CONTROL_NO, CONTROL_DATE1, DEP_CODE, PIC_NAME, ITEM_ID, MODEL, MATERIAL_ID, TO_PCIS, CC,
-                    MAN, MACHINE, METHOD, MATERIAL, INTERNAL, CUSTOMER, SUPPLIER, PERMANENT_CHANGE, 
+                    MAN, MACHINE, METHOD, MATERIAL, OTHER, INTERNAL, CUSTOMER, SUPPLIER, PERMANENT_CHANGE, 
                     REASON, BEF_CHANGE, AFT_CHANGE, STATUS, 
                     IMC_PREPARED, IMC_CHECKED, IMC_APROVE, 
-                    PE_REMARK, QC_REMARK, MOLDSHOP_REMARK, PPIC_REMARK, PRODUCTION_REMARK, MARKETING_REMARK
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    PE_REMARK, QC_REMARK, MOLDSHOP_REMARK, PPIC_REMARK, PRODUCTION_REMARK, MARKETING_REMARK,
+                    NEED_CUSTOMER, EMAIL, DRAWING, SAMPLE, DATA, SCH_CHANGE, START_CHANGE, CLOSE_CHANGE
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         $params = array(
             $control_no, $control_date, $dep_code, $pic_name, $item_id, $model, $material_id, $to_pcis, $cc_pcis,
-            $man, $machine, $method, $material_4m, $internal, $customer, $supplier, $perm, 
+            $man, $machine, $method, $material_4m, $other, $internal, $customer, $supplier, $perm, 
             $reason, $bef_change, $aft_change, $status, 
             $prepared, $imc_checked, $imc_aprove,
-            $pe_remark, $qc_remark, $mold_remark, $ppic_remark, $prod_remark, $mkt_remark
+            $pe_remark, $qc_remark, $mold_remark, $ppic_remark, $prod_remark, $mkt_remark,
+            $need_cust, $f_email, $f_drawing, $f_sample, $f_data, $sch_change, $start_change, $close_change
         );
         $msg = "Data PCIS baru berhasil disimpan!";
     }
@@ -146,14 +161,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
 }
 
 // === LOAD SELECTION DROPDOWN MASTER ===
-$qDept = q("
-SELECT DEP_CODE, DEP_NAME
-FROM DEPT
-ORDER BY DEP_NAME
-");
+$qDept = q("SELECT DEP_CODE, DEP_NAME FROM DEPT ORDER BY DEP_NAME");
 $qStatus = q("SELECT STATUS FROM PROSES_STATUS");
 
-// === TARIK SEMUA NAMA UNIK DARI DATABASE UNTUK DROPDOWN ===
 $qUsers = q("
     SELECT DISTINCT nama FROM (
         SELECT IMC_PREPARED AS nama FROM PROSES_CHANGE
@@ -197,8 +207,6 @@ $autoControlNo = getNewControlNumber();
         .card-header-custom i { color: #8b5cf6; margin-right: 10px; font-size: 1.2rem; }
         label { font-weight: 600; color: #495057; font-size: 0.82rem; margin-bottom: 4px; text-transform: uppercase;}
         .form-control, .form-select { border-radius: 8px; border: 1px solid #ced4da; padding: 8px 12px; font-size: 0.9rem;}
-        .form-control:focus, .form-select:focus { box-shadow: 0 0 0 0.25rem rgba(139, 92, 246, 0.25); border-color: #8b5cf6; }
-        .btn-nav { border-radius: 8px; padding: 8px 16px; font-weight: 600; font-size: 0.9rem; }
         .floating-action { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 -4px 15px rgba(0,0,0,0.05); position: sticky; bottom: 20px; z-index: 100;}
         .ui-autocomplete { position: absolute; z-index: 9999 !important; background: #fff; border: 1px solid #ced4da; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-height: 200px; overflow-y: auto; padding: 5px 0; }
         .ui-menu-item .ui-menu-item-wrapper { padding: 8px 15px; font-size: 0.88rem; cursor: pointer; }
@@ -267,9 +275,9 @@ $autoControlNo = getNewControlNumber();
                                 <div class="row g-3 p-3 mb-4 rounded border bg-light">
                                     <div class="col-md-4">
                                         <label class="d-block mb-2">Request By</label>
-                                        <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="internal" checked> <label>Internal</label></div>
-                                        <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="customer"> <label>Customer</label></div>
-                                        <div class="form-check small"><input class="form-check-input" type="checkbox" name="supplier"> <label>Supplier</label></div>
+                                        <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="internal" value="1" checked> <label>Internal</label></div>
+                                        <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="customer" value="1"> <label>Customer</label></div>
+                                        <div class="form-check small"><input class="form-check-input" type="checkbox" name="supplier" value="1"> <label>Supplier</label></div>
                                     </div>
                                     <div class="col-md-8">
                                         <label>Person in Charge (PIC)</label>
@@ -306,17 +314,30 @@ $autoControlNo = getNewControlNumber();
                                 <div class="row g-3 p-3 mb-4 rounded border bg-light">
                                     <div class="col-md-6">
                                         <label class="border-bottom d-block pb-1 mb-2">Item Change (4M Kategori)</label>
-                                        <div class="d-flex gap-3">
-                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="man"> <label>Man</label></div>
-                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="machine"> <label>Machine</label></div>
-                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="method"> <label>Method</label></div>
-                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="material_4m"> <label>Material</label></div>
+                                        <div class="d-flex gap-2 flex-wrap">
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="man" value="1"> <label>Man</label></div>
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="machine" value="1"> <label>Machine</label></div>
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="method" value="1"> <label>Method</label></div>
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="material_4m" value="1"> <label>Material</label></div>
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="other" value="1"> <label>Other</label></div>
                                         </div>
                                     </div>
                                     <div class="col-md-6 border-start ps-4">
                                         <label class="border-bottom d-block pb-1 mb-2">Changing Type</label>
                                         <div class="form-check form-check-inline small"><input class="form-check-input" type="radio" name="perm" value="1" checked> <label>Permanent</label></div>
                                         <div class="form-check form-check-inline small"><input class="form-check-input" type="radio" name="perm" value="0"> <label>Temporary</label></div>
+                                    </div>
+                                </div>
+
+                                <div class="row g-3 p-3 mb-4 rounded border bg-light">
+                                    <div class="col-md-12">
+                                        <label class="border-bottom d-block pb-1 mb-2">Checklist Attachments (Lampiran)</label>
+                                        <div class="d-flex gap-4 flex-wrap">
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_email" value="1"> <label>Email / Information</label></div>
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_drawing" value="1"> <label>Drawing</label></div>
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_sample" value="1"> <label>Sample</label></div>
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_data" value="1"> <label>Data</label></div>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -358,8 +379,19 @@ $autoControlNo = getNewControlNumber();
                         </div>
 
                         <div class="card-custom mb-4">
+                            <div class="card-header-custom"><i class="bi bi-question-circle"></i> Customer Approval Needs</div>
+                            <div class="card-body p-3">
+                                <label class="small text-muted d-block mb-2">Do we need Customer Approved?</label>
+                                <select name="need_customer" id="NEED_CUSTOMER" class="form-select form-select-sm fw-bold">
+                                    <option value="1">YES (Memerlukan Persetujuan)</option>
+                                    <option value="0">NO (Tidak Perlu)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="card-custom mb-4">
                             <div class="card-header-custom"><i class="bi bi-chat-square-text"></i> Departmental Review</div>
-                            <div class="card-body p-3 overflow-auto" style="max-height: 290px;">
+                            <div class="card-body p-3 overflow-auto" style="max-height: 220px;">
                                 <?php foreach(['PE'=>'pe_remark','QC'=>'qc_remark','MOLD'=>'mold_remark','PPIC'=>'ppic_remark','PROD'=>'prod_remark','MKT'=>'mkt_remark'] as $lbl => $n): ?>
                                 <div class="mb-2 pb-2 border-bottom">
                                     <label class="text-muted small" style="font-size:10px;"><?= $lbl ?> REMARK</label>
@@ -457,6 +489,14 @@ function fillForm(rec) {
     $("input[name='machine']").prop('checked', rec.MACHINE == 1);
     $("input[name='method']").prop('checked', rec.METHOD == 1);
     $("input[name='material_4m']").prop('checked', rec.MATERIAL == 1 || rec.MATERIAL === true);
+    $("input[name='other']").prop('checked', rec.OTHER == 1);
+
+    // Bind Data pengisian lampiran & status customer approved ke form visual saat klik prev/next
+    $("#NEED_CUSTOMER").val(rec.NEED_CUSTOMER !== undefined ? rec.NEED_CUSTOMER : 1);
+    $("input[name='attach_email']").prop('checked', rec.EMAIL == 1);
+    $("input[name='attach_drawing']").prop('checked', rec.DRAWING == 1);
+    $("input[name='attach_sample']").prop('checked', rec.SAMPLE == 1);
+    $("input[name='attach_data']").prop('checked', rec.DATA == 1);
 
     if(rec.PERMANENT_CHANGE == 0) window.jQuery("input[name='perm'][value='0']").prop('checked', true);
     else window.jQuery("input[name='perm'][value='1']").prop('checked', true);
@@ -476,7 +516,6 @@ function fillForm(rec) {
     $("textarea[name='prod_remark']").val(rec.PRODUCTION_REMARK ? rec.PRODUCTION_REMARK.trim() : '');
     $("textarea[name='mkt_remark']").val(rec.MARKETING_REMARK ? rec.MARKETING_REMARK.trim() : '');
 
-    // Autorisasi
     $("input[name='prepared']").val(rec.IMC_PREPARED ? rec.IMC_PREPARED.trim() : '');
     $("input[name='imc_checked']").val(rec.IMC_CHECKED ? rec.IMC_CHECKED.trim() : '');
     $("input[name='imc_aprove']").val(rec.IMC_APROVE ? rec.IMC_APROVE.trim() : '');

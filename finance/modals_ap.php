@@ -47,6 +47,7 @@
                             <select name="curr_code" class="form-select">
                                 <option value="IDR">IDR</option>
                                 <option value="USD">USD</option>
+                                <option value="JPY">JPY</option>
                             </select>
                         </div>
                         <div class="col-md-8">
@@ -144,6 +145,7 @@
                             <select name="curr_code" id="edit_curr_code" class="form-select">
                                 <option value="IDR">IDR</option>
                                 <option value="USD">USD</option>
+                                <option value="JPY">JPY</option>
                             </select>
                         </div>
                         <div class="col-md-8">
