@@ -10,102 +10,77 @@ function h($value) {
 }
 
 function safe_trim($value) {
-    if ($value === null) {
-        return "";
-    }
-
+    if ($value === null) return "";
     return trim((string)$value);
 }
 
 function get_param($name, $default = "") {
-    if (isset($_GET[$name])) {
-        return trim($_GET[$name]);
-    }
-
-    if (isset($_POST[$name])) {
-        return trim($_POST[$name]);
-    }
-
+    if (isset($_GET[$name])) return trim($_GET[$name]);
+    if (isset($_POST[$name])) return trim($_POST[$name]);
     return $default;
 }
 
 function ymd_param($value) {
     $value = trim($value);
-
-    if ($value == "") {
-        return "";
-    }
-
-    if (preg_match('/^\d{8}$/', $value)) {
-        return $value;
-    }
-
-    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
-        return str_replace("-", "", $value);
-    }
-
+    if ($value == "") return "";
+    if (preg_match('/^\d{8}$/', $value)) return $value;
+    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) return str_replace("-", "", $value);
     $ts = strtotime($value);
-
-    if ($ts === false) {
-        return "";
-    }
-
+    if ($ts === false) return "";
     return date("Ymd", $ts);
+}
+
+function date_input_value($value, $default) {
+    $value = trim($value);
+    if ($value == "") return $default;
+    if (preg_match('/^\d{8}$/', $value)) {
+        return substr($value, 0, 4) . "-" . substr($value, 4, 2) . "-" . substr($value, 6, 2);
+    }
+    $ts = strtotime($value);
+    if ($ts === false) return $default;
+    return date("Y-m-d", $ts);
 }
 
 function fmt_print_datetime() {
     return date("d-M-Y H:i:s");
 }
 
-function excel_num($value, $decimal = 0) {
-    if ($value === null || $value === "") {
-        $value = 0;
-    }
+function fmt_price($value) {
+    if ($value === null || $value === "") $value = 0;
+    return number_format((float)$value, 5, ".", ",");
+}
 
-    return number_format((float)$value, $decimal, ".", "");
+function fmt_amount($value) {
+    if ($value === null || $value === "") $value = 0;
+    return number_format((float)$value, 2, ".", ",");
 }
 
 function usd_factor($currCode, $currRate, $usdRate) {
     $currCode = strtoupper(trim((string)$currCode));
-
-    if ($currCode == "USD") {
-        return 1;
-    }
-
+    if ($currCode == "USD") return 1;
     $currRate = (float)$currRate;
     $usdRate  = (float)$usdRate;
-
-    if ($currRate == 0) {
-        $currRate = 1;
-    }
-
-    if ($usdRate == 0) {
-        $usdRate = 1;
-    }
-
+    if ($currRate == 0) $currRate = 1;
+    if ($usdRate == 0) $usdRate = 1;
     return $currRate / $usdRate;
 }
 
-$start_date = get_param("START_DATE", "");
-$end_date   = get_param("END_DATE", "");
-$cust_code  = get_param("CUST_CODE", "");
+// ════════════════ PARAMETERS ════════════════
+ $start_input = date_input_value(get_param("START_DATE", ""), "");
+ $end_input   = date_input_value(get_param("END_DATE", ""), "");
+ $cust_code   = get_param("CUST_CODE", "%");
 
-if ($start_date == "" || $end_date == "") {
-    die("Tanggal belum diisi.");
-}
+if ($cust_code === "") $cust_code = "%";
 
-if ($cust_code == "") {
-    die("Customer belum diisi.");
-}
+ $start_ymd = ymd_param($start_input);
+ $end_ymd   = ymd_param($end_input);
 
-$start_ymd = ymd_param($start_date);
-$end_ymd   = ymd_param($end_date);
-
-if ($start_ymd == "" || $end_ymd == "") {
+if ($start_ymd === "" || $end_ymd === "") {
     die("Tanggal tidak valid.");
 }
 
-$sql = "
+// ════════════════ QUERY ════════════════
+ $sql = "
     SET NOCOUNT ON;
 
     SELECT
@@ -133,9 +108,7 @@ $sql = "
             PV.PART_NUM,
             PV.PART_NO,
             PV.PART_NAME,
-
             ISNULL(SUM(DS.DELS_QTY), 0) AS SSQTY,
-
             ISNULL((
                 SELECT SUM(DP.DIPA_QTY)
                 FROM dbo.DI_PART AS DP
@@ -145,7 +118,6 @@ $sql = "
                     DP.PRICE_ID = DS.PRICE_ID
                     AND DIH.DI_DATE BETWEEN ? AND ?
             ), 0) AS SDELQTY,
-
             ISNULL((
                 SELECT SUM(OP.ORDP_BQTY)
                 FROM dbo.ORDR_PAR AS OP
@@ -154,7 +126,6 @@ $sql = "
                     AND OP.ORDP_CLOSE = 0
                     AND OP.PRICE_ID = DS.PRICE_ID
             ), 0) AS SPOQTY
-
         FROM dbo.DELI_SCH AS DS
         INNER JOIN dbo.PART_VIEW AS PV
             ON DS.PRICE_ID = PV.PRICE_ID
@@ -181,7 +152,7 @@ $sql = "
         X.PART_NUM
 ";
 
-$params = array(
+ $params = array(
     $start_ymd,
     $end_ymd,
     $start_ymd,
@@ -189,22 +160,23 @@ $params = array(
     $cust_code
 );
 
-$stmt = sqlsrv_query($conn, $sql, $params);
+ $stmt = sqlsrv_query($conn, $sql, $params);
 
 if ($stmt === false) {
-    die("<pre>Query Delivery Balance Amount gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
+    die("<pre>Query gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
 }
 
-$rows = array();
+// ════════════════ FETCH DATA ════════════════
+ $rows = array();
 
 while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-    $schedule  = isset($r["SSQTY"]) ? (float)$r["SSQTY"] : 0;
+    $schedule  = isset($r["SSQTY"])   ? (float)$r["SSQTY"]   : 0;
     $delivered = isset($r["SDELQTY"]) ? (float)$r["SDELQTY"] : 0;
     $balance   = $delivered - $schedule;
 
-    $price = isset($r["PRDT_PRICE"]) ? (float)$r["PRDT_PRICE"] : 0;
+    $price    = isset($r["PRDT_PRICE"]) ? (float)$r["PRDT_PRICE"] : 0;
     $currCode = safe_trim($r["CURR_CODE"]);
-    $factor = usd_factor($currCode, $r["CURR_VRATE"], $r["USDRATE"]);
+    $factor   = usd_factor($currCode, $r["CURR_VRATE"], $r["USDRATE"]);
 
     $rows[] = array(
         "CUST_CODE"   => safe_trim($r["CUST_CODE"]),
@@ -214,231 +186,305 @@ while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         "PART_NAME"   => safe_trim($r["PART_NAME"]),
         "PRICE"       => $price,
         "CURR_CODE"   => $currCode,
-
         "SCH_QTY"     => $schedule,
         "SCH_AMOUNT"  => $schedule * $price * $factor,
-
         "DEL_QTY"     => $delivered,
         "DEL_AMOUNT"  => $delivered * $price * $factor,
-
         "BAL_QTY"     => $balance,
         "BAL_AMOUNT"  => $balance * $price * $factor
     );
 }
 
-$fileCust = $cust_code == "%" ? "ALL" : $cust_code;
-$fileName = "delivery_balance_amount_usd_" . $fileCust . "_" . date("Ymd_His") . ".xls";
+// ════════════════ BUILD GROUPED ROWS ════════════════
+ $printRows = array();
 
-header("Content-Type: application/vnd.ms-excel; charset=utf-8");
-header("Content-Disposition: attachment; filename=\"" . $fileName . "\"");
-header("Pragma: no-cache");
-header("Expires: 0");
-?>
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>Delivery Balance Amount USD Export</title>
+ $lastCust       = "";
+ $subSchAmount   = 0;
+ $subDelAmount   = 0;
+ $subBalAmount   = 0;
+ $grandSchAmount = 0;
+ $grandDelAmount = 0;
+ $grandBalAmount = 0;
 
-    <style>
-        table {
-            border-collapse: collapse;
-            font-family: Arial, sans-serif;
-            font-size: 10pt;
+for ($i = 0; $i < count($rows); $i++) {
+    $r = $rows[$i];
+    $custKey = $r["CUST_CODE"] . "|" . $r["CUST_COMP"];
+
+    if ($custKey != $lastCust) {
+        if ($lastCust != "") {
+            $printRows[] = array(
+                "ROW_TYPE"   => "CUSTOMER_TOTAL",
+                "SCH_AMOUNT" => $subSchAmount,
+                "DEL_AMOUNT" => $subDelAmount,
+                "BAL_AMOUNT" => $subBalAmount
+            );
         }
 
-        th {
-            background: #d9eaf7;
-            font-weight: bold;
-            border: 1px solid #000000;
-            text-align: center;
-        }
+        $printRows[] = array(
+            "ROW_TYPE"  => "CUSTOMER",
+            "CUST_CODE" => $r["CUST_CODE"],
+            "CUST_COMP" => $r["CUST_COMP"]
+        );
 
-        td {
-            border: 1px solid #000000;
-            vertical-align: top;
-        }
+        $lastCust       = $custKey;
+        $subSchAmount   = 0;
+        $subDelAmount   = 0;
+        $subBalAmount   = 0;
+    }
 
-        .title {
-            font-size: 16pt;
-            font-weight: bold;
-            text-align: center;
-        }
+    $printRows[] = array(
+        "ROW_TYPE"   => "DETAIL",
+        "PART_NUM"   => $r["PART_NUM"],
+        "PART_NO"    => $r["PART_NO"],
+        "PART_NAME"  => $r["PART_NAME"],
+        "PRICE"      => $r["PRICE"],
+        "CURR_CODE"  => $r["CURR_CODE"],
+        "SCH_QTY"    => $r["SCH_QTY"],
+        "SCH_AMOUNT" => $r["SCH_AMOUNT"],
+        "DEL_QTY"    => $r["DEL_QTY"],
+        "DEL_AMOUNT" => $r["DEL_AMOUNT"],
+        "BAL_QTY"    => $r["BAL_QTY"],
+        "BAL_AMOUNT" => $r["BAL_AMOUNT"]
+    );
 
-        .text {
-            mso-number-format: "\@";
-        }
-
-        .num {
-            mso-number-format: "#,##0";
-            text-align: right;
-        }
-
-        .price {
-            mso-number-format: "0.00000";
-            text-align: right;
-        }
-
-        .money {
-            mso-number-format: "#,##0.00";
-            text-align: right;
-        }
-.grand-row {
-    background: #d9eaf7;
-    font-weight: bold;
+    $subSchAmount   += $r["SCH_AMOUNT"];
+    $subDelAmount   += $r["DEL_AMOUNT"];
+    $subBalAmount   += $r["BAL_AMOUNT"];
+    $grandSchAmount += $r["SCH_AMOUNT"];
+    $grandDelAmount += $r["DEL_AMOUNT"];
+    $grandBalAmount += $r["BAL_AMOUNT"];
 }
-    </style>
-</head>
 
+if ($lastCust != "") {
+    $printRows[] = array(
+        "ROW_TYPE"   => "CUSTOMER_TOTAL",
+        "SCH_AMOUNT" => $subSchAmount,
+        "DEL_AMOUNT" => $subDelAmount,
+        "BAL_AMOUNT" => $subBalAmount
+    );
+}
+
+if (count($rows) > 0) {
+    $printRows[] = array(
+        "ROW_TYPE"   => "GRAND_TOTAL",
+        "SCH_AMOUNT" => $grandSchAmount,
+        "DEL_AMOUNT" => $grandDelAmount,
+        "BAL_AMOUNT" => $grandBalAmount
+    );
+}
+
+// ════════════════ HELPER: Excel-safe number cell ════════════════
+function xl_qty($val) {
+    $n = (float)$val;
+    if ($n == 0) return "";
+    return number_format($n, 0, ".", ",");
+}
+
+function xl_amt($val) {
+    $n = (float)$val;
+    if ($n == 0) return "";
+    return number_format($n, 2, ".", ",");
+}
+
+// ════════════════ OUTPUT EXCEL ════════════════
+ $filename = "Delivery_Balance_Amount_" . $start_ymd . "_" . $end_ymd . ".xls";
+
+header("Content-Type: application/vnd.ms-excel");
+header("Content-Disposition: attachment; filename=\"" . $filename . "\"");
+header("Cache-Control: max-age=0");
+header("Pragma: public");
+
+?>
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:x="urn:schemas-microsoft-com:office:excel"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<!--[if gte mso 9]>
+<xml>
+<x:ExcelWorkbook>
+<x:ExcelWorksheets>
+<x:ExcelWorksheet>
+<x:Name>Delivery Balance Amount</x:Name>
+<x:WorksheetOptions>
+<x:DisplayGridlines/>
+<x:FitToPage/>
+<x:Print>
+<x:FitToWidth>1</x:FitToWidth>
+<x:FitToHeight>0</x:FitToHeight>
+</x:Print>
+</x:WorksheetOptions>
+</x:ExcelWorksheet>
+</x:ExcelWorksheets>
+</x:ExcelWorkbook>
+</xml>
+<![endif]-->
+<style>
+    td {
+        font-family: Calibri, Arial, sans-serif;
+        font-size: 11pt;
+        vertical-align: middle;
+        mso-default-font-family: Calibri;
+        mso-default-font-size: 11pt;
+    }
+
+    .hdr-bg {
+        background-color: #BDD7EE;
+        font-weight: bold;
+        text-align: center;
+        border: 0.5pt solid windowtext;
+    }
+
+    .cust-bg {
+        background-color: #E2EFDA;
+        font-weight: bold;
+        border: 0.5pt solid windowtext;
+    }
+
+    .sub-bg {
+        background-color: #F2F2F2;
+        font-weight: bold;
+        border: 0.5pt solid windowtext;
+    }
+
+    .grand-bg {
+        background-color: #FFF2CC;
+        font-weight: bold;
+        border: 1.5pt solid windowtext;
+    }
+
+    .bdr {
+        border: 0.5pt solid windowtext;
+    }
+
+    .txt {
+        mso-number-format:\@;
+    }
+
+    .num0 {
+        mso-number-format:#,##0;
+        text-align: right;
+    }
+
+    .num2 {
+        mso-number-format:#,##0.00;
+        text-align: right;
+    }
+</style>
+</head>
 <body>
 
-<table>
-    <tr>
-        <td colspan="13" class="title">DELIVERY BALANCE AMOUNT USD</td>
-    </tr>
+<table border="0" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
 
-    <tr>
-        <td colspan="13">P.T. IMC TEKNO INDONESIA - PPIC Departement</td>
-    </tr>
+<!-- ═══ Column Widths ═══ -->
+<colgroup>
+    <col style="width:85px;">   <!-- A  CODE -->
+    <col style="width:115px;">  <!-- B  PART NO -->
+    <col style="width:260px;">  <!-- C  PART NAME -->
+    <col style="width:130px;">  <!-- D  PRICE -->
+    <col style="width:80px;">   <!-- E  SCH QTY -->
+    <col style="width:140px;">  <!-- F  SCH AMOUNT -->
+    <col style="width:80px;">   <!-- G  DEL QTY -->
+    <col style="width:140px;">  <!-- H  DEL AMOUNT -->
+    <col style="width:80px;">   <!-- I  BAL QTY -->
+    <col style="width:140px;">  <!-- J  BAL AMOUNT -->
+</colgroup>
 
-    <tr>
-        <td colspan="13">
-            Period:
-            <?php echo h($start_date); ?>
-            ~
-            <?php echo h($end_date); ?>
+<!-- ═══ Row 1: Company | Title | Page ═══ -->
+<tr style="height:28px;">
+    <td colspan="4" style="font-size:14pt; font-weight:bold;">P.T. IMC TEKNO INDONESIA</td>
+    <td colspan="4" style="font-size:18pt; font-weight:bold; text-align:center;">DELIVERY BALANCE AMOUNT</td>
+    <td colspan="2" style="font-size:10pt; text-align:right; color:#666666;">Page 1 of 1</td>
+</tr>
+
+<!-- ═══ Row 2: Department | Date Range ═══ -->
+<tr style="height:22px;">
+    <td colspan="4" style="font-size:11pt; color:#444444;">PPIC Departement</td>
+    <td colspan="4" style="font-size:11pt; text-align:center; color:#444444;">
+        Date range: <?php echo h($start_ymd); ?> ~ <?php echo h($end_ymd); ?>
+    </td>
+    <td colspan="2" style="font-size:10pt;"></td>
+</tr>
+
+<!-- ═══ Row 3: Print Date ═══ -->
+<tr style="height:20px;">
+    <td colspan="8" style="font-size:10pt;"></td>
+    <td colspan="2" style="font-size:10pt; text-align:right; color:#666666;">
+        Print Date: <?php echo h(fmt_print_datetime()); ?>
+    </td>
+</tr>
+
+<!-- ═══ Row 4: Spacer ═══ -->
+<tr style="height:8px;">
+    <td colspan="10"></td>
+</tr>
+
+<!-- ═══ Row 5: Table Header 1 (merged) ═══ -->
+<tr style="height:26px;">
+    <td rowspan="2" class="hdr-bg">CODE</td>
+    <td rowspan="2" class="hdr-bg">PART NO</td>
+    <td rowspan="2" class="hdr-bg">PART NAME</td>
+    <td rowspan="2" class="hdr-bg">PRICE</td>
+    <td colspan="2" class="hdr-bg">SCHEDULE</td>
+    <td colspan="2" class="hdr-bg">DELIVERY</td>
+    <td colspan="2" class="hdr-bg">BALANCE</td>
+</tr>
+
+<!-- ═══ Row 6: Table Header 2 (sub-columns) ═══ -->
+<tr style="height:22px;">
+    <td class="hdr-bg">Qty</td>
+    <td class="hdr-bg">Amount USD</td>
+    <td class="hdr-bg">Qty</td>
+    <td class="hdr-bg">Amount USD</td>
+    <td class="hdr-bg">Qty</td>
+    <td class="hdr-bg">Amount USD</td>
+</tr>
+
+<!-- ════════════════ DATA ROWS ════════════════ -->
+<?php foreach ($printRows as $r) { ?>
+
+    <?php if ($r["ROW_TYPE"] == "CUSTOMER") { ?>
+    <tr style="height:24px;">
+        <td colspan="10" class="cust-bg" style="padding-left:6px;">
+            <?php echo h($r["CUST_CODE"]); ?> - <?php echo h($r["CUST_COMP"]); ?>
         </td>
     </tr>
 
-    <tr>
-        <td colspan="13">
-            Customer:
-            <?php echo h($cust_code == "%" ? "ALL CUSTOMER" : $cust_code); ?>
-        </td>
+    <?php } elseif ($r["ROW_TYPE"] == "DETAIL") { ?>
+    <tr style="height:20px;">
+        <td class="bdr txt"><?php echo h($r["PART_NUM"]); ?></td>
+        <td class="bdr txt"><?php echo h($r["PART_NO"]); ?></td>
+        <td class="bdr txt"><?php echo h($r["PART_NAME"]); ?></td>
+        <td class="bdr txt" style="text-align:right;"><?php echo h(fmt_price($r["PRICE"]) . " " . $r["CURR_CODE"]); ?></td>
+        <td class="bdr num0"><?php echo xl_qty($r["SCH_QTY"]); ?></td>
+        <td class="bdr num2"><?php echo xl_amt($r["SCH_AMOUNT"]); ?></td>
+        <td class="bdr num0"><?php echo xl_qty($r["DEL_QTY"]); ?></td>
+        <td class="bdr num2"><?php echo xl_amt($r["DEL_AMOUNT"]); ?></td>
+        <td class="bdr num0"><?php echo xl_qty($r["BAL_QTY"]); ?></td>
+        <td class="bdr num2"><?php echo xl_amt($r["BAL_AMOUNT"]); ?></td>
     </tr>
 
-    <tr>
-        <td colspan="13">
-            Export Date:
-            <?php echo h(fmt_print_datetime()); ?>
-        </td>
+    <?php } elseif ($r["ROW_TYPE"] == "CUSTOMER_TOTAL") { ?>
+    <tr style="height:22px;">
+        <td colspan="5" class="sub-bg" style="text-align:right; padding-right:6px;">TOTAL USD</td>
+        <td class="sub-bg num2"><?php echo xl_amt($r["SCH_AMOUNT"]); ?></td>
+        <td class="sub-bg"></td>
+        <td class="sub-bg num2"><?php echo xl_amt($r["DEL_AMOUNT"]); ?></td>
+        <td class="sub-bg"></td>
+        <td class="sub-bg num2"><?php echo xl_amt($r["BAL_AMOUNT"]); ?></td>
     </tr>
 
-    <tr>
-        <td colspan="13">&nbsp;</td>
+    <?php } elseif ($r["ROW_TYPE"] == "GRAND_TOTAL") { ?>
+    <tr style="height:26px;">
+        <td colspan="5" class="grand-bg" style="text-align:right; padding-right:6px; font-size:12pt;">GRAND TOTAL USD</td>
+        <td class="grand-bg num2" style="font-size:12pt;"><?php echo xl_amt($r["SCH_AMOUNT"]); ?></td>
+        <td class="grand-bg"></td>
+        <td class="grand-bg num2" style="font-size:12pt;"><?php echo xl_amt($r["DEL_AMOUNT"]); ?></td>
+        <td class="grand-bg"></td>
+        <td class="grand-bg num2" style="font-size:12pt;"><?php echo xl_amt($r["BAL_AMOUNT"]); ?></td>
     </tr>
-
-    <tr>
-        <th>Customer Code</th>
-        <th>Customer Name</th>
-        <th>Code</th>
-        <th>Part No</th>
-        <th>Part Name</th>
-        <th>Price Original</th>
-        <th>Curr</th>
-        <th>Schedule Qty</th>
-        <th>Schedule Amount USD</th>
-        <th>Delivery Qty</th>
-        <th>Delivery Amount USD</th>
-        <th>Balance Qty</th>
-        <th>Balance Amount USD</th>
-    </tr>
-
-    <?php if (count($rows) == 0) { ?>
-        <tr>
-            <td colspan="13">Data delivery balance amount tidak ditemukan.</td>
-        </tr>
-    <?php } ?>
-
-    <?php
-    $lastCust = "";
-
-$subSchAmount = 0;
-$subDelAmount = 0;
-$subBalAmount = 0;
-
-$grandSchAmount = 0;
-$grandDelAmount = 0;
-$grandBalAmount = 0;
-
-    for ($i = 0; $i < count($rows); $i++) {
-        $r = $rows[$i];
-
-        $custKey = $r["CUST_CODE"] . "|" . $r["CUST_COMP"];
-
-        if ($custKey != $lastCust) {
-            if ($lastCust != "") {
-                ?>
-                <tr class="total-row">
-                    <td colspan="8" style="text-align:right;">TOTAL USD</td>
-                    <td class="money"><?php echo h(excel_num($subSchAmount, 2)); ?></td>
-                    <td></td>
-                    <td class="money"><?php echo h(excel_num($subDelAmount, 2)); ?></td>
-                    <td></td>
-                    <td class="money"><?php echo h(excel_num($subBalAmount, 2)); ?></td>
-                </tr>
-                <?php
-            }
-
-            ?>
-            <tr class="customer-row">
-                <td class="text"><?php echo h($r["CUST_CODE"]); ?></td>
-                <td colspan="12"><?php echo h($r["CUST_COMP"]); ?></td>
-            </tr>
-            <?php
-
-            $lastCust = $custKey;
-
-            $subSchAmount = 0;
-            $subDelAmount = 0;
-            $subBalAmount = 0;
-        }
-
-       $subSchAmount += $r["SCH_AMOUNT"];
-$subDelAmount += $r["DEL_AMOUNT"];
-$subBalAmount += $r["BAL_AMOUNT"];
-
-$grandSchAmount += $r["SCH_AMOUNT"];
-$grandDelAmount += $r["DEL_AMOUNT"];
-$grandBalAmount += $r["BAL_AMOUNT"];
-        ?>
-
-        <tr>
-            <td class="text"><?php echo h($r["CUST_CODE"]); ?></td>
-            <td class="text"><?php echo h($r["CUST_COMP"]); ?></td>
-            <td class="text"><?php echo h($r["PART_NUM"]); ?></td>
-            <td class="text"><?php echo h($r["PART_NO"]); ?></td>
-            <td class="text"><?php echo h($r["PART_NAME"]); ?></td>
-            <td class="price"><?php echo h(excel_num($r["PRICE"], 5)); ?></td>
-            <td class="text"><?php echo h($r["CURR_CODE"]); ?></td>
-            <td class="num"><?php echo h(excel_num($r["SCH_QTY"], 0)); ?></td>
-            <td class="money"><?php echo h(excel_num($r["SCH_AMOUNT"], 2)); ?></td>
-            <td class="num"><?php echo h(excel_num($r["DEL_QTY"], 0)); ?></td>
-            <td class="money"><?php echo h(excel_num($r["DEL_AMOUNT"], 2)); ?></td>
-            <td class="num"><?php echo h(excel_num($r["BAL_QTY"], 0)); ?></td>
-            <td class="money"><?php echo h(excel_num($r["BAL_AMOUNT"], 2)); ?></td>
-        </tr>
 
     <?php } ?>
-
-   <?php if ($lastCust != "") { ?>
-    <tr class="total-row">
-        <td colspan="8" style="text-align:right;">TOTAL USD</td>
-        <td class="money"><?php echo h(excel_num($subSchAmount, 2)); ?></td>
-        <td></td>
-        <td class="money"><?php echo h(excel_num($subDelAmount, 2)); ?></td>
-        <td></td>
-        <td class="money"><?php echo h(excel_num($subBalAmount, 2)); ?></td>
-    </tr>
-
-    <tr class="grand-row">
-        <td colspan="8" style="text-align:right;">GRAND TOTAL USD</td>
-        <td class="money"><?php echo h(excel_num($grandSchAmount, 2)); ?></td>
-        <td></td>
-        <td class="money"><?php echo h(excel_num($grandDelAmount, 2)); ?></td>
-        <td></td>
-        <td class="money"><?php echo h(excel_num($grandBalAmount, 2)); ?></td>
-    </tr>
 <?php } ?>
 
 </table>

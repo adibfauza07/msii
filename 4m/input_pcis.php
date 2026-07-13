@@ -50,7 +50,7 @@ if (isset($_GET['ajax_search'])) {
 }
 
 // =========================================================================
-// PROSES SIMPAN / UPDATE DATABASE
+// PROSES SIMPAN / UPDATE DATABASE (SINKRONISASI TOTAL PARAMETER)
 // =========================================================================
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
     function val($k, $d = "") { return isset($_POST[$k]) ? $_POST[$k] : $d; }
@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
     $supplier    = isset($_POST['supplier']) ? 1 : 0;
     $perm        = isset($_POST['perm']) ? intval($_POST['perm']) : 1;
 
-    // PENAMBAHAN INPUT: Capture data dari inputan baru bertanda kotak merah
+    // Capture Data Baru Hasil Sinkronisasi Fitur Kotak Merah Laporan
     $need_cust   = isset($_POST['need_customer']) ? intval($_POST['need_customer']) : 1;
     $f_email     = isset($_POST['attach_email']) ? 1 : 0;
     $f_drawing   = isset($_POST['attach_drawing']) ? 1 : 0;
@@ -106,6 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
     $close_change = !empty($_POST['close_change']) ? $_POST['close_change'] : null;
 
     if ($control_id > 0) {
+        // MODE UPDATE (Total 39 Parameter Field SET)
         $sql = "UPDATE PROSES_CHANGE SET 
                     CONTROL_NO = ?, CONTROL_DATE1 = ?, DEP_CODE = ?, PIC_NAME = ?, 
                     ITEM_ID = ?, MODEL = ?, MATERIAL_ID = ?, TO_PCIS = ?, CC = ?, 
@@ -129,6 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
         );
         $msg = "Data PCIS #{$control_no} berhasil diperbarui!";
     } else {
+        // MODE INSERT (KALIBRASI TOTAL: 39 nama kolom dipasangkan akurat dengan 39 buah tanda tanya)
         $sql = "INSERT INTO PROSES_CHANGE (
                     CONTROL_NO, CONTROL_DATE1, DEP_CODE, PIC_NAME, ITEM_ID, MODEL, MATERIAL_ID, TO_PCIS, CC,
                     MAN, MACHINE, METHOD, MATERIAL, OTHER, INTERNAL, CUSTOMER, SUPPLIER, PERMANENT_CHANGE, 
@@ -136,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
                     IMC_PREPARED, IMC_CHECKED, IMC_APROVE, 
                     PE_REMARK, QC_REMARK, MOLDSHOP_REMARK, PPIC_REMARK, PRODUCTION_REMARK, MARKETING_REMARK,
                     NEED_CUSTOMER, EMAIL, DRAWING, SAMPLE, DATA, SCH_CHANGE, START_CHANGE, CLOSE_CHANGE
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         $params = array(
             $control_no, $control_date, $dep_code, $pic_name, $item_id, $model, $material_id, $to_pcis, $cc_pcis,
@@ -491,7 +493,7 @@ function fillForm(rec) {
     $("input[name='material_4m']").prop('checked', rec.MATERIAL == 1 || rec.MATERIAL === true);
     $("input[name='other']").prop('checked', rec.OTHER == 1);
 
-    // Bind Data pengisian lampiran & status customer approved ke form visual saat klik prev/next
+    // Dynamic Binding Saat Navigasi (First/Prev/Next/Last)
     $("#NEED_CUSTOMER").val(rec.NEED_CUSTOMER !== undefined ? rec.NEED_CUSTOMER : 1);
     $("input[name='attach_email']").prop('checked', rec.EMAIL == 1);
     $("input[name='attach_drawing']").prop('checked', rec.DRAWING == 1);

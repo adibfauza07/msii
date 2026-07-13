@@ -177,6 +177,7 @@ function h($value) {
         <a class="menu-link" href="grid_input.php" target="mainFrame">LIST MASTER HITACHI</a>
         <a class="menu-link" href="input.php" target="mainFrame">BUAT QR HITACHI LABEL</a>
         <a class="menu-link" href="label_plant2.php" target="mainFrame">LABEL MANUAL PLANT 2</a>
+		<a class="menu-link" href="prod_sch.php" target="_blank">PRODUCTION SCHEDULE</a>
        
 
         <div class="menu-section">Master</div>

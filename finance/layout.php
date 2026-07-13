@@ -115,12 +115,22 @@ $plantLabel = isset($_SESSION['active_plant']) ? strtoupper($_SESSION['active_pl
     <a href="aging_ap.php">
         <i class="bi bi-graph-down-arrow me-2"></i> Aging AP
     </a>
-
-    <a href="material_consumption.php">
-        <i class="bi bi-layer-backward me-2"></i> Material Consumption
+	
+	<a href="material_harga.php">
+        <i class="bi bi-graph-down-arrow me-2"></i> TEST BOM
     </a>
+	
 
     <?php if ($isP1) { ?>
+	
+
+	     <a href="import_bom_tally1.php">
+        <i class="bi bi-graph-down-arrow me-2"></i> IMPORT BOM
+    </a>
+	
+	<a href="import_prod_tally1.php">
+        <i class="bi bi-graph-down-arrow me-2"></i> IMPORT PRODUCTION TO TALLY 
+    </a>
         <a href="export_receive_p1.php">
             <i class="bi bi-box-arrow-in-down me-2"></i> IMPORT RECEIVE NOTE TO TALLY P1
         </a>
@@ -139,6 +149,14 @@ $plantLabel = isset($_SESSION['active_plant']) ? strtoupper($_SESSION['active_pl
     <?php } ?>
 
     <?php if ($isP2) { ?>
+	     <a href="import_bom_tally.php">
+        <i class="bi bi-graph-down-arrow me-2"></i> IMPORT BOM
+    </a>
+	
+	<a href="import_prod_tally.php">
+        <i class="bi bi-graph-down-arrow me-2"></i> IMPORT PRODUCTION TO TALLY 
+    </a>
+	
         <a href="export_receive.php">
             <i class="bi bi-box-arrow-in-down me-2"></i> IMPORT RECEIVE NOTE TO TALLY P2
         </a>

@@ -13,7 +13,6 @@ function safe_trim($value) {
     if ($value === null) {
         return "";
     }
-
     return trim((string)$value);
 }
 
@@ -21,55 +20,42 @@ function get_param($name, $default = "") {
     if (isset($_GET[$name])) {
         return trim($_GET[$name]);
     }
-
     if (isset($_POST[$name])) {
         return trim($_POST[$name]);
     }
-
     return $default;
 }
 
 function ymd_param($value) {
     $value = trim($value);
-
     if ($value == "") {
         return "";
     }
-
     if (preg_match('/^\d{8}$/', $value)) {
         return $value;
     }
-
     if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
         return str_replace("-", "", $value);
     }
-
     $ts = strtotime($value);
-
     if ($ts === false) {
         return "";
     }
-
     return date("Ymd", $ts);
 }
 
 function date_input_value($value, $default) {
     $value = trim($value);
-
     if ($value == "") {
         return $default;
     }
-
     if (preg_match('/^\d{8}$/', $value)) {
         return substr($value, 0, 4) . "-" . substr($value, 4, 2) . "-" . substr($value, 6, 2);
     }
-
     $ts = strtotime($value);
-
     if ($ts === false) {
         return $default;
     }
-
     return date("Y-m-d", $ts);
 }
 
@@ -81,7 +67,6 @@ function fmt_num($value, $decimal = 0) {
     if ($value === null || $value === "") {
         $value = 0;
     }
-
     return number_format((float)$value, $decimal, ".", ",");
 }
 
@@ -89,7 +74,6 @@ function fmt_price($value) {
     if ($value === null || $value === "") {
         $value = 0;
     }
-
     return number_format((float)$value, 5, ".", ",");
 }
 
@@ -97,7 +81,6 @@ function fmt_amount($value) {
     if ($value === null || $value === "") {
         $value = 0;
     }
-
     return number_format((float)$value, 2, ".", ",");
 }
 
@@ -105,59 +88,51 @@ function fmt_zero_dash($value, $decimal = 0) {
     if ($value === null || $value === "") {
         return "-";
     }
-
     $n = (float)$value;
-
     if ($n == 0) {
         return "-";
     }
-
     return number_format($n, $decimal, ".", ",");
 }
 
 function usd_factor($currCode, $currRate, $usdRate) {
     $currCode = strtoupper(trim((string)$currCode));
-
     if ($currCode == "USD") {
         return 1;
     }
-
     $currRate = (float)$currRate;
     $usdRate  = (float)$usdRate;
-
     if ($currRate == 0) {
         $currRate = 1;
     }
-
     if ($usdRate == 0) {
         $usdRate = 1;
     }
-
     return $currRate / $usdRate;
 }
 
-$is_filter = get_param("RUN", "") == "1";
+ $is_filter = get_param("RUN", "") == "1";
 
-$defaultStart = date("Y-m-01");
-$defaultEnd   = date("Y-m-d");
+ $defaultStart = date("Y-m-01");
+ $defaultEnd   = date("Y-m-d");
 
-$start_input = date_input_value(get_param("START_DATE", ""), $defaultStart);
-$end_input   = date_input_value(get_param("END_DATE", ""), $defaultEnd);
-$cust_code   = get_param("CUST_CODE", "");
+ $start_input = date_input_value(get_param("START_DATE", ""), $defaultStart);
+ $end_input   = date_input_value(get_param("END_DATE", ""), $defaultEnd);
+ $cust_code   = get_param("CUST_CODE", "");
 
 if ($is_filter && $cust_code == "") {
     $cust_code = "%";
 }
 
-$start_ymd = ymd_param($start_input);
-$end_ymd   = ymd_param($end_input);
+ $start_ymd = ymd_param($start_input);
+ $end_ymd   = ymd_param($end_input);
 
-$rows = array();
-$printRows = array();
-$pages = array();
+ $rows = array();
+ $printRows = array();
+ $pages = array();
 
-$totalPages = 0;
-$rowsPerPage = 34;
+ $totalPages = 0;
+ $rowsPerPage = 52;
 
 if ($is_filter) {
     if ($start_ymd == "" || $end_ymd == "") {
@@ -196,9 +171,7 @@ if ($is_filter) {
                 PV.PART_NUM,
                 PV.PART_NO,
                 PV.PART_NAME,
-
                 ISNULL(SUM(DS.DELS_QTY), 0) AS SSQTY,
-
                 ISNULL((
                     SELECT SUM(DP.DIPA_QTY)
                     FROM dbo.DI_PART AS DP
@@ -208,7 +181,6 @@ if ($is_filter) {
                         DP.PRICE_ID = DS.PRICE_ID
                         AND DIH.DI_DATE BETWEEN ? AND ?
                 ), 0) AS SDELQTY,
-
                 ISNULL((
                     SELECT SUM(OP.ORDP_BQTY)
                     FROM dbo.ORDR_PAR AS OP
@@ -217,7 +189,6 @@ if ($is_filter) {
                         AND OP.ORDP_CLOSE = 0
                         AND OP.PRICE_ID = DS.PRICE_ID
                 ), 0) AS SPOQTY
-
             FROM dbo.DELI_SCH AS DS
             INNER JOIN dbo.PART_VIEW AS PV
                 ON DS.PRICE_ID = PV.PRICE_ID
@@ -275,32 +246,25 @@ if ($is_filter) {
             "PART_NAME"   => safe_trim($r["PART_NAME"]),
             "PRICE"       => $price,
             "CURR_CODE"   => $currCode,
-
             "SCH_QTY"     => $schedule,
             "SCH_AMOUNT"  => $schedule * $price * $factor,
-
             "DEL_QTY"     => $delivered,
             "DEL_AMOUNT"  => $delivered * $price * $factor,
-
             "BAL_QTY"     => $balance,
             "BAL_AMOUNT"  => $balance * $price * $factor
         );
     }
 
-    
     $lastCust = "";
-
-$subSchAmount = 0;
-$subDelAmount = 0;
-$subBalAmount = 0;
-
-$grandSchAmount = 0;
-$grandDelAmount = 0;
-$grandBalAmount = 0;
+    $subSchAmount = 0;
+    $subDelAmount = 0;
+    $subBalAmount = 0;
+    $grandSchAmount = 0;
+    $grandDelAmount = 0;
+    $grandBalAmount = 0;
 
     for ($i = 0; $i < count($rows); $i++) {
         $r = $rows[$i];
-
         $custKey = $r["CUST_CODE"] . "|" . $r["CUST_COMP"];
 
         if ($custKey != $lastCust) {
@@ -332,45 +296,41 @@ $grandBalAmount = 0;
             "PART_NAME"  => $r["PART_NAME"],
             "PRICE"      => $r["PRICE"],
             "CURR_CODE"  => $r["CURR_CODE"],
-
             "SCH_QTY"    => $r["SCH_QTY"],
             "SCH_AMOUNT" => $r["SCH_AMOUNT"],
-
             "DEL_QTY"    => $r["DEL_QTY"],
             "DEL_AMOUNT" => $r["DEL_AMOUNT"],
-
             "BAL_QTY"    => $r["BAL_QTY"],
             "BAL_AMOUNT" => $r["BAL_AMOUNT"]
         );
 
         $subSchAmount += $r["SCH_AMOUNT"];
-$subDelAmount += $r["DEL_AMOUNT"];
-$subBalAmount += $r["BAL_AMOUNT"];
-
-$grandSchAmount += $r["SCH_AMOUNT"];
-$grandDelAmount += $r["DEL_AMOUNT"];
-$grandBalAmount += $r["BAL_AMOUNT"];
+        $subDelAmount += $r["DEL_AMOUNT"];
+        $subBalAmount += $r["BAL_AMOUNT"];
+        $grandSchAmount += $r["SCH_AMOUNT"];
+        $grandDelAmount += $r["DEL_AMOUNT"];
+        $grandBalAmount += $r["BAL_AMOUNT"];
     }
 
-   if ($lastCust != "") {
-    $printRows[] = array(
-        "ROW_TYPE"   => "CUSTOMER_TOTAL",
-        "SCH_AMOUNT" => $subSchAmount,
-        "DEL_AMOUNT" => $subDelAmount,
-        "BAL_AMOUNT" => $subBalAmount
-    );
-}
+    if ($lastCust != "") {
+        $printRows[] = array(
+            "ROW_TYPE"   => "CUSTOMER_TOTAL",
+            "SCH_AMOUNT" => $subSchAmount,
+            "DEL_AMOUNT" => $subDelAmount,
+            "BAL_AMOUNT" => $subBalAmount
+        );
+    }
 
-if (count($rows) > 0) {
-    $printRows[] = array(
-        "ROW_TYPE"   => "GRAND_TOTAL",
-        "SCH_AMOUNT" => $grandSchAmount,
-        "DEL_AMOUNT" => $grandDelAmount,
-        "BAL_AMOUNT" => $grandBalAmount
-    );
-}
+    if (count($rows) > 0) {
+        $printRows[] = array(
+            "ROW_TYPE"   => "GRAND_TOTAL",
+            "SCH_AMOUNT" => $grandSchAmount,
+            "DEL_AMOUNT" => $grandDelAmount,
+            "BAL_AMOUNT" => $grandBalAmount
+        );
+    }
 
-if (count($printRows) == 0) {
+    if (count($printRows) == 0) {
         $printRows[] = array(
             "ROW_TYPE" => "EMPTY",
             "MESSAGE"  => "Data delivery balance amount tidak ditemukan."
@@ -385,260 +345,359 @@ if (count($printRows) == 0) {
     }
 }
 
-$selfFile = basename($_SERVER["PHP_SELF"]);
+ $selfFile = basename($_SERVER["PHP_SELF"]);
 ?>
 <!DOCTYPE html>
-<html>
+<html lang="id">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Delivery Balance Amount</title>
 
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+
     <style>
+        /* ══════════ PRINT: A3 Portrait ══════════ */
         @page {
-            size: A4 portrait;
-            margin: 7mm;
+            size: A3 portrait;
+            margin: 8mm;
         }
 
-        body {
+        /* ══════════ BODY ══════════ */
+        html, body {
             margin: 0;
-            background: #9a9a9a;
-            font-family: "Courier New", monospace;
-            font-size: 9px;
-            color: #000000;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #1a1d23;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            overflow-x: hidden;
         }
 
-        .filter-bar {
-            width: 205mm;
-            margin: 8px auto;
-            background: #d4d0c8;
-            border: 1px solid #666666;
-            padding: 6px;
-            box-sizing: border-box;
-            font-family: Tahoma, Arial, sans-serif;
-            font-size: 12px;
+        /* ══════════ FILTER BAR ══════════ */
+        .filter-card {
+            max-width: 1100px;
+            margin: 10px auto;
         }
 
-        .filter-bar input {
-            height: 24px;
-            border: 1px solid #777777;
-            font-size: 12px;
-            padding: 2px 4px;
-            box-sizing: border-box;
+        .filter-card .form-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 2px;
+            color: #ced4da;
         }
 
-        .filter-date {
-            width: 130px;
+        .filter-card .form-control {
+            font-size: 0.95rem;
+            height: 40px;
+            background-color: #2b3035;
+            border-color: #495057;
+            color: #f8f9fa;
         }
 
-        .filter-cust {
-            width: 150px;
+        .filter-card .form-control:focus {
+            background-color: #343a40;
+            border-color: #0d6efd;
+            color: #ffffff;
+            box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
         }
 
-        .filter-bar button {
-            height: 26px;
-            font-size: 12px;
+        .filter-card .form-control::placeholder {
+            color: #6c757d;
+        }
+
+        /* date input color fix for dark bg */
+        .filter-card input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
             cursor: pointer;
-            margin-left: 4px;
         }
 
+        .filter-card .btn {
+            height: 40px;
+            font-size: 0.9rem;
+            padding: 0 18px;
+            font-weight: 600;
+        }
+
+        /* ══════════ AUTOCOMPLETE ══════════ */
         .autocomplete-wrap {
             position: relative;
-            display: inline-block;
         }
 
         .autocomplete-list {
             position: absolute;
-            top: 24px;
+            top: 100%;
             left: 0;
-            width: 430px;
-            max-height: 230px;
+            width: 500px;
+            max-height: 300px;
             overflow-y: auto;
-            background: #ffffff;
-            border: 1px solid #444444;
+            background: #2b3035;
+            border: 1px solid #495057;
+            border-radius: 0.5rem;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
             z-index: 9999;
             display: none;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.25);
         }
 
         .autocomplete-item {
-            padding: 5px 7px;
-            border-bottom: 1px solid #dddddd;
+            padding: 10px 14px;
+            border-bottom: 1px solid #3a3f44;
             cursor: pointer;
-            line-height: 16px;
-            font-family: Tahoma, Arial, sans-serif;
-            font-size: 12px;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 0.95rem;
+            color: #dee2e6;
+            transition: background 0.1s;
+        }
+
+        .autocomplete-item:last-child {
+            border-bottom: none;
         }
 
         .autocomplete-item:hover,
         .autocomplete-item.active {
-            background: #2f70c9;
+            background-color: #0d6efd;
             color: #ffffff;
         }
 
-        .print-bar {
-            width: 205mm;
+        .autocomplete-item.active b {
+            color: #ffffff;
+        }
+
+        .autocomplete-item b {
+            color: #74c0fc;
+        }
+
+        /* ══════════ ACTION BAR ══════════ */
+        .action-bar {
+            max-width: 1100px;
+            margin: 0 auto 8px auto;
+        }
+
+        .action-bar .btn {
+            height: 38px;
+            font-size: 0.9rem;
+            padding: 0 20px;
+            font-weight: 600;
+        }
+
+        /* ══════════ REPORT PAGE — A3 Portrait (297mm × 420mm) ══════════ */
+        .report-page {
+            width: 297mm;
+            min-height: 420mm;
             margin: 8px auto;
-            text-align: right;
-        }
-
-        .print-bar button {
-            padding: 6px 14px;
-            font-size: 11px;
-            cursor: pointer;
-            font-family: Arial, sans-serif;
-        }
-
-        .page {
-            width: 205mm;
-            min-height: 285mm;
-            margin: 10px auto;
             background: #ffffff;
-            border: 2px solid #000000;
-            padding: 6mm;
+            padding: 8mm 10mm;
             box-sizing: border-box;
             page-break-after: always;
             overflow: hidden;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+            border-radius: 2px;
         }
 
-        .page:last-child {
+        .report-page:last-child {
             page-break-after: auto;
         }
 
-        .header {
+        /* ══════════ HEADER ══════════ */
+        .report-header {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
         }
 
-        .header td {
+        .report-header td {
             border: none;
             vertical-align: top;
+            padding: 0;
         }
 
-        .company {
+        .company-block {
             width: 30%;
-            font-family: Arial, sans-serif;
-            font-size: 11px;
-            line-height: 14px;
-        }
-
-        .company-title {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
             font-size: 14px;
-            font-weight: normal;
+            line-height: 20px;
+            color: #212529;
         }
 
-        .title-area {
+        .company-name {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+
+        .title-block {
             width: 40%;
             text-align: center;
-            font-family: Arial, sans-serif;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
         }
 
         .report-title {
-            font-size: 18px;
-            font-weight: normal;
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: 1px;
             margin-top: 4px;
+            color: #212529;
         }
 
-        .date-range {
-            font-size: 10px;
+        .date-range-text {
+            font-size: 14px;
             margin-top: 8px;
+            color: #495057;
+            font-weight: 500;
         }
 
-        .right-info {
+        .page-info-block {
             width: 30%;
             text-align: right;
-            font-family: Arial, sans-serif;
-            font-size: 11px;
-            line-height: 17px;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 14px;
+            line-height: 22px;
+            color: #495057;
+            font-weight: 500;
         }
 
-        .print-date {
+        .print-datetime {
             text-align: right;
-            font-family: Arial, sans-serif;
-            font-size: 11px;
-            margin-bottom: 6px;
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 10px;
+            font-weight: 500;
         }
 
-        .amount-table {
+        /* ══════════ DATA TABLE ══════════ */
+        .data-table {
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
+            font-size: 12px;
         }
 
-        .amount-table th,
-        .amount-table td {
+        .data-table th,
+        .data-table td {
             border: none;
-            padding: 1px 2px;
-            height: 15px;
-            line-height: 11px;
+            padding: 3px 5px;
+            height: 22px;
+            line-height: 16px;
             box-sizing: border-box;
             vertical-align: middle;
             white-space: nowrap;
             overflow: hidden;
-            font-size: 8px;
+            text-overflow: ellipsis;
         }
 
-        .amount-table thead th {
-            border: 1px solid #000000;
-            font-weight: normal;
+        .data-table thead th {
+            border: 2px solid #000000;
+            font-weight: 700;
             text-align: center;
-            font-size: 9px;
+            font-size: 12px;
+            background-color: #e9ecef;
+            color: #212529;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
         }
 
-        .customer-row td {
-            font-weight: bold;
-            font-size: 11px;
-            padding-top: 6px;
+        /* Customer grouping row */
+        .data-table .customer-row td {
+            font-weight: 700;
+            font-size: 15px;
+            padding: 8px 5px;
+            color: #0b5ed7;
+            background-color: #e7f1ff;
+            border-bottom: 2px solid #0b5ed7;
+            letter-spacing: 0.2px;
         }
 
-        .grand-row td {
-    font-weight: bold;
-    border-top: 2px solid #000000;
-    border-bottom: 2px solid #000000;
-}
+        /* Subtotal row */
+        .data-table .total-row td {
+            font-weight: 700;
+            font-size: 12px;
+            border-top: 1px solid #000;
+            background-color: #f1f3f5;
+            color: #343a40;
+        }
 
-        .num {
+        /* Grand total row */
+        .data-table .grand-row td {
+            font-weight: 800;
+            font-size: 14px;
+            border-top: 3px solid #000;
+            border-bottom: 3px solid #000;
+            background-color: #dee2e6;
+            color: #000;
+            letter-spacing: 0.3px;
+        }
+
+        .data-table .num {
             text-align: right;
+            font-variant-numeric: tabular-nums;
         }
 
-        .center {
+        .data-table .center {
             text-align: center;
         }
 
-        .col-code { width: 8%; }
-        .col-no { width: 13%; }
-        .col-name { width: 26%; }
-        .col-price { width: 9%; }
-        .col-qty { width: 7%; }
+        /* Detail row hover */
+        .data-table tbody tr:not(.customer-row):not(.total-row):not(.grand-row):hover {
+            background-color: #f8f9fa;
+        }
+
+        /* Column widths */
+        .col-code   { width: 8%; }
+        .col-no     { width: 13%; }
+        .col-name   { width: 26%; }
+        .col-price  { width: 10%; }
+        .col-qty    { width: 7%; }
         .col-amount { width: 9%; }
 
-        .no-data {
-            font-family: Arial, sans-serif;
-            font-size: 14px;
+        /* ══════════ EMPTY STATE ══════════ */
+        .empty-state {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
             text-align: center;
-            margin-top: 70px;
-            line-height: 24px;
+            padding: 120px 40px;
         }
 
+        .empty-state .icon {
+            font-size: 5rem;
+            color: #adb5bd;
+            margin-bottom: 24px;
+        }
+
+        .empty-state h5 {
+            color: #6c757d;
+            font-weight: 700;
+            font-size: 1.5rem;
+        }
+
+        .empty-state p {
+            color: #868e96;
+            font-size: 1.1rem;
+            line-height: 1.8;
+        }
+
+        /* ══════════ PRINT STYLES ══════════ */
         @media print {
-            html,
-            body {
-                width: 210mm;
-                min-height: 297mm;
-                background: #ffffff;
+            html, body {
+                width: 297mm;
+                min-height: 420mm;
+                background: #ffffff !important;
             }
 
-            .filter-bar,
-            .print-bar {
-                display: none;
+            .filter-card,
+            .action-bar {
+                display: none !important;
             }
 
-            .page {
-                width: 205mm;
-                min-height: 285mm;
-                margin: 0 auto;
-                border: none;
-                padding: 5mm;
+            .report-page {
+                width: 297mm;
+                min-height: 420mm;
+                margin: 0;
+                padding: 6mm 8mm;
+                box-shadow: none;
+                border-radius: 0;
                 overflow: hidden;
             }
         }
@@ -647,98 +706,142 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
 
 <body>
 
-<div class="filter-bar">
-    <form method="get" action="<?php echo h($selfFile); ?>" autocomplete="off">
-        <input type="hidden" name="RUN" value="1">
+<!-- ═══════════════ FILTER BAR ═══════════════ -->
+<div class="filter-card">
+    <div class="card border-secondary">
+        <div class="card-body py-3">
+            <form method="get" action="<?php echo h($selfFile); ?>" autocomplete="off">
+                <input type="hidden" name="RUN" value="1">
 
-        Start:
-        <input type="date" id="START_DATE" name="START_DATE" class="filter-date" value="<?php echo h($start_input); ?>">
+                <div class="row g-2 align-items-end">
+                    <!-- Start Date -->
+                    <div class="col-auto">
+                        <label for="START_DATE" class="form-label">Start Date</label>
+                        <input type="date"
+                               id="START_DATE"
+                               name="START_DATE"
+                               class="form-control"
+                               style="width:175px"
+                               value="<?php echo h($start_input); ?>">
+                    </div>
 
-        End:
-        <input type="date" id="END_DATE" name="END_DATE" class="filter-date" value="<?php echo h($end_input); ?>">
+                    <!-- End Date -->
+                    <div class="col-auto">
+                        <label for="END_DATE" class="form-label">End Date</label>
+                        <input type="date"
+                               id="END_DATE"
+                               name="END_DATE"
+                               class="form-control"
+                               style="width:175px"
+                               value="<?php echo h($end_input); ?>">
+                    </div>
 
-        Customer:
-        <div class="autocomplete-wrap">
-            <input type="text"
-                   id="CUST_CODE"
-                   name="CUST_CODE"
-                   class="filter-cust"
-                   value="<?php echo h($cust_code); ?>"
-                   placeholder="Ketik customer / %">
-            <div id="custSuggest" class="autocomplete-list"></div>
+                    <!-- Customer -->
+                    <div class="col-auto">
+                        <label for="CUST_CODE" class="form-label">Customer</label>
+                        <div class="autocomplete-wrap">
+                            <input type="text"
+                                   id="CUST_CODE"
+                                   name="CUST_CODE"
+                                   class="form-control"
+                                   style="width:240px"
+                                   value="<?php echo h($cust_code); ?>"
+                                   placeholder="Ketik customer / %">
+                            <div id="custSuggest" class="autocomplete-list"></div>
+                        </div>
+                    </div>
+
+                    <!-- Buttons -->
+                    <div class="col-auto">
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-funnel-fill me-1"></i>Filter
+                            </button>
+                            <button type="button" class="btn btn-outline-light" onclick="setAllCustomer()">
+                                <i class="bi bi-arrow-up-circle me-1"></i>All
+                            </button>
+                            <button type="button" class="btn btn-success" onclick="exportExcel()">
+                                <i class="bi bi-file-earmark-excel me-1"></i>Export
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </form>
         </div>
-
-        <button type="submit">FILTER</button>
-        <button type="button" onclick="setAllCustomer()">ALL</button>
-        <button type="button" onclick="exportExcel()">EXPORT EXCEL</button>
-    </form>
+    </div>
 </div>
 
-<div class="print-bar">
-    <button type="button" onclick="window.print()">PRINT</button>
-    <button type="button" onclick="closeReport()">CLOSE</button>
+<!-- ═══════════════ ACTION BAR ═══════════════ -->
+<div class="action-bar d-flex justify-content-end gap-2 px-1">
+    <button type="button" class="btn btn-outline-light" onclick="window.print()">
+        <i class="bi bi-printer me-1"></i>Print
+    </button>
+    <button type="button" class="btn btn-outline-danger" onclick="closeReport()">
+        <i class="bi bi-x-lg me-1"></i>Close
+    </button>
 </div>
 
+<!-- ═══════════════ EMPTY STATE (belum filter) ═══════════════ -->
 <?php if (!$is_filter) { ?>
-    <div class="page">
-        <table class="header">
+    <div class="report-page">
+        <table class="report-header">
             <tr>
-                <td class="company">
-                    <div class="company-title">P.T. IMC TEKNO INDONESIA</div>
+                <td class="company-block">
+                    <div class="company-name">P.T. IMC TEKNO INDONESIA</div>
                     PPIC Departement
                 </td>
-
-                <td class="title-area">
+                <td class="title-block">
                     <div class="report-title">DELIVERY BALANCE AMOUNT</div>
-                    <div class="date-range">Date range:<br>~</div>
+                    <div class="date-range-text">Date range:<br>~</div>
                 </td>
-
-                <td class="right-info">Page 0 of 0</td>
+                <td class="page-info-block">Page 0 of 0</td>
             </tr>
         </table>
 
-        <div class="no-data">
-            Data belum ditampilkan.<br><br>
-            Isi Start, End, Customer lalu klik <b>FILTER</b>.<br>
-            Klik <b>ALL</b> untuk semua customer.
+        <div class="empty-state">
+            <div class="icon"><i class="bi bi-inbox"></i></div>
+            <h5>Data belum ditampilkan</h5>
+            <p>
+                Isi <strong>Start Date</strong>, <strong>End Date</strong>, dan <strong>Customer</strong> lalu klik <strong>Filter</strong>.<br>
+                Klik <strong>All</strong> untuk menampilkan semua customer.
+            </p>
         </div>
     </div>
 <?php } ?>
 
+<!-- ═══════════════ REPORT PAGES ═══════════════ -->
 <?php for ($p = 0; $p < count($pages); $p++) { ?>
     <?php
         $pageRows = $pages[$p];
         $pageNo = $p + 1;
     ?>
-
-    <div class="page">
-        <table class="header">
+    <div class="report-page">
+        <!-- Header -->
+        <table class="report-header">
             <tr>
-                <td class="company">
-                    <div class="company-title">P.T. IMC TEKNO INDONESIA</div>
+                <td class="company-block">
+                    <div class="company-name">P.T. IMC TEKNO INDONESIA</div>
                     PPIC Departement
                 </td>
-
-                <td class="title-area">
+                <td class="title-block">
                     <div class="report-title">DELIVERY BALANCE AMOUNT</div>
-                    <div class="date-range">
+                    <div class="date-range-text">
                         Date range:<br>
-                        <?php echo h($start_ymd); ?> &nbsp; ~ &nbsp; <?php echo h($end_ymd); ?>
+                        <?php echo h($start_ymd); ?> &nbsp;~&nbsp; <?php echo h($end_ymd); ?>
                     </div>
                 </td>
-
-                <td class="right-info">
+                <td class="page-info-block">
                     Page <?php echo h($pageNo); ?> of <?php echo h($totalPages); ?>
                 </td>
             </tr>
         </table>
 
-        <div class="print-date">
-            Print Date:
-            <?php echo h(fmt_print_datetime()); ?>
+        <div class="print-datetime">
+            Print Date: <?php echo h(fmt_print_datetime()); ?>
         </div>
 
-        <table class="amount-table">
+        <!-- Table -->
+        <table class="data-table">
             <thead>
                 <tr>
                     <th rowspan="2" class="col-code">Code</th>
@@ -758,7 +861,6 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                     <th class="col-amount">Amount USD</th>
                 </tr>
             </thead>
-
             <tbody>
                 <?php for ($i = 0; $i < count($pageRows); $i++) { ?>
                     <?php $r = $pageRows[$i]; ?>
@@ -766,30 +868,30 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                     <?php if ($r["ROW_TYPE"] == "CUSTOMER") { ?>
                         <tr class="customer-row">
                             <td colspan="10">
+                                <i class="bi bi-building me-2" style="font-size:14px"></i>
                                 <?php echo h($r["CUST_CODE"]); ?>
-                                &nbsp;
+                                &mdash;
                                 <?php echo h($r["CUST_COMP"]); ?>
                             </td>
                         </tr>
+
                     <?php } elseif ($r["ROW_TYPE"] == "DETAIL") { ?>
                         <tr>
                             <td class="col-code"><?php echo h($r["PART_NUM"]); ?></td>
                             <td class="col-no"><?php echo h($r["PART_NO"]); ?></td>
-                            <td class="col-name"><?php echo h($r["PART_NAME"]); ?></td>
+                            <td class="col-name" title="<?php echo h($r["PART_NAME"]); ?>"><?php echo h($r["PART_NAME"]); ?></td>
                             <td class="col-price num">
                                 <?php echo h(fmt_price($r["PRICE"])); ?>
-                                <?php echo h($r["CURR_CODE"]); ?>
+                                <span style="font-size:10px; color:#6c757d"><?php echo h($r["CURR_CODE"]); ?></span>
                             </td>
-
                             <td class="col-qty num"><?php echo h(fmt_zero_dash($r["SCH_QTY"], 0)); ?></td>
                             <td class="col-amount num"><?php echo h(fmt_zero_dash($r["SCH_AMOUNT"], 2)); ?></td>
-
                             <td class="col-qty num"><?php echo h(fmt_zero_dash($r["DEL_QTY"], 0)); ?></td>
                             <td class="col-amount num"><?php echo h(fmt_zero_dash($r["DEL_AMOUNT"], 2)); ?></td>
-
                             <td class="col-qty num"><?php echo h(fmt_zero_dash($r["BAL_QTY"], 0)); ?></td>
                             <td class="col-amount num"><?php echo h(fmt_zero_dash($r["BAL_AMOUNT"], 2)); ?></td>
                         </tr>
+
                     <?php } elseif ($r["ROW_TYPE"] == "CUSTOMER_TOTAL") { ?>
                         <tr class="total-row">
                             <td colspan="5" class="num">TOTAL USD</td>
@@ -799,18 +901,21 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                             <td></td>
                             <td class="num"><?php echo h(fmt_amount($r["BAL_AMOUNT"])); ?></td>
                         </tr>
+
                     <?php } elseif ($r["ROW_TYPE"] == "GRAND_TOTAL") { ?>
-    <tr class="grand-row">
-        <td colspan="5" class="num">GRAND TOTAL USD</td>
-        <td class="num"><?php echo h(fmt_amount($r["SCH_AMOUNT"])); ?></td>
-        <td></td>
-        <td class="num"><?php echo h(fmt_amount($r["DEL_AMOUNT"])); ?></td>
-        <td></td>
-        <td class="num"><?php echo h(fmt_amount($r["BAL_AMOUNT"])); ?></td>
-    </tr>
-					<?php } elseif ($r["ROW_TYPE"] == "EMPTY") { ?>
+                        <tr class="grand-row">
+                            <td colspan="5" class="num">GRAND TOTAL USD</td>
+                            <td class="num"><?php echo h(fmt_amount($r["SCH_AMOUNT"])); ?></td>
+                            <td></td>
+                            <td class="num"><?php echo h(fmt_amount($r["DEL_AMOUNT"])); ?></td>
+                            <td></td>
+                            <td class="num"><?php echo h(fmt_amount($r["BAL_AMOUNT"])); ?></td>
+                        </tr>
+
+                    <?php } elseif ($r["ROW_TYPE"] == "EMPTY") { ?>
                         <tr>
-                            <td colspan="10" class="center">
+                            <td colspan="10" class="center" style="padding:40px 0; font-size:14px;">
+                                <i class="bi bi-exclamation-triangle me-2"></i>
                                 <?php echo h($r["MESSAGE"]); ?>
                             </td>
                         </tr>
@@ -820,6 +925,9 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
         </table>
     </div>
 <?php } ?>
+
+<!-- Bootstrap 5 JS Bundle -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
 var custRows = [];
@@ -844,8 +952,7 @@ function closeReport() {
             window.location.href = "dashboard_home.php";
             return;
         }
-    } catch (e) {
-    }
+    } catch (e) {}
 
     window.open("", "_self");
     window.close();
@@ -862,19 +969,17 @@ function exportExcel() {
     var endDate = document.getElementById("END_DATE").value;
     var custCode = document.getElementById("CUST_CODE").value;
 
-    if (startDate == "") {
+    if (startDate === "") {
         alert("Start Date belum diisi.");
         document.getElementById("START_DATE").focus();
         return;
     }
-
-    if (endDate == "") {
+    if (endDate === "") {
         alert("End Date belum diisi.");
         document.getElementById("END_DATE").focus();
         return;
     }
-
-    if (custCode == "") {
+    if (custCode === "") {
         alert("Customer belum diisi. Isi kode customer atau % untuk semua.");
         document.getElementById("CUST_CODE").focus();
         return;
@@ -904,46 +1009,33 @@ function setActiveCust(index) {
     var box = document.getElementById("custSuggest");
     var items = box.getElementsByClassName("autocomplete-item");
 
-    if (!items || items.length == 0) {
+    if (!items || items.length === 0) {
         custIndex = -1;
         return;
     }
-
-    if (index < 0) {
-        index = items.length - 1;
-    }
-
-    if (index >= items.length) {
-        index = 0;
-    }
+    if (index < 0) index = items.length - 1;
+    if (index >= items.length) index = 0;
 
     for (var i = 0; i < items.length; i++) {
         items[i].className = "autocomplete-item";
     }
-
     items[index].className = "autocomplete-item active";
     custIndex = index;
 }
 
 function chooseCust(index) {
-    if (index < 0 || index >= custRows.length) {
-        return;
-    }
-
-    var r = custRows[index];
-
-    document.getElementById("CUST_CODE").value = r.CUST_CODE;
+    if (index < 0 || index >= custRows.length) return;
+    document.getElementById("CUST_CODE").value = custRows[index].CUST_CODE;
     hideSuggest();
 }
 
 function renderSuggest(rows) {
     var box = document.getElementById("custSuggest");
     box.innerHTML = "";
-
     custRows = rows || [];
     custIndex = -1;
 
-    if (!rows || rows.length == 0) {
+    if (!rows || rows.length === 0) {
         box.style.display = "none";
         return;
     }
@@ -953,21 +1045,14 @@ function renderSuggest(rows) {
             var div = document.createElement("div");
             div.className = "autocomplete-item";
             div.innerHTML =
-                "<b>" + htmlEncode(r.CUST_CODE) + "</b> - " +
+                "<b>" + htmlEncode(r.CUST_CODE) + "</b> &mdash; " +
                 htmlEncode(r.CUST_COMP);
 
-            div.onmouseover = function () {
-                setActiveCust(idx);
-            };
-
+            div.onmouseover = function () { setActiveCust(idx); };
             div.onmousedown = function (e) {
-                if (e && e.preventDefault) {
-                    e.preventDefault();
-                }
-
+                if (e && e.preventDefault) e.preventDefault();
                 chooseCust(idx);
             };
-
             box.appendChild(div);
         })(rows[i], i);
     }
@@ -977,7 +1062,7 @@ function renderSuggest(rows) {
 }
 
 function searchCustomer(q) {
-    if (q == "" || q == "%") {
+    if (q === "" || q === "%") {
         hideSuggest();
         return;
     }
@@ -987,20 +1072,14 @@ function searchCustomer(q) {
     xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
 
     xhr.onreadystatechange = function () {
-        if (xhr.readyState == 4 && xhr.status == 200) {
+        if (xhr.readyState === 4 && xhr.status === 200) {
             var result;
-
             try {
                 result = JSON.parse(xhr.responseText);
             } catch (e) {
                 return;
             }
-
-            if (result.rows) {
-                renderSuggest(result.rows);
-            } else {
-                renderSuggest(result);
-            }
+            renderSuggest(result.rows || result);
         }
     };
 
@@ -1009,45 +1088,26 @@ function searchCustomer(q) {
 
 document.getElementById("CUST_CODE").onkeyup = function (e) {
     e = e || window.event;
-
     var key = e.keyCode || e.which;
 
-    if (key == 40) {
-        setActiveCust(custIndex + 1);
-        return;
-    }
-
-    if (key == 38) {
-        setActiveCust(custIndex - 1);
-        return;
-    }
-
-    if (key == 13) {
+    if (key === 40) { setActiveCust(custIndex + 1); return; }
+    if (key === 38) { setActiveCust(custIndex - 1); return; }
+    if (key === 13) {
         if (custRows.length > 0) {
-            if (custIndex < 0) {
-                custIndex = 0;
-            }
-
+            if (custIndex < 0) custIndex = 0;
             chooseCust(custIndex);
             return false;
         }
-
         return true;
     }
 
     clearTimeout(timer);
-
     var q = this.value;
-
-    timer = setTimeout(function () {
-        searchCustomer(q);
-    }, 250);
+    timer = setTimeout(function () { searchCustomer(q); }, 250);
 };
 
 document.getElementById("CUST_CODE").onblur = function () {
-    setTimeout(function () {
-        hideSuggest();
-    }, 250);
+    setTimeout(function () { hideSuggest(); }, 250);
 };
 </script>
 

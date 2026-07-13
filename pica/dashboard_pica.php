@@ -54,7 +54,7 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
                 <small class="text-white-50">User: <strong class="text-white"><?php echo $_SESSION['db_user']; ?></strong></small>
             </div>
             <a href="../index.php" class="btn btn-outline-secondary w-100 btn-sm mb-2"><i class="bi bi-arrow-left"></i> Menu ERP</a>
-            <a href="../logout.php" class="btn btn-danger w-100 btn-sm"><i class="bi bi-box-arrow-right"></i> LOGOUT</a>
+            <a href="../pica/logout.php" class="btn btn-danger w-100 btn-sm"><i class="bi bi-box-arrow-right"></i> LOGOUT</a>
         </div>
     </div>
 
@@ -69,6 +69,10 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
                 break;
             case 'cetak_pica': 
                 include "page_cetak_pica.php"; 
+                break;
+            // PASTIKAN BARIS INI ADA:
+            case 'edit_pica': 
+                include "page_edit_pica.php"; 
                 break;
             case 'home': default:
                 ?>

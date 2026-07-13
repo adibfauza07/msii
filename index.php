@@ -205,13 +205,10 @@
 
       <div class="col">
         <a href="mold/login.php" class="card-division">
-          <div class="icon-box bg-marketing"><i class="bi bi-mold"></i></div>
+          <div class="icon-box bg-marketing"><i class="bi bi-wrench"></i></div>
           <span class="division-name">Moldshop</span>
         </a>
       </div>
-
-
-
 
       <div class="col">
     <a href="ordering_p2/login.php" class="card-division">
@@ -235,14 +232,14 @@
       </div>
 
       <div class="col">
-        <a href="purch/login.php" class="card-division">
+        <a href="purch2/login.php" class="card-division">
           <div class="icon-box bg-purchasing"><i class="bi bi-bag-check"></i></div>
           <span class="division-name">Purchasing</span>
         </a>
       </div>
 
       <div class="col">
-        <a href="production/dashboard_production.php" class="card-division">
+        <a href="prod2/login.php" class="card-division">
           <div class="icon-box bg-production"><i class="bi bi-cpu"></i></div>
           <span class="division-name">Production</span>
         </a>

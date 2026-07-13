@@ -109,9 +109,14 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
                 <i class="bi bi-file-earmark-text-fill text-warning"></i> Usulan Perubahan Plant 2
             </a>
         <?php endif; ?>
+
         
         <div class="menu-label">Laporan</div>
         <a href="#" class="nav-link"><i class="bi bi-file-earmark-bar-graph"></i> Summary Report</a>
+        <!-- Tambahkan menu NG Production di sini -->
+        <a href="?page=ng_prod" class="nav-link <?php echo ($page=='ng_prod')?'active':''; ?>">
+            <i class="bi bi-display text-info"></i> NG Production
+        </a>
     </div>
     <div class="p-3 border-top border-secondary bg-dark">
         <div class="d-flex align-items-center">
@@ -127,13 +132,16 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
     </div>
 </div>
 
-<div id="content">
+<div id="content" class="<?php echo ($page == 'home') ? 'night-mode' : ''; ?>" style="<?php echo ($page == 'home') ? 'min-height: 100vh;' : ''; ?>">
     <?php
     if (isset($db_error)) {
         echo "<div class='alert alert-danger'>$db_error</div>";
     }
 
     // 1. DASHBOARD HOME
+// 1. DASHBOARD HOME
+
+
     if ($page == 'home') {
         echo "<h3>Dashboard Overview ($plant_name)</h3><hr>";
         echo "<div class='row'>";
@@ -173,6 +181,8 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
             echo "<div class='alert alert-danger'>File <b>input_usulan.php</b> tidak ditemukan!</div>";
         }
     }
+// ... (kode sebelumnya) ...
+
     // 5. FORM EDIT USULAN (GEMBOK SUDAH DIBUKA)
     elseif ($page == 'edit_usulan') {
         if (file_exists('edit_usulan.php')) { 
@@ -181,10 +191,23 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
             echo "<div class='alert alert-danger'>File <b>edit_usulan.php</b> tidak ditemukan!</div>";
         }
     }
+    
+    // --- TAMBAHAN BARU: HALAMAN NG PRODUCTION ---
+    elseif ($page == 'ng_prod') {
+        if (file_exists('ng_prod.php')) {
+            // Kita tambahkan class night-mode secara dinamis agar tampilannya tetap gelap/keren
+            echo "<script>document.getElementById('content').classList.add('night-mode');</script>";
+            include "ng_prod.php";
+        } else {
+            echo "<div class='alert alert-danger'>File <b>ng_prod.php</b> tidak ditemukan!</div>";
+        }
+    }
+
     // 6. JIKA HALAMAN TIDAK ADA
     else {
         echo "<div class='alert alert-info'>Halaman tidak ditemukan.</div>";
     }
+    
     ?>
 </div>
 

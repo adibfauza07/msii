@@ -3,43 +3,33 @@ session_start();
 if (!isset($_SESSION['db_user'])) { header("Location: ../login.php"); exit(); }
 
 require_once __DIR__ . '/../config/database_p1.php';
-// PANGGIL LIBRARY TCPDF DARI FOLDER ASSETS
 require_once __DIR__ . '/../assets/tcpdf_min/tcpdf.php';
 
 $id = isset($_GET['id']) ? $_GET['id'] : 0;
 
-// Ambil Data dari Database
 $sql = "SELECT h.*, CONVERT(varchar, h.PicaDate, 106) as Tanggal, 
-        w.MainProblem, w.DataSupport, w.Why1, w.Why2, w.Why3, w.Why4, w.Why5,
-        a.ObjectiveTarget, a.Activity, a.Dept, a.PIC, a.StatusRemark
+        w.MainProblem, w.DataSupport, w.Why1, w.Why2, w.Why3, w.Why4, w.Why5, w.DataSupportFile,
+        a.ObjectiveTarget, a.Activity, a.Dept, a.PIC, a.StatusRemark,
+        c.CUST_COMP
         FROM PICA_HEADER h
         LEFT JOIN PICA_5WHY w ON h.PicaID = w.PicaID
         LEFT JOIN PICA_ACTION a ON h.PicaID = a.PicaID
+        LEFT JOIN CUST c ON h.Customer = c.CUST_CODE
         WHERE h.PicaID = ?";
         
 $stmt = sqlsrv_query($conn, $sql, array($id));
-
-// PENDETEKSI ERROR SQL SERVER
-if ($stmt === false) { 
-    echo "<h3>Gagal mengambil data dari Database!</h3>";
-    echo "Detail Error SQL Server:<br>";
-    die(print_r(sqlsrv_errors(), true)); 
-}
-
+if ($stmt === false) { die("Database Error."); }
 $dt = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
 if (!$dt) { die("Data PICA tidak ditemukan."); }
 
-// ==========================================================
-// PENYESUAIAN PHP 5.6 (Mencegah error unexpected '?')
-// ==========================================================
 $noTr = isset($dt['NoTR']) ? htmlspecialchars($dt['NoTR']) : '';
 $tanggal = isset($dt['Tanggal']) ? htmlspecialchars($dt['Tanggal']) : '';
 $problemTitle = isset($dt['ProblemTitle']) ? htmlspecialchars($dt['ProblemTitle']) : '';
-$customer = isset($dt['Customer']) ? htmlspecialchars($dt['Customer']) : '';
+$customer = !empty($dt['CUST_COMP']) ? htmlspecialchars($dt['CUST_COMP']) : (isset($dt['Customer']) ? htmlspecialchars($dt['Customer']) : '');
 $supplier = isset($dt['Supplier']) ? htmlspecialchars($dt['Supplier']) : '';
 
 $mainProblem = isset($dt['MainProblem']) ? nl2br(htmlspecialchars($dt['MainProblem'])) : '';
-$dataSupport = isset($dt['DataSupport']) ? nl2br(htmlspecialchars($dt['DataSupport'])) : '';
+$dataSupportText = isset($dt['DataSupport']) ? nl2br(htmlspecialchars($dt['DataSupport'])) : '';
 $why1 = isset($dt['Why1']) ? htmlspecialchars($dt['Why1']) : '';
 $why2 = isset($dt['Why2']) ? htmlspecialchars($dt['Why2']) : '';
 $why3 = isset($dt['Why3']) ? htmlspecialchars($dt['Why3']) : '';
@@ -51,10 +41,29 @@ $activity = isset($dt['Activity']) ? nl2br(htmlspecialchars($dt['Activity'])) : 
 $dept = isset($dt['Dept']) ? htmlspecialchars($dt['Dept']) : '';
 $pic = isset($dt['PIC']) ? htmlspecialchars($dt['PIC']) : '';
 $statusRemark = isset($dt['StatusRemark']) ? strtoupper(htmlspecialchars($dt['StatusRemark'])) : '';
+$logo_path = __DIR__ . '/../logo_imc.jpg';
 
-// ==========================================================
-// KONFIGURASI TCPDF
-// ==========================================================
+// --- LOGIKA PENGOLAHAN FILE DATA SUPPORT ---
+$dataFile = isset($dt['DataSupportFile']) ? $dt['DataSupportFile'] : '';
+$dataSupportHtml = $dataSupportText;
+$hasDocumentAttachment = false; // Penanda apakah butuh halaman baru untuk lampiran
+
+if (!empty($dataFile)) {
+    $filePath = __DIR__ . '/../uploads/' . $dataFile;
+    $ext = strtolower(pathinfo($dataFile, PATHINFO_EXTENSION));
+    
+    // Jika berupa gambar, langsung masukkan ke dalam HTML Data Support
+    if (in_array($ext, array('jpg', 'jpeg', 'png', 'gif'))) {
+        // TCPDF akan merender tag <img> ini di dalam kolom
+        $dataSupportHtml .= '<br><br><img src="'.$filePath.'" style="width: 140px;" />';
+    } else {
+        // Jika berupa PDF/Office, berikan keterangan dan nyalakan penanda halaman baru
+        $hasDocumentAttachment = true;
+        $dataSupportHtml .= '<br><br><b><i>(* Lihat Dokumen Lampiran)</i></b>';
+    }
+}
+// --------------------------------------------
+
 $pdf = new TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
 $pdf->setPrintHeader(false);
 $pdf->setPrintFooter(false);
@@ -63,9 +72,6 @@ $pdf->SetAutoPageBreak(TRUE, 10);
 $pdf->AddPage();
 $pdf->SetFont('helvetica', '', 8);
 
-// ==========================================================
-// KONTEN HTML UNTUK DI-GENERATE JADI PDF
-// ==========================================================
 $html = '
 <style>
     th, td { vertical-align: middle; }
@@ -87,7 +93,7 @@ $html = '
         <td width="40%" class="text-center" style="vertical-align: middle;">
             <br>
             <span style="font-size: 26px; font-weight: bold; font-style: italic;">
-                <span style="color: #008000;">M</span> <span style="color: #333;">P I - C A</span>
+                <img src="'.$logo_path.'" height="28" /> <span style="color: #333;">P I - C A</span>
             </span>
             <br><br>
             <span style="font-size: 11px; font-weight: bold;">SUPPLIER : '.$supplier.'</span>
@@ -130,7 +136,8 @@ $html = '
                 </tr>
                 <tr>
                     <td height="120">'.$mainProblem.'</td>
-                    <td>'.$dataSupport.'</td>
+                    <!-- Menampilkan Data Support Teks + Gambar (jika ada) -->
+                    <td>'.$dataSupportHtml.'</td>
                     <td>'.$why1.'</td>
                     <td>'.$why2.'</td>
                     <td>'.$why3.'</td>
@@ -166,10 +173,8 @@ $html = '
                 <tr>
                     <td height="80">'.$objectiveTarget.'</td>
                     <td>'.$activity.'</td>
-                    
                     <td class="text-center" style="line-height: 80px;">'.$dept.'</td>
                     <td class="text-center" style="line-height: 80px;">'.$pic.'</td>
-                    
                     <td></td><td></td><td></td><td></td>
                     <td class="text-center text-bold" style="line-height: 80px;">'.$statusRemark.'</td>
                 </tr>
@@ -212,6 +217,25 @@ $html = '
 ';
 
 $pdf->writeHTML($html, true, false, true, false, '');
+
+// --- MEMBUAT HALAMAN BARU UNTUK LAMPIRAN DOKUMEN ---
+if ($hasDocumentAttachment) {
+    $pdf->AddPage();
+    $pdf->SetFont('helvetica', 'B', 14);
+    $pdf->Cell(0, 10, 'LAMPIRAN DOKUMEN PICA', 0, 1, 'C');
+    $pdf->SetFont('helvetica', '', 11);
+    $pdf->Ln(10); // Spasi
+    
+    $pdf->Cell(0, 10, 'Dokumen pendukung untuk TR: ' . $noTr . ' telah dilampirkan.', 0, 1, 'L');
+    $pdf->Cell(0, 10, 'Nama File Lampiran: ' . $dataFile, 0, 1, 'L');
+    $pdf->Ln(5);
+    
+    // Memberikan instruksi bahwa file tersimpan di server
+    $pdf->SetFont('helvetica', 'I', 10);
+    $pdf->MultiCell(0, 10, 'Catatan: Karena file berformat dokumen (PDF/Office), file tidak dapat ditampilkan langsung di dalam halaman laporan ini. Anda dapat menemukan file tersebut di sistem pada folder /uploads/.', 0, 'L');
+}
+// ---------------------------------------------------
+
 ob_end_clean();
 $pdf->Output('PICA_Report_'.$id.'.pdf', 'I');
 ?>

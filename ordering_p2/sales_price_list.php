@@ -59,6 +59,81 @@ function fmt_price($value) {
     return number_format((float)$value, 4, ".", "");
 }
 
+/*
+ * Pagination berbasis tinggi relatif row, bukan sekadar jumlah row.
+ * Ini lebih stabil setelah font diperbesar ke Segoe UI dan mencegah
+ * satu blok report meluber ke halaman print berikutnya.
+ */
+function print_row_units($row, $nextRow = null) {
+    $type = isset($row["ROW_TYPE"]) ? $row["ROW_TYPE"] : "";
+
+    if ($type === "CUSTOMER") return 1.35;
+    if ($type === "ITEM") return 1.05;
+    if ($type === "PRICE") {
+        $units = 1.00;
+        if ($nextRow === null || in_array($nextRow["ROW_TYPE"], array("ITEM", "CUSTOMER"), true)) {
+            $units += 0.20; // ruang separator antar item
+        }
+        return $units;
+    }
+
+    return 1.00;
+}
+
+function paginate_print_rows($rows, $maxUnits = 30.5) {
+    $pages = array();
+    $page = array();
+    $usedUnits = 0.0;
+
+    $currentCustomer = null;
+    $currentItem = null;
+    $count = count($rows);
+
+    for ($i = 0; $i < $count; $i++) {
+        $row = $rows[$i];
+        $nextRow = ($i + 1 < $count) ? $rows[$i + 1] : null;
+        $units = print_row_units($row, $nextRow);
+
+        if (count($page) > 0 && ($usedUnits + $units) > $maxUnits) {
+            $pages[] = $page;
+            $page = array();
+            $usedUnits = 0.0;
+
+            // Ulangi context customer/item pada halaman lanjutan supaya mudah dibaca.
+            if ($row["ROW_TYPE"] !== "CUSTOMER" && $currentCustomer !== null) {
+                $repeatCustomer = $currentCustomer;
+                $repeatCustomer["CONTINUED"] = 1;
+                $page[] = $repeatCustomer;
+                $usedUnits += 1.35;
+            }
+
+            if ($row["ROW_TYPE"] === "PRICE" && $currentItem !== null) {
+                $repeatItem = $currentItem;
+                $repeatItem["CONTINUED"] = 1;
+                $page[] = $repeatItem;
+                $usedUnits += 1.05;
+            }
+        }
+
+        $page[] = $row;
+        $usedUnits += $units;
+
+        if ($row["ROW_TYPE"] === "CUSTOMER") {
+            $currentCustomer = $row;
+            $currentItem = null;
+        } elseif ($row["ROW_TYPE"] === "ITEM") {
+            $currentItem = $row;
+        }
+    }
+
+    if (count($page) > 0) {
+        $pages[] = $page;
+    }
+
+    return $pages;
+}
+
+
 $is_filter = isset($_GET["CUST_CODE"]) || isset($_POST["CUST_CODE"]);
 
 $cust_code = get_param("CUST_CODE", "");
@@ -71,7 +146,7 @@ $dataRows = array();
 $printRows = array();
 $pages = array();
 $totalPages = 0;
-$rowsPerPage = 38;
+$pageCapacity = 30.5;
 
 if ($is_filter) {
 
@@ -177,12 +252,25 @@ if ($is_filter) {
         );
     }
 
-    $pages = array_chunk($printRows, $rowsPerPage);
+    $pages = paginate_print_rows($printRows, $pageCapacity);
     $totalPages = count($pages);
 
     if ($totalPages <= 0) {
         $totalPages = 1;
     }
+}
+
+
+/* ============================================================
+   Bersihkan resource database
+   Export Excel dipisahkan ke: sales_price_history_export_excel.php
+   ============================================================ */
+if ($is_filter && isset($stmt) && $stmt !== false) {
+    sqlsrv_free_stmt($stmt);
+}
+
+if (isset($conn) && $conn !== false) {
+    sqlsrv_close($conn);
 }
 
 $selfFile = basename($_SERVER["PHP_SELF"]);
@@ -193,45 +281,32 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
     <meta charset="utf-8">
     <title>Sales Price History</title>
 
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
     <style>
         @page {
             size: A4 portrait;
-            margin: 6mm;
+            margin: 0;
         }
+
+        :root {
+            --grid: #d9dee5;
+            --head: #f8f9fa;
+            --customer: #e9ecef;
+            --text: #212529;
+            --muted: #6c757d;
+        }
+
+        * { box-sizing: border-box; }
+
+        html, body { margin: 0; padding: 0; }
 
         body {
-            margin: 0;
             background: #9a9a9a;
-            font-family: "Courier New", monospace;
-            font-size: 10px;
-            color: #000000;
-        }
-
-        .filter-bar {
-            width: 200mm;
-            margin: 8px auto;
-            background: #d4d0c8;
-            border: 1px solid #666666;
-            padding: 6px;
-            box-sizing: border-box;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             font-size: 12px;
-        }
-
-        .filter-bar input {
-            height: 22px;
-            border: 1px solid #777777;
-            font-size: 12px;
-            padding: 2px 4px;
-            width: 130px;
-            box-sizing: border-box;
-        }
-
-        .filter-bar button {
-            height: 26px;
-            font-size: 12px;
-            cursor: pointer;
-            margin-left: 4px;
+            color: var(--text);
         }
 
         .autocomplete-wrap {
@@ -241,275 +316,359 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
 
         .autocomplete-list {
             position: absolute;
-            top: 24px;
+            top: 36px;
             left: 0;
-            width: 420px;
+            width: 100%;
+            min-width: 340px;
             max-height: 230px;
             overflow-y: auto;
             background: #ffffff;
-            border: 1px solid #444444;
+            border: 1px solid #ced4da;
             z-index: 9999;
             display: none;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.25);
+            border-radius: 0 0 6px 6px;
+            box-shadow: 0 6px 16px rgba(0,0,0,0.15);
         }
 
         .autocomplete-item {
-            padding: 5px 7px;
-            border-bottom: 1px solid #dddddd;
+            padding: 7px 9px;
+            border-bottom: 1px solid #eef1f4;
             cursor: pointer;
-            line-height: 16px;
-            font-family: Tahoma, Arial, sans-serif;
+            line-height: 17px;
+            font-family: "Segoe UI", Arial, sans-serif;
             font-size: 12px;
         }
 
         .autocomplete-item:hover,
         .autocomplete-item.active {
-            background: #2f70c9;
+            background: #0d6efd;
             color: #ffffff;
         }
 
-        .print-bar {
-            width: 200mm;
+        /* Toolbar Bootstrap */
+        .report-toolbar {
+            width: min(1100px, calc(100% - 24px));
             margin: 8px auto;
-            text-align: right;
+            font-family: "Segoe UI", Arial, sans-serif;
         }
 
-        .print-bar button {
-            padding: 6px 14px;
-            font-size: 11px;
-            cursor: pointer;
-            font-family: Arial, sans-serif;
+        .report-toolbar .card {
+            border: 0;
+            border-radius: 10px;
         }
 
+        .report-toolbar .form-control {
+            min-width: 210px;
+            height: 34px;
+            font-size: 12px;
+        }
+
+        .report-toolbar .btn {
+            height: 34px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .report-toolbar .autocomplete-wrap {
+            width: min(360px, 100%);
+        }
+
+        .report-pages {
+            width: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Satu .page = tepat satu lembar A4 */
         .page {
-            width: 200mm;
-            min-height: 285mm;
+            width: 210mm;
+            height: 297mm;
+            min-height: 297mm;
             margin: 10px auto;
             background: #ffffff;
-            border: 2px solid #000000;
-            padding: 7mm;
+            padding: 9mm 10mm;
             box-sizing: border-box;
-            page-break-after: always;
             overflow: hidden;
+            break-after: page;
+            page-break-after: always;
+            box-shadow: 0 2px 10px rgba(0,0,0,.22);
         }
 
         .page:last-child {
+            break-after: auto;
             page-break-after: auto;
         }
 
         .header {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
+            font-family: "Segoe UI", Roboto, Arial, sans-serif;
         }
 
         .header td {
             border: none;
+            padding: 0;
             vertical-align: top;
         }
 
         .company {
             width: 32%;
-            font-family: Arial, sans-serif;
             font-size: 11px;
-            line-height: 13px;
+            line-height: 1.25;
         }
 
         .company-title {
             font-size: 15px;
-            font-weight: normal;
+            font-weight: 500;
         }
 
         .title-area {
             width: 38%;
             text-align: center;
-            font-family: Arial, sans-serif;
         }
 
         .report-title {
-            font-size: 18px;
-            font-weight: bold;
-            margin-top: 4px;
+            font-size: 19px;
+            font-weight: 700;
+            margin-top: 2px;
+            letter-spacing: .1px;
         }
 
         .filter-title {
             font-size: 11px;
-            margin-top: 8px;
-            font-weight: normal;
+            margin-top: 7px;
+            font-weight: 400;
         }
 
         .right-info {
             width: 30%;
             text-align: right;
-            font-family: Arial, sans-serif;
-            font-size: 11px;
-            line-height: 17px;
+            font-size: 10.5px;
+            line-height: 1.45;
         }
 
-        .print-date {
-            margin-top: 18px;
-        }
+        .print-date { margin-top: 14px; }
 
+        /* Tampilan tabel disamakan dengan report referensi: Segoe UI + grid tipis */
         .price-table {
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
+            font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 11px;
+            color: #212529;
+            border: 1px solid var(--grid);
         }
 
         .price-table th {
-            border-top: 1px solid #000000;
-            border-bottom: 1px solid #000000;
-            border-left: none;
-            border-right: none;
-            padding: 4px 2px;
-            height: 22px;
-            font-weight: normal;
+            background: var(--head);
+            border: 1px solid var(--grid);
+            padding: 6px 7px;
+            height: 29px;
+            font-weight: 600;
             text-align: left;
-            box-sizing: border-box;
-            font-size: 10px;
+            font-size: 10.5px;
+            line-height: 1.2;
             overflow: hidden;
             white-space: nowrap;
         }
 
         .price-table td {
-            padding: 2px 2px;
-            height: 17px;
-            line-height: 13px;
-            box-sizing: border-box;
-            vertical-align: top;
+            border: 1px solid var(--grid);
+            padding: 4px 7px;
+            height: 24px;
+            line-height: 15px;
+            vertical-align: middle;
             white-space: nowrap;
             overflow: hidden;
-            font-size: 10px;
+            text-overflow: ellipsis;
+            font-size: 11px;
         }
 
-        /*
-            PERBAIKAN KEPOTONG:
-            Sebelumnya PART 62% dan Quot 7%.
-            Sekarang kolom kanan digeser ke kiri dan Quot dibuat lebih lebar.
-            Total = 100%.
-        */
-        .col-part {
-            width: 48%;
-        }
-
-        .col-price {
-            width: 11%;
-            text-align: right;
-        }
-
-        .col-start {
-            width: 13%;
-        }
-
-        .col-end {
-            width: 13%;
-        }
-
-        .col-quot {
-            width: 15%;
-        }
+        .col-part { width: 48%; }
+        .col-price { width: 11%; text-align: right; }
+        .col-start { width: 13%; }
+        .col-end { width: 13%; }
+        .col-quot { width: 15%; }
 
         .customer-row td {
-            height: 22px;
-            font-weight: bold;
-            font-size: 11px;
-            padding-top: 6px;
-            letter-spacing: 1px;
+            height: 27px;
+            background: var(--customer);
+            font-weight: 700;
+            font-size: 11.5px;
+            padding-top: 5px;
+            padding-bottom: 5px;
+            letter-spacing: 0;
         }
 
         .part-label {
-            letter-spacing: 8px;
-            font-weight: normal;
+            letter-spacing: 0;
+            font-weight: 600;
         }
 
         .item-row td {
+            height: 24px;
             padding-top: 4px;
-            height: 19px;
+            padding-bottom: 4px;
+            font-weight: 500;
         }
 
-        .price-row td {
-            height: 17px;
-        }
-
-        .price-row .col-price {
-            text-align: right;
-        }
-
+        .price-row td { height: 23px; }
+        .price-row .col-price { text-align: right; font-variant-numeric: tabular-nums; }
         .price-row .col-start,
         .price-row .col-end,
-        .price-row .col-quot {
-            text-align: left;
-        }
+        .price-row .col-quot { text-align: left; }
 
         .dash-row td {
-            border-bottom: 1px dashed #000000;
-            height: 6px;
+            border-left: 1px solid var(--grid);
+            border-right: 1px solid var(--grid);
+            border-top: none;
+            border-bottom: 1px dashed #adb5bd;
+            height: 3px;
+            min-height: 3px;
             padding: 0;
+            line-height: 0;
         }
 
-        .empty-row td {
-            height: 18px;
+        .num { text-align: right; }
+        .center { text-align: center; }
+
+        .continued-note {
+            margin-left: 6px;
+            color: var(--muted);
+            font-size: 9px;
+            font-weight: 500;
+            font-style: italic;
         }
 
-        .num {
-            text-align: right;
-        }
 
-        .center {
-            text-align: center;
+        @media screen and (max-width: 900px) {
+            .page {
+                transform-origin: top center;
+            }
         }
 
         @media print {
-            html,
-            body {
+            html, body {
                 width: 210mm;
-                height: 297mm;
-                background: #ffffff;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
             }
 
-            .filter-bar,
-            .print-bar {
-                display: none;
+            .report-toolbar {
+                display: none !important;
+            }
+
+            .report-pages {
+                width: 210mm;
+                margin: 0 !important;
+                padding: 0 !important;
             }
 
             .page {
-                width: 200mm;
-                min-height: 285mm;
-                margin: 0 auto;
-                border: none;
-                padding: 5mm;
+                width: 210mm;
+                height: 297mm;
+                min-height: 297mm;
+                margin: 0 !important;
+                padding: 9mm 10mm;
+                border: none !important;
+                box-shadow: none !important;
                 overflow: hidden;
+                break-inside: avoid;
+                page-break-inside: avoid;
+                break-after: page;
+                page-break-after: always;
             }
 
-            .price-table th,
-            .price-table td {
-                font-size: 10px;
-                padding-left: 2px;
-                padding-right: 2px;
+            .page:last-child {
+                break-after: auto;
+                page-break-after: auto;
             }
+
+            .price-table {
+                font-size: 8.25pt;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
+            .price-table th {
+                font-size: 8pt;
+                padding: 4px 6px;
+                height: 7mm;
+            }
+
+            .price-table td {
+                font-size: 8.25pt;
+                padding: 3px 6px;
+                height: 5.8mm;
+                line-height: 1.15;
+            }
+
+            .customer-row td {
+                font-size: 8.5pt;
+                height: 6.5mm;
+            }
+
+            .item-row td { height: 5.8mm; }
+            .price-row td { height: 5.6mm; }
+            .dash-row td { height: 1mm; }
         }
     </style>
 </head>
 
 <body>
 
-<div class="filter-bar">
-    <form method="get" action="<?php echo h($selfFile); ?>" autocomplete="off">
-        Customer:
-        <div class="autocomplete-wrap">
-            <input type="text" id="CUST_CODE" name="CUST_CODE" value="<?php echo h($cust_code); ?>" placeholder="Ketik customer / % untuk semua">
-            <div id="custSuggest" class="autocomplete-list"></div>
+<div class="report-toolbar d-print-none">
+    <div class="card shadow-sm">
+        <div class="card-body py-2 px-3">
+            <form id="filterForm" method="get" action="<?php echo h($selfFile); ?>" autocomplete="off" class="row g-2 align-items-center">
+                <div class="col-12 col-lg-auto">
+                    <label for="CUST_CODE" class="form-label mb-0 small fw-semibold text-secondary">Customer</label>
+                </div>
+
+                <div class="col-12 col-md-auto flex-grow-1">
+                    <div class="autocomplete-wrap">
+                        <input
+                            type="text"
+                            id="CUST_CODE"
+                            name="CUST_CODE"
+                            class="form-control form-control-sm"
+                            value="<?php echo h($cust_code); ?>"
+                            placeholder="Ketik customer / % untuk semua"
+                        >
+                        <div id="custSuggest" class="autocomplete-list"></div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-md-auto d-flex flex-wrap gap-2">
+                    <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-filter"></i> FILTER
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setAllCustomer()">
+                        <i class="fas fa-users"></i> ALL
+                    </button>
+                    <button type="button" class="btn btn-outline-dark btn-sm" onclick="printReport()">
+                        <i class="fas fa-print"></i> PRINT
+                    </button>
+                    <button type="button" class="btn btn-success btn-sm" onclick="exportExcel()">
+                        <i class="fas fa-file-excel"></i> EXPORT EXCEL
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="closeReport()">
+                        <i class="fas fa-times"></i> CLOSE
+                    </button>
+                </div>
+            </form>
         </div>
-
-        <button type="submit">FILTER</button>
-        <button type="button" onclick="setAllCustomer()">ALL</button>
-    </form>
+    </div>
 </div>
 
-<div class="print-bar">
-    <button type="button" onclick="window.print()">PRINT</button>
-    <button type="button" onclick="window.close()">CLOSE</button>
-</div>
+<div id="reportPages" class="report-pages">
 
 <?php if (!$is_filter) { ?>
     <div class="page">
@@ -597,6 +756,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                             <td colspan="5">
                                 [<?php echo h($r["CUST_CODE"]); ?>]
                                 [<?php echo h($r["CUST_COMP"]); ?>]
+                                <?php if (!empty($r["CONTINUED"])) { ?><span class="continued-note">(lanjutan)</span><?php } ?>
                             </td>
                         </tr>
                     <?php } elseif ($r["ROW_TYPE"] == "ITEM") { ?>
@@ -605,6 +765,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                                 [<?php echo h($r["ITEM_CODE"]); ?>]
                                 [<?php echo h($r["ITEM_NO"]); ?>]
                                 [<?php echo h($r["ITEM_NAME"]); ?>]
+                                <?php if (!empty($r["CONTINUED"])) { ?><span class="continued-note">(lanjutan)</span><?php } ?>
                             </td>
                             <td class="col-price"></td>
                             <td class="col-start"></td>
@@ -649,28 +810,13 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                     <?php } ?>
                 <?php } ?>
 
-                <?php
-                    $fillCount = $rowsPerPage - count($pageRows);
-
-                    if ($fillCount < 0) {
-                        $fillCount = 0;
-                    }
-                ?>
-
-                <?php for ($e = 0; $e < $fillCount; $e++) { ?>
-                    <tr class="empty-row">
-                        <td>&nbsp;</td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                    </tr>
-                <?php } ?>
             </tbody>
         </table>
 
     </div>
 <?php } ?>
+
+</div><!-- /#reportPages -->
 
 <script>
 var custRows = [];
@@ -689,9 +835,40 @@ function htmlEncode(value) {
         .replace(/"/g, "&quot;");
 }
 
+function printReport() {
+    window.print();
+}
+
+function closeReport() {
+    try {
+        window.close();
+    } catch (e) {}
+
+    setTimeout(function () {
+        if (!window.closed) {
+            history.back();
+        }
+    }, 150);
+}
+
+function exportExcel() {
+    var input = document.getElementById("CUST_CODE");
+    var customer = input ? String(input.value || "").trim() : "";
+
+    if (customer === "") {
+        customer = "%";
+    }
+
+    var exportUrl = "sales_price_history_export_excel.php?CUST_CODE=" +
+        encodeURIComponent(customer);
+
+    // Export dilakukan oleh file PHP terpisah; halaman report tidak berpindah.
+    window.location.href = exportUrl;
+}
+
 function setAllCustomer() {
     document.getElementById("CUST_CODE").value = "%";
-    document.forms[0].submit();
+    document.getElementById("filterForm").submit();
 }
 
 function hideSuggest() {
@@ -736,7 +913,7 @@ function chooseCust(index) {
 
     document.getElementById("CUST_CODE").value = r.CUST_CODE;
     hideSuggest();
-    document.forms[0].submit();
+    document.getElementById("filterForm").submit();
 }
 
 function renderSuggest(rows) {
@@ -835,7 +1012,7 @@ document.getElementById("CUST_CODE").onkeyup = function (e) {
             return;
         }
 
-        document.forms[0].submit();
+        document.getElementById("filterForm").submit();
         return;
     }
 
@@ -855,5 +1032,6 @@ document.getElementById("CUST_CODE").onblur = function () {
 };
 </script>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

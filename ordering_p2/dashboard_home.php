@@ -168,6 +168,16 @@ function h($value) {
         <div class="report-title">Report</div>
 
         <div class="report-grid">
+		
+		<div class="report-item">
+                <div class="report-name">GRAFIK SALES GABUNGAN P1 DAN P2 </div>
+                <a class="button" href="sales_grafik_gab.php" target="_blank">OPEN</a>
+            </div>
+			
+			<div class="report-item">
+                <div class="report-name">GRAFIK MATERIAL CONSUME VS SALES P1 DAN P2 </div>
+                <a class="button" href="hpp_sales.php" target="_blank">OPEN</a>
+            </div>
 
             <div class="report-item">
                 <div class="report-name">Customer List</div>
@@ -225,13 +235,18 @@ function h($value) {
             </div>
 
             <div class="report-item">
-                <div class="report-name">Delivery Balance</div>
-                <a class="button" href="delivery_balance_report.php" target="_blank">OPEN</a>
+                <div class="report-name">GRAFIK SHORTAGE</div>
+                <a class="button" href="delivery_shortage_report.php" target="_blank">OPEN</a>
             </div>
 
             <div class="report-item">
-                <div class="report-name">Delivery Balance Amount</div>
+                <div class="report-name">Delivery Balance Amount USD</div>
                <a class="button" href="delivery_balance_amount_report.php" target="_blank">OPEN</a>
+            </div>
+			
+			<div class="report-item">
+                <div class="report-name">Delivery Balance Amount IDR P1 DAN P2</div>
+               <a class="button" href="delivery_balance_amount_report_idr.php" target="_blank">OPEN</a>
             </div>
 
             <div class="report-item">
@@ -287,6 +302,26 @@ function h($value) {
 			<div class="report-item">
                 <div class="report-name">LOGICAL STOCK</div>
                 <a class="button" href="delivery_schedule_prod_report.php" target="_blank">OPEN</a>
+            </div>
+			
+			<div class="report-item">
+                <div class="report-name">TOTAL SHOOT DELIVERY</div>
+                <a class="button" href="shoot.php" target="_blank">OPEN</a>
+            </div>
+			
+			<div class="report-item">
+                <div class="report-name">TOTAL SHOOT PRODUCTION</div>
+                <a class="button" href="shoot_prod.php" target="_blank">OPEN</a>
+            </div>
+			
+			<div class="report-item">
+                <div class="report-name">SALES INTERNAL VS VENDOR</div>
+                <a class="button" href="sales.php" target="_blank">OPEN</a>
+            </div>
+			
+			<div class="report-item">
+                <div class="report-name">GRAFIK SALES INTERNAL VS VENDOR</div>
+                <a class="button" href="sales_grafik.php" target="_blank">OPEN</a>
             </div>
 
         </div>

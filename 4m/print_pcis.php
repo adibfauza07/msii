@@ -4,6 +4,7 @@ require_once __DIR__ . '/../config/database.php';
 
 // Ambil Nomor Control dari URL parameter
 $no = isset($_GET['no']) ? trim($_GET['no']) : '';
+$is_filtered = isset($_GET['filtered']) ? filter_var($_GET['filtered'], FILTER_VALIDATE_BOOLEAN) : false;
 
 if ($no == '') {
     die("<div style='padding:20px; color:red; font-family:Arial;'><b>Error:</b> Control Number tidak ditemukan pada URL parameter.</div>");
@@ -49,12 +50,15 @@ function renderBox($checked) {
         * { box-sizing: border-box; -moz-box-sizing: border-box; }
         body { font-family: "Arial", sans-serif; font-size: 9.5pt; color: #000; background-color: #fff; margin: 0; padding: 0; }
         
-        .no-print { background: #f1f5f9; padding: 10px; text-align: center; border-bottom: 1px solid #cbd5e1; }
+        /* BAR NAVIGASI ATAS */
+        .no-print { background: #f1f5f9; padding: 10px; text-align: center; border-bottom: 1px solid #cbd5e1; width: 100%; }
         .no-print button { padding: 6px 16px; font-weight: bold; font-size: 12px; cursor: pointer; border-radius: 4px; margin: 0 5px; }
         
+        /* Mengunci ukuran kertas portrait A4 mirip lembar kerja .rpt asli */
         .report-page { width: 210mm; margin: 0 auto; padding: 12mm 10mm; background: #fff; }
         .main-title { font-size: 13pt; font-weight: bold; text-align: center; letter-spacing: 0.5px; margin-bottom: 15px; }
         
+        /* Master Grid Tabel Lurus Tanpa Spasi */
         table { width: 100%; border-collapse: collapse; margin-bottom: -1px; table-layout: fixed; }
         th, td { border: 1px solid #000000; padding: 4px 6px; vertical-align: top; font-size: 8.5pt; }
         
@@ -66,14 +70,18 @@ function renderBox($checked) {
         .cb-icon { font-size: 11pt; font-weight: bold; vertical-align: middle; margin-right: 3px; }
         .content-block { min-height: 55px; font-size: 8.5pt; line-height: 1.2; white-space: pre-wrap; }
         
+        /* Utility Khusus Perbaikan Management Grid Border Sub-Tabel PIC */
+        .sub-table-pic td { border: none !important; padding: 3px 0; }
+        
+        /* UTILITY ABSOLUT UNTUK MENYEMBUNYIKAN TOMBOL SAAT PRINT OUT */
         @media print {
-            .no-print { display: none !important; }
-            .report-page { width: 100%; margin: 0; padding: 5mm; }
-            body { background: #fff; }
+            html, body { background: #fff; margin: 0; padding: 0; }
+            .no-print { display: none !important; visibility: hidden !important; height: 0 !important; padding: 0 !important; border: none !important; }
+            .report-page { width: 100%; margin: 0; padding: 5mm; border: none !important; }
         }
     </style>
 </head>
-<body>
+<body <?php echo $is_filtered ? 'onload="window.print()"' : ''; ?>>
 
     <div class="no-print">
         <button onclick="window.print()" style="background: #2563eb; color: white; border: 1px solid #1d4ed8;">Cetak / Print Report</button>
@@ -111,18 +119,21 @@ function renderBox($checked) {
                     <div><?php echo renderBox($d['SUPPLIER']); ?> Supplier</div>
                 </td>
                 <td style="border-top:none; padding: 6px 12px;">
-                    <table style="width:100%; border:none; margin:0;">
+                    <table class="sub-table-pic" style="width:100%; border:none; margin:0;">
                         <tr>
-                            <td width="20%" style="border:none; padding:3px 0;">Name</td>
-                            <td width="80%" style="border-bottom:1px solid #000; border-top:none; border-left:none; border-right:none; padding:3px 0;"><?php echo htmlspecialchars($d['PIC_NAME']); ?></td>
+                            <td width="15%">Name</td>
+                            <td width="5%">:</td>
+                            <td width="80%" style="border-bottom:1px solid #000 !important;"><?php echo htmlspecialchars($d['PIC_NAME']); ?></td>
                         </tr>
                         <tr>
-                            <td style="border-none; padding:3px 0;">Department</td>
-                            <td style="border-bottom:1px solid #000; border-top:none; border-left:none; border-right:none; padding:3px 0;"><?php echo htmlspecialchars($d['DEP_NAME'] ? $d['DEP_NAME'] : $d['DEP_CODE']); ?></td>
+                            <td>Department</td>
+                            <td>:</td>
+                            <td style="border-bottom:1px solid #000 !important;"><?php echo htmlspecialchars($d['DEP_NAME'] ? $d['DEP_NAME'] : $d['DEP_CODE']); ?></td>
                         </tr>
                         <tr>
-                            <td style="border-none; padding:3px 0;">Sign</td>
-                            <td style="border-bottom:1px solid #000; border-top:none; border-left:none; border-right:none; padding:3px 0;"></td>
+                            <td>Sign</td>
+                            <td>:</td>
+                            <td style="border-bottom:1px solid #000 !important;"></td>
                         </tr>
                     </table>
                 </td>
@@ -258,56 +269,40 @@ function renderBox($checked) {
             </tr>
         </table>
 
-        <table>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed;">
             <tr class="text-center lbl-bold" style="font-size: 8pt; background-color: #f1f5f9;">
                 <td width="35%">CUSTOMER JUDGEMENT</td>
-                <td width="30%">CUSTOMER APPROVAL</td>
-                <td width="35%">PT. IMC Tekno Indonesia</td>
+                <td colspan="2" width="30%">CUSTOMER APPROVAL</td>
+                <td colspan="3" width="35%">PT. IMC Tekno Indonesia</td>
             </tr>
-            <tr>
-                <td style="padding: 5px;">
+            <tr class="text-center" style="font-size: 7.5pt; font-weight: bold; background: #fafafa;">
+                <td rowspan="3" style="padding: 6px; text-align: left; vertical-align: top; width: 35%;">
                     <span class="lbl-italic" style="font-size: 8pt; display:block; margin-bottom:2px;">Comment:</span>
-                    <div style="min-height: 35px; font-size:8pt; color:#475569;"><?php echo htmlspecialchars($d['CUSTOMER_COMMENT'] ? $d['CUSTOMER_COMMENT'] : ''); ?></div>
-                    <div class="text-right" style="padding-right: 15px; margin-top:2px;">
-                        <span style="margin-right: 15px; font-weight:bold; font-size:10pt;"><?php echo renderBox($d['CUSTOMER_JUDGEMENT'] === 'OK'); ?> OK</span>
-                        <span style="font-weight:bold; font-size:10pt;"><?php echo renderBox($d['CUSTOMER_JUDGEMENT'] === 'NG'); ?> NG</span>
+                    <div style="min-height: 45px; font-size:8pt; color:#475569;"><?php echo htmlspecialchars($d['CUSTOMER_COMMENT'] ? $d['CUSTOMER_COMMENT'] : ''); ?></div>
+                    <div class="text-right" style="padding-right: 15px; margin-top: 15px;">
+                        <span style="margin-right: 15px; font-weight:bold; font-size:10pt;"><?php echo renderBox(isset($d['CUSTOMER_JUDGEMENT']) && ($d['CUSTOMER_JUDGEMENT'] == 1 || $d['CUSTOMER_JUDGEMENT'] === true)); ?> OK</span>
+                        <span style="font-weight:bold; font-size:10pt;"><?php echo renderBox(isset($d['CUSTOMER_JUDGEMENT']) && ($d['CUSTOMER_JUDGEMENT'] == 0 || $d['CUSTOMER_JUDGEMENT'] === false) && $d['CUSTOMER_JUDGEMENT'] !== null && $d['CUSTOMER_JUDGEMENT'] !== ''); ?> NG</span>
                     </div>
                 </td>
-                <td style="padding: 0;">
-                    <table style="width: 100%; height: 100%; margin: 0; border: none;">
-                        <tr class="text-center" style="font-size: 7.5pt; font-weight: bold; background: #fafafa;">
-                            <td width="50%" style="border-top:none; border-left:none;">Approved</td>
-                            <td width="50%" style="border-top:none; border-right:none; border-left:none;">Checked</td>
-                        </tr>
-                        <tr style="height: 38px;">
-                            <td style="border-left:none; border-bottom:none;"></td>
-                            <td style="border-right:none; border-left:none; border-bottom:none;"></td>
-                        </tr>
-                        <tr class="text-center" style="font-size: 8pt; font-weight: bold;">
-                            <td style="border-left:none; border-bottom:none; border-top: 1px dashed #ccc;"><?php echo htmlspecialchars($d['CUSTOMER_APROVE'] ? $d['CUSTOMER_APROVE'] : ''); ?></td>
-                            <td style="border-right:none; border-left:none; border-bottom:none; border-top: 1px dashed #ccc;"><?php echo htmlspecialchars($d['CUSTOMER_CHECKED'] ? $d['CUSTOMER_CHECKED'] : ''); ?></td>
-                        </tr>
-                    </table>
-                </td>
-                <td style="padding: 0;">
-                    <table style="width: 100%; height: 100%; margin: 0; border: none;">
-                        <tr class="text-center" style="font-size: 7.5pt; font-weight: bold; background: #fafafa;">
-                            <td width="33.33%" style="border-top:none; border-left:none;">Approved</td>
-                            <td width="33.33%" style="border-top:none; border-left:none;">Checked</td>
-                            <td width="33.34%" style="border-top:none; border-right:none; border-left:none;">Prepared</td>
-                        </tr>
-                        <tr style="height: 38px;">
-                            <td style="border-left:none; border-bottom:none;"></td>
-                            <td style="border-left:none; border-bottom:none;"></td>
-                            <td style="border-right:none; border-left:none; border-bottom:none;"></td>
-                        </tr>
-                        <tr class="text-center" style="font-size: 8pt; font-weight: bold;">
-                            <td style="border-left:none; border-bottom:none; border-top: 1px dashed #ccc;"><?php echo htmlspecialchars($d['IMC_APROVE'] ? $d['IMC_APROVE'] : ''); ?></td>
-                            <td style="border-left:none; border-bottom:none; border-top: 1px dashed #ccc;"><?php echo htmlspecialchars($d['IMC_CHECKED'] ? $d['IMC_CHECKED'] : ''); ?></td>
-                            <td style="border-right:none; border-left:none; border-bottom:none; border-top: 1px dashed #ccc;"><?php echo htmlspecialchars($d['IMC_PREPARED'] ? $d['IMC_PREPARED'] : ''); ?></td>
-                        </tr>
-                    </table>
-                </td>
+                <td width="15%">Approved</td>
+                <td width="15%">Checked</td>
+                <td width="11.66%">Approved</td>
+                <td width="11.66%">Checked</td>
+                <td width="11.68%">Prepared</td>
+            </tr>
+            <tr style="height: 70px;">
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
+            </tr>
+            <tr class="text-center" style="font-size: 8pt; font-weight: bold; background: #fff;">
+                <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"><?php echo htmlspecialchars($d['CUSTOMER_APROVE'] ? $d['CUSTOMER_APROVE'] : ''); ?></td>
+                <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"><?php echo htmlspecialchars($d['CUSTOMER_CHECKED'] ? $d['CUSTOMER_CHECKED'] : ''); ?></td>
+                <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"><?php echo htmlspecialchars($d['IMC_APROVE'] ? $d['IMC_APROVE'] : ''); ?></td>
+                <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"><?php echo htmlspecialchars($d['IMC_CHECKED'] ? $d['IMC_CHECKED'] : ''); ?></td>
+                <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"><?php echo htmlspecialchars($d['IMC_PREPARED'] ? $d['IMC_PREPARED'] : ''); ?></td>
             </tr>
         </table>
         

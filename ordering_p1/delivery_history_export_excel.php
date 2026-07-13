@@ -13,7 +13,6 @@ function safe_trim($value) {
     if ($value === null) {
         return "";
     }
-
     return trim((string)$value);
 }
 
@@ -21,39 +20,30 @@ function get_param($name, $default = "") {
     if (isset($_GET[$name])) {
         return trim($_GET[$name]);
     }
-
     if (isset($_POST[$name])) {
         return trim($_POST[$name]);
     }
-
     return $default;
 }
 
 function month_to_yyyymmdd($value) {
     $value = trim($value);
-
     if ($value == "") {
         return "";
     }
-
     if (preg_match('/^\d{4}-\d{2}$/', $value)) {
         return str_replace("-", "", $value) . "01";
     }
-
     if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
         return str_replace("-", "", $value);
     }
-
     if (preg_match('/^\d{8}$/', $value)) {
         return $value;
     }
-
     $ts = strtotime($value);
-
     if ($ts === false) {
         return "";
     }
-
     return date("Ymd", $ts);
 }
 
@@ -61,17 +51,13 @@ function fmt_date($value) {
     if ($value instanceof DateTime) {
         return $value->format("d-M-Y");
     }
-
     if ($value === null || $value === "") {
         return "";
     }
-
     $ts = strtotime($value);
-
     if ($ts === false) {
         return "";
     }
-
     return date("d-M-Y", $ts);
 }
 
@@ -83,31 +69,26 @@ function excel_num($value, $decimal = 0) {
     if ($value === null || $value === "") {
         $value = 0;
     }
-
     return number_format((float)$value, $decimal, ".", "");
 }
 
 function get_usd_factor($row) {
     $crate = 1;
     $basecrate = 1;
-
     if (isset($row["CRATE"]) && $row["CRATE"] !== null && $row["CRATE"] != 0) {
         $crate = (float)$row["CRATE"];
     }
-
     if (isset($row["BASECRATE"]) && $row["BASECRATE"] !== null && $row["BASECRATE"] != 0) {
         $basecrate = (float)$row["BASECRATE"];
     }
-
     if ($basecrate == 0) {
         $basecrate = 1;
     }
-
     return $crate / $basecrate;
 }
 
-$asper_month = get_param("ASPER_MONTH", "");
-$cust_code   = get_param("CUST_CODE", "");
+ $asper_month = get_param("ASPER_MONTH", "");
+ $cust_code   = get_param("CUST_CODE", "");
 
 if ($asper_month == "") {
     die("Month belum dipilih.");
@@ -117,18 +98,18 @@ if ($cust_code == "") {
     die("Customer belum diisi.");
 }
 
-$asper_ymd = month_to_yyyymmdd($asper_month);
+ $asper_ymd = month_to_yyyymmdd($asper_month);
 
 if ($asper_ymd == "") {
     die("Month tidak valid.");
 }
 
-$sql = "
+ $sql = "
     SET NOCOUNT ON;
     EXEC dbo.SP_DELIVERY_HISTORY_char ?, ?
 ";
 
-$stmt = sqlsrv_query($conn, $sql, array(
+ $stmt = sqlsrv_query($conn, $sql, array(
     $asper_ymd,
     $cust_code
 ));
@@ -137,8 +118,8 @@ if ($stmt === false) {
     die("<pre>Query Delivery History gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
 }
 
-$rows = array();
-$monthYear = "";
+ $rows = array();
+ $monthYear = "";
 
 while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     if ($monthYear == "" && isset($r["MonthYear"])) {
@@ -171,8 +152,8 @@ if ($monthYear == "") {
     $monthYear = date("F Y", $ts);
 }
 
-$fileCust = $cust_code == "%" ? "ALL" : $cust_code;
-$fileName = "delivery_history_" . $fileCust . "_" . $asper_month . "_" . date("Ymd_His") . ".xls";
+ $fileCust = $cust_code == "%" ? "ALL" : $cust_code;
+ $fileName = "delivery_history_" . $fileCust . "_" . $asper_month . "_" . date("Ymd_His") . ".xls";
 
 header("Content-Type: application/vnd.ms-excel; charset=utf-8");
 header("Content-Disposition: attachment; filename=\"" . $fileName . "\"");
@@ -244,6 +225,18 @@ header("Expires: 0");
             background: #d9eaf7;
             font-weight: bold;
         }
+
+        /* ===== ZEBRA STRIPING - WARNA FONT SAJA ===== */
+        
+        /* Baris ganjil - Font Merah */
+        .row-red {
+            color: #CC0000;
+        }
+
+        /* Baris genap - Font Biru */
+        .row-blue {
+            color: #0000CC;
+        }
     </style>
 </head>
 
@@ -251,33 +244,33 @@ header("Expires: 0");
 
 <table>
     <tr>
-        <td colspan="13" class="title">DELIVERY HISTORY</td>
+        <td colspan="12" class="title">DELIVERY HISTORY</td>
     </tr>
 
     <tr>
-        <td colspan="13">P.T. IMC TEKNO INDONESIA - PPIC Department</td>
+        <td colspan="12">P.T. IMC TEKNO INDONESIA - PPIC Department</td>
     </tr>
 
     <tr>
-        <td colspan="13">As Per: <?php echo h($monthYear); ?></td>
+        <td colspan="12">As Per: <?php echo h($monthYear); ?></td>
     </tr>
 
     <tr>
-        <td colspan="13">
+        <td colspan="12">
             Customer:
             <?php echo h($cust_code == "%" ? "ALL CUSTOMER" : $cust_code); ?>
         </td>
     </tr>
 
     <tr>
-        <td colspan="13">
+        <td colspan="12">
             Export Date:
             <?php echo h(fmt_print_datetime()); ?>
         </td>
     </tr>
 
     <tr>
-        <td colspan="13">&nbsp;</td>
+        <td colspan="12">&nbsp;</td>
     </tr>
 
     <tr>
@@ -318,6 +311,9 @@ header("Expires: 0");
     $grandQty = 0;
     $grandAmount = 0;
     $grandUsdAmount = 0;
+
+    // Counter untuk zebra striping font
+    $dataRowCounter = 0;
 
     for ($i = 0; $i < count($rows); $i++) {
         $r = $rows[$i];
@@ -369,6 +365,9 @@ header("Expires: 0");
             $custQty = 0;
             $custAmount = 0;
             $custUsdAmount = 0;
+            
+            // Reset counter saat ganti customer
+            $dataRowCounter = 0;
         }
 
         if ($partKey != $lastPart) {
@@ -400,9 +399,12 @@ header("Expires: 0");
         $grandQty += $r["QTY"];
         $grandAmount += $r["AMOUNT"];
         $grandUsdAmount += $r["USD_AMT"];
+
+        // Tentukan warna font: merah atau biru
+        $rowClass = ($dataRowCounter % 2 == 0) ? "row-red" : "row-blue";
         ?>
 
-        <tr>
+        <tr class="<?php echo $rowClass; ?>">
             <td class="text"><?php echo h($r["CUST_CODE"]); ?></td>
             <td class="text"><?php echo h($r["CUST_COMP"]); ?></td>
             <td class="text"><?php echo h($r["PART_NUM"]); ?></td>
@@ -417,7 +419,9 @@ header("Expires: 0");
             <td class="money"><?php echo h(excel_num($r["USD_AMT"], 2)); ?></td>
         </tr>
 
-    <?php } ?>
+    <?php 
+        $dataRowCounter++;
+    } ?>
 
     <?php if ($lastPart != "") { ?>
         <tr class="part-total-row">

@@ -228,6 +228,17 @@ function h($value) {
                 <div class="report-name">SALES & MATERIAL USE ACTUAL IDR</div>
                 <a class="button" href="actual_material_cost_idr.php" target="_blank">OPEN</a>
             </div>
+			
+			<div class="report-item">
+                <div class="report-name">LOGICAL STOCK</div>
+                <a class="button" href="logical.php" target="_blank">OPEN</a>
+            </div>
+			
+			<div class="report-item">
+                <div class="report-name">STOK PLAN VS ACTUAL</div>
+                <a class="button" href="report_stok_actual.php" target="_blank">OPEN</a>
+            </div>
+
 
             
 

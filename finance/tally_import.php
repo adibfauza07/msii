@@ -676,6 +676,118 @@ function importSop($fromDate) {
 }
 
 /* =========================
+   LOAD & IMPORT BOM
+   ========================= */
+
+function loadBomRows() {
+    $stmt = q("EXECUTE sp_GenerateTallyBOM", array());
+    return fetchRows($stmt);
+}
+
+function importBom() {
+    $rows = loadBomRows();
+    q("DELETE FROM dbo.Tally_BOM", array());
+
+    if (count($rows) == 0) {
+        return 0;
+    }
+
+    $sqlInsert = "
+        INSERT INTO dbo.Tally_BOM
+        (
+            Col_A, Col_B, Col_C, Col_D, Col_E, Col_F, Col_G, 
+            Col_H, Col_I, Col_J, Col_K, Col_L, Col_M, Col_N
+        )
+        VALUES
+        (
+            ?, ?, ?, ?, ?, ?, ?, 
+            ?, ?, ?, ?, ?, ?, ?
+        )
+    ";
+
+    $count = 0;
+    foreach ($rows as $r) {
+        // Ambil nilai I dan K sebagai string, jika kosong isi '0'
+        $valI = trim((string)gv($r, 'I', '0'));
+        if ($valI === '') $valI = '0';
+        
+        $valK = trim((string)gv($r, 'K', '0'));
+        if ($valK === '') $valK = '0';
+
+        q($sqlInsert, array(
+            gv($r, 'A', ''),
+            gv($r, 'B', ''),
+            gv($r, 'C', ''),
+            gv($r, 'D', ''),
+            gv($r, 'E', ''),
+            gv($r, 'F', ''),
+            gv($r, 'G', ''),
+            gv($r, 'H', ''),
+            $valI,     // Langsung kirim string
+            gv($r, 'J', ''),
+            $valK,     // Langsung kirim string
+            gv($r, 'L', ''),
+            gv($r, 'M', ''),
+            gv($r, 'N', '')
+        ));
+        $count++;
+    }
+
+    return $count;
+}
+
+function renderBomTable($rows) {
+    if (count($rows) == 0) {
+        echo '<div class="alert alert-secondary">Tidak ada data BOM. Klik Load BOM untuk mengambil data.</div>';
+        return;
+    }
+    ?>
+    <div class="table-responsive" style="max-height:600px;">
+        <table class="table table-bordered table-striped table-sm">
+            <thead class="table-dark sticky-top">
+                <tr>
+                    <th>NO (A)</th>
+                    <th>NAME Part (B)</th>
+                    <th>OLDNAME (C)</th>
+                    <th>NAME SCR (D)</th>
+                    <th>ADDNAME (E)</th>
+                    <th>ADDNAME SCR (F)</th>
+                    <th>BASEUNIT (G)</th>
+                    <th>COMP LIST (H)</th>
+                    <th>COMP QTY (I)</th>
+                    <th>STOCKITEM Mat (J)</th>
+                    <th>ACTUALQTY (K)</th>
+                    <th>BASEUNIT Mat (L)</th>
+                    <th>NATURE (M)</th>
+                    <th>GODOWN (N)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($rows as $r) { ?>
+                <tr>
+                    <td class="text-center"><?php echo h(gv($r, 'A', '')); ?></td>
+                    <td><?php echo h(gv($r, 'B', '')); ?></td>
+                    <td><?php echo h(gv($r, 'C', '')); ?></td>
+                    <td><?php echo h(gv($r, 'D', '')); ?></td>
+                    <td><?php echo h(gv($r, 'E', '')); ?></td>
+                    <td><?php echo h(gv($r, 'F', '')); ?></td>
+                    <td><?php echo h(gv($r, 'G', '')); ?></td>
+                    <td><?php echo h(gv($r, 'H', '')); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'I', 0)); ?></td>
+                    <td><?php echo h(gv($r, 'J', '')); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'K', 0)); ?></td>
+                    <td><?php echo h(gv($r, 'L', '')); ?></td>
+                    <td><?php echo h(gv($r, 'M', '')); ?></td>
+                    <td><?php echo h(gv($r, 'N', '')); ?></td>
+                </tr>
+                <?php } ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+
+/* =========================
    REQUEST HANDLER
    ========================= */
 
@@ -747,6 +859,14 @@ if ($action == 'save_curr') {
     $count = importSales($fromDate, $toDate, 'epson');
     $message = 'Import Sales EPSON selesai. Total baris: ' . $count;
     $rows = loadSalesRows($fromDate, $toDate, 'epson');
+} elseif ($action == 'load_bom') {
+    $tab = 'bom';
+    $rows = loadBomRows();
+} elseif ($action == 'import_bom') {
+    $tab = 'bom';
+    $count = importBom();
+    $message = 'Import BOM ke tabel Tally_BOM selesai. Total baris: ' . $count;
+    $rows = loadBomRows();
 }
 
 if ($tab == 'rate') {
@@ -825,6 +945,11 @@ if ($tab == 'rate') {
         <li class="nav-item">
             <a class="nav-link <?php echo ($tab == 'rate') ? 'active' : ''; ?>"
                href="tally_import.php?tab=rate">MASTER_RATE</a>
+        </li>
+
+        <li class="nav-item">
+            <a class="nav-link <?php echo ($tab == 'bom') ? 'active' : ''; ?>"
+               href="tally_import.php?tab=bom">BOM</a>
         </li>
 
         <li class="nav-item">
@@ -1111,6 +1236,24 @@ if ($tab == 'rate') {
                     </div>
 
                 </div>
+
+            <?php } elseif ($tab == 'bom') { ?>
+
+                <div class="mb-3">
+                    <button type="button" class="btn btn-success" onclick="submitTally('load_bom')">
+                        <i class="bi bi-search"></i> Load BOM
+                    </button>
+
+                    <button type="button" class="btn btn-primary" onclick="confirmImport('import_bom')">
+                        <i class="bi bi-download"></i> Import ke Tabel Tally_BOM
+                    </button>
+
+                    <span class="text-muted ms-3 small">
+                        *Menggunakan data dari stored procedure sp_GenerateTallyBOM
+                    </span>
+                </div>
+
+                <?php renderBomTable($rows); ?>
 
             <?php } elseif ($tab == 'epson') { ?>
 

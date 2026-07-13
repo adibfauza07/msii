@@ -219,6 +219,11 @@ function h($value) {
                 <a class="button" href="delivery_history_report.php" target="_blank">OPEN</a>
             </div>
 
+            <!-- <div class="report-item">
+                <div class="report-name">Delivery History Tanpa PO</div>
+                <a class="button" href="delivery_history_report_tanpapo.php" target="_blank">OPEN</a>
+            </div> -->
+
             <div class="report-item">
                 <div class="report-name">Delivery History Summary</div>
                 <a class="button" href="delivery_history_summary_report.php" target="_blank">OPEN</a>
@@ -286,6 +291,14 @@ function h($value) {
                 <div class="report-name">LOGICAL STOCK</div>
                 <a class="button" href="delivery_schedule_prod_report.php" target="_blank">OPEN</a>
             </div>
+			<div class="report-item">
+                <div class="report-name">SALES INTERNAL VS VENDOR</div>
+                <a class="button" href="sales.php" target="_blank">OPEN</a>
+            </div>
+			<div class="report-item">
+                <div class="report-name">GRAFIK SALES INTERNAL VS VENDOR</div>
+                <a class="button" href="sales_grafik.php" target="_blank">OPEN</a>
+            </div>
 
         </div>
     </div>
@@ -295,7 +308,7 @@ function h($value) {
     </div>
 
     <div class="footer">
-        P.T. IMC TEKNO INDONESIA - Ordering System Plant 1
+        PT. IMC TEKNO INDONESIA - Ordering System Plant 1
     </div>
 
 </div>

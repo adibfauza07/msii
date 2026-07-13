@@ -2,8 +2,8 @@
 // C:\xampp\htdocs\msii\finance\tally_import_p2.php
 // PHP 5.4 compatible
 
-$config1 = __DIR__ . '/config/database_aging.php';
-$config2 = __DIR__ . '/../config/database_aging.php';
+ $config1 = __DIR__ . '/config/database_aging.php';
+ $config2 = __DIR__ . '/../config/database_aging.php';
 
 if (file_exists($config1)) {
     require_once $config1;
@@ -17,10 +17,10 @@ if (file_exists($config1)) {
    AKSES KHUSUS P2
    ========================= */
 
-$login_user = isset($_SESSION['db_user']) ? strtolower(trim($_SESSION['db_user'])) : '';
-$active_plant_access = isset($_SESSION['active_plant']) ? strtolower(trim($_SESSION['active_plant'])) : '';
+ $login_user = isset($_SESSION['db_user']) ? strtolower(trim($_SESSION['db_user'])) : '';
+ $active_plant_access = isset($_SESSION['active_plant']) ? strtolower(trim($_SESSION['active_plant'])) : '';
 
-$allow_tally_access = false;
+ $allow_tally_access = false;
 
 if ($login_user == 'plant2' || $active_plant_access == 'p2') {
     $allow_tally_access = true;
@@ -131,11 +131,6 @@ function resultIDR($idr, $currUsd, $currRp, $usd, $jenis) {
     return 'Rp' . $idr . '@USD ' . $currUsd . '/Rp ' . $currRp . '=USD' . $usd;
 }
 
-/*
-   P2:
-   NO_DS di Tally diambil dari nomor DO.
-   Tidak pakai BC / nomor BC.
-*/
 function getDoNoP2($r) {
     return gv($r, array(
         'DO_NO',
@@ -150,10 +145,6 @@ function getDoNoP2($r) {
     ), '');
 }
 
-/*
-   Ambil nomor invoice Sales dengan beberapa kemungkinan nama kolom.
-   Jika invoice dipilih dari filter, nilai filter dipakai sebagai fallback.
-*/
 function getInvNoP2($r, $fallback) {
     $inv = gv($r, array(
         'DI_INVNO',
@@ -259,11 +250,6 @@ function loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo) {
     $invNo = trim((string)$invNo);
     $poNo = trim((string)$poNo);
 
-    /*
-       Sales P2 + filter PO.
-       Source query mengikuti query user:
-       PO = ORDERS.ORDR_PO.
-    */
     $where = "
         WHERE D.DI_DATE BETWEEN ? AND ?
           AND C.CUST_ID = ?
@@ -514,16 +500,8 @@ function deleteRateAction() {
 
 /* =========================
    IMPORT RECEIPT P2
-   P2:
-   - Tidak pakai BC
-   - NO_DS ambil dari nomor DO
    ========================= */
 
-/*
-   Ambil nomor BC Receipt dengan beberapa kemungkinan nama kolom.
-   Untuk P2 normalnya tidak dipakai di insert, tetapi dipakai sebagai bagian key
-   bila SP mengirim kolom BC agar GROUP_TOTAL tidak tercampur.
-*/
 function getBcNoReceiptP2($r) {
     return gv($r, array(
         'BC_NO',
@@ -537,18 +515,6 @@ function getBcNoReceiptP2($r) {
     ), '');
 }
 
-/*
-   Key GROUP_TOTAL Receipt.
-
-   Rumus nilai:
-   - IDR : SUM(QTY x POD_PRICE)
-   - USD : SUM(QTY x POD_PRICE)
-   - Konversi IDR/USD memakai CURR_RP
-
-   Key group dibuat lebih lengkap daripada RCV_NO saja supaya hasil PHP
-   mengikuti hasil Delphi/Tally ketika 1 RCV_NO berisi beberapa dokumen/kelompok.
-   Jika kolom-kolom tambahan tidak ada dari SP, otomatis fallback ke RCV_NO.
-*/
 function getReceiptGroupKeyP2($r) {
     $rcvNo = trim((string)gv($r, 'RCV_NO', ''));
     $doNo  = trim((string)getDoNoP2($r));
@@ -585,11 +551,6 @@ function importReceipt($fromDate, $toDate) {
         return 0;
     }
 
-    /*
-       Hitung GROUP_TOTAL dulu.
-       Jangan hanya GROUP BY RCV_NO, karena dalam data Tally lama satu RCV_NO
-       bisa pecah menjadi beberapa group berdasarkan DO/BC/PO/Invoice.
-    */
     $groups = array();
 
     foreach ($rows as $r) {
@@ -609,18 +570,6 @@ function importReceipt($fromDate, $toDate) {
             );
         }
 
-        /*
-           Rumus item:
-           TOTAL = QTY x PRICE
-
-           Jika IDR:
-             GTOTAL_IDR += TOTAL_IDR
-             GTOTAL_USD += TOTAL_IDR / RATE
-
-           Jika USD:
-             GTOTAL_USD += TOTAL_USD
-             GTOTAL_IDR dihitung di bawah setelah group selesai
-        */
         if ($cur == 'IDR') {
             $totalIDR = round4($qty * $price);
             $groups[$groupKey]['IDR'] += $totalIDR;
@@ -636,11 +585,6 @@ function importReceipt($fromDate, $toDate) {
         }
     }
 
-    /*
-       Lengkapi nilai IDR untuk group USD.
-       Sama seperti Delphi:
-       Gtotal_IDR = Gtotal_USD x CURR_RP
-    */
     foreach ($groups as $groupKey => $g) {
         if ($g['CUR'] == 'USD' && $g['RATE'] != 0) {
             $groups[$groupKey]['IDR'] = round4($g['USD'] * $g['RATE']);
@@ -741,12 +685,11 @@ function importReceipt($fromDate, $toDate) {
 
 /* =========================
    IMPORT SALES P2
-   P2:
-   - Tidak pakai BC
-   - NO_DS ambil dari nomor DO
+   - Diubah: menerima $modifiedData (JSON) untuk perubahan per-row
+   - NO_INVOICE, NO_DS, Tanggal bisa diubah per-row dari frontend
    ========================= */
 
-function importSales($fromDate, $toDate, $custId, $invNo, $poNo, $overrideInvNo, $overrideDsNo) {
+function importSales($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData) {
     $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo);
 
     q("DELETE FROM dbo.Tally_SALES", array());
@@ -756,15 +699,37 @@ function importSales($fromDate, $toDate, $custId, $invNo, $poNo, $overrideInvNo,
     }
 
     /*
+       TERAPKAN PERUBAHAN DARI FRONTEND
+       $modifiedData = JSON string: {"0":{"NO_INVOICE":"xxx","NO_DS":"yyy","Tanggal":"2025-01-15"}, ...}
+    */
+    if ($modifiedData !== '') {
+        $mods = json_decode($modifiedData, true);
+        if (is_array($mods)) {
+            foreach ($mods as $idx => $mod) {
+                $idx = (int)$idx;
+                if (isset($rows[$idx])) {
+                    if (isset($mod['NO_INVOICE'])) {
+                        $rows[$idx]['DI_INVNO'] = $mod['NO_INVOICE'];
+                    }
+                    if (isset($mod['NO_DS'])) {
+                        $rows[$idx]['DI_DSNO'] = $mod['NO_DS'];
+                    }
+                    if (isset($mod['Tanggal'])) {
+                        $rows[$idx]['TRAN_DATE'] = $mod['Tanggal'];
+                    }
+                }
+            }
+        }
+    }
+
+    /*
        GROUP_TOTAL Sales mengikuti Delphi 7.
-       Kunci group wajib per invoice, yaitu DI_INVNO.
-       Jika invoice dipilih, nilai invoice pilihan dipakai sebagai fallback.
-       Ini mencegah GROUP_TOTAL terbuka menjadi total semua invoice.
+       Kunci group per invoice (DI_INVNO yang sudah di-modify).
     */
     $groups = array();
 
     foreach ($rows as $r) {
-        $invKey = ($overrideInvNo != '') ? $overrideInvNo : getInvNoP2($r, $invNo);
+        $invKey = getInvNoP2($r, $invNo);
 
         if ($invKey == '') {
             die('DI_INVNO kosong. GROUP_TOTAL tidak bisa dihitung per invoice.');
@@ -830,11 +795,10 @@ function importSales($fromDate, $toDate, $custId, $invNo, $poNo, $overrideInvNo,
     $count = 0;
 
     foreach ($rows as $r) {
-        $invKey = ($overrideInvNo != '') ? $overrideInvNo : getInvNoP2($r, $invNo);
-        $inv = $invKey;
-        $dsNoFinal = ($overrideDsNo != '') ? $overrideDsNo : getDoNoP2($r);
+        $inv = getInvNoP2($r, $invNo);
+        $dsNoFinal = getDoNoP2($r);
 
-        if ($invKey == '') {
+        if ($inv == '') {
             die('DI_INVNO kosong. GROUP_TOTAL tidak bisa dihitung per invoice.');
         }
 
@@ -857,10 +821,10 @@ function importSales($fromDate, $toDate, $custId, $invNo, $poNo, $overrideInvNo,
             $totalHarga2 = resultIDR(round4($totalIDR), $currUsd, $currRp, round4($totalUSD), 'positif');
 
             $groupTotal = resultIDR(
-                round4($groups[$invKey]['IDR']),
+                round4($groups[$inv]['IDR']),
                 $currUsd,
                 $currRp,
-                round4($groups[$invKey]['USD']),
+                round4($groups[$inv]['USD']),
                 'negatif'
             );
         } elseif ($cur == 'USD') {
@@ -870,7 +834,7 @@ function importSales($fromDate, $toDate, $custId, $invNo, $poNo, $overrideInvNo,
             $itemPrice = round4($unitUSD);
             $totalHarga = round4($totalUSD);
             $totalHarga2 = round4($totalUSD);
-            $groupTotal = '-' . round4($groups[$invKey]['USD']);
+            $groupTotal = '-' . round4($groups[$inv]['USD']);
         } else {
             die('UNEXPECTED CURRENCY SALES: ' . h($cur));
         }
@@ -961,39 +925,418 @@ function importSop($fromDate) {
 }
 
 /* =========================
+   RENDER FUNCTIONS
+   ========================= */
+
+function renderReceiptTable($rows) {
+    if (count($rows) == 0) {
+        echo '<div class="alert alert-secondary">Tidak ada data Receipt.</div>';
+        return;
+    }
+    ?>
+    <div class="table-responsive" style="max-height:500px;">
+        <table class="table table-bordered table-striped table-sm">
+            <thead class="table-dark sticky-top">
+                <tr>
+                    <th>#</th>
+                    <th>RCV_NO</th>
+                    <th>DO_NO</th>
+                    <th>RCV_DATE</th>
+                    <th>SUP_CODE</th>
+                    <th>ITEM_CODE</th>
+                    <th>ITEM_NAME</th>
+                    <th>QTY</th>
+                    <th>POD_PRICE</th>
+                    <th>PO_CUR</th>
+                    <th>CURR_RP</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php $no = 1; foreach ($rows as $r) { ?>
+                <tr>
+                    <td class="text-end"><?php echo $no++; ?></td>
+                    <td><?php echo h(gv($r, 'RCV_NO', '')); ?></td>
+                    <td><?php echo h(getDoNoP2($r)); ?></td>
+                    <td><?php echo h(fmtDateView(gv($r, 'RCV_DATE', ''))); ?></td>
+                    <td><?php echo h(gv($r, 'SUP_CODE', '')); ?></td>
+                    <td><?php echo h(gv($r, 'ITEM_CODE', '')); ?></td>
+                    <td><?php echo h(gv($r, 'ITEM_NAME', '')); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'QTY', 0)); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'POD_PRICE', 0)); ?></td>
+                    <td><?php echo h(gv($r, 'PO_CUR', '')); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'CURR_RP', 0)); ?></td>
+                </tr>
+                <?php } ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+
+function renderSopTable($rows) {
+    if (count($rows) == 0) {
+        echo '<div class="alert alert-secondary">Tidak ada data Stock Opname.</div>';
+        return;
+    }
+    ?>
+    <div class="table-responsive" style="max-height:500px;">
+        <table class="table table-bordered table-striped table-sm">
+            <thead class="table-dark sticky-top">
+                <tr>
+                    <th>#</th>
+                    <th>SOP_SDATE</th>
+                    <th>ITEM_CODE</th>
+                    <th>ITEM_NAME</th>
+                    <th>STQTY</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php $no = 1; foreach ($rows as $r) { ?>
+                <tr>
+                    <td class="text-end"><?php echo $no++; ?></td>
+                    <td><?php echo h(fmtDateView(gv($r, 'SOP_SDATE', ''))); ?></td>
+                    <td><?php echo h(gv($r, 'ITEM_CODE', '')); ?></td>
+                    <td><?php echo h(gv($r, 'ITEM_NAME', '')); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'STQTY', 0)); ?></td>
+                </tr>
+                <?php } ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+
+/*
+   RENDER SALES TABLE DENGAN KOLOM EDITABLE
+   - NO_INVOICE (DI_INVNO) → input text, border kuning
+   - NO_DS (DI_DSNO)       → input text, border kuning
+   - Tanggal (TRAN_DATE)    → input date, border biru
+   - Ubah 1 row → otomatis ubah semua row dalam grup yang sama
+     (grup = DI_INVNO asli + DI_DSNO asli dari database)
+*/
+function renderSalesTable($rows) {
+    if (count($rows) == 0) {
+        echo '<div class="alert alert-secondary">Tidak ada data Sales. Pilih Customer terlebih dahulu, lalu klik Load Sales.</div>';
+        return;
+    }
+    ?>
+    <div class="alert alert-info py-2 small mb-2">
+        <span class="badge bg-warning text-dark">Kuning</span> = NO_INVOICE / NO_DS editable &nbsp;|&nbsp;
+        <span class="badge bg-primary">Biru</span> = Tanggal editable (date picker) &nbsp;|&nbsp;
+        <b>Ubah 1 row = otomatis ubah semua row dalam grup INV+DS yang sama.</b> Perubahan digunakan saat Import Sales.
+    </div>
+    <div class="table-responsive" style="max-height:600px;">
+        <table class="table table-bordered table-striped table-sm" id="salesTable">
+            <thead class="table-dark sticky-top">
+                <tr>
+                    <th>#</th>
+                    <th class="bg-warning text-dark">NO_INVOICE ✏️</th>
+                    <th class="bg-warning text-dark">NO_DS ✏️</th>
+                    <th class="bg-primary">Tanggal ✏️</th>
+                    <th>CUST_CODE</th>
+                    <th>ITEM_CODE</th>
+                    <th>ITEM_NAME</th>
+                    <th>QTY</th>
+                    <th>ITEM_COST</th>
+                    <th>ITEM_CUR</th>
+                    <th>CURR_RP</th>
+                    <th>BC</th>
+                    <th>PART_NO</th>
+                    <th>ORDR_PO</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php
+            $rowIdx = 0;
+            foreach ($rows as $r) {
+                $origInv = trim((string)gv($r, 'DI_INVNO', ''));
+                $origDs  = trim((string)gv($r, 'DI_DSNO', ''));
+                $groupKey = $origInv . '|' . $origDs;
+                $tglVal = fmtDateInput(gv($r, 'TRAN_DATE', ''));
+            ?>
+                <tr data-group-key="<?php echo h($groupKey); ?>" data-row-idx="<?php echo $rowIdx; ?>">
+                    <td class="text-end"><?php echo $rowIdx + 1; ?></td>
+                    <td style="background:#fffde7;">
+                        <input type="text"
+                               class="form-control form-control-sm sales-editable"
+                               data-field="NO_INVOICE"
+                               data-row-idx="<?php echo $rowIdx; ?>"
+                               data-group-key="<?php echo h($groupKey); ?>"
+                               value="<?php echo h($origInv); ?>"
+                               onchange="onSalesFieldChange(this)"
+                               style="min-width:130px; font-weight:600; border:2px solid #ffc107; background:#fffde7;">
+                    </td>
+                    <td style="background:#fffde7;">
+                        <input type="text"
+                               class="form-control form-control-sm sales-editable"
+                               data-field="NO_DS"
+                               data-row-idx="<?php echo $rowIdx; ?>"
+                               data-group-key="<?php echo h($groupKey); ?>"
+                               value="<?php echo h($origDs); ?>"
+                               onchange="onSalesFieldChange(this)"
+                               style="min-width:130px; font-weight:600; border:2px solid #ffc107; background:#fffde7;">
+                    </td>
+                    <td style="background:#e3f2fd;">
+                        <input type="date"
+                               class="form-control form-control-sm sales-editable"
+                               data-field="Tanggal"
+                               data-row-idx="<?php echo $rowIdx; ?>"
+                               data-group-key="<?php echo h($groupKey); ?>"
+                               value="<?php echo h($tglVal); ?>"
+                               onchange="onSalesFieldChange(this)"
+                               style="min-width:145px; font-weight:600; border:2px solid #2196f3; background:#e3f2fd;">
+                    </td>
+                    <td><?php echo h(gv($r, 'CUST_CODE', '')); ?></td>
+                    <td><?php echo h(gv($r, 'ITEM_CODE', '')); ?></td>
+                    <td><?php echo h(gv($r, 'ITEM_NAME', '')); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'QTY', 0)); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'ITEM_COST', 0)); ?></td>
+                    <td><?php echo h(gv($r, 'ITEM_CUR', '')); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'CURR_RP', 0)); ?></td>
+                    <td><?php echo h(gv($r, 'BC', '')); ?></td>
+                    <td><?php echo h(gv($r, 'PART_NO', '')); ?></td>
+                    <td><?php echo h(gv($r, 'ORDR_PO', '')); ?></td>
+                </tr>
+            <?php
+                $rowIdx++;
+            }
+            ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+
+
+/* =========================
+   LOAD & IMPORT BOM
+   ========================= */
+
+function loadBomRows() {
+    $stmt = q("EXECUTE sp_GenerateTallyBOM", array());
+    return fetchRows($stmt);
+}
+
+function importBom() {
+    $rows = loadBomRows();
+    q("DELETE FROM dbo.Tally_BOM", array());
+
+    if (count($rows) == 0) {
+        return 0;
+    }
+
+    $sqlInsert = "
+        INSERT INTO dbo.Tally_BOM
+        (
+            Col_A, Col_B, Col_C, Col_D, Col_E, Col_F, Col_G, 
+            Col_H, Col_I, Col_J, Col_K, Col_L, Col_M, Col_N
+        )
+        VALUES
+        (
+            ?, ?, ?, ?, ?, ?, ?, 
+            ?, ?, ?, ?, ?, ?, ?
+        )
+    ";
+
+    $count = 0;
+    foreach ($rows as $r) {
+        // Ambil nilai I dan K sebagai string, jika kosong isi '0'
+        $valI = trim((string)gv($r, 'I', '0'));
+        if ($valI === '') $valI = '0';
+        
+        $valK = trim((string)gv($r, 'K', '0'));
+        if ($valK === '') $valK = '0';
+
+        q($sqlInsert, array(
+            gv($r, 'A', ''),
+            gv($r, 'B', ''),
+            gv($r, 'C', ''),
+            gv($r, 'D', ''),
+            gv($r, 'E', ''),
+            gv($r, 'F', ''),
+            gv($r, 'G', ''),
+            gv($r, 'H', ''),
+            $valI,     // Langsung kirim string
+            gv($r, 'J', ''),
+            $valK,     // Langsung kirim string
+            gv($r, 'L', ''),
+            gv($r, 'M', ''),
+            gv($r, 'N', '')
+        ));
+        $count++;
+    }
+
+    return $count;
+}
+
+function renderBomTable($rows) {
+    if (count($rows) == 0) {
+        echo '<div class="alert alert-secondary">Tidak ada data BOM. Klik Load BOM untuk mengambil data.</div>';
+        return;
+    }
+    ?>
+    <div class="table-responsive" style="max-height:600px;">
+        <table class="table table-bordered table-striped table-sm">
+            <thead class="table-dark sticky-top">
+                <tr>
+                    <th>NO (A)</th>
+                    <th>NAME Part (B)</th>
+                    <th>OLDNAME (C)</th>
+                    <th>NAME SCR (D)</th>
+                    <th>ADDNAME (E)</th>
+                    <th>ADDNAME SCR (F)</th>
+                    <th>BASEUNIT (G)</th>
+                    <th>COMP LIST (H)</th>
+                    <th>COMP QTY (I)</th>
+                    <th>STOCKITEM Mat (J)</th>
+                    <th>ACTUALQTY (K)</th>
+                    <th>BASEUNIT Mat (L)</th>
+                    <th>NATURE (M)</th>
+                    <th>GODOWN (N)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($rows as $r) { ?>
+                <tr>
+                    <td class="text-center"><?php echo h(gv($r, 'A', '')); ?></td>
+                    <td><?php echo h(gv($r, 'B', '')); ?></td>
+                    <td><?php echo h(gv($r, 'C', '')); ?></td>
+                    <td><?php echo h(gv($r, 'D', '')); ?></td>
+                    <td><?php echo h(gv($r, 'E', '')); ?></td>
+                    <td><?php echo h(gv($r, 'F', '')); ?></td>
+                    <td><?php echo h(gv($r, 'G', '')); ?></td>
+                    <td><?php echo h(gv($r, 'H', '')); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'I', 0)); ?></td>
+                    <td><?php echo h(gv($r, 'J', '')); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'K', 0)); ?></td>
+                    <td><?php echo h(gv($r, 'L', '')); ?></td>
+                    <td><?php echo h(gv($r, 'M', '')); ?></td>
+                    <td><?php echo h(gv($r, 'N', '')); ?></td>
+                </tr>
+                <?php } ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+/* =========================
+   LOAD & IMPORT PRODUCTION
+   ========================= */
+
+function loadProdRows($fromDate, $toDate) {
+    $stmt = q("EXECUTE sp_GenerateTallyProd ?, ?", array($fromDate, $toDate));
+    return fetchRows($stmt);
+}
+
+function importProd($fromDate, $toDate) {
+    $rows = loadProdRows($fromDate, $toDate);
+    q("DELETE FROM dbo.Tally_Prod", array());
+
+    if (count($rows) == 0) {
+        return 0;
+    }
+
+    $sqlInsert = "
+        INSERT INTO dbo.Tally_Prod
+        (
+            UNIQUEID, VCH_NO, PROD_DATE, ITEM, DEST_QTY, DEST_RATE, DEST_AMOUNT, NARRATION
+        )
+        VALUES
+        (
+            ?, ?, ?, ?, ?, ?, ?, ?
+        )
+    ";
+
+    $count = 0;
+    foreach ($rows as $r) {
+        q($sqlInsert, array(
+            gv($r, 'UNIQUEID', ''),
+            gv($r, 'VCH_NO', ''),
+            gv($r, 'PROD_DATE', ''),
+            gv($r, 'ITEM', ''),
+            gv($r, 'DEST_QTY', 0),
+            gv($r, 'DEST_RATE', 0),
+            gv($r, 'DEST_AMOUNT', 0),
+            gv($r, 'NARRATION', '')
+        ));
+        $count++;
+    }
+
+    return $count;
+}
+
+function renderProdTable($rows) {
+    if (count($rows) == 0) {
+        echo '<div class="alert alert-secondary">Tidak ada data Production. Klik Load Production untuk mengambil data.</div>';
+        return;
+    }
+    ?>
+    <div class="table-responsive" style="max-height:600px;">
+        <table class="table table-bordered table-striped table-sm">
+            <thead class="table-dark sticky-top">
+                <tr>
+                    <th>UNIQUEID</th>
+                    <th>VCH-NO</th>
+                    <th>DATE</th>
+                    <th>ITEM</th>
+                    <th>DEST. QTY</th>
+                    <th>DEST. RATE</th>
+                    <th>DEST. AMOUNT</th>
+                    <th>NARRATION</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($rows as $r) { ?>
+                <tr>
+                    <td><?php echo h(gv($r, 'UNIQUEID', '')); ?></td>
+                    <td><b><?php echo h(gv($r, 'VCH_NO', '')); ?></b></td>
+                    <td><?php echo h(gv($r, 'PROD_DATE', '')); ?></td>
+                    <td><?php echo h(gv($r, 'ITEM', '')); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'DEST_QTY', 0)); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'DEST_RATE', 0)); ?></td>
+                    <td class="text-end"><?php echo nval(gv($r, 'DEST_AMOUNT', 0)); ?></td>
+                    <td><?php echo h(gv($r, 'NARRATION', '')); ?></td>
+                </tr>
+                <?php } ?>
+            </tbody>
+        </table>
+    </div>
+    <?php
+}
+
+/* =========================
    REQUEST HANDLER
    ========================= */
 
-$fromDate = isset($_POST['from_date']) ? $_POST['from_date'] : date('Y-m-01');
-$toDate   = isset($_POST['to_date']) ? $_POST['to_date'] : date('Y-m-d');
+ $fromDate = isset($_POST['from_date']) ? $_POST['from_date'] : date('Y-m-01');
+ $toDate   = isset($_POST['to_date']) ? $_POST['to_date'] : date('Y-m-d');
 
-$tab = isset($_POST['tab']) ? $_POST['tab'] : '';
+ $tab = isset($_POST['tab']) ? $_POST['tab'] : '';
 if ($tab == '') {
     $tab = isset($_GET['tab']) ? $_GET['tab'] : 'receipt';
 }
 
-$action = isset($_POST['action']) ? $_POST['action'] : '';
+ $action = isset($_POST['action']) ? $_POST['action'] : '';
 
-$custId = isset($_POST['cust_id']) ? trim($_POST['cust_id']) : '';
-$invNo = isset($_POST['inv_no']) ? trim($_POST['inv_no']) : '';
-$poNo = isset($_POST['po_no']) ? trim($_POST['po_no']) : '';
-$overrideInvNo = isset($_POST['override_inv_no']) ? trim($_POST['override_inv_no']) : '';
-$overrideDsNo = isset($_POST['override_ds_no']) ? trim($_POST['override_ds_no']) : '';
+ $custId = isset($_POST['cust_id']) ? trim($_POST['cust_id']) : '';
+ $invNo = isset($_POST['inv_no']) ? trim($_POST['inv_no']) : '';
+ $poNo = isset($_POST['po_no']) ? trim($_POST['po_no']) : '';
+ $modifiedData = isset($_POST['modified_data']) ? $_POST['modified_data'] : '';
 
-$rateCurr = '';
+ $rateCurr = '';
 if (isset($_POST['rate_curr_selected'])) {
     $rateCurr = trim($_POST['rate_curr_selected']);
 } elseif (isset($_GET['rate_curr'])) {
     $rateCurr = trim($_GET['rate_curr']);
 }
 
-$message = '';
-$rows = array();
-$currRows = array();
-$rateRows = array();
-$customers = loadCustomers();
-$invoices = array();
-$poRows = array();
+ $message = '';
+ $rows = array();
+ $currRows = array();
+ $rateRows = array();
+ $customers = loadCustomers();
+ $invoices = array();
+ $poRows = array();
 
 /* =========================
    AJAX AUTOCOMPLETE PO
@@ -1080,10 +1423,18 @@ if ($action == 'save_curr') {
     $poRows = loadPoRows($fromDate, $toDate, $custId);
 } elseif ($action == 'import_sales') {
     $tab = 'sales';
-    $count = importSales($fromDate, $toDate, $custId, $invNo, $poNo, $overrideInvNo, $overrideDsNo);
+    $count = importSales($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData);
+    $modCount = 0;
+    if ($modifiedData !== '') {
+        $mods = json_decode($modifiedData, true);
+        if (is_array($mods)) $modCount = count($mods);
+    }
     $message = 'Import Sales P2 selesai. Total baris: ' . $count;
-    if ($overrideInvNo != '' || $overrideDsNo != '' || $poNo != '') {
-        $message .= ' | Invoice override: ' . $overrideInvNo . ' | DS override: ' . $overrideDsNo . ' | PO: ' . $poNo;
+    if ($modCount > 0) {
+        $message .= ' | ' . $modCount . ' row diedit (NO_INVOICE/NO_DS/Tanggal).';
+    }
+    if ($poNo != '') {
+        $message .= ' | PO filter: ' . $poNo;
     }
     $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo);
     $invoices = loadInvoices($fromDate, $toDate, $custId);
@@ -1098,9 +1449,27 @@ if ($action == 'save_curr') {
     $count = importSop($fromDate);
     $message = 'Import Stock Opname P2 selesai. Total baris: ' . $count;
     $rows = loadSopRows($fromDate);
+
+} elseif ($action == 'load_bom') {
+    $tab = 'bom';
+    $rows = loadBomRows();
+} elseif ($action == 'import_bom') {
+    $tab = 'bom';
+    $count = importBom();
+    $message = 'Import BOM ke tabel Tally_BOM selesai. Total baris: ' . $count;
+    $rows = loadBomRows();
+} elseif ($action == 'load_prod') {
+    $tab = 'prod';
+    $rows = loadProdRows($fromDate, $toDate);
+} elseif ($action == 'import_prod') {
+    $tab = 'prod';
+    $count = importProd($fromDate, $toDate);
+    $message = 'Import Production ke tabel Tally_Prod selesai. Total baris: ' . $count;
+    $rows = loadProdRows($fromDate, $toDate);
 }
 
 if ($tab == 'rate') {
+
     $currRows = getCurrRows();
 
     if ($rateCurr == '' && count($currRows) > 0) {
@@ -1129,9 +1498,9 @@ if ($tab == 'rate') {
     <?php } ?>
 
     <div class="alert alert-warning">
-        Sales P2 sudah ditambah filter <b>PO Optional</b> dari <b>ORDERS.ORDR_PO</b> dengan autocomplete.
-        Alur: <b>Load Sales</b> → ubah Invoice/DS di tabel → klik <b>Copy Invoice/DS ke Semua Baris</b> → pilih/ketik PO → <b>Import Sales</b>.
-        Import akan menyimpan hasil edit Invoice/DS + filter PO ke tabel <b>Tally_SALES</b>.
+        Sales P2: kolom <b>NO_INVOICE</b>, <b>NO_DS</b>, <b>Tanggal</b> bisa diedit langsung di tabel.
+        <b>Ubah 1 row = otomatis ubah semua row dalam grup INV+DS yang sama.</b>
+        Alur: <b>Load Sales</b> → edit INV/DS/Tanggal di tabel → pilih/ketik PO → <b>Import Sales</b>.
     </div>
 
     <div class="card shadow-sm mb-3">
@@ -1139,8 +1508,7 @@ if ($tab == 'rate') {
             <form method="post" id="frmTally">
                 <input type="hidden" name="tab" id="tab" value="<?php echo h($tab); ?>">
                 <input type="hidden" name="action" id="action" value="">
-                <input type="hidden" name="override_inv_no" id="override_inv_no" value="">
-                <input type="hidden" name="override_ds_no" id="override_ds_no" value="">
+                <input type="hidden" name="modified_data" id="modified_data" value="">
 
                 <div class="row g-3 align-items-end">
                     <div class="col-md-2">
@@ -1208,9 +1576,7 @@ if ($tab == 'rate') {
                     </div>
 
                     <div class="col-md-2">
-                        <button type="button" class="btn btn-outline-primary w-100" onclick="submitTally('load_invoice')">
-                            Load Invoice/PO
-                        </button>
+                        
                     </div>
                 </div>
             </form>
@@ -1236,10 +1602,18 @@ if ($tab == 'rate') {
         <li class="nav-item">
             <a class="nav-link <?php echo ($tab == 'rate') ? 'active' : ''; ?>"
                href="tally_import_p2.php?tab=rate">MASTER_RATE</a>
+                        <li class="nav-item">
+            <a class="nav-link <?php echo ($tab == 'bom') ? 'active' : ''; ?>"
+               href="tally_import_p2.php?tab=bom">TALLY BOM</a>
         </li>
+        <li class="nav-item">
+            <a class="nav-link <?php echo ($tab == 'prod') ? 'active' : ''; ?>"
+               href="tally_import_p2.php?tab=prod">PRODUCTION</a>
+        </li>
+        
     </ul>
 
-    <div class="card shadow-sm">
+           <div class="card shadow-sm">
         <div class="card-body">
 
             <?php if ($tab == 'receipt') { ?>
@@ -1267,8 +1641,12 @@ if ($tab == 'rate') {
                         Import Sales
                     </button>
 
-                    <button type="button" class="btn btn-secondary" onclick="copyFirstInvoiceDs()">
-                        Copy Invoice/DS ke Semua Baris
+                    <button type="button" class="btn btn-secondary" onclick="copyFirstToAll()">
+                        Copy INV/DS/Tgl ke Semua Baris
+                    </button>
+
+                    <button type="button" class="btn btn-outline-warning btn-sm" onclick="resetAllEdits()">
+                        Reset Edit
                     </button>
                 </div>
 
@@ -1289,45 +1667,33 @@ if ($tab == 'rate') {
                 <?php renderSopTable($rows); ?>
 
             <?php } elseif ($tab == 'rate') { ?>
-
+                <!-- ISI TAB RATE -->
                 <div class="row">
-
                     <div class="col-md-4">
                         <h5 class="fw-bold">Currency</h5>
-
                         <form method="post" class="card card-body mb-3">
                             <input type="hidden" name="tab" value="rate">
                             <input type="hidden" name="action" value="save_curr">
-
                             <div class="mb-2">
                                 <label class="form-label">CURR_CODE</label>
                                 <input type="text" name="curr_code" id="curr_code" class="form-control" maxlength="10" required>
                             </div>
-
                             <div class="mb-2">
                                 <label class="form-label">CURR_DESC</label>
                                 <input type="text" name="curr_desc" id="curr_desc" class="form-control" required>
                             </div>
-
                             <div class="mb-2">
                                 <label class="form-label">CURR_SYMBOL</label>
                                 <input type="text" name="curr_symbol" id="curr_symbol" class="form-control">
                             </div>
-
                             <div class="mb-2">
                                 <label class="form-label">CURR_DEC</label>
                                 <input type="number" name="curr_dec" id="curr_dec" class="form-control" value="0">
                             </div>
-
-                            <button type="submit" class="btn btn-success">
-                                Simpan Currency
-                            </button>
-
-                            <button type="button" class="btn btn-secondary mt-2" onclick="clearCurrForm()">
-                                Baru
-                            </button>
+                            <button type="submit" class="btn btn-success">Simpan Currency</button>
+                            <button type="button" class="btn btn-secondary mt-2" onclick="clearCurrForm()">Baru</button>
                         </form>
-
+                        
                         <div class="table-responsive" style="max-height:500px;">
                             <table class="table table-bordered table-striped table-sm mb-0">
                                 <thead class="table-dark sticky-top">
@@ -1341,11 +1707,7 @@ if ($tab == 'rate') {
                                     <?php foreach ($currRows as $c) { ?>
                                         <?php
                                         $cCode = gv($c, 'CURR_CODE', '');
-                                        $activeStyle = '';
-
-                                        if ($cCode == $rateCurr) {
-                                            $activeStyle = 'background:#0d6efd;color:#fff;font-weight:bold;';
-                                        }
+                                        $activeStyle = ($cCode == $rateCurr) ? 'background:#0d6efd;color:#fff;font-weight:bold;' : '';
                                         ?>
                                         <tr style="<?php echo $activeStyle; ?>">
                                             <td>
@@ -1354,32 +1716,13 @@ if ($tab == 'rate') {
                                                     <?php echo h($cCode); ?>
                                                 </a>
                                             </td>
-
+                                            <td><?php echo h(gv($c, 'CURR_DESC', '')); ?></td>
                                             <td>
-                                                <a href="tally_import_p2.php?tab=rate&rate_curr=<?php echo urlencode($cCode); ?>"
-                                                   style="<?php echo ($cCode == $rateCurr) ? 'color:#fff;text-decoration:none;' : 'text-decoration:none;'; ?>">
-                                                    <?php echo h(gv($c, 'CURR_DESC', '')); ?>
-                                                </a>
-                                            </td>
-
-                                            <td>
-                                                <button type="button"
-                                                        class="btn btn-sm btn-outline-primary"
-                                                        onclick="editCurr('<?php echo h(gv($c, 'CURR_CODE', '')); ?>',
-                                                                         '<?php echo h(gv($c, 'CURR_DESC', '')); ?>',
-                                                                         '<?php echo h(gv($c, 'CURR_SYMBOL', '')); ?>',
-                                                                         '<?php echo h(gv($c, 'CURR_DEC', '')); ?>')">
-                                                    Edit
-                                                </button>
-
-                                                <form method="post" style="display:inline;" onsubmit="return confirm('Hapus currency ini?');">
+                                                <form method="post" style="display:inline-block;">
                                                     <input type="hidden" name="tab" value="rate">
                                                     <input type="hidden" name="action" value="delete_curr">
-                                                    <input type="hidden" name="rate_curr_selected" value="<?php echo h($rateCurr); ?>">
-                                                    <input type="hidden" name="curr_code_delete" value="<?php echo h(gv($c, 'CURR_CODE', '')); ?>">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger">
-                                                        Del
-                                                    </button>
+                                                    <input type="hidden" name="curr_code_delete" value="<?php echo h($cCode); ?>">
+                                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Hapus Currency <?php echo h($cCode); ?>?')">Del</button>
                                                 </form>
                                             </td>
                                         </tr>
@@ -1387,70 +1730,42 @@ if ($tab == 'rate') {
                                 </tbody>
                             </table>
                         </div>
-
                     </div>
 
                     <div class="col-md-8">
-                        <h5 class="fw-bold">Rate <?php echo ($rateCurr != '') ? ' - ' . h($rateCurr) : ''; ?></h5>
-
-                        <form method="post" class="card card-body mb-3" id="frmRate">
+                        <h5 class="fw-bold">Rate untuk: <?php echo h($rateCurr); ?></h5>
+                        <form method="post" class="card card-body mb-3">
                             <input type="hidden" name="tab" value="rate">
                             <input type="hidden" name="action" value="save_rate">
-                            <input type="hidden" name="rate_curr_selected" id="rate_curr_selected" value="<?php echo h($rateCurr); ?>">
-
-                            <input type="hidden" name="old_curr_code" id="old_curr_code">
-                            <input type="hidden" name="old_sdate" id="old_sdate">
-                            <input type="hidden" name="old_edate" id="old_edate">
-
-                            <div class="row g-2">
-
-                                <div class="col-md-2">
-                                    <label class="form-label">CURR</label>
-                                    <select name="rate_curr_code" id="rate_curr_code" class="form-control" required>
-                                        <option value="">--</option>
-                                        <?php foreach ($currRows as $c) { ?>
-                                            <?php
-                                            $codeOpt = gv($c, 'CURR_CODE', '');
-                                            $selected = ($codeOpt == $rateCurr) ? 'selected' : '';
-                                            ?>
-                                            <option value="<?php echo h($codeOpt); ?>" <?php echo $selected; ?>>
-                                                <?php echo h($codeOpt); ?>
-                                            </option>
-                                        <?php } ?>
-                                    </select>
-                                </div>
-
+                            <input type="hidden" name="old_curr_code" value="<?php echo h($rateCurr); ?>">
+                            <input type="hidden" name="old_sdate" value="">
+                            <input type="hidden" name="old_edate" value="">
+                            
+                            <div class="row mb-2">
                                 <div class="col-md-3">
-                                    <label class="form-label">Start Date</label>
-                                    <input type="date" name="rate_sdate" id="rate_sdate" class="form-control" required>
+                                    <label class="form-label">CURR_CODE</label>
+                                    <input type="text" name="rate_curr_code" class="form-control" value="<?php echo h($rateCurr); ?>" required>
                                 </div>
-
                                 <div class="col-md-3">
-                                    <label class="form-label">End Date</label>
-                                    <input type="date" name="rate_edate" id="rate_edate" class="form-control" required>
+                                    <label class="form-label">START DATE</label>
+                                    <input type="date" name="rate_sdate" class="form-control" required>
                                 </div>
-
-                                <div class="col-md-2">
-                                    <label class="form-label">CURR_IDR</label>
-                                    <input type="text" name="rate_rp" id="rate_rp" class="form-control" required>
+                                <div class="col-md-3">
+                                    <label class="form-label">END DATE</label>
+                                    <input type="date" name="rate_edate" class="form-control" required>
                                 </div>
-
-                                <div class="col-md-2">
-                                    <label class="form-label">CURR_USD</label>
-                                    <input type="text" name="rate_usd" id="rate_usd" class="form-control" value="1" required>
-                                </div>
-
-                                <div class="col-md-12 mt-2">
-                                    <button type="submit" class="btn btn-success">
-                                        Simpan Rate
-                                    </button>
-
-                                    <button type="button" class="btn btn-secondary" onclick="clearRateForm()">
-                                        Baru
-                                    </button>
-                                </div>
-
                             </div>
+                            <div class="row mb-2">
+                                <div class="col-md-3">
+                                    <label class="form-label">RATE RP</label>
+                                    <input type="text" name="rate_rp" class="form-control" value="0">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">RATE USD</label>
+                                    <input type="text" name="rate_usd" class="form-control" value="1">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-success">Simpan Rate</button>
                         </form>
 
                         <div class="table-responsive" style="max-height:500px;">
@@ -1458,61 +1773,70 @@ if ($tab == 'rate') {
                                 <thead class="table-dark sticky-top">
                                     <tr>
                                         <th>CURR_CODE</th>
-                                        <th>CURR_SDATE</th>
-                                        <th>CURR_EDATE</th>
-                                        <th>CURR_IDR</th>
+                                        <th>START DATE</th>
+                                        <th>END DATE</th>
+                                        <th>CURR_RP</th>
                                         <th>CURR_USD</th>
                                         <th>Action</th>
                                     </tr>
                                 </thead>
-
                                 <tbody>
-                                    <?php foreach ($rateRows as $r) { ?>
-                                        <?php
-                                        $code = gv($r, 'CURR_CODE', '');
-                                        $sdate = fmtDateInput(gv($r, 'CURR_SDATE', ''));
-                                        $edate = fmtDateInput(gv($r, 'CURR_EDATE', ''));
-                                        $rp = gv($r, 'CURR_RP', '');
-                                        $usd = gv($r, 'CURR_USD', '');
-                                        ?>
+                                    <?php foreach ($rateRows as $rt) { ?>
                                         <tr>
-                                            <td><?php echo h($code); ?></td>
-                                            <td><?php echo h($sdate); ?></td>
-                                            <td><?php echo h($edate); ?></td>
-                                            <td class="text-end"><?php echo h($rp); ?></td>
-                                            <td class="text-end"><?php echo h($usd); ?></td>
+                                            <td><?php echo h(gv($rt, 'CURR_CODE', '')); ?></td>
+                                            <td><?php echo h(fmtDateView(gv($rt, 'CURR_SDATE', ''))); ?></td>
+                                            <td><?php echo h(fmtDateView(gv($rt, 'CURR_EDATE', ''))); ?></td>
+                                            <td class="text-end"><?php echo nval(gv($rt, 'CURR_RP', 0)); ?></td>
+                                            <td class="text-end"><?php echo nval(gv($rt, 'CURR_USD', 0)); ?></td>
                                             <td>
-                                                <button type="button"
-                                                        class="btn btn-sm btn-outline-primary"
-                                                        onclick="editRate('<?php echo h($code); ?>',
-                                                                          '<?php echo h($sdate); ?>',
-                                                                          '<?php echo h($edate); ?>',
-                                                                          '<?php echo h($rp); ?>',
-                                                                          '<?php echo h($usd); ?>')">
-                                                    Edit
-                                                </button>
-
-                                                <form method="post" style="display:inline;" onsubmit="return confirm('Hapus rate ini?');">
+                                                <form method="post" style="display:inline-block;">
                                                     <input type="hidden" name="tab" value="rate">
                                                     <input type="hidden" name="action" value="delete_rate">
-                                                    <input type="hidden" name="delete_rate_curr_code" value="<?php echo h($code); ?>">
-                                                    <input type="hidden" name="delete_rate_sdate" value="<?php echo h($sdate); ?>">
-                                                    <input type="hidden" name="delete_rate_edate" value="<?php echo h($edate); ?>">
-                                                    <button type="submit" class="btn btn-sm btn-outline-danger">
-                                                        Del
-                                                    </button>
+                                                    <input type="hidden" name="delete_rate_curr_code" value="<?php echo h(gv($rt, 'CURR_CODE', '')); ?>">
+                                                    <input type="hidden" name="delete_rate_sdate" value="<?php echo h(fmtDateView(gv($rt, 'CURR_SDATE', ''))); ?>">
+                                                    <input type="hidden" name="delete_rate_edate" value="<?php echo h(fmtDateView(gv($rt, 'CURR_EDATE', ''))); ?>">
+                                                    <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Hapus Rate ini?')">Del</button>
                                                 </form>
                                             </td>
                                         </tr>
                                     <?php } ?>
                                 </tbody>
-
                             </table>
                         </div>
-
                     </div>
-
                 </div>
+
+                      <?php } elseif ($tab == 'bom') { ?>
+
+                <div class="mb-3">
+                    <button type="button" class="btn btn-success" onclick="submitTally('load_bom')">
+                        <i class="bi bi-search"></i> Load BOM
+                    </button>
+
+                    <button type="button" class="btn btn-primary" onclick="confirmImport('import_bom')">
+                        <i class="bi bi-download"></i> Import ke Tabel Tally_BOM
+                    </button>
+                    
+                    <span class="text-muted ms-3 small">
+                        *Data yang di-import hanya PART dengan kode '02' dan '03'
+                    </span>
+                </div>
+
+                <?php renderBomTable($rows); ?>
+
+            <?php } elseif ($tab == 'prod') { ?>
+
+                <div class="mb-3">
+                    <button type="button" class="btn btn-success" onclick="submitTally('load_prod')">
+                        <i class="bi bi-search"></i> Load Production
+                    </button>
+
+                    <button type="button" class="btn btn-primary" onclick="confirmImport('import_prod')">
+                        <i class="bi bi-download"></i> Import ke Tabel Tally_Prod
+                    </button>
+                </div>
+
+                <?php renderProdTable($rows); ?>
 
             <?php } ?>
 
@@ -1520,91 +1844,247 @@ if ($tab == 'rate') {
     </div>
 
 </div>
+</body>
+</html>
 
 <script>
-function submitTally(actionName) {
-    document.getElementById('action').value = actionName;
+/* ===========================
+   MODIFIKASI SALES - EDITABLE
+   Object untuk menyimpan semua perubahan dari user
+   Key = row index, Value = { NO_INVOICE: '...', NO_DS: '...', Tanggal: '...' }
+   =========================== */
+var salesModifications = {};
+
+/**
+ * Dipanggil saat user mengubah nilai di field editable (NO_INVOICE, NO_DS, Tanggal)
+ * Otomatis mengubah semua row dalam grup yang sama (berdasarkan group key asli)
+ */
+function onSalesFieldChange(el) {
+    var fieldName = el.getAttribute('data-field');
+    var groupKey  = el.getAttribute('data-group-key');
+    var newValue  = el.value;
+
+    // Cari semua input dengan field name & group key yang sama
+    var allInputs = document.querySelectorAll('input.sales-editable[data-field="' + fieldName + '"]');
+    var changedCount = 0;
+
+    allInputs.forEach(function(input) {
+        if (input.getAttribute('data-group-key') === groupKey) {
+            input.value = newValue;
+            var idx = input.getAttribute('data-row-idx');
+
+            // Simpan ke object modifications
+            if (!salesModifications[idx]) salesModifications[idx] = {};
+            salesModifications[idx][fieldName] = newValue;
+            changedCount++;
+        }
+    });
+
+    // Update hidden field
+    document.getElementById('modified_data').value = JSON.stringify(salesModifications);
+
+    // Feedback
+    var label = fieldName;
+    showSalesFeedback('✏️ ' + label + ' diubah untuk ' + changedCount + ' row dalam grup ini.');
+}
+
+/**
+ * Copy nilai INV/DS/Tanggal dari baris pertama ke SEMUA baris
+ */
+function copyFirstToAll() {
+    var allInv = document.querySelectorAll('input.sales-editable[data-field="NO_INVOICE"]');
+    var allDs  = document.querySelectorAll('input.sales-editable[data-field="NO_DS"]');
+    var allTgl = document.querySelectorAll('input.sales-editable[data-field="Tanggal"]');
+
+    if (allInv.length === 0) {
+        alert('Tidak ada data Sales. Load Sales terlebih dahulu.');
+        return;
+    }
+
+    var firstInv = allInv[0].value;
+    var firstDs  = allDs[0].value;
+    var firstTgl = allTgl[0].value;
+
+    if (firstInv === '' && firstDs === '') {
+        alert('Baris pertama kosong.');
+        return;
+    }
+
+    if (!confirm('Copy INV=' + firstInv + ', DS=' + firstDs + ', Tgl=' + firstTgl + ' ke SEMUA ' + allInv.length + ' baris?')) {
+        return;
+    }
+
+    allInv.forEach(function(input) {
+        input.value = firstInv;
+        var idx = input.getAttribute('data-row-idx');
+        if (!salesModifications[idx]) salesModifications[idx] = {};
+        salesModifications[idx]['NO_INVOICE'] = firstInv;
+    });
+
+    allDs.forEach(function(input) {
+        input.value = firstDs;
+        var idx = input.getAttribute('data-row-idx');
+        if (!salesModifications[idx]) salesModifications[idx] = {};
+        salesModifications[idx]['NO_DS'] = firstDs;
+    });
+
+    allTgl.forEach(function(input) {
+        input.value = firstTgl;
+        var idx = input.getAttribute('data-row-idx');
+        if (!salesModifications[idx]) salesModifications[idx] = {};
+        salesModifications[idx]['Tanggal'] = firstTgl;
+    });
+
+    document.getElementById('modified_data').value = JSON.stringify(salesModifications);
+
+    showSalesFeedback('📋 INV/DS/Tanggal baris pertama di-copy ke semua ' + allInv.length + ' baris.');
+}
+
+/**
+ * Reset semua edit kembali ke nilai asli (reload data)
+ */
+function resetAllEdits() {
+    if (!confirm('Reset semua edit? Data akan di-reload dari database.')) return;
+    salesModifications = {};
+    document.getElementById('modified_data').value = '';
+    validateSalesLoad('load_sales');
+}
+
+/**
+ * Feedback kecil
+ */
+function showSalesFeedback(msg) {
+    var existing = document.getElementById('salesEditFeedback');
+    if (existing) existing.remove();
+
+    var table = document.getElementById('salesTable');
+    if (!table) return;
+
+    var div = document.createElement('div');
+    div.id = 'salesEditFeedback';
+    div.className = 'alert alert-success py-1 px-3 mb-2 small';
+    div.style.cssText = 'position:sticky; top:0; z-index:10; animation: salesFadeInOut 2.5s forwards;';
+    div.innerHTML = msg;
+    table.parentNode.insertBefore(div, table);
+
+    setTimeout(function(){ if(div.parentNode) div.remove(); }, 2600);
+}
+
+/* ===========================
+   FORM SUBMIT HELPERS
+   =========================== */
+
+function submitTally(act) {
+    document.getElementById('action').value = act;
     document.getElementById('frmTally').submit();
 }
 
-function confirmImport(actionName) {
-    if (confirm('Import akan menghapus data Tally lama dan insert ulang. Lanjutkan?')) {
-        submitTally(actionName);
+function confirmImport(act) {
+    if (confirm('Lanjutkan import?')) {
+        document.getElementById('action').value = act;
+        document.getElementById('frmTally').submit();
     }
 }
 
-function validateSalesLoad(actionName) {
-    var cust = document.getElementById('cust_id').value;
+function validateSalesLoad(act) {
+    var custId = document.getElementById('cust_id').value;
+    if (custId === '') {
+        alert('Pilih Customer terlebih dahulu.');
+        return;
+    }
+    // Reset modifications saat load ulang
+    salesModifications = {};
+    document.getElementById('modified_data').value = '';
+    document.getElementById('action').value = act;
+    document.getElementById('frmTally').submit();
+}
 
-    if (cust == '') {
-        alert('Customer wajib dipilih untuk Sales P2.');
-        document.getElementById('cust_id').focus();
+function validateSalesImport(act) {
+    var custId = document.getElementById('cust_id').value;
+    if (custId === '') {
+        alert('Pilih Customer terlebih dahulu.');
         return;
     }
 
-    submitTally(actionName);
-}
+    // Pastikan modifications terkirim
+    document.getElementById('modified_data').value = JSON.stringify(salesModifications);
 
-function validateSalesImport(actionName) {
-    var cust = document.getElementById('cust_id').value;
+    var modCount = Object.keys(salesModifications).length;
+    var extraMsg = modCount > 0
+        ? '\n\nTerdapat ' + modCount + ' row yang sudah diedit (NO_INVOICE/NO_DS/Tanggal). Perubahan akan digunakan saat import.'
+        : '';
 
-    if (cust == '') {
-        alert('Customer wajib dipilih untuk Import Sales P2.');
-        document.getElementById('cust_id').focus();
-        return;
-    }
-
-    // Ambil hasil edit/copy Invoice dan DS dari tabel preview.
-    // Karena form utama yang diposting adalah frmTally, nilai tabel harus ditaruh ke hidden input.
-    var invInputs = document.getElementsByClassName('edit-inv');
-    var dsInputs = document.getElementsByClassName('edit-ds');
-
-    if (invInputs.length > 0 && document.getElementById('override_inv_no')) {
-        document.getElementById('override_inv_no').value = invInputs[0].value;
-    }
-
-    if (dsInputs.length > 0 && document.getElementById('override_ds_no')) {
-        document.getElementById('override_ds_no').value = dsInputs[0].value;
-    }
-
-    confirmImport(actionName);
-}
-
-function copyFirstInvoiceDs() {
-    var invInputs = document.getElementsByClassName('edit-inv');
-    var dsInputs = document.getElementsByClassName('edit-ds');
-
-    if (invInputs.length == 0 || dsInputs.length == 0) {
-        alert('Data sales belum ada.');
-        return;
-    }
-
-    var inv = invInputs[0].value;
-    var ds = dsInputs[0].value;
-
-    for (var i = 0; i < invInputs.length; i++) {
-        invInputs[i].value = inv;
-    }
-
-    for (var j = 0; j < dsInputs.length; j++) {
-        dsInputs[j].value = ds;
-    }
-
-    if (document.getElementById('override_inv_no')) {
-        document.getElementById('override_inv_no').value = inv;
-    }
-
-    if (document.getElementById('override_ds_no')) {
-        document.getElementById('override_ds_no').value = ds;
+    if (confirm('Import Sales ke tabel Tally_SALES sekarang?' + extraMsg)) {
+        document.getElementById('action').value = act;
+        document.getElementById('frmTally').submit();
     }
 }
+
+/* ===========================
+   PO AUTOCOMPLETE
+   =========================== */
+
+ $(function() {
+    var timerPo = null;
+
+    $('#po_no').on('input', function() {
+        var term = $(this).val();
+        var custId = $('#cust_id').val();
+        var fromD = $('#from_date').val();
+        var toD = $('#to_date').val();
+
+        if (custId === '' || term.length < 1) {
+            $('#po_suggestions').hide();
+            return;
+        }
+
+        clearTimeout(timerPo);
+        timerPo = setTimeout(function() {
+            $.get('tally_import_p2.php', {
+                ajax_po: '1',
+                cust_id: custId,
+                from_date: fromD,
+                to_date: toD,
+                term: term
+            }, function(data) {
+                var list = typeof data === 'string' ? JSON.parse(data) : data;
+                var html = '';
+
+                if (list.length === 0) {
+                    $('#po_suggestions').hide();
+                    return;
+                }
+
+                for (var i = 0; i < list.length; i++) {
+                    html += '<a href="javascript:void(0)" class="list-group-item list-group-item-action list-group-item-light py-1" style="font-size:13px;" onclick="selectPo(\'' + list[i].replace(/'/g, "\\'") + '\')">' + list[i] + '</a>';
+                }
+
+                $('#po_suggestions').html(html).show();
+            });
+        }, 300);
+    });
+
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('#po_no, #po_suggestions').length) {
+            $('#po_suggestions').hide();
+        }
+    });
+});
+
+function selectPo(val) {
+    $('#po_no').val(val);
+    $('#po_suggestions').hide();
+}
+
+/* ===========================
+   MASTER RATE FORM HELPERS
+   =========================== */
 
 function editCurr(code, desc, symbol, dec) {
     document.getElementById('curr_code').value = code;
     document.getElementById('curr_desc').value = desc;
     document.getElementById('curr_symbol').value = symbol;
     document.getElementById('curr_dec').value = dec;
-    document.getElementById('curr_code').focus();
 }
 
 function clearCurrForm() {
@@ -1612,7 +2092,9 @@ function clearCurrForm() {
     document.getElementById('curr_desc').value = '';
     document.getElementById('curr_symbol').value = '';
     document.getElementById('curr_dec').value = '0';
-    document.getElementById('curr_code').focus();
+    document.getElementById('old_curr_code').value = '';
+    document.getElementById('old_sdate').value = '';
+    document.getElementById('old_edate').value = '';
 }
 
 function editRate(code, sdate, edate, rp, usd) {
@@ -1625,244 +2107,37 @@ function editRate(code, sdate, edate, rp, usd) {
     document.getElementById('old_curr_code').value = code;
     document.getElementById('old_sdate').value = sdate;
     document.getElementById('old_edate').value = edate;
-
-    document.getElementById('rate_curr_code').focus();
 }
 
 function clearRateForm() {
-    document.getElementById('rate_curr_code').value = document.getElementById('rate_curr_selected').value;
+    document.getElementById('rate_curr_code').value = '';
     document.getElementById('rate_sdate').value = '';
     document.getElementById('rate_edate').value = '';
     document.getElementById('rate_rp').value = '';
     document.getElementById('rate_usd').value = '1';
-
     document.getElementById('old_curr_code').value = '';
     document.getElementById('old_sdate').value = '';
     document.getElementById('old_edate').value = '';
-
-    document.getElementById('rate_sdate').focus();
 }
-
-/* =========================
-   PO AUTOCOMPLETE
-   ========================= */
-var poTimer = null;
-
-function setupPoAutocomplete() {
-    var input = document.getElementById('po_no');
-    var box = document.getElementById('po_suggestions');
-
-    if (!input || !box) {
-        return;
-    }
-
-    input.addEventListener('input', function () {
-        clearTimeout(poTimer);
-        poTimer = setTimeout(function () {
-            searchPoSuggestions(input.value);
-        }, 250);
-    });
-
-    input.addEventListener('focus', function () {
-        searchPoSuggestions(input.value);
-    });
-
-    document.addEventListener('click', function (e) {
-        if (e.target !== input && !box.contains(e.target)) {
-            box.style.display = 'none';
-        }
-    });
-}
-
-function searchPoSuggestions(term) {
-    var input = document.getElementById('po_no');
-    var box = document.getElementById('po_suggestions');
-    var cust = document.getElementById('cust_id') ? document.getElementById('cust_id').value : '';
-    var fromDate = document.getElementById('from_date') ? document.getElementById('from_date').value : '';
-    var toDate = document.getElementById('to_date') ? document.getElementById('to_date').value : '';
-
-    if (!input || !box || cust === '') {
-        if (box) box.style.display = 'none';
-        return;
-    }
-
-    var url = 'tally_import_p2.php?ajax_po=1'
-        + '&cust_id=' + encodeURIComponent(cust)
-        + '&from_date=' + encodeURIComponent(fromDate)
-        + '&to_date=' + encodeURIComponent(toDate)
-        + '&term=' + encodeURIComponent(term);
-
-    fetch(url)
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            box.innerHTML = '';
-
-            if (!data || data.length === 0) {
-                box.style.display = 'none';
-                return;
-            }
-
-            for (var i = 0; i < data.length; i++) {
-                var a = document.createElement('button');
-                a.type = 'button';
-                a.className = 'list-group-item list-group-item-action';
-                a.textContent = data[i];
-                a.onclick = function () {
-                    input.value = this.textContent;
-                    box.style.display = 'none';
-                };
-                box.appendChild(a);
-            }
-
-            box.style.display = 'block';
-        })
-        .catch(function () {
-            box.style.display = 'none';
-        });
-}
-
-document.addEventListener('DOMContentLoaded', setupPoAutocomplete);
-
 </script>
+
+<style>
+@keyframes salesFadeInOut {
+    0%   { opacity: 0; transform: translateY(-8px); }
+    15%  { opacity: 1; transform: translateY(0); }
+    75%  { opacity: 1; }
+    100% { opacity: 0; }
+}
+input.sales-editable:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.4);
+    transform: scale(1.02);
+    transition: all 0.15s ease;
+}
+input.sales-editable {
+    transition: all 0.15s ease;
+}
+</style>
 
 </body>
 </html>
-
-<?php
-/* =========================
-   RENDER TABLE
-   ========================= */
-
-function renderReceiptTable($rows) {
-    if (count($rows) == 0) {
-        echo '<div class="alert alert-secondary">Data Receipt belum ada.</div>';
-        return;
-    }
-
-    echo '<div class="table-responsive" style="max-height:650px;">';
-    echo '<table class="table table-bordered table-striped table-sm mb-0">';
-    echo '<thead class="table-dark sticky-top">';
-    echo '<tr>';
-    echo '<th>ICL_NO</th>';
-    echo '<th>NO DO / DS</th>';
-    echo '<th>Tanggal</th>';
-    echo '<th>Code Supplier</th>';
-    echo '<th>Kode Barang</th>';
-    echo '<th>Nama Barang</th>';
-    echo '<th>Qty</th>';
-    echo '<th>Harga per pcs</th>';
-    echo '<th>Currency</th>';
-    echo '<th>PO</th>';
-    echo '</tr>';
-    echo '</thead><tbody>';
-
-    foreach ($rows as $r) {
-        echo '<tr>';
-        echo '<td>' . h(gv($r, 'RCV_NO', '')) . '</td>';
-        echo '<td>' . h(getDoNoP2($r)) . '</td>';
-        echo '<td>' . h(fmtDateView(gv($r, 'RCV_DATE', ''))) . '</td>';
-        echo '<td>' . h(gv($r, 'SUP_CODE', '')) . '</td>';
-        echo '<td>' . h(gv($r, 'ITEM_CODE', '')) . '</td>';
-        echo '<td>' . h(gv($r, 'ITEM_NAME', '')) . '</td>';
-        echo '<td class="text-end">' . h(gv($r, 'QTY', '')) . '</td>';
-        echo '<td class="text-end">' . h(gv($r, 'POD_PRICE', '')) . '</td>';
-        echo '<td>' . h(gv($r, 'PO_CUR', '')) . '</td>';
-        echo '</tr>';
-    }
-
-    echo '</tbody></table></div>';
-}
-
-function renderSalesTable($rows) {
-    if (count($rows) == 0) {
-        echo '<div class="alert alert-secondary">Data Sales belum ada.</div>';
-        return;
-    }
-
-    echo '<div class="table-responsive" style="max-height:650px;">';
-    echo '<table class="table table-bordered table-striped table-sm mb-0">';
-    echo '<thead class="table-dark sticky-top">';
-    echo '<tr>';
-    echo '<th>No Invoice</th>';
-    echo '<th>No DO / DS</th>';
-    echo '<th>Tanggal</th>';
-    echo '<th>Customer</th>';
-    echo '<th>Kode Barang</th>';
-    echo '<th>Nama Barang</th>';
-    echo '<th>Qty</th>';
-    echo '<th>Harga per pcs</th>';
-    echo '<th>Unit</th>';
-    echo '<th>Currency</th>';
-    echo '<th>PO</th>';
-    echo '</tr>';
-    echo '</thead><tbody>';
-
-    foreach ($rows as $r) {
-        echo '<tr>';
-        echo '<td><input type="text" class="form-control form-control-sm edit-inv" value="' . h(getInvNoP2($r, '')) . '" style="width:130px;"></td>';
-        echo '<td><input type="text" class="form-control form-control-sm edit-ds" value="' . h(getDoNoP2($r)) . '" style="width:130px;"></td>';
-        echo '<td>' . h(fmtDateView(gv($r, 'TRAN_DATE', ''))) . '</td>';
-        echo '<td>' . h(gv($r, 'CUST_CODE', '')) . '</td>';
-        echo '<td>' . h(gv($r, 'ITEM_CODE', '')) . '</td>';
-        echo '<td>' . h(gv($r, 'ITEM_NAME', '')) . '</td>';
-        echo '<td class="text-end">' . h(gv($r, 'QTY', '')) . '</td>';
-        echo '<td class="text-end">' . h(gv($r, 'ITEM_COST', '')) . '</td>';
-        echo '<td>' . h(gv($r, 'ITEM_UNIT', '')) . '</td>';
-        echo '<td>' . h(gv($r, 'ITEM_CUR', '')) . '</td>';
-        echo '<td>' . h(gv($r, 'ORDR_PO', '')) . '</td>';
-        echo '</tr>';
-    }
-
-    echo '</tbody></table></div>';
-}
-
-function renderSopTable($rows) {
-    if (count($rows) == 0) {
-        echo '<div class="alert alert-secondary">Data Stock Opname belum ada.</div>';
-        return;
-    }
-
-    echo '<div class="table-responsive" style="max-height:650px;">';
-    echo '<table class="table table-bordered table-striped table-sm mb-0">';
-    echo '<thead class="table-dark sticky-top">';
-    echo '<tr>';
-    echo '<th>Nomor</th>';
-    echo '<th>Tanggal</th>';
-    echo '<th>Item Code</th>';
-    echo '<th>Item Name</th>';
-    echo '<th>Qty</th>';
-    echo '</tr>';
-    echo '</thead><tbody>';
-
-    foreach ($rows as $r) {
-        $dateVal = gv($r, 'SOP_SDATE', '');
-
-        if ($dateVal instanceof DateTime) {
-            $yy = $dateVal->format('y');
-            $mm = $dateVal->format('m');
-        } else {
-            $t = strtotime((string)$dateVal);
-
-            if ($t === false) {
-                $yy = date('y');
-                $mm = date('m');
-            } else {
-                $yy = date('y', $t);
-                $mm = date('m', $t);
-            }
-        }
-
-        $nomor = 'SOP/' . $yy . '/' . $mm . '/' . leftPad(gv($r, 'Urut', 0), 4, '0');
-
-        echo '<tr>';
-        echo '<td>' . h($nomor) . '</td>';
-        echo '<td>' . h(fmtDateView($dateVal)) . '</td>';
-        echo '<td>' . h(gv($r, 'ITEM_CODE', '')) . '</td>';
-        echo '<td>' . h(gv($r, 'ITEM_NAME', '')) . '</td>';
-        echo '<td class="text-end">' . h(gv($r, 'STQTY', '')) . '</td>';
-        echo '</tr>';
-    }
-
-    echo '</tbody></table></div>';
-}
-?>

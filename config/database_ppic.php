@@ -78,7 +78,7 @@ elseif (isset($_SESSION['db_user']) && $_SESSION['db_user'] != "") {
 */
 else {
     if (!defined('LOGIN_PAGE')) {
-        header("Location: /msii/ppci2/login.php");
+        header("Location: /msii/ppic2/login.php");
         exit();
     }
 
