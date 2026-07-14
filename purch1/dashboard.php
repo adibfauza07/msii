@@ -185,7 +185,7 @@ function h($value) {
 
        
 
-        <a class="menu-link logout" href="http://103.136.170.125:81/msii/index.php?logout=1" target="_top">Logout</a>
+         <a class="menu-link logout" href="logout.php" target="_top">Logout</a>
     </div>
 
     <div class="main">

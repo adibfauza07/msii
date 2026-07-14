@@ -94,13 +94,6 @@ function formatCR($val) {
         /* DATA TABLE STYLING */
         .data-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
         .data-table td, .data-table th { padding: 2px 2px; vertical-align: center; border: none; word-wrap: break-word; }
-        
-        /* SETTINGAN LEBAR KOLOM (KOLOM IN/OUT/BAL DIRAPATKAN MAKSIMAL KE KANAN) */
-        .data-table th:nth-child(1) { width: 16%; } /* Doc No */
-        .data-table th:nth-child(2) { width: 63%; } /* Description (Diperlebar maksimal) */
-        .data-table th:nth-child(3) { width: 7%; text-align: right; } /* IN (Sangat merapat) */
-        .data-table th:nth-child(4) { width: 7%; text-align: right; } /* OUT */
-        .data-table th:nth-child(5) { width: 7%; text-align: right; } /* BAL */
 
         .item-header th, .item-header td { 
             border-top: 1px solid #000; 
@@ -115,22 +108,22 @@ function formatCR($val) {
         .loc-header td { font-weight: bold; font-style: italic; font-size: 15px; padding-top: 15px; padding-bottom: 5px; text-transform: uppercase; }
         
         .beg-balance td { padding-top: 3px; padding-bottom: 3px; font-size: 12px; }
-        /* Teks lurus satu baris */
         .beg-balance .lbl-col { text-align: right; padding-right: 15px; white-space: nowrap; }
         .beg-balance .lbl-text { color: blue; font-style: italic; padding-right: 20px; }
         .beg-balance .lbl-date { color: blue; font-style: italic; }
         
         .row-data td { font-size: 12px; padding: 2px 2px; }
         .row-data .desc { text-align: right; padding-right: 15px; white-space: nowrap; }
-        .row-data .in { text-align: right; color: green; }
-        .row-data .out { text-align: right; color: red; }
-        .row-data .bal { text-align: right; color: #000; }
+        
+        /* Set All Numbers to Right */
+        .num-cell { text-align: right; }
+        .in-text { color: green; }
+        .out-text { color: red; }
+        .bal-text { color: black; }
+        .bal-total { color: blue; }
         
         .grand-total td { font-weight: bold; padding-top: 8px; padding-bottom: 25px; font-size: 13px; }
         .grand-total .lbl { text-align: right; padding-right: 15px; white-space: nowrap; }
-        .grand-total .in { text-align: right; color: green; }
-        .grand-total .out { text-align: right; color: red; }
-        .grand-total .bal { text-align: right; color: blue; }
         
         .no-print { text-align: center; margin-bottom: 20px; padding: 15px; background: #fff; border-bottom: 1px solid #ccc; }
         .btn { padding: 8px 15px; cursor: pointer; border: 1px solid #ccc; background: #f8f9fa; font-weight: bold; margin: 0 5px; }
@@ -177,6 +170,15 @@ function formatCR($val) {
             </div>
         <?php else: ?>
             <table class="data-table">
+                <!-- COLGROUP: KUNCI UNTUK MEMAKSA LEBAR KOLOM PRESISI -->
+                <colgroup>
+                    <col style="width: 20%;"> <!-- Doc No -->
+                    <col style="width: 35%;"> <!-- Deskripsi (Sangat lebar) -->
+                    <col style="width: 25%;">  <!-- IN (Sangat rapat) -->
+                    <col style="width: 10%;">  <!-- OUT (Sangat rapat) -->
+                    <col style="width: 10%;">  <!-- BAL (Sangat rapat) -->
+                </colgroup>
+                
                 <?php foreach ($groupedData as $itemKey => $locations): 
                     list($itemCode, $itemName) = explode("||", $itemKey);
                 ?>
@@ -188,9 +190,9 @@ function formatCR($val) {
                     <!-- ITEM HEADER -->
                     <tr class="item-header">
                         <td colspan="2" class="code"><?php echo htmlspecialchars($itemCode); ?> &nbsp;&nbsp; <?php echo htmlspecialchars($itemName); ?></td>
-                        <th class="right" style="color: green;">IN</th>
-                        <th class="right" style="color: red;">OUT</th>
-                        <th class="right">BAL</th>
+                        <th class="num-cell in-text">IN</th>
+                        <th class="num-cell out-text">OUT</th>
+                        <th class="num-cell">BAL</th>
                     </tr>
                     
                     <?php foreach ($locations as $locName => $rows): 
@@ -222,7 +224,7 @@ function formatCR($val) {
                                         </td>
                                         <td></td>
                                         <td></td>
-                                        <td style='text-align:right;'>".formatCR($runningBalance)."</td>
+                                        <td class='num-cell'>".formatCR($runningBalance)."</td>
                                       </tr>";
                                       
                                 $currentDate = $tDateStr;
@@ -246,18 +248,18 @@ function formatCR($val) {
                             <tr class="row-data">
                                 <td><?php echo htmlspecialchars($docNo); ?></td>
                                 <td class="desc"><?php echo htmlspecialchars($displayDesc); ?></td>
-                                <td class="in"><?php echo formatCR($inQty); ?></td>
-                                <td class="out"><?php echo formatCR($outQty); ?></td>
-                                <td class="bal"><?php echo formatCR($runningBalance); ?></td>
+                                <td class="num-cell in-text"><?php echo formatCR($inQty); ?></td>
+                                <td class="num-cell out-text"><?php echo formatCR($outQty); ?></td>
+                                <td class="num-cell bal-text"><?php echo formatCR($runningBalance); ?></td>
                             </tr>
                         <?php endforeach; ?>
                         
                         <!-- GRAND TOTAL SETIAP LOKASI -->
                         <tr class="grand-total">
                             <td colspan="2" class="lbl">GRAND TOTAL :</td>
-                            <td class="in"><?php echo formatCR($sumIn); ?></td>
-                            <td class="out"><?php echo formatCR($sumOut); ?></td>
-                            <td class="bal"><?php echo formatCR($runningBalance); ?></td>
+                            <td class="num-cell in-text"><?php echo formatCR($sumIn); ?></td>
+                            <td class="num-cell out-text"><?php echo formatCR($sumOut); ?></td>
+                            <td class="num-cell bal-total"><?php echo formatCR($runningBalance); ?></td>
                         </tr>
                         
                     <?php endforeach; ?>
