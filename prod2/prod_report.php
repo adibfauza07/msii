@@ -59,9 +59,29 @@ $cust_text = isset($_GET['cust_text']) ? trim($_GET['cust_text']) : '';
 $mc_no     = isset($_GET['mc_no']) ? trim($_GET['mc_no']) : '';
 $tonase    = isset($_GET['tonase']) ? trim($_GET['tonase']) : '';
 $ngt_code  = isset($_GET['ngt_code']) ? trim($_GET['ngt_code']) : '';
+$month     = isset($_GET['month']) ? intval($_GET['month']) : 0;
 
-$start_date = $year . "-01-01";
-$end_date   = ($year + 1) . "-01-01";
+if ($month < 1 || $month > 12) {
+    $month = 0;
+}
+
+/*
+    PERIODE FILTER
+    month = 0 berarti semua bulan dalam tahun yang dipilih.
+    month 1-12 berarti data hanya bulan tersebut.
+*/
+if ($month > 0) {
+    $start_date = sprintf("%04d-%02d-01", $year, $month);
+
+    if ($month == 12) {
+        $end_date = ($year + 1) . "-01-01";
+    } else {
+        $end_date = sprintf("%04d-%02d-01", $year, $month + 1);
+    }
+} else {
+    $start_date = $year . "-01-01";
+    $end_date   = ($year + 1) . "-01-01";
+}
 
 /*
     COMBO MESIN DAN TONASE
@@ -218,6 +238,22 @@ $monthNames = array(
     11 => "Nov",
     12 => "Des"
 );
+
+$periodeLabel = "Tahun " . $year;
+
+if ($month > 0 && isset($monthNames[$month])) {
+    $periodeLabel = "Bulan " . $monthNames[$month] . " " . $year;
+}
+
+$displayMonthIndexes = array();
+
+if ($month > 0) {
+    $displayMonthIndexes[] = $month;
+} else {
+    for ($i = 1; $i <= 12; $i++) {
+        $displayMonthIndexes[] = $i;
+    }
+}
 
 $data = array();
 
@@ -486,6 +522,111 @@ if ($globalMaterialTotalQty > 0) {
     }
 }
 
+
+/*
+    HARGA PART INTERNAL BERDASARKAN BOM + HARGA PO TERAKHIR
+    Sumber rumus sama dengan report List Harga Material Konsumsi:
+    - ITTY 02: BOM_QTY x Harga_PO_IDR / 1000
+    - ITTY 03: BOM_QTY x Harga_PO_IDR
+    - Currency non-IDR dikonversi dengan CURR_RAT.CURR_VRATE
+*/
+$partHargaByCode = array();
+
+$sqlHargaPartInternal = "
+SELECT
+    b.PART_CODE,
+
+    SUM(
+        CASE
+            WHEN b.ITTY_CODE = '02' THEN
+                ROUND(
+                    (
+                        ISNULL(b.QTY, 0) *
+                        CASE
+                            WHEN ISNULL(p.PO_CUR, 'IDR') = 'IDR'
+                            THEN ISNULL(p.POD_PRICE, 0)
+                            ELSE ISNULL(p.POD_PRICE, 0) * ISNULL(c.CURR_VRATE, 0)
+                        END
+                    ) / 1000.0,
+                    2
+                )
+            WHEN b.ITTY_CODE = '03' THEN
+                ROUND(
+                    ISNULL(b.QTY, 0) *
+                    CASE
+                        WHEN ISNULL(p.PO_CUR, 'IDR') = 'IDR'
+                        THEN ISNULL(p.POD_PRICE, 0)
+                        ELSE ISNULL(p.POD_PRICE, 0) * ISNULL(c.CURR_VRATE, 0)
+                    END,
+                    2
+                )
+            ELSE 0
+        END
+    ) AS HARGA_PART_IDR
+
+FROM
+(
+    SELECT
+        PART.ITEM_ID AS PART_ID,
+        PART.ITEM_CODE AS PART_CODE,
+        MAT.ITEM_ID AS MAT_ID,
+        MAT.ITEM_CODE AS MAT_CODE,
+        BD.QTY,
+        MAT.ITTY_CODE
+    FROM BOM_DEFAULT BD
+    INNER JOIN ITEMS MAT ON BD.ITEM_ID = MAT.ITEM_ID
+    INNER JOIN ITEMS PART ON BD.PART_ID = PART.ITEM_ID
+    WHERE
+        MAT.ITTY_CODE IN ('02', '03')
+        AND ISNULL(PART.ITEM_INACTIVE, 0) = 0
+        AND ISNULL(MAT.ITEM_INACTIVE, 0) = 0
+) b
+
+LEFT JOIN
+(
+    SELECT
+        pd.ITEM_ID AS MAT_ID,
+        pd.POD_PRICE,
+        po.PO_DATE AS PRICE_DATE_RAW,
+        po.PO_CUR,
+        ROW_NUMBER() OVER
+        (
+            PARTITION BY pd.ITEM_ID
+            ORDER BY po.PO_DATE DESC, po.PO_ID DESC
+        ) AS rn
+    FROM PO_DETAIL pd
+    INNER JOIN PO po ON pd.PO_ID = po.PO_ID
+) p
+    ON b.MAT_ID = p.MAT_ID
+   AND p.rn = 1
+
+LEFT JOIN CURR_RAT c
+    ON p.PO_CUR = c.CURR_CODE
+   AND p.PRICE_DATE_RAW BETWEEN c.CURR_SDATE AND c.CURR_EDATE
+
+GROUP BY
+    b.PART_CODE
+";
+
+$stmtHargaPartInternal = sqlsrv_query($conn, $sqlHargaPartInternal);
+
+if ($stmtHargaPartInternal === false) {
+    echo "<pre>";
+    print_r(sqlsrv_errors());
+    echo "</pre>";
+    exit;
+}
+
+while ($rowHargaPart = sqlsrv_fetch_array($stmtHargaPartInternal, SQLSRV_FETCH_ASSOC)) {
+    $partCodeHarga = safeText(isset($rowHargaPart["PART_CODE"]) ? $rowHargaPart["PART_CODE"] : "");
+
+    if ($partCodeHarga != "") {
+        $partHargaByCode[$partCodeHarga] = floatval(isset($rowHargaPart["HARGA_PART_IDR"]) ? $rowHargaPart["HARGA_PART_IDR"] : 0);
+    }
+}
+
+sqlsrv_free_stmt($stmtHargaPartInternal);
+
 /*
     TOP 10 MESIN BERDASARKAN NG %
 */
@@ -595,6 +736,7 @@ $topNgUrls = array();
 
 $baseUrlParams = array(
     "year" => $year,
+    "month" => $month,
     "cust_code" => $cust_code,
     "cust_text" => $cust_text,
     "tonase" => $tonase,
@@ -816,6 +958,9 @@ if ($ngt_code != "") {
             "NG_QTY" => floatval(isset($rowItemNg["NG_QTY"]) ? $rowItemNg["NG_QTY"] : 0),
             "OK_QTY" => floatval(isset($rowItemNg["OK_QTY"]) ? $rowItemNg["OK_QTY"] : 0),
             "NG_PERCENT_OK" => floatval(isset($rowItemNg["NG_PERCENT_OK"]) ? $rowItemNg["NG_PERCENT_OK"] : 0),
+            "HARGA_PART_IDR" => 0,
+            "AMOUNT_IDR" => 0,
+            "NG_AMOUNT_IDR" => 0,
             "MACHINE_COUNT" => intval(isset($rowItemNg["MACHINE_COUNT"]) ? $rowItemNg["MACHINE_COUNT"] : 0)
         );
     }
@@ -931,6 +1076,15 @@ if ($ngt_code != "") {
         $selectedNgItemRows[$i]["VIRGIN_PCT"] = 0;
         $selectedNgItemRows[$i]["CRUSHER_PCT"] = 0;
         $selectedNgItemRows[$i]["MATERIAL_TYPE"] = "-";
+        $selectedNgItemRows[$i]["HARGA_PART_IDR"] = 0;
+        $selectedNgItemRows[$i]["AMOUNT_IDR"] = 0;
+        $selectedNgItemRows[$i]["NG_AMOUNT_IDR"] = 0;
+
+        if (isset($partHargaByCode[$partCodeKey])) {
+            $selectedNgItemRows[$i]["HARGA_PART_IDR"] = $partHargaByCode[$partCodeKey];
+            $selectedNgItemRows[$i]["AMOUNT_IDR"] = $selectedNgItemRows[$i]["OK_QTY"] * $selectedNgItemRows[$i]["HARGA_PART_IDR"];
+            $selectedNgItemRows[$i]["NG_AMOUNT_IDR"] = $selectedNgItemRows[$i]["NG_QTY"] * $selectedNgItemRows[$i]["HARGA_PART_IDR"];
+        }
 
         if (isset($smsMaterialByPart[$partCodeKey])) {
             $selectedNgItemRows[$i]["VIRGIN_QTY"] = $smsMaterialByPart[$partCodeKey]["VIRGIN_QTY"];
@@ -945,6 +1099,273 @@ if ($ngt_code != "") {
 
 for ($i = 1; $i <= 12; $i++) {
     $selectedNgMonthlyChart[] = round($selectedNgMonthly[$i], 2);
+}
+
+
+/*
+    SEMUA ITEM PRODUKSI PADA PERIODE FILTER
+    Tampil paling bawah, group by customer, sort by item_code.
+*/
+$allProductionItemRows = array();
+$allProductionMaterialByKey = array();
+$allProductionCustomerTotals = array();
+$allProductionGrandTotal = array(
+    "PRODUCTION_QTY" => 0,
+    "NG_QTY" => 0,
+    "PURGING_QTY" => 0,
+    "VIRGIN_QTY" => 0,
+    "CRUSHER_QTY" => 0,
+    "TOTAL_MATERIAL_QTY" => 0,
+    "AMOUNT_IDR" => 0,
+    "NG_AMOUNT_IDR" => 0,
+    "MACHINE_COUNT" => 0
+);
+
+$allProductionPriceFound = 0;
+$allProductionPriceMissing = 0;
+
+$sqlAllProductionItems = "
+SELECT
+    ITEM_CUSTINFO_VIEW.CUST_CODE,
+    ITEM_CUSTINFO_VIEW.CUST_COMP,
+    ITEM_CUSTINFO_VIEW.part_code AS ITEM_CODE,
+    ITEM_CUSTINFO_VIEW.part_name AS ITEM_NAME,
+
+    SUM(ISNULL(PRODUCTION.PD_OK, 0) + ISNULL(PRODUCTION.PD_HO, 0)) AS PRODUCTION_QTY,
+    SUM(ISNULL(PRODUCTION.PD_NG, 0)) AS NG_QTY,
+    SUM(ISNULL(PRODUCTION.PD_SC, 0)) AS PURGING_QTY,
+    SUM(ISNULL(PRODUCTION.PD_SHOT, 0)) AS SHOT_QTY,
+    SUM(ISNULL(PRODUCTION.PD_WKH, 0)) AS WORK_HOURS,
+    SUM(ISNULL(PRODUCTION.PD_LOSTHOUR, 0)) AS LOST_HOURS,
+    COUNT(DISTINCT MAC.MAC_CODE) AS MACHINE_COUNT,
+
+    CASE
+        WHEN SUM(ISNULL(PRODUCTION.PD_OK, 0) + ISNULL(PRODUCTION.PD_HO, 0)) = 0 THEN 0
+        ELSE
+            SUM(ISNULL(PRODUCTION.PD_NG, 0)) * 100.0 /
+            SUM(ISNULL(PRODUCTION.PD_OK, 0) + ISNULL(PRODUCTION.PD_HO, 0))
+    END AS NG_PERCENT_OK
+
+FROM PRODUCTION
+INNER JOIN WO ON PRODUCTION.WO_ID = WO.WO_ID
+INNER JOIN MAC ON WO.MAC_ID = MAC.MAC_ID
+INNER JOIN MAG ON MAC.MAG_ID = MAG.MAG_ID
+INNER JOIN ITEM_CUSTINFO_VIEW ON WO.ITEM_ID = ITEM_CUSTINFO_VIEW.ITEM_ID
+
+WHERE
+    PRODUCTION.PD_DATE >= ?
+    AND PRODUCTION.PD_DATE < ?
+    $where
+
+GROUP BY
+    ITEM_CUSTINFO_VIEW.CUST_CODE,
+    ITEM_CUSTINFO_VIEW.CUST_COMP,
+    ITEM_CUSTINFO_VIEW.part_code,
+    ITEM_CUSTINFO_VIEW.part_name
+
+HAVING
+    SUM(ISNULL(PRODUCTION.PD_OK, 0) + ISNULL(PRODUCTION.PD_HO, 0)) > 0
+    OR SUM(ISNULL(PRODUCTION.PD_NG, 0)) > 0
+    OR SUM(ISNULL(PRODUCTION.PD_SC, 0)) > 0
+
+ORDER BY
+    ITEM_CUSTINFO_VIEW.CUST_CODE,
+    ITEM_CUSTINFO_VIEW.part_code
+";
+
+$stmtAllProductionItems = sqlsrv_query($conn, $sqlAllProductionItems, $params);
+
+if ($stmtAllProductionItems === false) {
+    echo "<pre>";
+    print_r(sqlsrv_errors());
+    echo "</pre>";
+    exit;
+}
+
+while ($rowAllItem = sqlsrv_fetch_array($stmtAllProductionItems, SQLSRV_FETCH_ASSOC)) {
+    $allProductionItemRows[] = array(
+        "CUST_CODE" => safeText(isset($rowAllItem["CUST_CODE"]) ? $rowAllItem["CUST_CODE"] : ""),
+        "CUST_COMP" => safeText(isset($rowAllItem["CUST_COMP"]) ? $rowAllItem["CUST_COMP"] : ""),
+        "ITEM_CODE" => safeText(isset($rowAllItem["ITEM_CODE"]) ? $rowAllItem["ITEM_CODE"] : ""),
+        "ITEM_NAME" => safeText(isset($rowAllItem["ITEM_NAME"]) ? $rowAllItem["ITEM_NAME"] : ""),
+        "PRODUCTION_QTY" => floatval(isset($rowAllItem["PRODUCTION_QTY"]) ? $rowAllItem["PRODUCTION_QTY"] : 0),
+        "NG_QTY" => floatval(isset($rowAllItem["NG_QTY"]) ? $rowAllItem["NG_QTY"] : 0),
+        "PURGING_QTY" => floatval(isset($rowAllItem["PURGING_QTY"]) ? $rowAllItem["PURGING_QTY"] : 0),
+        "SHOT_QTY" => floatval(isset($rowAllItem["SHOT_QTY"]) ? $rowAllItem["SHOT_QTY"] : 0),
+        "WORK_HOURS" => floatval(isset($rowAllItem["WORK_HOURS"]) ? $rowAllItem["WORK_HOURS"] : 0),
+        "LOST_HOURS" => floatval(isset($rowAllItem["LOST_HOURS"]) ? $rowAllItem["LOST_HOURS"] : 0),
+        "NG_PERCENT_OK" => floatval(isset($rowAllItem["NG_PERCENT_OK"]) ? $rowAllItem["NG_PERCENT_OK"] : 0),
+        "MACHINE_COUNT" => intval(isset($rowAllItem["MACHINE_COUNT"]) ? $rowAllItem["MACHINE_COUNT"] : 0),
+        "VIRGIN_QTY" => 0,
+        "CRUSHER_QTY" => 0,
+        "TOTAL_MATERIAL_QTY" => 0,
+        "VIRGIN_PCT" => 0,
+        "CRUSHER_PCT" => 0,
+        "MATERIAL_TYPE" => "-",
+        "HARGA_PART_IDR" => 0,
+        "AMOUNT_IDR" => 0,
+        "NG_AMOUNT_IDR" => 0
+    );
+}
+
+sqlsrv_free_stmt($stmtAllProductionItems);
+
+/*
+    ACTUAL MATERIAL SMS UNTUK SEMUA ITEM PRODUKSI
+    Sumber: SMS_DETAIL.SMSD_QTY, hanya MAT.ITTY_CODE = 02.
+*/
+$sqlAllProductionSmsMaterial = "
+SELECT
+    ITEM_CUSTINFO_VIEW.CUST_CODE,
+    ITEM_CUSTINFO_VIEW.part_code AS ITEM_CODE,
+
+    SUM(
+        CASE
+            WHEN RIGHT(RTRIM(ISNULL(MAT.ITEM_CODE, '')), 2) = '-0'
+            THEN ISNULL(SMS_DETAIL.SMSD_QTY, 0)
+            ELSE 0
+        END
+    ) AS VIRGIN_QTY,
+
+    SUM(
+        CASE
+            WHEN LTRIM(RTRIM(ISNULL(MAT.ITEM_CODE, ''))) <> ''
+             AND RIGHT(RTRIM(ISNULL(MAT.ITEM_CODE, '')), 2) <> '-0'
+            THEN ISNULL(SMS_DETAIL.SMSD_QTY, 0)
+            ELSE 0
+        END
+    ) AS CRUSHER_QTY
+
+FROM SMS
+INNER JOIN WO ON SMS.WO_ID = WO.WO_ID
+INNER JOIN SMS_DETAIL ON SMS.SMS_ID = SMS_DETAIL.SMS_ID
+INNER JOIN ITEMS AS MAT ON SMS_DETAIL.ITEM_ID = MAT.ITEM_ID
+INNER JOIN MAC ON WO.MAC_ID = MAC.MAC_ID
+INNER JOIN MAG ON MAC.MAG_ID = MAG.MAG_ID
+INNER JOIN ITEM_CUSTINFO_VIEW ON WO.ITEM_ID = ITEM_CUSTINFO_VIEW.ITEM_ID
+
+WHERE
+    SMS.SMS_DATE >= ?
+    AND SMS.SMS_DATE < ?
+    AND MAT.ITTY_CODE = '02'
+    $where
+
+GROUP BY
+    ITEM_CUSTINFO_VIEW.CUST_CODE,
+    ITEM_CUSTINFO_VIEW.part_code
+";
+
+$stmtAllProductionSmsMaterial = sqlsrv_query($conn, $sqlAllProductionSmsMaterial, $params);
+
+if ($stmtAllProductionSmsMaterial === false) {
+    echo "<pre>";
+    print_r(sqlsrv_errors());
+    echo "</pre>";
+    exit;
+}
+
+while ($rowAllMat = sqlsrv_fetch_array($stmtAllProductionSmsMaterial, SQLSRV_FETCH_ASSOC)) {
+    $custKeyMat = safeText(isset($rowAllMat["CUST_CODE"]) ? $rowAllMat["CUST_CODE"] : "");
+    $itemKeyMat = safeText(isset($rowAllMat["ITEM_CODE"]) ? $rowAllMat["ITEM_CODE"] : "");
+    $mapKeyMat = $custKeyMat . "|" . $itemKeyMat;
+
+    $virginQty = floatval(isset($rowAllMat["VIRGIN_QTY"]) ? $rowAllMat["VIRGIN_QTY"] : 0);
+    $crusherQty = floatval(isset($rowAllMat["CRUSHER_QTY"]) ? $rowAllMat["CRUSHER_QTY"] : 0);
+    $totalMaterialQty = $virginQty + $crusherQty;
+
+    $virginPct = 0;
+    $crusherPct = 0;
+    $materialType = "-";
+
+    if ($totalMaterialQty > 0) {
+        $virginPct = ($virginQty / $totalMaterialQty) * 100;
+        $crusherPct = ($crusherQty / $totalMaterialQty) * 100;
+
+        if ($virginQty > 0 && $crusherQty > 0) {
+            $materialType = "MIXED";
+        } elseif ($virginQty > 0) {
+            $materialType = "VIRGIN";
+        } elseif ($crusherQty > 0) {
+            $materialType = "CRUSHER";
+        }
+    }
+
+    $allProductionMaterialByKey[$mapKeyMat] = array(
+        "VIRGIN_QTY" => $virginQty,
+        "CRUSHER_QTY" => $crusherQty,
+        "TOTAL_MATERIAL_QTY" => $totalMaterialQty,
+        "VIRGIN_PCT" => $virginPct,
+        "CRUSHER_PCT" => $crusherPct,
+        "MATERIAL_TYPE" => $materialType
+    );
+}
+
+sqlsrv_free_stmt($stmtAllProductionSmsMaterial);
+
+for ($i = 0; $i < count($allProductionItemRows); $i++) {
+    $custKey = $allProductionItemRows[$i]["CUST_CODE"];
+    $itemKey = $allProductionItemRows[$i]["ITEM_CODE"];
+    $mapKey = $custKey . "|" . $itemKey;
+
+    if (isset($partHargaByCode[$itemKey])) {
+        $allProductionItemRows[$i]["HARGA_PART_IDR"] = $partHargaByCode[$itemKey];
+        $allProductionItemRows[$i]["AMOUNT_IDR"] = $allProductionItemRows[$i]["PRODUCTION_QTY"] * $allProductionItemRows[$i]["HARGA_PART_IDR"];
+        $allProductionItemRows[$i]["NG_AMOUNT_IDR"] = $allProductionItemRows[$i]["NG_QTY"] * $allProductionItemRows[$i]["HARGA_PART_IDR"];
+
+        if ($allProductionItemRows[$i]["HARGA_PART_IDR"] > 0) {
+            $allProductionPriceFound++;
+        } else {
+            $allProductionPriceMissing++;
+        }
+    } else {
+        $allProductionPriceMissing++;
+    }
+
+    if (isset($allProductionMaterialByKey[$mapKey])) {
+        $allProductionItemRows[$i]["VIRGIN_QTY"] = $allProductionMaterialByKey[$mapKey]["VIRGIN_QTY"];
+        $allProductionItemRows[$i]["CRUSHER_QTY"] = $allProductionMaterialByKey[$mapKey]["CRUSHER_QTY"];
+        $allProductionItemRows[$i]["TOTAL_MATERIAL_QTY"] = $allProductionMaterialByKey[$mapKey]["TOTAL_MATERIAL_QTY"];
+        $allProductionItemRows[$i]["VIRGIN_PCT"] = $allProductionMaterialByKey[$mapKey]["VIRGIN_PCT"];
+        $allProductionItemRows[$i]["CRUSHER_PCT"] = $allProductionMaterialByKey[$mapKey]["CRUSHER_PCT"];
+        $allProductionItemRows[$i]["MATERIAL_TYPE"] = $allProductionMaterialByKey[$mapKey]["MATERIAL_TYPE"];
+    }
+
+    $customerGroupKey = $allProductionItemRows[$i]["CUST_CODE"] . "|" . $allProductionItemRows[$i]["CUST_COMP"];
+
+    if (!isset($allProductionCustomerTotals[$customerGroupKey])) {
+        $allProductionCustomerTotals[$customerGroupKey] = array(
+            "CUST_CODE" => $allProductionItemRows[$i]["CUST_CODE"],
+            "CUST_COMP" => $allProductionItemRows[$i]["CUST_COMP"],
+            "PRODUCTION_QTY" => 0,
+            "NG_QTY" => 0,
+            "PURGING_QTY" => 0,
+            "VIRGIN_QTY" => 0,
+            "CRUSHER_QTY" => 0,
+            "TOTAL_MATERIAL_QTY" => 0,
+            "AMOUNT_IDR" => 0,
+            "NG_AMOUNT_IDR" => 0,
+            "ITEM_COUNT" => 0
+        );
+    }
+
+    $allProductionCustomerTotals[$customerGroupKey]["PRODUCTION_QTY"] += $allProductionItemRows[$i]["PRODUCTION_QTY"];
+    $allProductionCustomerTotals[$customerGroupKey]["NG_QTY"] += $allProductionItemRows[$i]["NG_QTY"];
+    $allProductionCustomerTotals[$customerGroupKey]["PURGING_QTY"] += $allProductionItemRows[$i]["PURGING_QTY"];
+    $allProductionCustomerTotals[$customerGroupKey]["VIRGIN_QTY"] += $allProductionItemRows[$i]["VIRGIN_QTY"];
+    $allProductionCustomerTotals[$customerGroupKey]["CRUSHER_QTY"] += $allProductionItemRows[$i]["CRUSHER_QTY"];
+    $allProductionCustomerTotals[$customerGroupKey]["TOTAL_MATERIAL_QTY"] += $allProductionItemRows[$i]["TOTAL_MATERIAL_QTY"];
+    $allProductionCustomerTotals[$customerGroupKey]["AMOUNT_IDR"] += $allProductionItemRows[$i]["AMOUNT_IDR"];
+    $allProductionCustomerTotals[$customerGroupKey]["NG_AMOUNT_IDR"] += $allProductionItemRows[$i]["NG_AMOUNT_IDR"];
+    $allProductionCustomerTotals[$customerGroupKey]["ITEM_COUNT"]++;
+
+    $allProductionGrandTotal["PRODUCTION_QTY"] += $allProductionItemRows[$i]["PRODUCTION_QTY"];
+    $allProductionGrandTotal["NG_QTY"] += $allProductionItemRows[$i]["NG_QTY"];
+    $allProductionGrandTotal["PURGING_QTY"] += $allProductionItemRows[$i]["PURGING_QTY"];
+    $allProductionGrandTotal["VIRGIN_QTY"] += $allProductionItemRows[$i]["VIRGIN_QTY"];
+    $allProductionGrandTotal["CRUSHER_QTY"] += $allProductionItemRows[$i]["CRUSHER_QTY"];
+    $allProductionGrandTotal["TOTAL_MATERIAL_QTY"] += $allProductionItemRows[$i]["TOTAL_MATERIAL_QTY"];
+    $allProductionGrandTotal["AMOUNT_IDR"] += $allProductionItemRows[$i]["AMOUNT_IDR"];
+    $allProductionGrandTotal["NG_AMOUNT_IDR"] += $allProductionItemRows[$i]["NG_AMOUNT_IDR"];
 }
 
 /*
@@ -963,7 +1384,9 @@ $chartLostPercent = array();
 $chartAvailability = array();
 $chartOKPerHour = array();
 
-foreach ($data as $d) {
+foreach ($displayMonthIndexes as $monthIndex) {
+    $d = $data[$monthIndex];
+
     $labels[] = $d["bulan"];
     $chartOK[] = round($d["ok"], 2);
     $chartNG[] = round($d["ng"], 2);
@@ -989,7 +1412,7 @@ $clearNgUrl = "prod_report.php?" . http_build_query($clearNgParams);
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Dashboard Laporan Produksi Tahunan</title>
+    <title>Dashboard Laporan Produksi Tahunan / Bulanan</title>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.4/dist/Chart.min.js"></script>
 
@@ -1343,22 +1766,72 @@ $clearNgUrl = "prod_report.php?" . http_build_query($clearNgParams);
             font-size: 12px;
             margin-left: 10px;
         }
+
+        .table-all-production td {
+            text-align: left;
+        }
+
+        .table-all-production td.num,
+        .table-all-production th.num {
+            text-align: right;
+            font-weight: bold;
+        }
+
+        .table-all-production td.center,
+        .table-all-production th.center {
+            text-align: center;
+        }
+
+        .table-all-production .customer-group-row td {
+            background: #e8eef5;
+            color: #263f55;
+            font-weight: bold;
+            text-align: left;
+            font-size: 13px;
+        }
+
+        .table-all-production .customer-subtotal-row td,
+        .table-all-production .customer-subtotal-row th {
+            background: #f5f7fa;
+            font-weight: bold;
+        }
+
+        .table-all-production .grand-total-row th {
+            background: #2c3e50;
+            color: #ffffff;
+        }
+
+        .table-all-production .item-code {
+            color: #c0392b;
+            font-weight: bold;
+        }
+
     </style>
 </head>
 <body>
 
-<h2>Dashboard Laporan Produksi Tahunan</h2>
+<h2>Dashboard Laporan Produksi Tahunan / Bulanan</h2>
 
 <div class="subtitle">
     Plant: <?php echo h($plantLabel); ?> |
     Server: <?php echo h($serverLabel); ?> |
-    Tahun: <?php echo h($year); ?>
+    Periode: <?php echo h($periodeLabel); ?>
 </div>
 
 <div class="filter-box">
     <form method="get" id="filterForm">
         <label>Tahun:</label>
         <input type="text" name="year" value="<?php echo h($year); ?>" style="width:86px;">
+
+        <label>Bulan:</label>
+        <select name="month" id="month" style="width:120px;">
+            <option value="0" <?php echo ($month == 0 ? "selected" : ""); ?>>Semua Bulan</option>
+            <?php for ($i = 1; $i <= 12; $i++): ?>
+                <option value="<?php echo h($i); ?>" <?php echo ($month == $i ? "selected" : ""); ?>>
+                    <?php echo h($monthNames[$i]); ?>
+                </option>
+            <?php endfor; ?>
+        </select>
 
         <label>Customer:</label>
         <span class="ac-wrap">
@@ -1561,6 +2034,60 @@ $clearNgUrl = "prod_report.php?" . http_build_query($clearNgParams);
         </div>
         <div class="card-small">MAT_CODE -0 / selain -0</div>
     </div>
+
+</div>
+
+<div class="cards">
+    <div class="card">
+        <div class="card-title">Total Amount IDR</div>
+        <div class="card-value blue" style="font-size:18px;">Rp <?php echo angka($allProductionGrandTotal["AMOUNT_IDR"], 2); ?></div>
+        <div class="card-small">Production Qty x Harga Part</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Total NG Amount IDR</div>
+        <div class="card-value red" style="font-size:18px;">Rp <?php echo angka($allProductionGrandTotal["NG_AMOUNT_IDR"], 2); ?></div>
+        <div class="card-small">NG Qty x Harga Part</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Avg Harga / Pcs</div>
+        <div class="card-value" style="font-size:18px;">
+            Rp
+            <?php
+                $avgHargaPartDashboard = 0;
+                if ($allProductionGrandTotal["PRODUCTION_QTY"] > 0) {
+                    $avgHargaPartDashboard = $allProductionGrandTotal["AMOUNT_IDR"] / $allProductionGrandTotal["PRODUCTION_QTY"];
+                }
+                echo angka($avgHargaPartDashboard, 2);
+            ?>
+        </div>
+        <div class="card-small">Total prod amount / Production Qty</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Item Ada Harga</div>
+        <div class="card-value green"><?php echo angka($allProductionPriceFound); ?></div>
+        <div class="card-small">BOM + PO terakhir valid</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Item Tanpa Harga</div>
+        <div class="card-value red"><?php echo angka($allProductionPriceMissing); ?></div>
+        <div class="card-small">Harga part = 0 / tidak ada</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Dasar Harga</div>
+        <div class="card-value" style="font-size:15px;">BOM Internal</div>
+        <div class="card-small">ITTY 02/03 + PO terakhir</div>
+    </div>
+
+    <div class="card">
+        <div class="card-title">Currency</div>
+        <div class="card-value" style="font-size:15px;">IDR</div>
+        <div class="card-small">USD dikonversi VRATE</div>
+    </div>
 </div>
 
 <div class="panel">
@@ -1679,6 +2206,9 @@ $clearNgUrl = "prod_report.php?" . http_build_query($clearNgParams);
                     <th>Customer</th>
                     <th>Qty NG</th>
                     <th>Production Qty</th>
+                    <th>Harga Part (IDR)</th>
+                    <th>NG Amount IDR</th>
+                    <th>Prod Amount IDR</th>
                     <th>NG % terhadap Prod</th>
                     <th>Virgin Usage</th>
                     <th>Crusher Usage</th>
@@ -1721,6 +2251,18 @@ $clearNgUrl = "prod_report.php?" . http_build_query($clearNgParams);
 
                             <td class="num">
                                 <?php echo angka($itemNg["OK_QTY"]); ?>
+                            </td>
+
+                            <td class="num">
+                                Rp <?php echo angka(isset($itemNg["HARGA_PART_IDR"]) ? $itemNg["HARGA_PART_IDR"] : 0, 2); ?>
+                            </td>
+
+                            <td class="num">
+                                Rp <?php echo angka(isset($itemNg["NG_AMOUNT_IDR"]) ? $itemNg["NG_AMOUNT_IDR"] : 0, 2); ?>
+                            </td>
+
+                            <td class="num">
+                                Rp <?php echo angka(isset($itemNg["AMOUNT_IDR"]) ? $itemNg["AMOUNT_IDR"] : 0, 2); ?>
                             </td>
 
                             <td class="num">
@@ -1769,20 +2311,20 @@ $clearNgUrl = "prod_report.php?" . http_build_query($clearNgParams);
                     <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="13">Tidak ada detail item untuk NG ini.</td>
+                        <td colspan="16">Tidak ada detail item untuk NG ini.</td>
                     </tr>
                 <?php endif; ?>
             </tbody>
         </table>
 
         <div class="click-note">
-            Urutan berdasarkan Qty NG terbesar. Virgin/Crusher dihitung dari actual pemakaian SMS_DETAIL.SMSD_QTY, hanya material ITTY_CODE 02. MAT_CODE akhiran -0 = VIRGIN, selain itu = CRUSHER. Data mengikuti filter tahun, customer, tonase, dan mesin.
+            Urutan berdasarkan Qty NG terbesar. Harga Part dihitung dari BOM internal + harga PO terakhir. Prod Amount IDR = Production Qty x Harga Part. NG Amount IDR = NG Qty x Harga Part. Virgin/Crusher dihitung dari actual pemakaian SMS_DETAIL.SMSD_QTY, hanya material ITTY_CODE 02. MAT_CODE akhiran -0 = VIRGIN, selain itu = CRUSHER. Data mengikuti filter tahun, customer, tonase, dan mesin.
         </div>
     </div>
 
     <div class="click-note">
         Filter aktif:
-        Tahun <?php echo h($year); ?>,
+        <?php echo h($periodeLabel); ?>,
         Customer <?php echo $cust_text != "" ? h($cust_text) : "-"; ?>,
         Tonase <?php echo $tonase != "" ? h($tonase) : "-"; ?>,
         Mesin <?php echo $mc_no != "" ? h($mc_no) : "-"; ?>
@@ -1823,7 +2365,7 @@ $clearNgUrl = "prod_report.php?" . http_build_query($clearNgParams);
 </div>
 
 <div class="panel">
-    <h3>Detail Produksi Bulanan Tahun <?php echo h($year); ?></h3>
+    <h3>Detail Produksi <?php echo h($periodeLabel); ?></h3>
 
     <table class="table-monthly-production">
         <thead>
@@ -1852,8 +2394,9 @@ $clearNgUrl = "prod_report.php?" . http_build_query($clearNgParams);
             </tr>
         </thead>
         <tbody>
-            <?php foreach ($data as $monthNo => $d): ?>
+            <?php foreach ($displayMonthIndexes as $monthNo): ?>
             <?php
+                $d = $data[$monthNo];
                 $gm = $globalMaterialMonthly[$monthNo];
                 $gmMatType = isset($gm["material_type"]) ? $gm["material_type"] : "-";
                 $gmMatClass = "material-empty";
@@ -1942,6 +2485,226 @@ $clearNgUrl = "prod_report.php?" . http_build_query($clearNgParams);
         Persentase dihitung dari Virgin Usage / Total Material dan Crusher Usage / Total Material.
     </div>
 </div>
+
+<div class="panel">
+    <h3>Semua Item Produksi <?php echo h($periodeLabel); ?> - Group by Customer, Sort by Item Code</h3>
+
+    <table class="table-all-production">
+        <thead>
+            <tr>
+                <th>No</th>
+                <th>Part Code</th>
+                <th>Part Name</th>
+                <th class="num">Production Qty</th>
+                <th class="num">Harga Part (IDR)</th>
+                <th class="num">Prod Amount IDR</th>
+                <th class="num">NG Qty</th>
+                <th class="num">NG Amount IDR</th>
+                <th class="num">NG % Prod</th>
+                <th class="num">Purging</th>
+                <th class="num">Virgin Usage</th>
+                <th class="num">Crusher Usage</th>
+                <th class="num">Virgin %</th>
+                <th class="num">Crusher %</th>
+                <th class="center">Material</th>
+                <th class="num">Mesin</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            <?php if (count($allProductionItemRows) > 0): ?>
+                <?php
+                    $lastCustomerGroupKey = "";
+                    $noAllItem = 1;
+                ?>
+
+                <?php for ($i = 0; $i < count($allProductionItemRows); $i++): ?>
+                    <?php
+                        $prodItem = $allProductionItemRows[$i];
+                        $customerGroupKey = $prodItem["CUST_CODE"] . "|" . $prodItem["CUST_COMP"];
+
+                        if ($customerGroupKey != $lastCustomerGroupKey):
+                            if ($lastCustomerGroupKey != "" && isset($allProductionCustomerTotals[$lastCustomerGroupKey])):
+                                $prevTotal = $allProductionCustomerTotals[$lastCustomerGroupKey];
+                                $prevTotalMaterial = $prevTotal["TOTAL_MATERIAL_QTY"];
+                                $prevVirginPct = 0;
+                                $prevCrusherPct = 0;
+
+                                if ($prevTotalMaterial > 0) {
+                                    $prevVirginPct = ($prevTotal["VIRGIN_QTY"] / $prevTotalMaterial) * 100;
+                                    $prevCrusherPct = ($prevTotal["CRUSHER_QTY"] / $prevTotalMaterial) * 100;
+                                }
+                    ?>
+                                <tr class="customer-subtotal-row">
+                                    <td colspan="3">Subtotal Customer</td>
+                                    <td class="num"><?php echo angka($prevTotal["PRODUCTION_QTY"]); ?></td>
+                                    <td class="num">-</td>
+                                    <td class="num">Rp <?php echo angka($prevTotal["AMOUNT_IDR"], 2); ?></td>
+                                    <td class="num"><?php echo angka($prevTotal["NG_QTY"]); ?></td>
+                                    <td class="num">Rp <?php echo angka($prevTotal["NG_AMOUNT_IDR"], 2); ?></td>
+                                    <td class="num">
+                                        <?php
+                                            $prevNgPct = 0;
+                                            if ($prevTotal["PRODUCTION_QTY"] > 0) {
+                                                $prevNgPct = ($prevTotal["NG_QTY"] / $prevTotal["PRODUCTION_QTY"]) * 100;
+                                            }
+                                            echo angka($prevNgPct, 2);
+                                        ?>%
+                                    </td>
+                                    <td class="num"><?php echo angka($prevTotal["PURGING_QTY"]); ?></td>
+                                    <td class="num"><?php echo angka($prevTotal["VIRGIN_QTY"], 2); ?></td>
+                                    <td class="num"><?php echo angka($prevTotal["CRUSHER_QTY"], 2); ?></td>
+                                    <td class="num"><?php echo angka($prevVirginPct, 2); ?>%</td>
+                                    <td class="num"><?php echo angka($prevCrusherPct, 2); ?>%</td>
+                                    <td colspan="2"></td>
+                                </tr>
+                    <?php
+                            endif;
+
+                            $customerLabel = $prodItem["CUST_CODE"];
+
+                            if ($prodItem["CUST_COMP"] != "") {
+                                $customerLabel .= " - " . $prodItem["CUST_COMP"];
+                            }
+
+                            $currentTotal = isset($allProductionCustomerTotals[$customerGroupKey]) ? $allProductionCustomerTotals[$customerGroupKey] : null;
+                    ?>
+                            <tr class="customer-group-row">
+                                <td colspan="16">
+                                    Customer: <?php echo h($customerLabel); ?>
+                                    <?php if ($currentTotal !== null): ?>
+                                        &nbsp; | &nbsp; Item: <?php echo angka($currentTotal["ITEM_COUNT"]); ?>
+                                        &nbsp; | &nbsp; Production: <?php echo angka($currentTotal["PRODUCTION_QTY"]); ?>
+                                        &nbsp; | &nbsp; NG: <?php echo angka($currentTotal["NG_QTY"]); ?>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                    <?php
+                            $lastCustomerGroupKey = $customerGroupKey;
+                            $noAllItem = 1;
+                        endif;
+
+                        $matTypeAll = isset($prodItem["MATERIAL_TYPE"]) ? $prodItem["MATERIAL_TYPE"] : "-";
+                        $matClassAll = "material-empty";
+
+                        if ($matTypeAll == "VIRGIN") {
+                            $matClassAll = "material-virgin";
+                        } elseif ($matTypeAll == "CRUSHER") {
+                            $matClassAll = "material-crusher";
+                        } elseif ($matTypeAll == "MIXED") {
+                            $matClassAll = "material-mixed";
+                        }
+                    ?>
+
+                    <tr>
+                        <td><?php echo $noAllItem; ?></td>
+                        <td class="item-code"><?php echo h($prodItem["ITEM_CODE"]); ?></td>
+                        <td><?php echo h($prodItem["ITEM_NAME"]); ?></td>
+                        <td class="num"><?php echo angka($prodItem["PRODUCTION_QTY"]); ?></td>
+                        <td class="num">Rp <?php echo angka($prodItem["HARGA_PART_IDR"], 2); ?></td>
+                        <td class="num">Rp <?php echo angka($prodItem["AMOUNT_IDR"], 2); ?></td>
+                        <td class="num"><?php echo angka($prodItem["NG_QTY"]); ?></td>
+                        <td class="num">Rp <?php echo angka($prodItem["NG_AMOUNT_IDR"], 2); ?></td>
+                        <td class="num"><?php echo angka($prodItem["NG_PERCENT_OK"], 2); ?>%</td>
+                        <td class="num"><?php echo angka($prodItem["PURGING_QTY"]); ?></td>
+                        <td class="num"><?php echo angka($prodItem["VIRGIN_QTY"], 2); ?></td>
+                        <td class="num"><?php echo angka($prodItem["CRUSHER_QTY"], 2); ?></td>
+                        <td class="num"><?php echo angka($prodItem["VIRGIN_PCT"], 2); ?>%</td>
+                        <td class="num"><?php echo angka($prodItem["CRUSHER_PCT"], 2); ?>%</td>
+                        <td class="center">
+                            <span class="material-badge <?php echo h($matClassAll); ?>">
+                                <?php echo h($matTypeAll); ?>
+                            </span>
+                        </td>
+                        <td class="num"><?php echo angka($prodItem["MACHINE_COUNT"]); ?></td>
+                    </tr>
+
+                    <?php $noAllItem++; ?>
+                <?php endfor; ?>
+
+                <?php if ($lastCustomerGroupKey != "" && isset($allProductionCustomerTotals[$lastCustomerGroupKey])): ?>
+                    <?php
+                        $lastTotal = $allProductionCustomerTotals[$lastCustomerGroupKey];
+                        $lastTotalMaterial = $lastTotal["TOTAL_MATERIAL_QTY"];
+                        $lastVirginPct = 0;
+                        $lastCrusherPct = 0;
+
+                        if ($lastTotalMaterial > 0) {
+                            $lastVirginPct = ($lastTotal["VIRGIN_QTY"] / $lastTotalMaterial) * 100;
+                            $lastCrusherPct = ($lastTotal["CRUSHER_QTY"] / $lastTotalMaterial) * 100;
+                        }
+
+                        $lastNgPct = 0;
+                        if ($lastTotal["PRODUCTION_QTY"] > 0) {
+                            $lastNgPct = ($lastTotal["NG_QTY"] / $lastTotal["PRODUCTION_QTY"]) * 100;
+                        }
+                    ?>
+                    <tr class="customer-subtotal-row">
+                        <td colspan="3">Subtotal Customer</td>
+                        <td class="num"><?php echo angka($lastTotal["PRODUCTION_QTY"]); ?></td>
+                        <td class="num">-</td>
+                        <td class="num">Rp <?php echo angka($lastTotal["AMOUNT_IDR"], 2); ?></td>
+                        <td class="num"><?php echo angka($lastTotal["NG_QTY"]); ?></td>
+                        <td class="num">Rp <?php echo angka($lastTotal["NG_AMOUNT_IDR"], 2); ?></td>
+                        <td class="num"><?php echo angka($lastNgPct, 2); ?>%</td>
+                        <td class="num"><?php echo angka($lastTotal["PURGING_QTY"]); ?></td>
+                        <td class="num"><?php echo angka($lastTotal["VIRGIN_QTY"], 2); ?></td>
+                        <td class="num"><?php echo angka($lastTotal["CRUSHER_QTY"], 2); ?></td>
+                        <td class="num"><?php echo angka($lastVirginPct, 2); ?>%</td>
+                        <td class="num"><?php echo angka($lastCrusherPct, 2); ?>%</td>
+                        <td colspan="2"></td>
+                    </tr>
+                <?php endif; ?>
+            <?php else: ?>
+                <tr>
+                    <td colspan="16">Tidak ada item produksi pada periode filter ini.</td>
+                </tr>
+            <?php endif; ?>
+        </tbody>
+
+        <tfoot>
+            <?php
+                $grandProdQty = $allProductionGrandTotal["PRODUCTION_QTY"];
+                $grandNgQty = $allProductionGrandTotal["NG_QTY"];
+                $grandMaterialQty = $allProductionGrandTotal["TOTAL_MATERIAL_QTY"];
+
+                $grandNgPct = 0;
+                $grandVirginPct = 0;
+                $grandCrusherPct = 0;
+
+                if ($grandProdQty > 0) {
+                    $grandNgPct = ($grandNgQty / $grandProdQty) * 100;
+                }
+
+                if ($grandMaterialQty > 0) {
+                    $grandVirginPct = ($allProductionGrandTotal["VIRGIN_QTY"] / $grandMaterialQty) * 100;
+                    $grandCrusherPct = ($allProductionGrandTotal["CRUSHER_QTY"] / $grandMaterialQty) * 100;
+                }
+            ?>
+            <tr class="grand-total-row">
+                <th colspan="3">Grand Total Semua Item Produksi</th>
+                <th class="num"><?php echo angka($grandProdQty); ?></th>
+                <th class="num">-</th>
+                <th class="num">Rp <?php echo angka($allProductionGrandTotal["AMOUNT_IDR"], 2); ?></th>
+                <th class="num"><?php echo angka($grandNgQty); ?></th>
+                <th class="num">Rp <?php echo angka($allProductionGrandTotal["NG_AMOUNT_IDR"], 2); ?></th>
+                <th class="num"><?php echo angka($grandNgPct, 2); ?>%</th>
+                <th class="num"><?php echo angka($allProductionGrandTotal["PURGING_QTY"]); ?></th>
+                <th class="num"><?php echo angka($allProductionGrandTotal["VIRGIN_QTY"], 2); ?></th>
+                <th class="num"><?php echo angka($allProductionGrandTotal["CRUSHER_QTY"], 2); ?></th>
+                <th class="num"><?php echo angka($grandVirginPct, 2); ?>%</th>
+                <th class="num"><?php echo angka($grandCrusherPct, 2); ?>%</th>
+                <th colspan="2"></th>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="note">
+        Tabel ini menampilkan semua item yang ada produksi pada periode filter aktif. Data digroup berdasarkan customer dan diurutkan berdasarkan <b>Part Code / Item Code</b>.
+        Kolom Harga Part memakai BOM internal + PO terakhir dalam IDR. Prod Amount IDR = Production Qty x Harga Part. NG Amount IDR = NG Qty x Harga Part. Kolom Virgin/Crusher memakai actual <b>SMS_DETAIL.SMSD_QTY</b>, hanya material <b>ITTY_CODE 02</b>.
+    </div>
+</div>
+
 
 <script>
 /*

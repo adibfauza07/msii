@@ -3,7 +3,7 @@ if (session_id() == "") {
     session_start();
 }
 
-require_once __DIR__ . "/../config/db_plant2.php";
+require_once __DIR__ . "/../config/database_prod.php";
 
 if ($conn === false) {
     echo "Koneksi database gagal.";
@@ -140,7 +140,7 @@ function h($value) {
 
     <div class="header-box">
         <div class="header-title">REPORT MENU</div>
-        <div class="header-subtitle">PURCHASING System Plant 2</div>
+        <div class="header-subtitle">PRODUCTION System Plant 1</div>
     </div>
 
     <div class="info-box">
@@ -149,7 +149,7 @@ function h($value) {
         <br>
 
         Server:
-        <b>192.168.0.9</b>
+        <b>192.168.0.4</b>
         &nbsp; | &nbsp;
 
         Database:
@@ -170,21 +170,17 @@ function h($value) {
         <div class="report-grid">
 
             <div class="report-item">
-                <div class="report-name">PURCHASE YEAR</div>
-                <a class="button" href="purchase_year.php" target="_blank">OPEN</a>
+                <div class="report-name">DAILY PRODUCTION</div>
+                <a class="button" href="daily_production.php" target="_blank">OPEN</a>
             </div>
 			
 			 <div class="report-item">
-                <div class="report-name">WEEKLY RECEIVE SUPPLIER</div>
-                <a class="button" href="weekly_receive.php" target="_blank">OPEN</a>
+                <div class="report-name">GRAFIK PRODUCTION</div>
+                <a class="button" href="prod_report.php" target="_blank">OPEN</a>
             </div>
 			
-				 <div class="report-item">
-                <div class="report-name">OUTSTANDING PO SUPPLIER</div>
-                <a class="button" href="report_po_outstanding.php" target="_blank">OPEN</a>
-            </div>
+			
 
-            
 
         </div>
     </div>
@@ -194,7 +190,7 @@ function h($value) {
     </div>
 
     <div class="footer">
-        P.T. IMC TEKNO INDONESIA - Ordering System Plant 2
+        P.T. IMC TEKNO INDONESIA - Production System Plant 1
     </div>
 
 </div>

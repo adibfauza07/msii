@@ -183,6 +183,17 @@ function h($value) {
                 <div class="report-name">OUTSTANDING PO SUPPLIER</div>
                 <a class="button" href="report_po_outstanding.php" target="_blank">OPEN</a>
             </div>
+			
+				 <div class="report-item">
+                <div class="report-name">FORECAST VS RECEIVE MATERIAL</div>
+                <a class="button" href="forecast_receive.php" target="_blank">OPEN</a>
+            </div>
+			 <div class="report-item">
+                <div class="report-name">SALES VS RECEIVE MATERIAL</div>
+                <a class="button" href="sales_receive.php" target="_blank">OPEN</a>
+            </div>
+
+
 
             
 

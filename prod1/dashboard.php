@@ -3,7 +3,7 @@ if (session_id() == "") {
     session_start();
 }
 
-require_once __DIR__ . "/../config/db_plant2.php";
+require_once __DIR__ . "/../config/database_prod.php";
 
 if ($conn === false) {
     header("Location: login.php?error=session_expired");

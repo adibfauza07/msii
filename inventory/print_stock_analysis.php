@@ -1,221 +1,269 @@
 <?php
 require_once __DIR__ . '/../config/database_p1.php';
 
-// 1. Tangkap Parameter
-require_once __DIR__ . '/../config/database_p1.php';
-
-// 1. Tangkap Parameter 
+// 1. Tangkap Parameter (Berupa ITEM_CODE atau ITEM_ID dari form)
 $passedItem = isset($_GET['item_id']) ? trim($_GET['item_id']) : '0';
-$startDate = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d');
+$startDate = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01');
 $period    = isset($_GET['period']) ? (int)$_GET['period'] : 1;
 
 $itemId = 0;
 $itemCodeDisplay = "ALL ITEMS";
 
-// TRANSLATOR: Ubah ITEM_CODE menjadi ITEM_ID dengan sangat aman
+// TRANSLATOR: Ubah ITEM_CODE menjadi ITEM_ID dengan aman
 if ($passedItem !== '0' && $passedItem !== '') {
-    // Cari berdasarkan ITEM_CODE terlebih dahulu
     $qFind = sqlsrv_query($conn, "SELECT TOP 1 ITEM_ID, ITEM_CODE FROM ITEMS WHERE ITEM_CODE = ?", array($passedItem));
-    
     if ($qFind && $rFind = sqlsrv_fetch_array($qFind, SQLSRV_FETCH_ASSOC)) {
         $itemId = $rFind['ITEM_ID'];
         $itemCodeDisplay = $rFind['ITEM_CODE'];
     } else {
-        // Jika tidak ketemu, cek apakah parameter murni angka (berarti itu memang ITEM_ID)
         if (is_numeric($passedItem)) {
             $itemId = (int)$passedItem;
-            
-            // Ambil kodenya buat ditampilkan di header laporan
             $qName = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_ID = ?", array($itemId));
             if ($qName && $rName = sqlsrv_fetch_array($qName, SQLSRV_FETCH_ASSOC)) {
                 $itemCodeDisplay = $rName['ITEM_CODE'];
-            } else {
-                $itemCodeDisplay = "ID: " . $itemId;
             }
         } else {
-            $itemId = -999; // Dibuat minus agar tidak nyasar ke barang lain
+            $itemId = -999; 
             $itemCodeDisplay = "ITEM NOT FOUND";
         }
     }
 }
 
-// Format StartDate menjadi 'YYYYMMDD' untuk Stored Procedure
+// Format StartDate untuk SP
 $startDateFormatted = date('Ymd', strtotime($startDate));
 
 // 2. Eksekusi Stored Procedure
-$sql = "EXEC sp_StockAnalysis4 @STARTDATE = ?, @PERIOD = ?, @ITEM_ID = ?";
+$sql = "EXEC sp_StockAnalysis2 @STARTDATE = ?, @PERIOD = ?, @ITEM_ID = ?";
 $params = array($startDateFormatted, $period, $itemId);
-$stmt = sqlsrv_query($conn, $sql, $params);
 
-if ($stmt === false) {
-    die("<div style='background:#ffcccc; padding:20px; border:2px solid red;'>
-            <b>Error Eksekusi Stored Procedure:</b><br>" . print_r(sqlsrv_errors(), true) . "
-         </div>");
-}
+set_time_limit(0); 
+$options = array("QueryTimeout" => 300);
+$stmt = sqlsrv_query($conn, $sql, $params, $options);
 
-// 3. Proses Hasil Data & Grouping (Berdasarkan Item, Lalu Lokasi)
-$dataList = [];
+// 3. Proses Data & Grouping
 $groupedData = [];
+$companyName = (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') ? "P.T. IMC TEKNO INDONESIA" : "P.T. IMC TEKNO INDONESIA";
 
-while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-    $itemKey = $row['ITEM_CODE'] . " - " . $row['ITEM_NAME'];
-    $locName = $row['LOC_NAME'];
-
-    if (!isset($groupedData[$itemKey])) {
-        $groupedData[$itemKey] = [];
+if ($stmt !== false) {
+    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+        $itemKey = (isset($row['ITEM_CODE']) ? $row['ITEM_CODE'] : '') . "||" . (isset($row['ITEM_NAME']) ? $row['ITEM_NAME'] : '');
+        $locName = isset($row['LOC_NAME']) ? trim($row['LOC_NAME']) : "UNASSIGNED";
+        
+        if (!isset($groupedData[$itemKey])) {
+            $groupedData[$itemKey] = [];
+        }
+        if (!isset($groupedData[$itemKey][$locName])) {
+            $groupedData[$itemKey][$locName] = [];
+        }
+        
+        $groupedData[$itemKey][$locName][] = $row;
     }
-    if (!isset($groupedData[$itemKey][$locName])) {
-        $groupedData[$itemKey][$locName] = [];
-    }
-    
-    $groupedData[$itemKey][$locName][] = $row;
 }
 
-$pageTitle = ($itemId == 0) ? "ALL ITEMS" : "SINGLE ITEM";
-$companyName = isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2' ? "PT. IMC TEKNO INDONESIA PLANT 2" : "PT. IMC TEKNO INDONESIA PLANT 1";
+// Bulan String untuk Header
+$startMonthStr = date('F - Y', strtotime($startDate));
+$bulanEn = array('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December');
+$bulanId = array('Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember');
+$startMonthStr = str_replace($bulanEn, $bulanId, $startMonthStr);
+
+// Fungsi Format Angka ke style Indonesia (Titik untuk ribuan, Koma untuk desimal) & Strip untuk 0
+function formatCR($val) {
+    if (round($val, 2) == 0) return '-';
+    return number_format($val, 2, ',', '.');
+}
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Stock Analysis - <?php echo $pageTitle; ?></title>
+    <title>Stock Analysis Report</title>
     <style>
-        body { font-family: Arial, Helvetica, sans-serif; font-size: 11px; margin: 20px; background: #f0f0f0; }
-        .page-container { background: #fff; width: 210mm; min-height: 297mm; margin: 0 auto; padding: 20px; box-sizing: border-box; }
+        body { font-family: "Arial", Helvetica, sans-serif; font-size: 12px; margin: 0; background: #e0e0e0; }
+        .page-container { background: #fff; width: 210mm; min-height: 297mm; margin: 20px auto; padding: 25px 40px; box-sizing: border-box; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
         
-        .header { text-align: center; margin-bottom: 20px; }
-        .header h2 { margin: 0 0 5px 0; font-size: 16px; text-decoration: underline; }
-        .header h3 { margin: 0 0 5px 0; font-size: 14px; }
+        /* HEADER STYLING */
+        .header-table { width: 100%; margin-bottom: 20px; }
+        .header-table td { vertical-align: top; }
+        .company-name { font-size: 15px; font-weight: normal; }
+        .title-center { text-align: center; }
+        .title-center h2 { margin: 0 0 2px 0; font-size: 24px; font-weight: normal; letter-spacing: 1px; }
+        .info-desc { font-size: 12px; margin-bottom: 1px; }
+        .page-info { text-align: right; font-size: 11px; }
+        
+        /* DATA TABLE STYLING */
+        .data-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .data-table td, .data-table th { padding: 2px 2px; vertical-align: center; border: none; word-wrap: break-word; }
+        
+        /* SETTINGAN LEBAR KOLOM (KOLOM IN/OUT/BAL DIRAPATKAN MAKSIMAL KE KANAN) */
+        .data-table th:nth-child(1) { width: 16%; } /* Doc No */
+        .data-table th:nth-child(2) { width: 63%; } /* Description (Diperlebar maksimal) */
+        .data-table th:nth-child(3) { width: 7%; text-align: right; } /* IN (Sangat merapat) */
+        .data-table th:nth-child(4) { width: 7%; text-align: right; } /* OUT */
+        .data-table th:nth-child(5) { width: 7%; text-align: right; } /* BAL */
 
-        .info-table { width: 100%; font-size: 12px; font-weight: bold; margin-bottom: 10px; }
-        .info-table td { padding: 2px 0; }
-
-        .data-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 20px; }
-        .data-table th, .data-table td { border: 1px solid #000; padding: 4px; }
-        .data-table th { background: #e0e0e0; text-align: center; font-weight: bold; }
+        .item-header th, .item-header td { 
+            border-top: 1px solid #000; 
+            border-bottom: 1px solid #000; 
+            font-weight: bold; 
+            font-size: 13px; 
+            padding: 5px 2px;
+        }
+        .item-header .code { font-size: 14px; }
+        .item-header .right { text-align: right; }
         
-        .item-header { background: #ffeeba; font-weight: bold; font-size: 12px; border-bottom: 2px solid #000; }
-        .loc-header { background: #d9edf7; font-weight: bold; font-size: 11px; font-style: italic; }
+        .loc-header td { font-weight: bold; font-style: italic; font-size: 15px; padding-top: 15px; padding-bottom: 5px; text-transform: uppercase; }
         
-        .text-right { text-align: right; }
-        .text-center { text-align: center; }
+        .beg-balance td { padding-top: 3px; padding-bottom: 3px; font-size: 12px; }
+        /* Teks lurus satu baris */
+        .beg-balance .lbl-col { text-align: right; padding-right: 15px; white-space: nowrap; }
+        .beg-balance .lbl-text { color: blue; font-style: italic; padding-right: 20px; }
+        .beg-balance .lbl-date { color: blue; font-style: italic; }
         
-        .no-print { text-align: center; margin-bottom: 20px; }
-        .btn { padding: 8px 15px; cursor: pointer; border: 1px solid #ccc; background: #fff; font-weight: bold; margin: 0 5px; }
+        .row-data td { font-size: 12px; padding: 2px 2px; }
+        .row-data .desc { text-align: right; padding-right: 15px; white-space: nowrap; }
+        .row-data .in { text-align: right; color: green; }
+        .row-data .out { text-align: right; color: red; }
+        .row-data .bal { text-align: right; color: #000; }
+        
+        .grand-total td { font-weight: bold; padding-top: 8px; padding-bottom: 25px; font-size: 13px; }
+        .grand-total .lbl { text-align: right; padding-right: 15px; white-space: nowrap; }
+        .grand-total .in { text-align: right; color: green; }
+        .grand-total .out { text-align: right; color: red; }
+        .grand-total .bal { text-align: right; color: blue; }
+        
+        .no-print { text-align: center; margin-bottom: 20px; padding: 15px; background: #fff; border-bottom: 1px solid #ccc; }
+        .btn { padding: 8px 15px; cursor: pointer; border: 1px solid #ccc; background: #f8f9fa; font-weight: bold; margin: 0 5px; }
         
         @media print {
             body { background: #fff; padding: 0; margin: 0; }
             .no-print { display: none; }
-            .page-container { width: 100%; padding: 0; box-shadow: none; }
-            @page { size: portrait; margin: 10mm; }
+            .page-container { width: 100%; margin: 0; padding: 0; box-shadow: none; }
+            @page { size: portrait; margin: 15mm 10mm; }
         }
     </style>
 </head>
 <body>
-
     <div class="no-print">
-        <button class="btn" onclick="window.close()">&laquo; Tutup</button>
+        <button class="btn" onclick="window.close()">Tutup</button>
         <button class="btn" onclick="window.print()">Print Report</button>
-        <a href="export_stock_analysis.php?item_id=<?php echo $itemId; ?>&start_date=<?php echo $startDate; ?>&period=<?php echo $period; ?>" class="btn">Export to Excel</a>
+        <a href="export_stock_analysis.php?item_id=<?php echo htmlspecialchars($passedItem); ?>&start_date=<?php echo htmlspecialchars($startDate); ?>&period=<?php echo $period; ?>" class="btn" style="text-decoration:none; color:black;">Export to Excel</a>
     </div>
 
     <div class="page-container">
-        <div class="header">
-            <h3><?php echo $companyName; ?></h3>
-            <h2>STOCK ANALYSIS REPORT</h2>
-        </div>
-
-        <table class="info-table">
+        <!-- HEADER -->
+        <table class="header-table">
             <tr>
-                <td style="width: 15%;">ITEM CODE</td>
-                <td style="width: 2%;">:</td>
-                <td style="width: 50%; color: blue;"><?php echo ($itemId == 0) ? "- ALL ITEMS -" : "SPECIFIC ITEM"; ?></td>
-                <td style="width: 15%;">START DATE</td>
-                <td style="width: 2%;">:</td>
-                <td><?php echo date('d-M-Y', strtotime($startDate)); ?></td>
-            </tr>
-            <tr>
-                <td>PERIOD</td>
-                <td>:</td>
-                <td><?php echo $period; ?> Month(s)</td>
-                <td></td><td></td><td></td>
+                <td style="width: 33%;" class="company-name">
+                    <?php echo htmlspecialchars($companyName); ?>
+                </td>
+                <td style="width: 34%;" class="title-center">
+                    <h2>STOCK ANALYSIS</h2>
+                    <div class="info-desc">Starting Month : <?php echo $startMonthStr; ?></div>
+                    <div class="info-desc">Period : <?php echo $period; ?> Month(s)</div>
+                </td>
+                <td style="width: 33%;" class="page-info">
+                    <div>Page 1 of 1</div>
+                    <div>Print Date : <?php echo date('m/d/Y'); ?></div>
+                    <div><?php echo date('g:i:sA'); ?></div>
+                </td>
             </tr>
         </table>
 
+        <!-- KONTEN TABEL -->
         <?php if (empty($groupedData)): ?>
-            <div style="text-align:center; padding: 30px; border: 1px solid #000; font-weight:bold;">
-                Tidak ada riwayat transaksi (Stock Analysis) pada periode yang dipilih.
+            <div style="text-align: center; padding: 40px; font-weight: bold; font-size: 13px;">
+                Tidak ada riwayat transaksi pada periode yang dipilih.
             </div>
         <?php else: ?>
-
             <table class="data-table">
-                <thead>
+                <?php foreach ($groupedData as $itemKey => $locations): 
+                    list($itemCode, $itemName) = explode("||", $itemKey);
+                ?>
+                    <!-- Simbol Kotak [] Sebelum Item -->
                     <tr>
-                        <th style="width: 10%;">DATE</th>
-                        <th style="width: 20%;">DOC. NO</th>
-                        <th style="width: 25%;">DESCRIPTION</th>
-                        <th style="width: 15%;">IN (TIN)</th>
-                        <th style="width: 15%;">OUT (TOUT)</th>
-                        <th style="width: 15%;">SYS. BALANCE</th>
+                        <td colspan="5" style="font-weight: bold; font-size: 12px; padding-bottom: 2px;">[]</td>
                     </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($groupedData as $itemKey => $locations): ?>
+                    
+                    <!-- ITEM HEADER -->
+                    <tr class="item-header">
+                        <td colspan="2" class="code"><?php echo htmlspecialchars($itemCode); ?> &nbsp;&nbsp; <?php echo htmlspecialchars($itemName); ?></td>
+                        <th class="right" style="color: green;">IN</th>
+                        <th class="right" style="color: red;">OUT</th>
+                        <th class="right">BAL</th>
+                    </tr>
+                    
+                    <?php foreach ($locations as $locName => $rows): 
+                        // VARIABEL PERHITUNGAN RUNNING BALANCE
+                        $runningBalance = isset($rows[0]['BAL_QTY']) ? (float)$rows[0]['BAL_QTY'] : 0;
+                        $sumIn = 0;
+                        $sumOut = 0;
+                        $currentDate = '';
                         
-                        <tr class="item-header">
-                            <td colspan="6">ITEM : <?php echo $itemKey; ?></td>
-                        </tr>
-
-                        <?php foreach ($locations as $locName => $rows): ?>
+                        echo "<tr class='loc-header'><td colspan='5'>".htmlspecialchars($locName)."</td></tr>";
+                        
+                        foreach ($rows as $index => $r):
+                            $tDateObj = $r['TRAN_DATE'];
+                            $tDateStr = ($tDateObj instanceof DateTime) ? $tDateObj->format('Y-m-d') : $tDateObj;
                             
-                            <tr class="loc-header">
-                                <td colspan="6">&nbsp;&nbsp;&nbsp;&raquo; LOCATION : <?php echo strtoupper($locName); ?></td>
-                            </tr>
-
-                            <?php 
-                            $totalIn = 0;
-                            $totalOut = 0;
-
-                            foreach ($rows as $r): 
-                                $date = ($r['TRAN_DATE'] instanceof DateTime) ? $r['TRAN_DATE']->format('d-M-Y') : $r['TRAN_DATE'];
-                                
-                                $desc = $r['TRTY_DESC'];
-                                if (!empty($r['SUP_ABBR'])) {
-                                    $desc .= " (" . $r['SUP_ABBR'] . ")";
+                            // PRINT BEGINNING BALANCE
+                            if ($tDateStr != $currentDate) {
+                                if ($index == 0) {
+                                    $lblDate = date('j-M-y', strtotime($startDate));
+                                } else {
+                                    $lblDate = date('j-M-y', strtotime($tDateStr . ' -1 day'));
                                 }
-
-                                $tin  = (floor($r['TIN']) == $r['TIN']) ? number_format($r['TIN'], 0) : number_format($r['TIN'], 2);
-                                $tout = (floor($r['TOUT']) == $r['TOUT']) ? number_format($r['TOUT'], 0) : number_format($r['TOUT'], 2);
-                                $bal  = (floor($r['BAL_QTY']) == $r['BAL_QTY']) ? number_format($r['BAL_QTY'], 0) : number_format($r['BAL_QTY'], 2);
                                 
-                                $totalIn += $r['TIN'];
-                                $totalOut += $r['TOUT'];
-                            ?>
-                                <tr>
-                                    <td class="text-center"><?php echo $date; ?></td>
-                                    <td><?php echo $r['TRAN_DOC']; ?></td>
-                                    <td><?php echo $desc; ?></td>
-                                    <td class="text-right"><?php echo $tin; ?></td>
-                                    <td class="text-right"><?php echo $tout; ?></td>
-                                    <td class="text-right" style="color: blue;"><?php echo $bal; ?></td>
-                                </tr>
-                            <?php endforeach; ?>
-
-                            <tr style="background-color: #fafafa; font-weight: bold;">
-                                <td colspan="3" class="text-right">SUBTOTAL <?php echo strtoupper($locName); ?> :</td>
-                                <td class="text-right"><?php echo (floor($totalIn) == $totalIn) ? number_format($totalIn, 0) : number_format($totalIn, 2); ?></td>
-                                <td class="text-right"><?php echo (floor($totalOut) == $totalOut) ? number_format($totalOut, 0) : number_format($totalOut, 2); ?></td>
-                                <td class="text-right"></td>
-                            </tr>
+                                echo "<tr class='beg-balance'>
+                                        <td></td>
+                                        <td class='lbl-col'>
+                                            <span class='lbl-text'>BEGINING BALANCE :</span>
+                                            <span class='lbl-date'>{$lblDate}</span>
+                                        </td>
+                                        <td></td>
+                                        <td></td>
+                                        <td style='text-align:right;'>".formatCR($runningBalance)."</td>
+                                      </tr>";
+                                      
+                                $currentDate = $tDateStr;
+                            }
                             
+                            // MATEMATIKA STOK
+                            $inQty  = isset($r['TIN']) ? (float)$r['TIN'] : 0;
+                            $outQty = isset($r['TOUT']) ? (float)$r['TOUT'] : 0;
+                            
+                            $runningBalance += ($inQty - $outQty); 
+                            $sumIn += $inQty;
+                            $sumOut += $outQty;
+                            
+                            $docNo    = isset($r['TRAN_DOC']) ? $r['TRAN_DOC'] : '';
+                            $trtyCode = isset($r['TRTY_CODE']) ? $r['TRTY_CODE'] : '';
+                            $trtyDesc = isset($r['TRTY_DESC']) ? $r['TRTY_DESC'] : '';
+                            
+                            $displayDate = date('d-M-y', strtotime($tDateStr));
+                            $displayDesc = "{$displayDate} [{$trtyCode}] {$trtyDesc}";
+                        ?>
+                            <tr class="row-data">
+                                <td><?php echo htmlspecialchars($docNo); ?></td>
+                                <td class="desc"><?php echo htmlspecialchars($displayDesc); ?></td>
+                                <td class="in"><?php echo formatCR($inQty); ?></td>
+                                <td class="out"><?php echo formatCR($outQty); ?></td>
+                                <td class="bal"><?php echo formatCR($runningBalance); ?></td>
+                            </tr>
                         <?php endforeach; ?>
+                        
+                        <!-- GRAND TOTAL SETIAP LOKASI -->
+                        <tr class="grand-total">
+                            <td colspan="2" class="lbl">GRAND TOTAL :</td>
+                            <td class="in"><?php echo formatCR($sumIn); ?></td>
+                            <td class="out"><?php echo formatCR($sumOut); ?></td>
+                            <td class="bal"><?php echo formatCR($runningBalance); ?></td>
+                        </tr>
+                        
                     <?php endforeach; ?>
-                </tbody>
+                <?php endforeach; ?>
             </table>
-
         <?php endif; ?>
-
     </div>
 </body>
 </html>

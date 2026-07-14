@@ -230,8 +230,8 @@ function h($value) {
             </div>
 
             <div class="report-item">
-                <div class="report-name">Delivery Balance</div>
-                <a class="button" href="delivery_balance_report.php" target="_blank">OPEN</a>
+                <div class="report-name">GRAFIK SHORTAGE</div>
+                <a class="button" href="delivery_shortage_report.php" target="_blank">OPEN</a>
             </div>
 
             <div class="report-item">

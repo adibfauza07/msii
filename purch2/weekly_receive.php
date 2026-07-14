@@ -2,7 +2,7 @@
 // ============================================
 // KONFIGURASI DATABASE
 // ============================================
-require_once __DIR__ . "/../config/database_ordering.php";
+require_once __DIR__ . "/../config/global.php";
 
 // ============================================
 // CEK APAKAH PARAMETER SUDAH DIISI
