@@ -278,7 +278,7 @@ function chk($val) {
                         </div>
                     </div>
                     <div style="width: 30%; border-left: 1px solid #000; padding: 3px; font-size: 8px;">
-                        <div class="bold text-center" style="margin-bottom: 2px;">YA (V) / TIDAK (X)</div>
+                        <div class="bold text-center" style="margin-bottom: 2px;">OK (V) / NG (X)</div>
                         <!-- Kolom MOLD -->
                         <table style="width: 100%; border:none;">
                             <tr><td style="border:none; padding:1px;">&bull; Ejector Jam</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_EJECTOR_JAM']) ? $data['CHK_EJECTOR_JAM'] : '') ?></td></tr>
@@ -294,7 +294,7 @@ function chk($val) {
                 </div>
             </td>
             <td style="padding: 3px; font-size: 8px;">
-                <div class="bold text-center" style="margin-bottom: 2px;">YA (V) / TIDAK (X)</div>
+                <div class="bold text-center" style="margin-bottom: 2px;">OK (V) / NG (X)</div>
                 <!-- Kolom MACHINE -->
                     <table style="width: 100%; border:none;">
                         <tr><td style="border:none; padding:1px;">&bull; BACKFLOW</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_BACKFLOW']) ? $data['CHK_BACKFLOW'] : '') ?></td></tr>
@@ -340,12 +340,21 @@ function chk($val) {
             <td colspan="2" class="bold text-center">CORRECTIVE ACTION</td>
         </tr>
         <tr>
-            <td colspan="2" style="height: 50px;"><?= nl2br(htmlspecialchars(isset($data['CORRECTIVE_ACTION']) ? $data['CORRECTIVE_ACTION'] : '')) ?></td>
+            <td colspan="2" style="height: 50px; position: relative;">
+                <?= nl2br(htmlspecialchars(isset($data['CORRECTIVE_ACTION']) ? $data['CORRECTIVE_ACTION'] : '')) ?>
+                
+                <!-- Notifikasi Kecil Jika Ada PDF Terlampir -->
+                <?php if(!empty($data['ATTACHMENT_CA'])): ?>
+                <div style="position: absolute; bottom: 2px; left: 5px; font-size: 8px; font-weight: bold; color: blue;">
+                    * Terdapat Lampiran PDF (Lihat Halaman Belakang)
+                </div>
+                <?php endif; ?>
+            </td>
         </tr>
     </table>
 
     <div class="flex-container" style="margin-top: 5px;">
-        <table class="sig-table" style="width: 40%;">
+       <table class="sig-table" style="width: 40%;">
             <tr><th colspan="3">PRODUCT ENGINEERING</th></tr>
             <tr>
                 <td style="height: 15px; font-size:8px;">PREPARED</td>
@@ -353,21 +362,38 @@ function chk($val) {
                 <td style="height: 15px; font-size:8px;">APPROVED</td>
             </tr>
             <tr>
-                <td><?= isset($data['PREPARED']) ? htmlspecialchars($data['PREPARED']) : '' ?></td>
-                <td><?= isset($data['CHECKED']) ? htmlspecialchars($data['CHECKED']) : '' ?></td>
-                <td><?= isset($data['APPROVED']) ? htmlspecialchars($data['APPROVED']) : '' ?></td>
+                <!-- Kolom PREPARED -->
+                <td style="height: 65px;">
+                    <?= isset($data['PREPARED']) ? htmlspecialchars($data['PREPARED']) : '' ?>
+                </td>
+                
+                <!-- Kolom CHECKED -->
+                <td style="height: 65px;">
+                    <?php if (isset($data['CHECKED']) && trim(strtoupper($data['CHECKED'])) == 'WAHYU J'): ?>
+                        <img src="../assets/images/ttd_wahyu.png" style="height:45px; mix-blend-mode: multiply;" alt="TTD Wahyu"><br>
+                    <?php endif; ?>
+                    <?= isset($data['CHECKED']) ? htmlspecialchars($data['CHECKED']) : '' ?>
+                </td>
+                
+                <!-- Kolom APPROVED -->
+                <td style="height: 65px;">
+                    <?php if (isset($data['APPROVED']) && trim(strtoupper($data['APPROVED'])) == 'GUNAWAN S'): ?>
+                        <img src="../assets/images/ttd_wahyu.png" style="height:45px; mix-blend-mode: multiply;" alt="TTD Gunawan"><br>
+                    <?php endif; ?>
+                    <?= isset($data['APPROVED']) ? htmlspecialchars($data['APPROVED']) : '' ?>
+                </td>
             </tr>
         </table>
         
         <table class="sig-table" style="width: 38%;">
            
             <tr>
-                <td style="height: 55px;"></td>
-                <td style="height: 55px;"></td>
+                <td style="height: 12px; font-size:8px;">KNOWLEDGE</td>
+                <td style="height: 12px; font-size:8px;">PPIC</td>
             </tr>
              <tr>
-                <th style="width: 50%;">KNOWLEDGE</th>
-                <th style="width: 50%;">PPIC</th>
+                <th style="height: 65px;"></th>
+                <th style="height: 65px;"></th>
             </tr>
         </table>
     </div>
@@ -432,6 +458,10 @@ function chk($val) {
 
     <?php if(!empty($data['ATTACHMENT_MAC'])): ?>
         renderPDF('../assets/foto_trial/<?= $data['ATTACHMENT_MAC'] ?>', 'Machine Statistic');
+    <?php endif; ?>
+
+    <?php if(!empty($data['ATTACHMENT_CA'])): ?>
+        renderPDF('../assets/foto_trial/<?= $data['ATTACHMENT_CA'] ?>', 'Corrective Action');
     <?php endif; ?>
 </script>
 </body>

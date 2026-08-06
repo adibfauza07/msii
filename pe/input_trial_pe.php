@@ -85,6 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $foto_mach   = uploadFoto('foto_machine');
     $attach_qe  = uploadFoto('ATTACHMENT_QE');
     $attach_mac = uploadFoto('ATTACHMENT_MAC');
+    $attach_ca  = uploadFoto('ATTACHMENT_CA');
 
     // Ambil fallback data dari Master
     $sqlMaster = "SELECT TOP 1 LAST_CUST.CUST_ID, std.MAT_CODE, mat.ITEM_ID AS MAT_ID
@@ -118,7 +119,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // =========================================================================
     if (!empty($current_code)) {
         // --- BLOK UPDATE ---
-        // HAPUS ATTACHMENT_QE & ATTACHMENT_MAC dari query dasar agar tidak tertimpa NULL
         $sql = "UPDATE TRIAL_PE SET 
             DATE=?, PART_CODE=?, CUST_ID=?, QUANTITY_TRIAL=?, TRIAL_REASON=?, TRIAL_TIMES=?,
             MAT_USING=?, MAT_DRYING_TIME=?, MOLD_SET_UP=?, MOLD_SET_DOWN=?, TRIAL_DURATION=?,
@@ -144,10 +144,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             val('CHK_BACKFLOW'), val('CHK_ROBOT'), val('CHK_HEATER_BARREL'), val('CHK_CONVEYOR'), val('CHK_MTC'), val('CHK_HEATER_CONTROL'), val('MACHINE_REMARK')
         ];
 
-        // Lampiran PDF HANYA ditambahkan ke Query jika user benar-benar meng-upload file baru
+        // Lampiran PDF
         if ($attach_qe)   { $sql .= ", ATTACHMENT_QE=? "; $params[] = $attach_qe; }
         if ($attach_mac)  { $sql .= ", ATTACHMENT_MAC=? "; $params[] = $attach_mac; }
-        // Foto juga sama
+        if ($attach_ca)   { $sql .= ", ATTACHMENT_CA=? "; $params[] = $attach_ca; } // <--- BIND PDF BARU
+        
+        // Foto
         if ($foto_name)   { $sql .= ", foto=? "; $params[] = $foto_name; }
         if ($foto_mat)    { $sql .= ", foto_material=? "; $params[] = $foto_mat; }
         if ($foto_core)   { $sql .= ", foto_mold_core=? "; $params[] = $foto_core; }
@@ -174,9 +176,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             CHK_DIMENSION, CHK_EJECTOR_JAM, CHK_RUNNER_STUCK, CHK_PART_STUCK, CHK_COOLING_LEAKAGE, 
             CHK_UNDERCUT_MOLD, CHK_SLIDER_JAM, CHK_MOLD_CLAMPING, CHK_NIPPLE_COMPLETE, 
             CHK_BACKFLOW, CHK_ROBOT, CHK_HEATER_BARREL, CHK_CONVEYOR, CHK_MTC, CHK_HEATER_CONTROL, MACHINE_REMARK, 
-            ATTACHMENT_QE, ATTACHMENT_MAC,
+            ATTACHMENT_QE, ATTACHMENT_MAC, ATTACHMENT_CA, 
             foto_material, foto_mold_core, foto_mold_cavity, foto_machine
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)";
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"; 
+        // Jumlah "?" ditambahkan 1 untuk ATTACHMENT_CA
 
         $params = [
             val('DATE'), $part_code, $cust_id, floatval(val('QUANTITY_TRIAL')), val('TRIAL_REASON'), val('TRIAL_TIMES'),
@@ -188,8 +191,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             val('CHK_BURNING'), val('CHK_SINKMARK'), val('CHK_DENTED'), val('CHK_SILVER'), val('CHK_SCRATCH'),
             val('CHK_DIMENSION'), val('CHK_EJECTOR_JAM'), val('CHK_RUNNER_STUCK'), val('CHK_PART_STUCK'), val('CHK_COOLING_LEAKAGE'),
             val('CHK_UNDERCUT_MOLD'), val('CHK_SLIDER_JAM'), val('CHK_MOLD_CLAMPING'), val('CHK_NIPPLE_COMPLETE'),
-            val('CHK_BACKFLOW'), val('CHK_ROBOT'), val('CHK_HEATER_BARREL'), val('CHK_CONVEYOR'), val('CHK_MTC'), val('CHK_HEATER_CONTROL'), val('MACHINE_REMARK'), // Fix typo HEATER_BARREL -> CHK_HEATER_BARREL
-            $attach_qe, $attach_mac,
+            val('CHK_BACKFLOW'), val('CHK_ROBOT'), val('CHK_HEATER_BARREL'), val('CHK_CONVEYOR'), val('CHK_MTC'), val('CHK_HEATER_CONTROL'), val('MACHINE_REMARK'),
+            $attach_qe, $attach_mac, $attach_ca, // <--- BIND PDF BARU DI SINI
             $foto_mat, $foto_core, $foto_cavity, $foto_mach
         ];
 
@@ -448,7 +451,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 <hr>
 
                                 <!-- Tambahan Mold Condition Check -->
-                                <h6 class="fw-bold mb-3 mt-3">MOLD CONDITION CHECK (V = YA, X = TIDAK)</h6>
+                                <h6 class="fw-bold mb-3 mt-3">MOLD CONDITION CHECK (V = OK, X = NG)</h6>
                                 <div class="row g-2 text-center align-items-end mb-4">
                                     <?php 
                                     $mold_checks = [
@@ -470,7 +473,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 <hr>
 
                                 <!-- Tambahan Machine Condition Check -->
-                                <h6 class="fw-bold mb-3 mt-3">MACHINE CONDITION CHECK (V = YA, X = TIDAK)</h6>
+                                <h6 class="fw-bold mb-3 mt-3">MACHINE CONDITION CHECK (V = OK, X = NG)</h6>
                                 <div class="row g-2 text-center align-items-end mb-4">
                                     <?php 
                                     $mac_checks = [
@@ -502,17 +505,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                         <textarea name="PE_COMMENT" class="form-control" rows="2"></textarea>
                                     </div>
                                     <div class="col-md-12 mt-2">
-                                        <label class="small fw-bold text-danger"><i class="bi bi-file-earmark-pdf"></i> Lampiran PDF (QE Comment)</label>
+    <label class="small fw-bold text-danger"><i class="bi bi-file-earmark-pdf"></i> Lampiran PDF (QE Comment)</label>
                                         <input type="file" name="ATTACHMENT_QE" class="form-control form-control-sm" accept=".pdf">
                                     </div>
                                     <div class="col-md-6">
-                                        <label>Corrective Action</label>
-                                        <textarea name="CORRECTIVE_ACTION" class="form-control" rows="2"></textarea>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label>Analisis</label>
-                                        <textarea name="ANALYSYS" class="form-control" rows="2"></textarea>
-                                    </div>
+    <label>Corrective Action (CA)</label>
+    <textarea name="CORRECTIVE_ACTION" class="form-control" rows="2"></textarea></div>
+    <div class="col-md-6">
+    <label>Analisis</label>
+    <textarea name="ANALYSYS" class="form-control" rows="2"></textarea>
+</div><div class="col-md-12 mt-2">
+        
+    <!-- Tambahan Upload PDF CA -->
+    <label class="small fw-bold text-danger mt-1"><i class="bi bi-file-earmark-pdf"></i> Lampiran PDF CA</label>
+    <input type="file" name="ATTACHMENT_CA" class="form-control form-control-sm" accept=".pdf">
+</div>
+
 
                                     <div class="col-md-4">
                                         <label>Qty OK</label>
@@ -584,19 +592,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                         </datalist>
                                     </div>
                                     <div class="col-6">
-                                        <label>Checked</label>
-                                        <input type="text" name="CHECKED" class="form-control form-control-sm" list="list_checked" autocomplete="off" placeholder="Pilih / Ketik...">
-                                        <datalist id="list_checked">
-                                            <?php foreach($history_names['CHECKED'] as $n) echo "<option value=\"".htmlspecialchars($n)."\">"; ?>
-                                        </datalist>
-                                    </div>
-                                    <div class="col-6">
-                                        <label>Approved</label>
-                                        <input type="text" name="APPROVED" class="form-control form-control-sm" list="list_approved" autocomplete="off" placeholder="Pilih / Ketik...">
-                                        <datalist id="list_approved">
-                                            <?php foreach($history_names['APPROVED'] as $n) echo "<option value=\"".htmlspecialchars($n)."\">"; ?>
-                                        </datalist>
-                                    </div>
+    <label>Checked</label>
+    <select name="CHECKED" class="form-select form-select-sm">
+        <option value="">-- Pilih --</option>
+        <option value="Wahyu J">Wahyu J</option>
+    </select>
+</div>
+<div class="col-6">
+    <label>Approved</label>
+    <select name="APPROVED" class="form-select form-select-sm">
+        <option value="">-- Pilih --</option>
+        <option value="Gunawan S">Gunawan S</option>
+    </select>
+</div>
                                 </div>
                                 <hr>
                                 <div class="mb-2">
@@ -716,8 +724,8 @@ function fillForm(rec) {
     $("input[name='PIC']").val(rec.PIC);
     $("input[name='WEIGHT_RUNNER']").val(rec.WEIGHT_RUNNER);
     $("input[name='PREPARED']").val(rec.PREPARED);
-    $("input[name='CHECKED']").val(rec.CHECKED);
-    $("input[name='APPROVED']").val(rec.APPROVED);
+$("select[name='CHECKED']").val(rec.CHECKED);
+$("select[name='APPROVED']").val(rec.APPROVED);
     $("input[name='QTY_OK']").val(rec.QTY_OK);
     $("input[name='QTY_NG']").val(rec.QTY_NG);
     $("select[name='JENIS_ID']").val(rec.JENIS_ID || "");
