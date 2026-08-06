@@ -157,6 +157,10 @@ $plantLabel = isset($_SESSION['active_plant']) ? strtoupper($_SESSION['active_pl
         <i class="bi bi-graph-down-arrow me-2"></i> IMPORT PRODUCTION TO TALLY 
     </a>
 	
+	<a href="consumtion_tally.php">
+        <i class="bi bi-graph-down-arrow me-2"></i> IMPORT CONSUMTION TO TALLY 
+    </a>
+	
         <a href="export_receive.php">
             <i class="bi bi-box-arrow-in-down me-2"></i> IMPORT RECEIVE NOTE TO TALLY P2
         </a>
