@@ -1,15 +1,15 @@
 # Dependencies (JavaScript & PHP)
 node_modules/
 vendor/
-.assets/
-.debug_tally_cleanup/
-.debug_tally_xml/
-.debug_tally_xml_bom/
-.debug_tally_xml_prod/
-.debug_tally_xml_sales_p1/
-.debug_tally_xml_sales_p2/
-.debug_tally_xml_sop/
-.debug_tally_xml_consumpt/
+assets/
+debug_tally_cleanup/
+debug_tally_xml/
+debug_tally_xml_bom/
+debug_tally_xml_prod/
+debug_tally_xml_sales_p1/
+debug_tally_xml_sales_p2/
+debug_tally_xml_sop/
+debug_tally_xml_consumpt/
 
 # Environment Configurations (Sensitif / Rahasia)
 .env
