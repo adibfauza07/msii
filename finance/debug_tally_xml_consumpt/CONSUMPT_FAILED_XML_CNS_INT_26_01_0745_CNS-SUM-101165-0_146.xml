@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <VOUCHER REMOTEID="udi-IMCconsumpt-CNS-SUM-101165-0-CNS/INT/26/01/0745" VCHTYPE="Consumption Material" ACTION="Create">
+            <GUID>udi-IMCconsumpt-CNS-SUM-101165-0-CNS/INT/26/01/0745</GUID>
+            <DATE>20260109</DATE>
+            <EFFECTIVEDATE>20260109</EFFECTIVEDATE>
+            <VOUCHERTYPENAME>Consumption Material</VOUCHERTYPENAME>
+            <ISINVOICE>Yes</ISINVOICE>
+            <VOUCHERNUMBER>CNS/INT/26/01/0745</VOUCHERNUMBER>
+            <NARRATION>Auto Consumption Summary - 101165-0</NARRATION>
+            <INVENTORYENTRIESIN.LIST>
+              <STOCKITEMNAME>101165-0</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>No</ISDEEMEDPOSITIVE>
+              <RATE>0.00000</RATE>
+              <AMOUNT>0</AMOUNT>
+              <ACTUALQTY>1529.0770</ACTUALQTY>
+              <BILLEDQTY>1529.0770</BILLEDQTY>
+              <BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>Main Location</GODOWNNAME>
+                <AMOUNT>0</AMOUNT>
+                <ACTUALQTY>1529.0770</ACTUALQTY>
+                <BILLEDQTY>1529.0770</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>
+            </INVENTORYENTRIESIN.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

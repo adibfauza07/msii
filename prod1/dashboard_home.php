@@ -189,7 +189,10 @@ function h($value) {
                 <div class="report-name">EPSON REPORT </div>
                 <a class="button" href="prod_report_epson.php" target="_blank">OPEN</a>
             </div>
-			
+			<div class="report-item">
+                <div class="report-name">MONTHLY PRODUCTION INJECTION</div>
+                <a class="button" href="monthly_injection.php" target="_blank">OPEN</a>
+            </div>
 			
 
 
