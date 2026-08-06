@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <STOCKITEM NAME="010985-0">
+            <NAME.LIST>
+              <NAME>010985-0</NAME>
+            </NAME.LIST>
+            <BASEUNITS>PCS</BASEUNITS>
+            <MULTICOMPONENTLIST.LIST>
+              <COMPONENTLISTNAME>Default</COMPONENTLISTNAME>
+              <COMPONENTBASICQTY>1000</COMPONENTBASICQTY>
+              
+                <MULTICOMPONENTITEMLIST.LIST>
+                  <STOCKITEMNAME>100358-0 - TPE Miractran E670 Black</STOCKITEMNAME>
+                  <ACTUALQTY>19.670000</ACTUALQTY>
+                  <NATUREOFITEM>Component</NATUREOFITEM>
+                  <GODOWNNAME>Main Location</GODOWNNAME>
+                </MULTICOMPONENTITEMLIST.LIST>
+                <MULTICOMPONENTITEMLIST.LIST>
+                  <STOCKITEMNAME>200036-0 - P6716M STAY 2</STOCKITEMNAME>
+                  <ACTUALQTY>1.000000</ACTUALQTY>
+                  <NATUREOFITEM>Component</NATUREOFITEM>
+                  <GODOWNNAME>Main Location</GODOWNNAME>
+                </MULTICOMPONENTITEMLIST.LIST>
+                <MULTICOMPONENTITEMLIST.LIST>
+                  <STOCKITEMNAME>200037-0 - P6716M STAY CP2</STOCKITEMNAME>
+                  <ACTUALQTY>1.000000</ACTUALQTY>
+                  <NATUREOFITEM>Component</NATUREOFITEM>
+                  <GODOWNNAME>Main Location</GODOWNNAME>
+                </MULTICOMPONENTITEMLIST.LIST>
+            </MULTICOMPONENTLIST.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

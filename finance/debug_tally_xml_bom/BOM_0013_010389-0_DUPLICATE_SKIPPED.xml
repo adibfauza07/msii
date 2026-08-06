@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <STOCKITEM NAME="010389-0">
+            <NAME.LIST>
+              <NAME>010389-0</NAME>
+            </NAME.LIST>
+            <BASEUNITS>PCS</BASEUNITS>
+            <MULTICOMPONENTLIST.LIST>
+              <COMPONENTLISTNAME>Default</COMPONENTLISTNAME>
+              <COMPONENTBASICQTY>1000</COMPONENTBASICQTY>
+              
+                <MULTICOMPONENTITEMLIST.LIST>
+                  <STOCKITEMNAME>100365-0 - ABS Toyolac 700-314 Natural</STOCKITEMNAME>
+                  <ACTUALQTY>26.570000</ACTUALQTY>
+                  <NATUREOFITEM>Component</NATUREOFITEM>
+                  <GODOWNNAME>Main Location</GODOWNNAME>
+                </MULTICOMPONENTITEMLIST.LIST>
+                <MULTICOMPONENTITEMLIST.LIST>
+                  <STOCKITEMNAME>100649-0 - Plast Black MPP 7351 R2</STOCKITEMNAME>
+                  <ACTUALQTY>0.531400</ACTUALQTY>
+                  <NATUREOFITEM>Component</NATUREOFITEM>
+                  <GODOWNNAME>Main Location</GODOWNNAME>
+                </MULTICOMPONENTITEMLIST.LIST>
+                <MULTICOMPONENTITEMLIST.LIST>
+                  <STOCKITEMNAME>200010-0 - Lever Stering Adjuster</STOCKITEMNAME>
+                  <ACTUALQTY>1.000000</ACTUALQTY>
+                  <NATUREOFITEM>Component</NATUREOFITEM>
+                  <GODOWNNAME>Main Location</GODOWNNAME>
+                </MULTICOMPONENTITEMLIST.LIST>
+            </MULTICOMPONENTLIST.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

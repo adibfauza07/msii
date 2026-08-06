@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <STOCKITEM NAME="013095-0">
+            <NAME.LIST>
+              <NAME>013095-0</NAME>
+            </NAME.LIST>
+            <BASEUNITS>PCS</BASEUNITS>
+            <MULTICOMPONENTLIST.LIST>
+              <COMPONENTLISTNAME>Default</COMPONENTLISTNAME>
+              <COMPONENTBASICQTY>1000</COMPONENTBASICQTY>
+              
+                <MULTICOMPONENTITEMLIST.LIST>
+                  <STOCKITEMNAME>100828-0 - PA Amilan CM3211 G35 UBI Black</STOCKITEMNAME>
+                  <ACTUALQTY>15.740000</ACTUALQTY>
+                  <NATUREOFITEM>Component</NATUREOFITEM>
+                  <GODOWNNAME>Main Location</GODOWNNAME>
+                </MULTICOMPONENTITEMLIST.LIST>
+                <MULTICOMPONENTITEMLIST.LIST>
+                  <STOCKITEMNAME>200086-0 - Lever E430004</STOCKITEMNAME>
+                  <ACTUALQTY>1.000000</ACTUALQTY>
+                  <NATUREOFITEM>Component</NATUREOFITEM>
+                  <GODOWNNAME>Main Location</GODOWNNAME>
+                </MULTICOMPONENTITEMLIST.LIST>
+            </MULTICOMPONENTLIST.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

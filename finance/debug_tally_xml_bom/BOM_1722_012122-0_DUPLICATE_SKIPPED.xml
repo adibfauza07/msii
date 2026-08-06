@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <STOCKITEM NAME="012122-0">
+            <NAME.LIST>
+              <NAME>012122-0</NAME>
+            </NAME.LIST>
+            <BASEUNITS>PCS</BASEUNITS>
+            <MULTICOMPONENTLIST.LIST>
+              <COMPONENTLISTNAME>Default</COMPONENTLISTNAME>
+              <COMPONENTBASICQTY>1000</COMPONENTBASICQTY>
+              
+                <MULTICOMPONENTITEMLIST.LIST>
+                  <STOCKITEMNAME>100169-0 - PA66 Zytel 70G 33 HSIL Black</STOCKITEMNAME>
+                  <ACTUALQTY>43.000000</ACTUALQTY>
+                  <NATUREOFITEM>Component</NATUREOFITEM>
+                  <GODOWNNAME>Main Location</GODOWNNAME>
+                </MULTICOMPONENTITEMLIST.LIST>
+                <MULTICOMPONENTITEMLIST.LIST>
+                  <STOCKITEMNAME>200079-0 - 818AP60MN0-11</STOCKITEMNAME>
+                  <ACTUALQTY>2.000000</ACTUALQTY>
+                  <NATUREOFITEM>Component</NATUREOFITEM>
+                  <GODOWNNAME>Main Location</GODOWNNAME>
+                </MULTICOMPONENTITEMLIST.LIST>
+                <MULTICOMPONENTITEMLIST.LIST>
+                  <STOCKITEMNAME>200081-0 - Screw 842M425HEX-11</STOCKITEMNAME>
+                  <ACTUALQTY>2.000000</ACTUALQTY>
+                  <NATUREOFITEM>Component</NATUREOFITEM>
+                  <GODOWNNAME>Main Location</GODOWNNAME>
+                </MULTICOMPONENTITEMLIST.LIST>
+            </MULTICOMPONENTLIST.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

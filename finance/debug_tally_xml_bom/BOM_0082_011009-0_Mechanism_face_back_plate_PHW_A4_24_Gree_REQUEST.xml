@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>All Masters</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <STOCKITEM NAME="011009-0 Mechanism face/back plate(PHW A4 24)Gree">
+            <NAME.LIST>
+              <NAME>011009-0 Mechanism face/back plate(PHW A4 24)Gree</NAME>
+            </NAME.LIST>
+            <MAILINGNAME.LIST TYPE="String">
+              <MAILINGNAME>011009-0</MAILINGNAME>
+            </MAILINGNAME.LIST>
+            <BASEUNITS>PCS</BASEUNITS>
+            <MULTICOMPONENTLIST.LIST>
+              <COMPONENTLISTNAME>Default</COMPONENTLISTNAME>
+              <COMPONENTBASICQTY>1000</COMPONENTBASICQTY>
+              
+                <MULTICOMPONENTITEMLIST.LIST>
+                  <STOCKITEMNAME>100429-0</STOCKITEMNAME>
+                  <ACTUALQTY>15.760000 GR</ACTUALQTY>
+                  <NATUREOFITEM>Component</NATUREOFITEM>
+                  <GODOWNNAME>Main Location</GODOWNNAME>
+                </MULTICOMPONENTITEMLIST.LIST>
+            </MULTICOMPONENTLIST.LIST>
+          </STOCKITEM>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

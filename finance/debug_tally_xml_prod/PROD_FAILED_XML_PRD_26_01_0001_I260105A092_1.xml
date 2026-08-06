@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <VOUCHER REMOTEID="udi-IMCPRODUKSI-I260105A092-PRD/26/01/0001" VCHTYPE="Production" ACTION="Create">
+            <GUID>udi-IMCPRODUKSI-I260105A092-PRD/26/01/0001</GUID>
+            <DATE>05-Jan-2026</DATE>
+            <EFFECTIVEDATE>05-Jan-2026</EFFECTIVEDATE>
+            <VOUCHERTYPENAME>Production</VOUCHERTYPENAME>
+            <ISINVOICE>Yes</ISINVOICE>
+            <VOUCHERNUMBER>PRD/26/01/0001</VOUCHERNUMBER>
+            <NARRATION>Production: I260105A092</NARRATION>
+            <INVENTORYENTRIESIN.LIST>
+              <STOCKITEMNAME>012059-0 - Top Cover Socket 81+ Black CY20000501</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <RATE>0.00000</RATE>
+              <AMOUNT>-0</AMOUNT>
+              <ACTUALQTY>968.000000</ACTUALQTY>
+              <BILLEDQTY>968.000000</BILLEDQTY>
+              <BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>Main Location</GODOWNNAME>
+                <BATCHNAME>Primary Batch</BATCHNAME>
+                <DESTINATIONGODOWNNAME>Main Location</DESTINATIONGODOWNNAME>
+                <AMOUNT>-0</AMOUNT>
+                <ACTUALQTY>968.000000</ACTUALQTY>
+                <BILLEDQTY>968.000000</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>
+            </INVENTORYENTRIESIN.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

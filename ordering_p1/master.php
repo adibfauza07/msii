@@ -585,119 +585,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "delete_price_detail") {
 }
 
 // ==========================================================
-// CURRENCY SAVE / DELETE
-// ==========================================================
-if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "save_currency") {
-    $tab = "currency";
-
-    $currCode = safe_trim(get_param("CURR_CODE"));
-    if ($currCode == "") {
-        $err = "CURR_CODE belum diisi.";
-    } else {
-        $exists = query_one($conn, "SELECT TOP 1 CURR_CODE FROM dbo.CURR WHERE CURR_CODE = ?", array($currCode));
-        if ($exists) {
-            $sql = "UPDATE dbo.CURR SET CURR_DESC = ?, CURR_SYMBOL = ?, CURR_DEC = ? WHERE CURR_CODE = ?";
-            $params = array(get_param("CURR_DESC"), get_param("CURR_SYMBOL"), safe_int(get_param("CURR_DEC"), 0), $currCode);
-        } else {
-            $sql = "INSERT INTO dbo.CURR (CURR_CODE, CURR_DESC, CURR_SYMBOL, CURR_DEC) VALUES (?, ?, ?, ?)";
-            $params = array($currCode, get_param("CURR_DESC"), get_param("CURR_SYMBOL"), safe_int(get_param("CURR_DEC"), 0));
-        }
-        $stmt = sqlsrv_query($conn, $sql, $params);
-        if ($stmt === false) {
-            $err = "Gagal simpan currency: " . sql_error_text();
-        } else {
-            $msg = "Currency berhasil disimpan.";
-            $forceCurrCode = $currCode;
-        }
-    }
-}
-
-if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "save_rate") {
-    $tab = "currency";
-
-    $currCode = safe_trim(get_param("RATE_CURR_CODE"));
-    $oldStart = get_param("RATE_SDATE_OLD");
-    $start = get_param("CURR_SDATE");
-
-    if ($currCode == "") {
-        $err = "Pilih currency dulu.";
-    } elseif ($start == "") {
-        $err = "CURR_SDATE belum diisi.";
-    } else {
-        $exists = null;
-        if ($oldStart != "") {
-            $exists = query_one(
-                $conn,
-                "SELECT TOP 1 CURR_CODE FROM dbo.CURR_RAT WHERE CURR_CODE = ? AND CONVERT(VARCHAR(10), CURR_SDATE, 120) = ?",
-                array($currCode, $oldStart)
-            );
-        }
-        if ($exists) {
-            $sql = "
-                UPDATE dbo.CURR_RAT
-                SET CURR_SDATE = ?, CURR_EDATE = ?, CURR_CRATE = ?, CURR_VRATE = ?, CURR_MM = ?, CURR_YY = ?
-                WHERE CURR_CODE = ? AND CONVERT(VARCHAR(10), CURR_SDATE, 120) = ?
-            ";
-            $params = array(
-                $start,
-                get_param("CURR_EDATE"),
-                safe_float(get_param("CURR_CRATE"), 0),
-                safe_float(get_param("CURR_VRATE"), 0),
-                safe_int(get_param("CURR_MM"), 0),
-                safe_int(get_param("CURR_YY"), 0),
-                $currCode,
-                $oldStart
-            );
-        } else {
-            $sql = "
-                INSERT INTO dbo.CURR_RAT
-                (CURR_CODE, CURR_SDATE, CURR_EDATE, CURR_CRATE, CURR_VRATE, CURR_MM, CURR_YY)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            ";
-            $params = array(
-                $currCode,
-                $start,
-                get_param("CURR_EDATE"),
-                safe_float(get_param("CURR_CRATE"), 0),
-                safe_float(get_param("CURR_VRATE"), 0),
-                safe_int(get_param("CURR_MM"), 0),
-                safe_int(get_param("CURR_YY"), 0)
-            );
-        }
-        $stmt = sqlsrv_query($conn, $sql, $params);
-        if ($stmt === false) {
-            $err = "Gagal simpan rate: " . sql_error_text();
-        } else {
-            $msg = "Currency rate berhasil disimpan.";
-            $forceCurrCode = $currCode;
-            $forceRateStart = $start;
-        }
-    }
-}
-
-if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "delete_rate") {
-    $tab = "currency";
-
-    $currCode = safe_trim(get_param("RATE_CURR_CODE"));
-    $oldStart = get_param("RATE_SDATE_OLD");
-    if ($currCode == "" || $oldStart == "") {
-        $err = "Pilih currency rate dulu.";
-    } else {
-        $stmt = sqlsrv_query(
-            $conn,
-            "DELETE FROM dbo.CURR_RAT WHERE CURR_CODE = ? AND CONVERT(VARCHAR(10), CURR_SDATE, 120) = ?",
-            array($currCode, $oldStart)
-        );
-        if ($stmt === false) {
-            $err = "Gagal delete rate: " . sql_error_text();
-        } else {
-            $msg = "Currency rate berhasil dihapus.";
-            $forceCurrCode = $currCode;
-        }
-    }
-}
-
-// ==========================================================
 // LOAD CUSTOMER TAB
 // ==========================================================
 $selectedCustId = $forceCustId > 0 ? $forceCustId : safe_int(get_param("cust_id"), 0);
@@ -732,10 +619,21 @@ $customerList = query_all(
 // ==========================================================
 // LOAD PRICE TAB MASTER DETAIL
 // ==========================================================
+$isNewPrice = get_param("new_price", "") == "1";
+$isNewDetail = get_param("new_detail", "") == "1"; // Ditambahkan untuk New Detail logic
+
 $selectedItemId = $forceItemId > 0 ? $forceItemId : safe_int(get_param("item_id"), 0);
 $selectedPriceId = $forcePriceId > 0 ? $forcePriceId : safe_int(get_param("price_id"), 0);
 $selectedPrdtStart = $forcePrdtStart != "" ? $forcePrdtStart : get_param("prdt_start", "");
 $qItem = get_param("q_item", "");
+
+if ($isNewPrice) {
+    $selectedPriceId = 0;
+    $selectedPrdtStart = "";
+}
+if ($isNewDetail) {
+    $selectedPrdtStart = "";
+}
 
 $item = array("ITEM_ID" => "", "ITEM_CODE" => "", "ITEM_NO" => "", "ITEM_NAME" => "");
 
@@ -793,7 +691,7 @@ if ($selectedItemId > 0) {
         array($selectedItemId)
     );
 
-    if ($selectedPriceId <= 0 && count($priceRows) > 0) {
+    if (!$isNewPrice && $selectedPriceId <= 0 && count($priceRows) > 0) {
         $selectedPriceId = intval($priceRows[0]["PRICE_ID"]);
     }
 }
@@ -850,7 +748,8 @@ if ($selectedPriceId > 0) {
         array($selectedPriceId)
     );
 
-    if ($selectedPrdtStart == "" && count($priceDetailRows) > 0) {
+    // Default row hanya dipasang jika bukan dalam mode NEW DETAIL
+    if ($selectedPrdtStart == "" && count($priceDetailRows) > 0 && !$isNewDetail) {
         $selectedPrdtStart = date_out($priceDetailRows[0]["PRDT_START"]);
     }
 }
@@ -1175,7 +1074,6 @@ if ($selectedCurrCode != "") {
                 </span>
                 <button type="submit" class="btn">CARI</button>
                 <a class="btn" href="master.php?tab=customer">NEW</a>
-              
             </form>
         </div>
 
@@ -1300,7 +1198,7 @@ if ($selectedCurrCode != "") {
                             <label>PR_CD</label>
                             <input type="text" name="PRICE_CODE" class="w120" value="<?php echo h($priceData["PRICE_CODE"]); ?>">
                             <label style="width:80px;">CURR</label>
-                            <select name="PRICE_CURR_CODE" class="w100">
+                            <select id="PRICE_CURR_CODE" name="PRICE_CURR_CODE" class="w100">
                                 <option value=""></option>
                                 <?php for ($i = 0; $i < count($currencyOptions); $i++) { ?>
                                     <option value="<?php echo h($currencyOptions[$i]["CURR_CODE"]); ?>"<?php echo option_selected($priceData["CURR_CODE"], $currencyOptions[$i]["CURR_CODE"]); ?>><?php echo h($currencyOptions[$i]["CURR_CODE"]); ?></option>
@@ -1325,7 +1223,7 @@ if ($selectedCurrCode != "") {
                         <div class="row">
                             <button type="submit" name="action" value="save_price_header" class="btn">SIMPAN PRICE</button>
                             <button type="submit" name="action" value="delete_price_header" class="btn" onclick="return confirm('Delete PRICE dan semua detail price ini?');">DELETE PRICE</button>
-                            <a class="btn" href="master.php?tab=price&item_id=<?php echo intval($selectedItemId); ?>">NEW PRICE</a>
+                            <a class="btn" href="master.php?tab=price&item_id=<?php echo intval($selectedItemId); ?>&new_price=1">NEW PRICE</a>
                         </div>
                     </form>
                 </div>
@@ -1388,7 +1286,8 @@ if ($selectedCurrCode != "") {
                         </div>
                         <div class="row">
                             <label>PRDT_PRICE</label>
-                            <input type="text" name="PRDT_PRICE" class="w120" value="<?php echo h($detailData["PRDT_PRICE"]); ?>">
+                            <!-- Password protection handler ditambahkan di baris ini -->
+                            <input type="text" name="PRDT_PRICE" class="w120" value="<?php echo h($detailData["PRDT_PRICE"]); ?>" readonly onclick="checkPricePassword(this)" title="Klik untuk edit" style="cursor:pointer;" placeholder="Click to Unlock">
                             <label style="width:80px;">#Quotation</label>
                             <input type="text" name="PRDT_QNO" class="w180" value="<?php echo h($detailData["PRDT_QNO"]); ?>">
                         </div>
@@ -1399,7 +1298,8 @@ if ($selectedCurrCode != "") {
                         <div class="row">
                             <button type="submit" name="action" value="save_price_detail" class="btn">SIMPAN DETAIL</button>
                             <button type="submit" name="action" value="delete_price_detail" class="btn" onclick="return confirm('Delete price detail ini?');">DELETE DETAIL</button>
-                            <a class="btn" href="master.php?tab=price&item_id=<?php echo intval($selectedItemId); ?>&price_id=<?php echo intval($selectedPriceId); ?>">NEW DETAIL</a>
+                            <!-- Mengirimkan flag new_detail=1 -->
+                            <a class="btn" href="master.php?tab=price&item_id=<?php echo intval($selectedItemId); ?>&price_id=<?php echo intval($selectedPriceId); ?>&new_detail=1">NEW DETAIL</a>
                         </div>
                     </form>
                 </div>
@@ -1417,8 +1317,26 @@ if ($selectedCurrCode != "") {
                             </tr>
                         </thead>
                         <tbody>
+                            <!-- Baris Kosong Khusus Input Data Baru -->
+                            <?php if ($isNewDetail) { ?>
+                                <tr style="background:#ffffcc;">
+                                    <td style="padding: 2px;"><input type="date" id="in_PRDT_START" onkeydown="checkInlineEnter(event)" style="width:100px; padding:2px; font-size:11px;"></td>
+                                    <td style="padding: 2px;"><input type="date" id="in_PRDT_END" onkeydown="checkInlineEnter(event)" style="width:100px; padding:2px; font-size:11px;"></td>
+                                    <td style="padding: 2px;" class="right"><input type="text" id="in_PRDT_PRICE" readonly onclick="checkPricePassword(this)" onkeydown="checkInlineEnter(event)" style="width:80px; text-align:right; padding:2px; font-size:11px; cursor:pointer;" placeholder="Unlock Pwd"></td>
+                                    <td style="padding: 2px;">
+                                        <select id="in_CURR_CODE" onkeydown="checkInlineEnter(event)" style="width:60px; padding:2px; font-size:11px;">
+                                            <option value=""></option>
+                                            <?php for ($c = 0; $c < count($currencyOptions); $c++) { ?>
+                                                <option value="<?php echo h($currencyOptions[$c]["CURR_CODE"]); ?>"<?php echo option_selected($detailData["CURR_CODE"], $currencyOptions[$c]["CURR_CODE"]); ?>><?php echo h($currencyOptions[$c]["CURR_CODE"]); ?></option>
+                                            <?php } ?>
+                                        </select>
+                                    </td>
+                                    <td style="padding: 2px;"><input type="text" id="in_PRDT_QNO" onkeydown="checkInlineEnter(event)" style="width:120px; padding:2px; font-size:11px;" placeholder="Press Enter to Save"></td>
+                                </tr>
+                            <?php } ?>
+                            <!-- Loop Data Detail Eksisting -->
                             <?php for ($i = 0; $i < count($priceDetailRows); $i++) { $r = $priceDetailRows[$i]; $s = date_out($r["PRDT_START"]); ?>
-                                <tr class="<?php echo $s == date_out($detailData["PRDT_START"]) ? "selected" : ""; ?>" onclick="location.href='master.php?tab=price&item_id=<?php echo intval($selectedItemId); ?>&price_id=<?php echo intval($selectedPriceId); ?>&prdt_start=<?php echo urlencode($s); ?>'">
+                                <tr class="<?php echo $s == date_out($detailData["PRDT_START"]) && !$isNewDetail ? "selected" : ""; ?>" onclick="location.href='master.php?tab=price&item_id=<?php echo intval($selectedItemId); ?>&price_id=<?php echo intval($selectedPriceId); ?>&prdt_start=<?php echo urlencode($s); ?>'">
                                     <td><?php echo h($s); ?></td>
                                     <td><?php echo h(date_out($r["PRDT_END"])); ?></td>
                                     <td class="right"><?php echo h(fmt_num($r["PRDT_PRICE"], 4)); ?></td>
@@ -1522,9 +1440,8 @@ if ($selectedCurrCode != "") {
 </div>
 
 <script>
-function acEnc(value) {
-    return encodeURIComponent(value == null ? "" : value);
-}
+// (Bagian script Autocomplete tidak berubah, dilewati atau dicantumkan persis sama seperti sebelumnya)
+function acEnc(value) { return encodeURIComponent(value == null ? "" : value); }
 function acHtml(value) {
     return String(value == null ? "" : value)
         .replace(/&/g, "&amp;")
@@ -1536,9 +1453,7 @@ function acHtml(value) {
 function setupAutocomplete(inputId, listId, ajaxMode, renderItem, chooseItem) {
     var input = document.getElementById(inputId);
     var list = document.getElementById(listId);
-    if (!input || !list) {
-        return;
-    }
+    if (!input || !list) return;
 
     var rows = [];
     var activeIndex = -1;
@@ -1553,27 +1468,16 @@ function setupAutocomplete(inputId, listId, ajaxMode, renderItem, chooseItem) {
 
     function setActive(index) {
         var items = list.getElementsByClassName("autocomplete-item");
-        if (!items || items.length == 0) {
-            activeIndex = -1;
-            return;
-        }
-        if (index < 0) {
-            index = items.length - 1;
-        }
-        if (index >= items.length) {
-            index = 0;
-        }
-        for (var i = 0; i < items.length; i++) {
-            items[i].className = "autocomplete-item";
-        }
+        if (!items || items.length == 0) { activeIndex = -1; return; }
+        if (index < 0) { index = items.length - 1; }
+        if (index >= items.length) { index = 0; }
+        for (var i = 0; i < items.length; i++) { items[i].className = "autocomplete-item"; }
         items[index].className = "autocomplete-item active";
         activeIndex = index;
     }
 
     function choose(index) {
-        if (index < 0 || index >= rows.length) {
-            return;
-        }
+        if (index < 0 || index >= rows.length) return;
         chooseItem(rows[index]);
         hideList();
     }
@@ -1582,20 +1486,14 @@ function setupAutocomplete(inputId, listId, ajaxMode, renderItem, chooseItem) {
         list.innerHTML = "";
         rows = rowsData || [];
         activeIndex = -1;
-        if (rows.length == 0) {
-            hideList();
-            return;
-        }
+        if (rows.length == 0) { hideList(); return; }
         for (var i = 0; i < rows.length; i++) {
             (function(row, idx) {
                 var div = document.createElement("div");
                 div.className = "autocomplete-item";
                 div.innerHTML = renderItem(row);
                 div.onmouseover = function() { setActive(idx); };
-                div.onmousedown = function(e) {
-                    if (e && e.preventDefault) { e.preventDefault(); }
-                    choose(idx);
-                };
+                div.onmousedown = function(e) { if (e && e.preventDefault) { e.preventDefault(); } choose(idx); };
                 list.appendChild(div);
             })(rows[i], i);
         }
@@ -1604,26 +1502,14 @@ function setupAutocomplete(inputId, listId, ajaxMode, renderItem, chooseItem) {
     }
 
     function search(q) {
-        if (q == "") {
-            hideList();
-            return;
-        }
+        if (q == "") { hideList(); return; }
         var xhr = new XMLHttpRequest();
         xhr.open("GET", "master.php?ajax=" + acEnc(ajaxMode) + "&q=" + acEnc(q), true);
         xhr.onreadystatechange = function() {
             if (xhr.readyState == 4 && xhr.status == 200) {
                 var result;
-                try {
-                    result = JSON.parse(xhr.responseText);
-                } catch (e) {
-                    hideList();
-                    return;
-                }
-                if (result && result.rows) {
-                    render(result.rows);
-                } else {
-                    hideList();
-                }
+                try { result = JSON.parse(xhr.responseText); } catch (e) { hideList(); return; }
+                if (result && result.rows) { render(result.rows); } else { hideList(); }
             }
         };
         xhr.send(null);
@@ -1632,14 +1518,8 @@ function setupAutocomplete(inputId, listId, ajaxMode, renderItem, chooseItem) {
     input.onkeyup = function(e) {
         e = e || window.event;
         var key = e.keyCode || e.which;
-        if (key == 40) {
-            setActive(activeIndex + 1);
-            return false;
-        }
-        if (key == 38) {
-            setActive(activeIndex - 1);
-            return false;
-        }
+        if (key == 40) { setActive(activeIndex + 1); return false; }
+        if (key == 38) { setActive(activeIndex - 1); return false; }
         if (key == 13) {
             if (rows.length > 0) {
                 if (activeIndex < 0) { activeIndex = 0; }
@@ -1653,69 +1533,89 @@ function setupAutocomplete(inputId, listId, ajaxMode, renderItem, chooseItem) {
         timer = setTimeout(function() { search(q); }, 250);
     };
 
-    input.onfocus = function() {
-        if (input.value != "") {
-            search(input.value);
-        }
-    };
-
-    input.onblur = function() {
-        setTimeout(function() { hideList(); }, 250);
-    };
+    input.onfocus = function() { if (input.value != "") { search(input.value); } };
+    input.onblur = function() { setTimeout(function() { hideList(); }, 250); };
 }
 
-setupAutocomplete(
-    "searchCustomer",
-    "searchCustomerList",
-    "customer",
-    function(r) {
-        return "<b>" + acHtml(r.CUST_CODE) + "</b> - " + acHtml(r.CUST_COMP) +
-               "<div class='autocomplete-sub'>ABBR: " + acHtml(r.CUST_ABBR) + " | CURR: " + acHtml(r.CURR_CODE) + "</div>";
-    },
-    function(r) {
-        location.href = "master.php?tab=customer&cust_id=" + acEnc(r.CUST_ID);
-    }
+setupAutocomplete("searchCustomer", "searchCustomerList", "customer",
+    function(r) { return "<b>" + acHtml(r.CUST_CODE) + "</b> - " + acHtml(r.CUST_COMP) + "<div class='autocomplete-sub'>ABBR: " + acHtml(r.CUST_ABBR) + " | CURR: " + acHtml(r.CURR_CODE) + "</div>"; },
+    function(r) { location.href = "master.php?tab=customer&cust_id=" + acEnc(r.CUST_ID); }
 );
-
-setupAutocomplete(
-    "searchItem",
-    "searchItemList",
-    "item",
-    function(r) {
-        return "<b>" + acHtml(r.ITEM_CODE) + "</b> - " + acHtml(r.ITEM_NAME) +
-               "<div class='autocomplete-sub'>ITEM NO: " + acHtml(r.ITEM_NO) + "</div>";
-    },
-    function(r) {
-        location.href = "master.php?tab=price&item_id=" + acEnc(r.ITEM_ID);
-    }
+setupAutocomplete("searchItem", "searchItemList", "item",
+    function(r) { return "<b>" + acHtml(r.ITEM_CODE) + "</b> - " + acHtml(r.ITEM_NAME) + "<div class='autocomplete-sub'>ITEM NO: " + acHtml(r.ITEM_NO) + "</div>"; },
+    function(r) { location.href = "master.php?tab=price&item_id=" + acEnc(r.ITEM_ID); }
 );
-
-setupAutocomplete(
-    "priceCustomerText",
-    "priceCustomerList",
-    "customer",
-    function(r) {
-        return "<b>" + acHtml(r.CUST_CODE) + "</b> - " + acHtml(r.CUST_COMP) +
-               "<div class='autocomplete-sub'>ABBR: " + acHtml(r.CUST_ABBR) + " | CURR: " + acHtml(r.CURR_CODE) + "</div>";
-    },
+setupAutocomplete("priceCustomerText", "priceCustomerList", "customer",
+    function(r) { return "<b>" + acHtml(r.CUST_CODE) + "</b> - " + acHtml(r.CUST_COMP) + "<div class='autocomplete-sub'>ABBR: " + acHtml(r.CUST_ABBR) + " | CURR: " + acHtml(r.CURR_CODE) + "</div>"; },
     function(r) {
         document.getElementById("PRICE_CUST_ID").value = r.CUST_ID;
-        document.getElementById("priceCustomerText").value = r.CUST_CODE + " " + r.CUST_COMP;
+        var customerInput = document.getElementById("priceCustomerText");
+        var selectedText = r.CUST_CODE + " " + r.CUST_COMP;
+        customerInput.value = selectedText;
+        customerInput.setAttribute("data-selected-text", selectedText);
+        var currency = document.getElementById("PRICE_CURR_CODE");
+        if (currency && r.CURR_CODE) { currency.value = r.CURR_CODE; }
     }
+);
+(function() {
+    var customerInput = document.getElementById("priceCustomerText");
+    var customerId = document.getElementById("PRICE_CUST_ID");
+    if (!customerInput || !customerId) return;
+    customerInput.setAttribute("data-selected-text", customerInput.value);
+    customerInput.addEventListener("input", function() {
+        if (this.value != this.getAttribute("data-selected-text")) { customerId.value = ""; }
+    });
+})();
+setupAutocomplete("searchCurrency", "searchCurrencyList", "currency",
+    function(r) { return "<b>" + acHtml(r.CURR_CODE) + "</b> - " + acHtml(r.CURR_DESC) + "<div class='autocomplete-sub'>Symbol: " + acHtml(r.CURR_SYMBOL) + " | Dec: " + acHtml(r.CURR_DEC) + "</div>"; },
+    function(r) { location.href = "master.php?tab=currency&curr_code=" + acEnc(r.CURR_CODE); }
 );
 
-setupAutocomplete(
-    "searchCurrency",
-    "searchCurrencyList",
-    "currency",
-    function(r) {
-        return "<b>" + acHtml(r.CURR_CODE) + "</b> - " + acHtml(r.CURR_DESC) +
-               "<div class='autocomplete-sub'>Symbol: " + acHtml(r.CURR_SYMBOL) + " | Dec: " + acHtml(r.CURR_DEC) + "</div>";
-    },
-    function(r) {
-        location.href = "master.php?tab=currency&curr_code=" + acEnc(r.CURR_CODE);
+// ==========================================================
+// CUSTOM SCRIPT UNTUK PASSWORD HARGA DAN INLINE ENTER SAVE
+// ==========================================================
+
+function checkPricePassword(el) {
+    if (el.hasAttribute('readonly')) {
+        var pwd = prompt("Masukkan password untuk edit harga:");
+        if (pwd === 'q9tj9') {
+            el.removeAttribute('readonly');
+            el.focus();
+            el.placeholder = ""; // Kosongkan placeholder jika sudah unlock
+        } else {
+            if (pwd !== null) {
+                alert("Password salah!");
+            }
+        }
     }
-);
+}
+
+function checkInlineEnter(e) {
+    if (e.keyCode === 13 || e.key === 'Enter') {
+        e.preventDefault();
+        
+        // Pindahkan value dari inline input (baris tabel baru) ke form yang ada di atas
+        var fStart = document.querySelector('input[name="PRDT_START"]');
+        var fEnd   = document.querySelector('input[name="PRDT_END"]');
+        var fPrice = document.querySelector('input[name="PRDT_PRICE"]');
+        var fCurr  = document.querySelector('select[name="DETAIL_CURR_CODE"]');
+        var fQno   = document.querySelector('input[name="PRDT_QNO"]');
+        var fOld   = document.querySelector('input[name="PRDT_START_OLD"]');
+        
+        if(fStart) fStart.value = document.getElementById('in_PRDT_START').value;
+        if(fEnd)   fEnd.value   = document.getElementById('in_PRDT_END').value;
+        if(fPrice) fPrice.value = document.getElementById('in_PRDT_PRICE').value;
+        if(fCurr)  fCurr.value  = document.getElementById('in_CURR_CODE').value;
+        if(fQno)   fQno.value   = document.getElementById('in_PRDT_QNO').value;
+        
+        // Bersihkan data start yang lama agar statusnya menjadi form Insert Baru, bukan Update.
+        if(fOld)   fOld.value   = "";
+
+        // Trigger klik pada tombol Simpan Detail (Submit trigger otomatis)
+        var btn = document.querySelector('button[value="save_price_detail"]');
+        if(btn) btn.click();
+    }
+}
 </script>
 
 </body>

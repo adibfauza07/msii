@@ -162,11 +162,13 @@
     <div class="row g-4 row-cols-2 row-cols-md-3 row-cols-lg-4 row-cols-xl-6 justify-content-center pb-5">
       
       <div class="col">
-        <a href="admin/dashboard_admin.php" class="card-division">
-          <div class="icon-box bg-admin"><i class="bi bi-shield-lock"></i></div>
-          <span class="division-name">Admin</span>
-        </a>
-      </div>
+  <a href="/msii/bea/login.php" class="card-division">
+    <div class="icon-box bg-it">
+      <i class="bi bi-boxes"></i>
+    </div>
+    <span class="division-name">IT INVENTORY PLANT 1</span>
+  </a>
+</div>
 
       <div class="col">
         <a href="exim/dashboard_exim.php" class="card-division">

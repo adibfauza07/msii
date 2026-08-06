@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <VOUCHER REMOTEID="udi-IMCPRODUKSI-I260106C311-PRD/26/01/0129" VCHTYPE="Production" ACTION="Create">
+            <GUID>udi-IMCPRODUKSI-I260106C311-PRD/26/01/0129</GUID>
+            <DATE>06-Jan-2026</DATE>
+            <EFFECTIVEDATE>06-Jan-2026</EFFECTIVEDATE>
+            <VOUCHERTYPENAME>Production</VOUCHERTYPENAME>
+            <ISINVOICE>Yes</ISINVOICE>
+            <VOUCHERNUMBER>PRD/26/01/0129</VOUCHERNUMBER>
+            <NARRATION>Production: I260106C311</NARRATION>
+            <INVENTORYENTRIESIN.LIST>
+              <STOCKITEMNAME>013829-0 - Holder Driven Assist 182957901</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <RATE>0.03354</RATE>
+              <AMOUNT>-14.86</AMOUNT>
+              <ACTUALQTY>443.000000</ACTUALQTY>
+              <BILLEDQTY>443.000000</BILLEDQTY>
+              <BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>Main Location</GODOWNNAME>
+                <BATCHNAME>Primary Batch</BATCHNAME>
+                <DESTINATIONGODOWNNAME>Main Location</DESTINATIONGODOWNNAME>
+                <AMOUNT>-14.86</AMOUNT>
+                <ACTUALQTY>443.000000</ACTUALQTY>
+                <BILLEDQTY>443.000000</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>
+            </INVENTORYENTRIESIN.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

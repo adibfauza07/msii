@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <VOUCHER REMOTEID="udi-IMCPRODUKSI-I260107A122-PRD/26/01/0217" VCHTYPE="Production" ACTION="Create">
+            <GUID>udi-IMCPRODUKSI-I260107A122-PRD/26/01/0217</GUID>
+            <DATE>07-Jan-2026</DATE>
+            <EFFECTIVEDATE>07-Jan-2026</EFFECTIVEDATE>
+            <VOUCHERTYPENAME>Production</VOUCHERTYPENAME>
+            <ISINVOICE>Yes</ISINVOICE>
+            <VOUCHERNUMBER>PRD/26/01/0217</VOUCHERNUMBER>
+            <NARRATION>Production: I260107A122</NARRATION>
+            <INVENTORYENTRIESIN.LIST>
+              <STOCKITEMNAME>013496-0 - Knopfkappe (Katanablau)</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <RATE>0.00216</RATE>
+              <AMOUNT>-4.54</AMOUNT>
+              <ACTUALQTY>2100.000000</ACTUALQTY>
+              <BILLEDQTY>2100.000000</BILLEDQTY>
+              <BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>Main Location</GODOWNNAME>
+                <BATCHNAME>Primary Batch</BATCHNAME>
+                <DESTINATIONGODOWNNAME>Main Location</DESTINATIONGODOWNNAME>
+                <AMOUNT>-4.54</AMOUNT>
+                <ACTUALQTY>2100.000000</ACTUALQTY>
+                <BILLEDQTY>2100.000000</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>
+            </INVENTORYENTRIESIN.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

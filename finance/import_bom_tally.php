@@ -47,6 +47,78 @@ function fetchAllRows($stmt) {
     return $rows;
 }
 
+
+// Ambil nilai kolom BOM, mendukung alias A..N maupun Col_A..Col_N
+function getBomField($row, $letter) {
+    $rl = array_change_key_case($row, CASE_LOWER);
+    $key = strtolower((string)$letter);
+    $colKey = 'col_' . $key;
+
+    if (array_key_exists($key, $rl)) return $rl[$key];
+    if (array_key_exists($colKey, $rl)) return $rl[$colKey];
+    return null;
+}
+
+// Simpan hasil SP ke SQL Server.
+// Data lama Tally_BOM diganti dengan hasil preview terbaru.
+function saveBomToSqlServer($rows) {
+    if (!is_array($rows) || count($rows) == 0) return 0;
+
+    qx("DELETE FROM [msData].[dbo].[Tally_BOM]", array());
+
+    $sql = "INSERT INTO [msData].[dbo].[Tally_BOM]
+            ([Col_A], [Col_B], [Col_C], [Col_D], [Col_E], [Col_F], [Col_G],
+             [Col_H], [Col_I], [Col_J], [Col_K], [Col_L], [Col_M], [Col_N])
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+    $saved = 0;
+
+    foreach ($rows as $r) {
+        $colBRaw = trim((string)getBomField($r, 'b'));
+        $colJ = trim((string)getBomField($r, 'j'));
+
+        // Ambil item code 8 karakter pertama dari Col_B.
+        $colBCode = substr($colBRaw, 0, 8);
+
+        // Buang tanda strip pemisah setelah item code.
+        // Contoh: 010476-0 - Valve Lid  ->  010476-0 Valve Lid
+        // Tanda strip di dalam item code 010476-0 tetap dipertahankan.
+        $colBDesc = trim(substr($colBRaw, 8));
+        $colBDesc = ltrim($colBDesc, "- \t\n\r\0\x0B");
+        $colB = $colBCode;
+        if ($colBDesc !== '') {
+            $colB .= ' ' . $colBDesc;
+        }
+
+        // Col_E = item code 8 karakter dari Col_B
+        $colE = $colBCode;
+
+        // Col_J hanya disimpan 8 karakter paling kiri
+        $colJ8 = substr($colJ, 0, 8);
+
+        qx($sql, array(
+            getBomField($r, 'a'),
+            $colB,
+            getBomField($r, 'c'),
+            getBomField($r, 'd'),
+            $colE,
+            getBomField($r, 'f'),
+            getBomField($r, 'g'),
+            getBomField($r, 'h'),
+            getBomField($r, 'i'),
+            $colJ8,
+            getBomField($r, 'k'),
+            getBomField($r, 'l'),
+            getBomField($r, 'm'),
+            getBomField($r, 'n')
+        ));
+
+        $saved++;
+    }
+
+    return $saved;
+}
+
 function sendToTally($xml, $url) {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -251,6 +323,18 @@ if ($action == 'delete_server') {
     $stmt = qx("EXECUTE sp_GenerateTallyBOM", array());
     $resultRows = fetchAllRows($stmt);
     $message = 'Preview data BOM selesai. Total row: ' . count($resultRows);
+} elseif ($action == 'send_sql') {
+    // Jalankan ulang SP lalu simpan hasilnya ke tabel Tally_BOM
+    $stmt = qx("EXECUTE sp_GenerateTallyBOM", array());
+    $resultRows = fetchAllRows($stmt);
+
+    if (count($resultRows) == 0) {
+        $message = 'Data preview kosong. Tidak ada data yang dikirim ke SQL Server.';
+    } else {
+        $savedRows = saveBomToSqlServer($resultRows);
+        $message = 'Send to SQL Server berhasil. Total row tersimpan: ' . $savedRows .
+                   '. Strip pemisah setelah item code pada Col_B dibuang, Col_E diisi 8 karakter kiri Col_B, dan Col_J dipotong menjadi 8 karakter.';
+    }
 } elseif ($action == 'preview_xml') {
     $stmt = qx("EXECUTE sp_GenerateTallyBOM", array());
     $resultRows = fetchAllRows($stmt);
@@ -297,7 +381,7 @@ if ($action == 'delete_server') {
 
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="fw-bold text-dark mb-0">EXPORT BOM TO TALLY P2</h3>
+        <h3 class="fw-bold text-dark mb-0">EXPORT BOM TO TALLY P1</h3>
         <a href="tally_import_p2.php?tab=bom" class="btn btn-secondary btn-sm">
             <i class="bi bi-arrow-left"></i> Kembali ke Tabel BOM
         </a>
@@ -310,8 +394,9 @@ if ($action == 'delete_server') {
     <div class="alert alert-warning">
         <b>Alur Kerja:</b> 
         1. Klik <b>Preview Data</b> untuk cek data dari Database. 
-        2. Klik <b>Preview XML</b> untuk lihat bentuk XML yang akan dikirim. 
-        3. Klik <b>Send BOM to Tally</b> untuk mengirim data yang sudah ada di tabel <code>Tally_BOM</code> langsung ke Tally Server. 
+        2. Klik <b>Send to SQL Server</b> untuk mengganti isi tabel <code>Tally_BOM</code> dengan hasil preview terbaru. 
+        3. Klik <b>Preview XML</b> untuk lihat bentuk XML yang akan dikirim. 
+        4. Klik <b>Send BOM to Tally</b> untuk mengirim data dari tabel <code>Tally_BOM</code> langsung ke Tally Server. 
         <br>Debug XML disimpan di: <b>/msii/finance/debug_tally_xml_bom/</b>
     </div>
 
@@ -371,8 +456,10 @@ if ($action == 'delete_server') {
 
                     <div class="col-md-12 d-flex align-items-center gap-2">
                         <button type="button" class="btn btn-success" onclick="setAction('preview')">Preview Data</button>
+                        <button type="button" class="btn btn-primary" onclick="confirmSendSql()">Send to SQL Server</button>
                         <button type="button" class="btn btn-warning" onclick="setAction('preview_xml')">Preview XML</button>
                         <button type="button" class="btn btn-danger" onclick="confirmExport()">Send BOM to Tally</button>
+                        <a href="cek_bom_kosong_tally2.php" class="btn btn-dark">Cek BOM Kosong</a>
                     </div>
                 </div>
             </div>
@@ -487,6 +574,12 @@ if ($action == 'delete_server') {
 function setAction(a) {
     document.getElementById('action').value = a;
     document.getElementById('frmBom').submit();
+}
+
+function confirmSendSql() {
+    if (confirm('Kirim hasil preview ke tabel [msData].[dbo].[Tally_BOM]? Data lama akan diganti.')) {
+        setAction('send_sql');
+    }
 }
 
 function pilihServerTally() {

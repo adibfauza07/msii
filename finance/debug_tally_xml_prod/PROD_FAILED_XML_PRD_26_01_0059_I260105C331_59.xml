@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <VOUCHER REMOTEID="udi-IMCPRODUKSI-I260105C331-PRD/26/01/0059" VCHTYPE="Production" ACTION="Create">
+            <GUID>udi-IMCPRODUKSI-I260105C331-PRD/26/01/0059</GUID>
+            <DATE>05-Jan-2026</DATE>
+            <EFFECTIVEDATE>05-Jan-2026</EFFECTIVEDATE>
+            <VOUCHERTYPENAME>Production</VOUCHERTYPENAME>
+            <ISINVOICE>Yes</ISINVOICE>
+            <VOUCHERNUMBER>PRD/26/01/0059</VOUCHERNUMBER>
+            <NARRATION>Production: I260105C331</NARRATION>
+            <INVENTORYENTRIESIN.LIST>
+              <STOCKITEMNAME>014698-0 - Holder,Adapter;B 193830900</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <RATE>0.05295</RATE>
+              <AMOUNT>-3.71</AMOUNT>
+              <ACTUALQTY>70.000000</ACTUALQTY>
+              <BILLEDQTY>70.000000</BILLEDQTY>
+              <BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>Main Location</GODOWNNAME>
+                <BATCHNAME>Primary Batch</BATCHNAME>
+                <DESTINATIONGODOWNNAME>Main Location</DESTINATIONGODOWNNAME>
+                <AMOUNT>-3.71</AMOUNT>
+                <ACTUALQTY>70.000000</ACTUALQTY>
+                <BILLEDQTY>70.000000</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>
+            </INVENTORYENTRIESIN.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

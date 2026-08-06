@@ -303,8 +303,16 @@ function h($value) {
             </table>
         </div>
 
-        <div class="right-panel">
+       <div class="right-panel">
             <div class="small-info" id="selectedPartInfo">Belum pilih part.</div>
+
+            <!-- Pindahkan toolbar ke sini, di atas tabel -->
+            <div class="toolbar">
+                <button type="button" id="btnAddSchedule">+</button>
+                <button type="button" id="btnDeleteSchedule">-</button>
+                <button type="button" id="btnSaveSchedule">SIMPAN</button>
+                <button type="button" id="btnReloadSchedule">REFRESH</button>
+            </div>
 
             <table class="schedule-table">
                 <thead>
@@ -319,13 +327,6 @@ function h($value) {
                     </tr>
                 </tbody>
             </table>
-
-            <div class="toolbar">
-                <button type="button" id="btnAddSchedule">+</button>
-                <button type="button" id="btnDeleteSchedule">-</button>
-                <button type="button" id="btnSaveSchedule">SIMPAN</button>
-                <button type="button" id="btnReloadSchedule">REFRESH</button>
-            </div>
         </div>
     </div>
 </div>
@@ -704,7 +705,8 @@ function renderItems(rows) {
     setStatus("Item loaded: " + itemRowsAll.length);
 }
 
-function renderItemGrid(rows) {
+// Parameter preventFocus ditambahkan di sini
+function renderItemGrid(rows, preventFocus) {
     var body = document.getElementById("itemBody");
 
     body.innerHTML = "";
@@ -759,9 +761,13 @@ function renderItemGrid(rows) {
     var firstRow = body.getElementsByTagName("tr")[0];
 
     if (firstRow) {
-        selectItemRow(firstRow);
-        loadSchedule();
-        firstRow.focus();
+        // --- BAGIAN INI SANGAT PENTING ---
+        // Jika preventFocus tidak aktif (false), barulah baris pertama otomatis dipilih dan memanggil loadSchedule()
+        if (!preventFocus) {
+            selectItemRow(firstRow);
+            loadSchedule();
+            firstRow.focus();
+        }
     }
 }
 
@@ -910,7 +916,9 @@ function searchItemLocal() {
         hideItemSearchSuggest();
 
         itemRowsCache = itemRowsAll;
-        renderItemGrid(itemRowsAll);
+        
+        // Panggil renderItemGrid dengan status preventFocus = true
+        renderItemGrid(itemRowsAll, true);
 
         setStatus("Item loaded: " + itemRowsAll.length);
         return;
@@ -937,7 +945,8 @@ function searchItemLocal() {
 
     itemRowsCache = result;
 
-    renderItemGrid(result);
+    // Panggil renderItemGrid dengan status preventFocus = true
+    renderItemGrid(result, true);
     showItemSearchSuggest(result);
 
     setStatus("Hasil pencarian item: " + result.length + " dari " + itemRowsAll.length);
@@ -1137,15 +1146,13 @@ function moveScheduleSelection(direction, fieldName) {
         index = index + direction;
     }
 
-    /*
-        Jika tekan panah bawah saat posisi sudah di baris terakhir,
-        otomatis tambah baris baru.
-    */
-    if (direction > 0 && index >= rows.length) {
+    // Ubah logika penambahan baris: Tambah baris saat panah ke ATAS ditekan dari baris teratas (index 0)
+    if (direction < 0 && index < 0) {
         addScheduleRow();
-
         rows = getScheduleRows();
-        index = rows.length - 1;
+        index = 0; // Baris baru ada di paling atas
+    } else if (index >= rows.length) {
+        index = rows.length - 1; // Jangan tambah baris jika panah ke bawah ditekan di baris paling bawah
     }
 
     if (index < 0) {
@@ -1200,7 +1207,12 @@ function addScheduleRow(data) {
             '<input type="number" class="num" data-name="DELS_QTY" value="' + htmlEncode(qtyValue) + '">' +
         '</td>';
 
-    body.appendChild(tr);
+    // PERUBAHAN 1: Gunakan insertBefore agar baris baru ditambahkan di paling atas
+    if (body.firstChild) {
+        body.insertBefore(tr, body.firstChild);
+    } else {
+        body.appendChild(tr);
+    }
 
     var dateInput = getScheduleInput(tr, "DELS_DATE");
     var qtyInput = getScheduleInput(tr, "DELS_QTY");
@@ -1253,10 +1265,12 @@ function addScheduleRow(data) {
                     addScheduleRow();
 
                     var rows = document.getElementById("scheduleBody").getElementsByTagName("tr");
-                    var lastRow = rows[rows.length - 1];
+                    
+                    // PERUBAHAN 2: Fokuskan kursor ke baris paling atas (index 0) setelah baris baru dibuat
+                    var firstRow = rows[0];
 
-                    selectScheduleRow(lastRow);
-                    getScheduleInput(lastRow, "DELS_DATE").focus();
+                    selectScheduleRow(firstRow);
+                    getScheduleInput(firstRow, "DELS_DATE").focus();
                 }
             });
 
@@ -1526,7 +1540,7 @@ document.getElementById("ITEM_SEARCH").onkeyup = function (e) {
 
     itemSearchTimer = setTimeout(function () {
         searchItemLocal();
-    }, 150);
+    }, 800);
 };
 
 document.getElementById("ITEM_SEARCH").onblur = function () {

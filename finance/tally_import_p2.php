@@ -182,7 +182,8 @@ function loadCustomers() {
         SELECT
             CUST_ID,
             CUST_CODE,
-            CUST_COMP
+            CUST_COMP,
+            CUST_ABBR
         FROM CUST
         WHERE ISNULL(CUST_INACTIVE, 0) = 0
         ORDER BY CUST_CODE
@@ -242,20 +243,26 @@ function loadPoRows($fromDate, $toDate, $custId) {
     return fetchRows($stmt);
 }
 
-function loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo) {
+function loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo, $salesCurrency) {
     if ($custId == '') {
         return array();
     }
 
     $invNo = trim((string)$invNo);
     $poNo = trim((string)$poNo);
+    $salesCurrency = strtoupper(trim((string)$salesCurrency));
+
+    if ($salesCurrency != 'IDR' && $salesCurrency != 'USD') {
+        die('Currency Sales harus IDR atau USD.');
+    }
 
     $where = "
         WHERE D.DI_DATE BETWEEN ? AND ?
           AND C.CUST_ID = ?
+          AND UPPER(LTRIM(RTRIM(PV.CURR_CODE))) = ?
     ";
 
-    $params = array($fromDate, $toDate, $custId);
+    $params = array($fromDate, $toDate, $custId, $salesCurrency);
 
     if ($invNo != '') {
         $where .= " AND D.DI_INVNO = ? ";
@@ -684,48 +691,67 @@ function importReceipt($fromDate, $toDate) {
 }
 
 /* =========================
-   IMPORT SALES P2
-   - Diubah: menerima $modifiedData (JSON) untuk perubahan per-row
-   - NO_INVOICE, NO_DS, Tanggal bisa diubah per-row dari frontend
+   IMPORT SALES P2 PER CURRENCY
+   - Sales IDR dan Sales USD memakai tabel staging yang sama: dbo.Tally_SALES
+   - Import dilakukan bergantian; tabel dikosongkan sebelum insert sesuai tab aktif
+   - NO_INVOICE, NO_DS, Tanggal tetap bisa diedit per-row dari frontend
    ========================= */
 
-function importSales($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData) {
-    $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo);
+function applySalesModifiedData($rows, $modifiedData) {
+    if ($modifiedData === '') {
+        return $rows;
+    }
 
-    q("DELETE FROM dbo.Tally_SALES", array());
+    $mods = json_decode($modifiedData, true);
+
+    if (!is_array($mods)) {
+        return $rows;
+    }
+
+    foreach ($mods as $idx => $mod) {
+        $idx = (int)$idx;
+
+        if (!isset($rows[$idx])) {
+            continue;
+        }
+
+        if (isset($mod['NO_INVOICE'])) {
+            $rows[$idx]['DI_INVNO'] = $mod['NO_INVOICE'];
+        }
+
+        if (isset($mod['NO_DS'])) {
+            $rows[$idx]['DI_DSNO'] = $mod['NO_DS'];
+        }
+
+        if (isset($mod['Tanggal'])) {
+            $rows[$idx]['TRAN_DATE'] = $mod['Tanggal'];
+        }
+    }
+
+    return $rows;
+}
+
+function importSalesByCurrency($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData, $salesCurrency) {
+    $salesCurrency = strtoupper(trim((string)$salesCurrency));
+
+    if ($salesCurrency != 'IDR' && $salesCurrency != 'USD') {
+        die('Currency Sales harus IDR atau USD.');
+    }
+
+    /* Tabel staging dipakai bergantian sebelum data dikirim ke Tally. */
+    $targetTable = 'dbo.Tally_SALES';
+
+    $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo, $salesCurrency);
+
+    q("DELETE FROM " . $targetTable, array());
 
     if (count($rows) == 0) {
         return 0;
     }
 
-    /*
-       TERAPKAN PERUBAHAN DARI FRONTEND
-       $modifiedData = JSON string: {"0":{"NO_INVOICE":"xxx","NO_DS":"yyy","Tanggal":"2025-01-15"}, ...}
-    */
-    if ($modifiedData !== '') {
-        $mods = json_decode($modifiedData, true);
-        if (is_array($mods)) {
-            foreach ($mods as $idx => $mod) {
-                $idx = (int)$idx;
-                if (isset($rows[$idx])) {
-                    if (isset($mod['NO_INVOICE'])) {
-                        $rows[$idx]['DI_INVNO'] = $mod['NO_INVOICE'];
-                    }
-                    if (isset($mod['NO_DS'])) {
-                        $rows[$idx]['DI_DSNO'] = $mod['NO_DS'];
-                    }
-                    if (isset($mod['Tanggal'])) {
-                        $rows[$idx]['TRAN_DATE'] = $mod['Tanggal'];
-                    }
-                }
-            }
-        }
-    }
+    $rows = applySalesModifiedData($rows, $modifiedData);
 
-    /*
-       GROUP_TOTAL Sales mengikuti Delphi 7.
-       Kunci group per invoice (DI_INVNO yang sudah di-modify).
-    */
+    /* GROUP_TOTAL dihitung per invoice setelah perubahan dari frontend diterapkan. */
     $groups = array();
 
     foreach ($rows as $r) {
@@ -740,37 +766,37 @@ function importSales($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData) 
         $price = nval(gv($r, 'ITEM_COST', 0));
         $rate = nval(gv($r, 'CURR_RP', 0));
 
+        if ($cur != $salesCurrency) {
+            die('UNEXPECTED CURRENCY SALES ' . h($salesCurrency) . ': ' . h($cur));
+        }
+
         if (!isset($groups[$invKey])) {
             $groups[$invKey] = array(
                 'IDR' => 0,
                 'USD' => 0,
-                'CUR' => $cur,
                 'RATE' => $rate
             );
         }
 
-        if ($cur == 'IDR') {
+        if ($salesCurrency == 'IDR') {
             $totalIDR = round4($qty * $price);
             $groups[$invKey]['IDR'] += $totalIDR;
 
             if ($rate != 0) {
                 $groups[$invKey]['USD'] += round4($totalIDR / $rate);
             }
-        } elseif ($cur == 'USD') {
-            $groups[$invKey]['USD'] += round4($qty * $price);
         } else {
-            die('UNEXPECTED CURRENCY SALES: ' . h($cur));
-        }
-    }
+            $totalUSD = round4($qty * $price);
+            $groups[$invKey]['USD'] += $totalUSD;
 
-    foreach ($groups as $invKey => $g) {
-        if ($g['CUR'] == 'USD' && $g['RATE'] != 0) {
-            $groups[$invKey]['IDR'] = round4($g['USD'] * $g['RATE']);
+            if ($rate != 0) {
+                $groups[$invKey]['IDR'] += round4($totalUSD * $rate);
+            }
         }
     }
 
     $sqlInsert = "
-        INSERT INTO dbo.Tally_SALES
+        INSERT INTO " . $targetTable . "
         (
             NO_INVOICE,
             NO_DS,
@@ -797,20 +823,22 @@ function importSales($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData) 
     foreach ($rows as $r) {
         $inv = getInvNoP2($r, $invNo);
         $dsNoFinal = getDoNoP2($r);
+        $cur = strtoupper(trim((string)gv($r, 'ITEM_CUR', '')));
+        $qty = nval(gv($r, 'QTY', 0));
+        $price = nval(gv($r, 'ITEM_COST', 0));
+        $rate = nval(gv($r, 'CURR_RP', 0));
+        $currUsd = gv($r, 'CURR_USD', '');
+        $currRp = gv($r, 'CURR_RP', '');
 
         if ($inv == '') {
             die('DI_INVNO kosong. GROUP_TOTAL tidak bisa dihitung per invoice.');
         }
 
-        $cur = strtoupper(trim((string)gv($r, 'ITEM_CUR', '')));
-        $qty = nval(gv($r, 'QTY', 0));
-        $price = nval(gv($r, 'ITEM_COST', 0));
-        $rate = nval(gv($r, 'CURR_RP', 0));
+        if ($cur != $salesCurrency) {
+            die('UNEXPECTED CURRENCY SALES ' . h($salesCurrency) . ': ' . h($cur));
+        }
 
-        $currUsd = gv($r, 'CURR_USD', '');
-        $currRp = gv($r, 'CURR_RP', '');
-
-        if ($cur == 'IDR') {
+        if ($salesCurrency == 'IDR') {
             $unitIDR = $price;
             $unitUSD = ($rate != 0) ? ($price / $rate) : 0;
             $totalIDR = $qty * $price;
@@ -819,7 +847,6 @@ function importSales($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData) 
             $itemPrice = resultIDR(round4($unitIDR), $currUsd, $currRp, round4($unitUSD), 'positif');
             $totalHarga = resultIDR(round4($totalIDR), $currUsd, $currRp, round4($totalUSD), 'positif');
             $totalHarga2 = resultIDR(round4($totalIDR), $currUsd, $currRp, round4($totalUSD), 'positif');
-
             $groupTotal = resultIDR(
                 round4($groups[$inv]['IDR']),
                 $currUsd,
@@ -827,16 +854,15 @@ function importSales($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData) 
                 round4($groups[$inv]['USD']),
                 'negatif'
             );
-        } elseif ($cur == 'USD') {
-            $unitUSD = $price;
-            $totalUSD = $qty * $price;
-
-            $itemPrice = round4($unitUSD);
-            $totalHarga = round4($totalUSD);
-            $totalHarga2 = round4($totalUSD);
-            $groupTotal = '-' . round4($groups[$inv]['USD']);
         } else {
-            die('UNEXPECTED CURRENCY SALES: ' . h($cur));
+            /* Sales USD diekspor sebagai angka USD murni sesuai cabang USD lama. */
+            $unitUSD = round4($price);
+            $totalUSD = round4($qty * $price);
+
+            $itemPrice = $unitUSD;
+            $totalHarga = $totalUSD;
+            $totalHarga2 = $totalUSD;
+            $groupTotal = '-' . round4($groups[$inv]['USD']);
         }
 
         q($sqlInsert, array(
@@ -856,7 +882,37 @@ function importSales($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData) 
         $count++;
     }
 
+    /*
+       Untuk Sales USD, GROUP_TOTAL harus sama persis dengan jumlah TOTAL_HARGA
+       yang benar-benar tersimpan pada tabel staging. Ini mencegah selisih rounding
+       antara total invoice dan nilai inventory pada XML Tally.
+    */
+    if ($salesCurrency == 'USD' && $count > 0) {
+        q("
+            UPDATE S
+            SET S.GROUP_TOTAL = -G.TOTAL_USD
+            FROM dbo.Tally_SALES S
+            INNER JOIN
+            (
+                SELECT
+                    NO_INVOICE,
+                    SUM(CONVERT(decimal(38, 4), TOTAL_HARGA)) AS TOTAL_USD
+                FROM dbo.Tally_SALES
+                GROUP BY NO_INVOICE
+            ) G
+                ON G.NO_INVOICE = S.NO_INVOICE
+        ", array());
+    }
+
     return $count;
+}
+
+function importSalesIDR($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData) {
+    return importSalesByCurrency($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData, 'IDR');
+}
+
+function importSalesUSD($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData) {
+    return importSalesByCurrency($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData, 'USD');
 }
 
 /* =========================
@@ -1014,16 +1070,16 @@ function renderSopTable($rows) {
    - Ubah 1 row → otomatis ubah semua row dalam grup yang sama
      (grup = DI_INVNO asli + DI_DSNO asli dari database)
 */
-function renderSalesTable($rows) {
+function renderSalesTable($rows, $salesCurrency) {
     if (count($rows) == 0) {
-        echo '<div class="alert alert-secondary">Tidak ada data Sales. Pilih Customer terlebih dahulu, lalu klik Load Sales.</div>';
+        echo '<div class="alert alert-secondary">Tidak ada data Sales ' . h($salesCurrency) . '. Pilih Customer terlebih dahulu, lalu klik Load Sales ' . h($salesCurrency) . '.</div>';
         return;
     }
     ?>
     <div class="alert alert-info py-2 small mb-2">
         <span class="badge bg-warning text-dark">Kuning</span> = NO_INVOICE / NO_DS editable &nbsp;|&nbsp;
         <span class="badge bg-primary">Biru</span> = Tanggal editable (date picker) &nbsp;|&nbsp;
-        <b>Ubah 1 row = otomatis ubah semua row dalam grup INV+DS yang sama.</b> Perubahan digunakan saat Import Sales.
+        <b>Ubah 1 row = otomatis ubah semua row dalam grup INV+DS yang sama.</b> Perubahan digunakan saat Import Sales <?php echo h($salesCurrency); ?>.
     </div>
     <div class="table-responsive" style="max-height:600px;">
         <table class="table table-bordered table-striped table-sm" id="salesTable">
@@ -1316,9 +1372,15 @@ if ($tab == '') {
     $tab = isset($_GET['tab']) ? $_GET['tab'] : 'receipt';
 }
 
+/* Backward compatibility: URL/tab lama sales diarahkan ke Sales IDR. */
+if ($tab == 'sales') {
+    $tab = 'sales_idr';
+}
+
  $action = isset($_POST['action']) ? $_POST['action'] : '';
 
  $custId = isset($_POST['cust_id']) ? trim($_POST['cust_id']) : '';
+ $custSearch = isset($_POST['cust_search']) ? trim($_POST['cust_search']) : '';
  $invNo = isset($_POST['inv_no']) ? trim($_POST['inv_no']) : '';
  $poNo = isset($_POST['po_no']) ? trim($_POST['po_no']) : '';
  $modifiedData = isset($_POST['modified_data']) ? $_POST['modified_data'] : '';
@@ -1337,6 +1399,91 @@ if (isset($_POST['rate_curr_selected'])) {
  $customers = loadCustomers();
  $invoices = array();
  $poRows = array();
+
+/*
+   Customer autocomplete memakai hidden CUST_ID.
+   Jika user mengetik manual tanpa klik suggestion, izinkan exact match
+   terhadap CUST_CODE, CUST_COMP, atau label "CODE - COMPANY".
+*/
+if ($custSearch != '' && $custId == '') {
+    foreach ($customers as $c) {
+        $cid = trim((string)gv($c, 'CUST_ID', ''));
+        $ccode = trim((string)gv($c, 'CUST_CODE', ''));
+        $ccomp = trim((string)gv($c, 'CUST_COMP', ''));
+        $cabbr = trim((string)gv($c, 'CUST_ABBR', ''));
+        $clabel = $ccode . (($ccomp != '') ? ' - ' . $ccomp : '');
+
+        if (strcasecmp($custSearch, $ccode) == 0 ||
+            strcasecmp($custSearch, $ccomp) == 0 ||
+            strcasecmp($custSearch, $cabbr) == 0 ||
+            strcasecmp($custSearch, $clabel) == 0) {
+            $custId = $cid;
+            $custSearch = $clabel;
+            break;
+        }
+    }
+}
+
+if ($custId != '' && $custSearch == '') {
+    foreach ($customers as $c) {
+        if ((string)gv($c, 'CUST_ID', '') == (string)$custId) {
+            $ccode = trim((string)gv($c, 'CUST_CODE', ''));
+            $ccomp = trim((string)gv($c, 'CUST_COMP', ''));
+            $custSearch = $ccode . (($ccomp != '') ? ' - ' . $ccomp : '');
+            break;
+        }
+    }
+}
+
+/* =========================
+   AJAX AUTOCOMPLETE CUSTOMER
+   - Bisa mencari berdasarkan CUST_CODE atau CUST_COMP
+   ========================= */
+if (isset($_GET['ajax_customer']) && $_GET['ajax_customer'] == '1') {
+    header('Content-Type: application/json; charset=utf-8');
+
+    $term = isset($_GET['term']) ? trim($_GET['term']) : '';
+    $params = array();
+    $whereTerm = '';
+
+    if ($term != '') {
+        $whereTerm = " AND (CUST_CODE LIKE ? OR CUST_COMP LIKE ?) ";
+        $params[] = '%' . $term . '%';
+        $params[] = '%' . $term . '%';
+    }
+
+    $stmtCust = q("
+        SELECT TOP 30
+            CUST_ID,
+            CUST_CODE,
+            CUST_COMP
+        FROM CUST
+        WHERE ISNULL(CUST_INACTIVE, 0) = 0
+          " . $whereTerm . "
+        ORDER BY CUST_CODE
+    ", $params);
+
+    $out = array();
+    while ($rc = sqlsrv_fetch_array($stmtCust, SQLSRV_FETCH_ASSOC)) {
+        $code = trim((string)gv($rc, 'CUST_CODE', ''));
+        $comp = trim((string)gv($rc, 'CUST_COMP', ''));
+        $label = $code;
+
+        if ($comp != '') {
+            $label .= ' - ' . $comp;
+        }
+
+        $out[] = array(
+            'id' => (string)gv($rc, 'CUST_ID', ''),
+            'code' => $code,
+            'company' => $comp,
+            'label' => $label
+        );
+    }
+
+    echo json_encode($out);
+    exit;
+}
 
 /* =========================
    AJAX AUTOCOMPLETE PO
@@ -1416,30 +1563,74 @@ if ($action == 'save_curr') {
     $count = importReceipt($fromDate, $toDate);
     $message = 'Import Receipt P2 selesai. Total baris: ' . $count;
     $rows = loadReceiptRows($fromDate, $toDate);
-} elseif ($action == 'load_sales') {
-    $tab = 'sales';
-    $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo);
-    $invoices = loadInvoices($fromDate, $toDate, $custId);
-    $poRows = loadPoRows($fromDate, $toDate, $custId);
-} elseif ($action == 'import_sales') {
-    $tab = 'sales';
-    $count = importSales($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData);
-    $modCount = 0;
-    if ($modifiedData !== '') {
-        $mods = json_decode($modifiedData, true);
-        if (is_array($mods)) $modCount = count($mods);
+} elseif ($action == 'load_sales' || $action == 'load_sales_idr') {
+    $tab = 'sales_idr';
+
+    if ($custId == '') {
+        $message = 'Customer tidak ditemukan. Ketik CUST_CODE persis atau pilih customer dari hasil autocomplete.';
+    } else {
+        $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo, 'IDR');
+        $invoices = loadInvoices($fromDate, $toDate, $custId);
+        $poRows = loadPoRows($fromDate, $toDate, $custId);
     }
-    $message = 'Import Sales P2 selesai. Total baris: ' . $count;
-    if ($modCount > 0) {
-        $message .= ' | ' . $modCount . ' row diedit (NO_INVOICE/NO_DS/Tanggal).';
+} elseif ($action == 'import_sales' || $action == 'import_sales_idr') {
+    $tab = 'sales_idr';
+
+    if ($custId == '') {
+        $message = 'Import dibatalkan: customer tidak ditemukan. Ketik CUST_CODE persis atau pilih customer dari hasil autocomplete.';
+    } else {
+        $count = importSalesIDR($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData);
+        $modCount = 0;
+        if ($modifiedData !== '') {
+            $mods = json_decode($modifiedData, true);
+            if (is_array($mods)) $modCount = count($mods);
+        }
+        $message = 'Import Sales IDR P2 ke Tally_SALES selesai. Total baris: ' . $count;
+        if ($modCount > 0) {
+            $message .= ' | ' . $modCount . ' row diedit (NO_INVOICE/NO_DS/Tanggal).';
+        }
+        if ($poNo != '') {
+            $message .= ' | PO filter: ' . $poNo;
+        }
+        $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo, 'IDR');
+        $invoices = loadInvoices($fromDate, $toDate, $custId);
+        $poRows = loadPoRows($fromDate, $toDate, $custId);
     }
-    if ($poNo != '') {
-        $message .= ' | PO filter: ' . $poNo;
+} elseif ($action == 'load_sales_usd') {
+    $tab = 'sales_usd';
+
+    if ($custId == '') {
+        $message = 'Customer tidak ditemukan. Ketik CUST_CODE persis atau pilih customer dari hasil autocomplete.';
+    } else {
+        $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo, 'USD');
+        $invoices = loadInvoices($fromDate, $toDate, $custId);
+        $poRows = loadPoRows($fromDate, $toDate, $custId);
     }
-    $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo);
-    $invoices = loadInvoices($fromDate, $toDate, $custId);
+} elseif ($action == 'import_sales_usd') {
+    $tab = 'sales_usd';
+
+    if ($custId == '') {
+        $message = 'Import dibatalkan: customer tidak ditemukan. Ketik CUST_CODE persis atau pilih customer dari hasil autocomplete.';
+    } else {
+        $count = importSalesUSD($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData);
+        $modCount = 0;
+        if ($modifiedData !== '') {
+            $mods = json_decode($modifiedData, true);
+            if (is_array($mods)) $modCount = count($mods);
+        }
+        $message = 'Import Sales USD P2 ke Tally_SALES selesai. Total baris: ' . $count;
+        if ($modCount > 0) {
+            $message .= ' | ' . $modCount . ' row diedit (NO_INVOICE/NO_DS/Tanggal).';
+        }
+        if ($poNo != '') {
+            $message .= ' | PO filter: ' . $poNo;
+        }
+        $rows = loadSalesRows($fromDate, $toDate, $custId, $invNo, $poNo, 'USD');
+        $invoices = loadInvoices($fromDate, $toDate, $custId);
+        $poRows = loadPoRows($fromDate, $toDate, $custId);
+    }
 } elseif ($action == 'load_invoice') {
-    $tab = 'sales';
+    $tab = ($tab == 'sales_usd') ? 'sales_usd' : 'sales_idr';
     $invoices = loadInvoices($fromDate, $toDate, $custId);
 } elseif ($action == 'load_sop') {
     $tab = 'sop';
@@ -1498,9 +1689,9 @@ if ($tab == 'rate') {
     <?php } ?>
 
     <div class="alert alert-warning">
-        Sales P2: kolom <b>NO_INVOICE</b>, <b>NO_DS</b>, <b>Tanggal</b> bisa diedit langsung di tabel.
-        <b>Ubah 1 row = otomatis ubah semua row dalam grup INV+DS yang sama.</b>
-        Alur: <b>Load Sales</b> → edit INV/DS/Tanggal di tabel → pilih/ketik PO → <b>Import Sales</b>.
+        Sales P2 dipisahkan menjadi <b>Sales IDR</b> dan <b>Sales USD</b>. Kolom <b>NO_INVOICE</b>,
+        <b>NO_DS</b>, dan <b>Tanggal</b> tetap bisa diedit langsung di kedua tab.
+        Kedua tab memakai tabel staging yang sama, <b>dbo.Tally_SALES</b>. Setiap import akan menghapus isi lama lalu mengisi data IDR atau USD sesuai tab aktif sebelum dikirim ke Tally.
     </div>
 
     <div class="card shadow-sm mb-3">
@@ -1529,20 +1720,42 @@ if ($tab == 'rate') {
                                value="<?php echo h($toDate); ?>">
                     </div>
 
-                    <div class="col-md-3">
+                    <div class="col-md-3 position-relative">
                         <label class="form-label fw-bold">Customer P2</label>
-                        <select name="cust_id" id="cust_id" class="form-control">
-                            <option value="">-- pilih customer --</option>
+
+                        <input type="hidden"
+                               name="cust_id"
+                               id="cust_id"
+                               value="<?php echo h($custId); ?>">
+
+                        <input type="text"
+                               name="cust_search"
+                               id="cust_search"
+                               list="customer_list"
+                               class="form-control"
+                               placeholder="Ketik kode / nama customer"
+                               autocomplete="off"
+                               value="<?php echo h($custSearch); ?>">
+
+                        <!-- Fallback autocomplete native browser. Tetap bekerja walau AJAX/JavaScript bermasalah. -->
+                        <datalist id="customer_list">
                             <?php foreach ($customers as $c) { ?>
                                 <?php
-                                $id = gv($c, 'CUST_ID', '');
-                                $selected = ((string)$id == (string)$custId) ? 'selected' : '';
+                                $dlCode = trim((string)gv($c, 'CUST_CODE', ''));
+                                $dlComp = trim((string)gv($c, 'CUST_COMP', ''));
+                                $dlAbbr = trim((string)gv($c, 'CUST_ABBR', ''));
+                                $dlLabel = $dlCode . (($dlComp != '') ? ' - ' . $dlComp : '');
                                 ?>
-                                <option value="<?php echo h($id); ?>" <?php echo $selected; ?>>
-                                    <?php echo h(gv($c, 'CUST_CODE', '') . ' - ' . gv($c, 'CUST_COMP', '')); ?>
-                                </option>
+                                <option value="<?php echo h($dlLabel); ?>"
+                                        label="<?php echo h(($dlAbbr != '') ? $dlAbbr : $dlCode); ?>"></option>
                             <?php } ?>
-                        </select>
+                        </datalist>
+
+                        <div id="customer_suggestions"
+                             class="list-group position-absolute w-100 shadow-sm"
+                             style="z-index:10000; display:none; max-height:250px; overflow:auto;"></div>
+
+                        <div class="form-text">Ketik lalu pilih customer. CUST_CODE juga boleh diketik persis.</div>
                     </div>
 
                     <div class="col-md-2">
@@ -1590,8 +1803,13 @@ if ($tab == 'rate') {
         </li>
 
         <li class="nav-item">
-            <a class="nav-link <?php echo ($tab == 'sales') ? 'active' : ''; ?>"
-               href="tally_import_p2.php?tab=sales">Sales</a>
+            <a class="nav-link <?php echo ($tab == 'sales_idr') ? 'active' : ''; ?>"
+               href="tally_import_p2.php?tab=sales_idr">Sales IDR</a>
+        </li>
+
+        <li class="nav-item">
+            <a class="nav-link <?php echo ($tab == 'sales_usd') ? 'active' : ''; ?>"
+               href="tally_import_p2.php?tab=sales_usd">Sales USD</a>
         </li>
 
         <li class="nav-item">
@@ -1630,27 +1848,49 @@ if ($tab == 'rate') {
 
                 <?php renderReceiptTable($rows); ?>
 
-            <?php } elseif ($tab == 'sales') { ?>
+            <?php } elseif ($tab == 'sales_idr') { ?>
 
                 <div class="mb-3">
-                    <button type="button" class="btn btn-success" onclick="validateSalesLoad('load_sales')">
-                        Load Sales
+                    <button type="button" class="btn btn-success" onclick="validateSalesLoad('load_sales_idr')">
+                        Load Sales IDR
                     </button>
 
-                    <button type="button" class="btn btn-primary" onclick="validateSalesImport('import_sales')">
-                        Import Sales
+                    <button type="button" class="btn btn-primary" onclick="validateSalesImport('import_sales_idr')">
+                        Import IDR ke Tally_SALES
                     </button>
 
                     <button type="button" class="btn btn-secondary" onclick="copyFirstToAll()">
                         Copy INV/DS/Tgl ke Semua Baris
                     </button>
 
-                    <button type="button" class="btn btn-outline-warning btn-sm" onclick="resetAllEdits()">
+                    <button type="button" class="btn btn-outline-warning btn-sm" onclick="resetAllEdits('load_sales_idr')">
                         Reset Edit
                     </button>
                 </div>
 
-                <?php renderSalesTable($rows); ?>
+                <?php renderSalesTable($rows, 'IDR'); ?>
+
+            <?php } elseif ($tab == 'sales_usd') { ?>
+
+                <div class="mb-3">
+                    <button type="button" class="btn btn-success" onclick="validateSalesLoad('load_sales_usd')">
+                        Load Sales USD
+                    </button>
+
+                    <button type="button" class="btn btn-primary" onclick="validateSalesImport('import_sales_usd')">
+                        Import USD ke Tally_SALES
+                    </button>
+
+                    <button type="button" class="btn btn-secondary" onclick="copyFirstToAll()">
+                        Copy INV/DS/Tgl ke Semua Baris
+                    </button>
+
+                    <button type="button" class="btn btn-outline-warning btn-sm" onclick="resetAllEdits('load_sales_usd')">
+                        Reset Edit
+                    </button>
+                </div>
+
+                <?php renderSalesTable($rows, 'USD'); ?>
 
             <?php } elseif ($tab == 'sop') { ?>
 
@@ -1844,8 +2084,6 @@ if ($tab == 'rate') {
     </div>
 
 </div>
-</body>
-</html>
 
 <script>
 /* ===========================
@@ -1897,7 +2135,7 @@ function copyFirstToAll() {
     var allTgl = document.querySelectorAll('input.sales-editable[data-field="Tanggal"]');
 
     if (allInv.length === 0) {
-        alert('Tidak ada data Sales. Load Sales terlebih dahulu.');
+        alert('Tidak ada data Sales pada tab ini. Load data terlebih dahulu.');
         return;
     }
 
@@ -1943,11 +2181,11 @@ function copyFirstToAll() {
 /**
  * Reset semua edit kembali ke nilai asli (reload data)
  */
-function resetAllEdits() {
+function resetAllEdits(loadAction) {
     if (!confirm('Reset semua edit? Data akan di-reload dari database.')) return;
     salesModifications = {};
     document.getElementById('modified_data').value = '';
-    validateSalesLoad('load_sales');
+    validateSalesLoad(loadAction);
 }
 
 /**
@@ -1987,11 +2225,15 @@ function confirmImport(act) {
 }
 
 function validateSalesLoad(act) {
-    var custId = document.getElementById('cust_id').value;
-    if (custId === '') {
-        alert('Pilih Customer terlebih dahulu.');
+    var custInput = document.getElementById('cust_search');
+    var custText = custInput ? custInput.value.replace(/^\s+|\s+$/g, '') : '';
+
+    if (custText === '') {
+        alert('Ketik atau pilih Customer terlebih dahulu.');
+        if (custInput) custInput.focus();
         return;
     }
+
     // Reset modifications saat load ulang
     salesModifications = {};
     document.getElementById('modified_data').value = '';
@@ -2000,9 +2242,12 @@ function validateSalesLoad(act) {
 }
 
 function validateSalesImport(act) {
-    var custId = document.getElementById('cust_id').value;
-    if (custId === '') {
-        alert('Pilih Customer terlebih dahulu.');
+    var custInput = document.getElementById('cust_search');
+    var custText = custInput ? custInput.value.replace(/^\s+|\s+$/g, '') : '';
+
+    if (custText === '') {
+        alert('Ketik atau pilih Customer terlebih dahulu.');
+        if (custInput) custInput.focus();
         return;
     }
 
@@ -2014,66 +2259,345 @@ function validateSalesImport(act) {
         ? '\n\nTerdapat ' + modCount + ' row yang sudah diedit (NO_INVOICE/NO_DS/Tanggal). Perubahan akan digunakan saat import.'
         : '';
 
-    if (confirm('Import Sales ke tabel Tally_SALES sekarang?' + extraMsg)) {
+    var targetTable = 'Tally_SALES';
+    var currencyLabel = (act === 'import_sales_usd') ? 'USD' : 'IDR';
+
+    if (confirm('Import Sales ' + currencyLabel + ' ke tabel ' + targetTable + ' sekarang?' + extraMsg)) {
         document.getElementById('action').value = act;
         document.getElementById('frmTally').submit();
     }
 }
 
 /* ===========================
-   PO AUTOCOMPLETE
+   CUSTOMER + PO AUTOCOMPLETE
+   - Vanilla JavaScript: tidak bergantung pada jQuery
+   - Customer memakai endpoint AJAX di file ini sendiri
    =========================== */
+(function() {
+    'use strict';
 
- $(function() {
+    var timerCustomer = null;
     var timerPo = null;
+    var customerRequestNo = 0;
+    var poRequestNo = 0;
+    var ajaxUrl = window.location.pathname;
 
-    $('#po_no').on('input', function() {
-        var term = $(this).val();
-        var custId = $('#cust_id').val();
-        var fromD = $('#from_date').val();
-        var toD = $('#to_date').val();
+    function byId(id) {
+        return document.getElementById(id);
+    }
 
-        if (custId === '' || term.length < 1) {
-            $('#po_suggestions').hide();
+    function trimText(value) {
+        return String(value == null ? '' : value).replace(/^\s+|\s+$/g, '');
+    }
+
+    function clearSuggestions(box) {
+        if (!box) return;
+        while (box.firstChild) box.removeChild(box.firstChild);
+        box.style.display = 'none';
+    }
+
+    function showMessage(box, message, isError) {
+        if (!box) return;
+        while (box.firstChild) box.removeChild(box.firstChild);
+
+        var item = document.createElement('div');
+        item.className = 'list-group-item py-2 ' + (isError ? 'text-danger' : 'text-muted');
+        item.style.fontSize = '13px';
+        item.textContent = message;
+
+        box.appendChild(item);
+        box.style.display = 'block';
+    }
+
+    function hideCustomerSuggestions() {
+        clearSuggestions(byId('customer_suggestions'));
+    }
+
+    function hidePoSuggestions() {
+        clearSuggestions(byId('po_suggestions'));
+    }
+
+    function appendTextLine(parent, text, className) {
+        var line = document.createElement('div');
+        if (className) line.className = className;
+        line.textContent = text;
+        parent.appendChild(line);
+    }
+
+    function renderCustomers(list) {
+        var box = byId('customer_suggestions');
+        if (!box) return;
+
+        while (box.firstChild) box.removeChild(box.firstChild);
+
+        if (!list || !list.length) {
+            showMessage(box, 'Customer tidak ditemukan', false);
+            return;
+        }
+
+        for (var i = 0; i < list.length; i++) {
+            var item = list[i] || {};
+            // Mendukung format endpoint internal (id/code/company/label)
+            // dan format endpoint lama (CUST_ID/CUST_CODE/CUST_COMP/CUST_ABBR).
+            var id = trimText(item.id != null ? item.id : item.CUST_ID);
+            var code = trimText(item.code != null ? item.code : item.CUST_CODE);
+            var comp = trimText(item.company != null ? item.company : item.CUST_COMP);
+            var abbr = trimText(item.abbr != null ? item.abbr : item.CUST_ABBR);
+            var label = trimText(item.label);
+
+            if (label === '') {
+                label = code + (comp !== '' ? ' - ' + comp : '');
+            }
+
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'list-group-item list-group-item-action py-2';
+            button.style.fontSize = '13px';
+            button.setAttribute('data-cust-id', id);
+            button.setAttribute('data-cust-label', label);
+
+            appendTextLine(button, code, 'fw-bold');
+            if (comp !== '') appendTextLine(button, comp, 'text-muted small');
+            if (abbr !== '') appendTextLine(button, 'ABBR: ' + abbr, 'text-muted small');
+
+            button.addEventListener('mousedown', function(event) {
+                // Mencegah input kehilangan fokus sebelum event click selesai.
+                event.preventDefault();
+            });
+
+            button.addEventListener('click', function() {
+                selectCustomer(
+                    this.getAttribute('data-cust-id'),
+                    this.getAttribute('data-cust-label')
+                );
+            });
+
+            box.appendChild(button);
+        }
+
+        box.style.display = 'block';
+    }
+
+    function loadCustomerSuggestions() {
+        var input = byId('cust_search');
+        var term = input ? trimText(input.value) : '';
+
+        clearTimeout(timerCustomer);
+
+        if (term === '') {
+            hideCustomerSuggestions();
+            return;
+        }
+
+        timerCustomer = setTimeout(function() {
+            var currentRequest = ++customerRequestNo;
+            var url = ajaxUrl + '?ajax_customer=1&term=' + encodeURIComponent(term);
+
+            fetch(url, {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function(response) {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
+                }
+                return response.json();
+            })
+            .then(function(list) {
+                // Abaikan response lama jika user sudah mengetik term baru.
+                if (currentRequest !== customerRequestNo) return;
+                renderCustomers(list);
+            })
+            .catch(function(error) {
+                if (currentRequest !== customerRequestNo) return;
+                if (window.console && console.error) {
+                    console.error('Customer autocomplete gagal:', error);
+                }
+                showMessage(byId('customer_suggestions'), 'Gagal memuat customer', true);
+            });
+        }, 250);
+    }
+
+    function renderPoList(list) {
+        var box = byId('po_suggestions');
+        if (!box) return;
+
+        while (box.firstChild) box.removeChild(box.firstChild);
+
+        if (!list || !list.length) {
+            showMessage(box, 'PO tidak ditemukan', false);
+            return;
+        }
+
+        for (var i = 0; i < list.length; i++) {
+            var po = trimText(list[i]);
+            var button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'list-group-item list-group-item-action list-group-item-light py-2';
+            button.style.fontSize = '13px';
+            button.textContent = po;
+            button.setAttribute('data-po', po);
+
+            button.addEventListener('mousedown', function(event) {
+                event.preventDefault();
+            });
+
+            button.addEventListener('click', function() {
+                selectPo(this.getAttribute('data-po'));
+            });
+
+            box.appendChild(button);
+        }
+
+        box.style.display = 'block';
+    }
+
+    function loadPoSuggestions() {
+        var poInput = byId('po_no');
+        var custInput = byId('cust_id');
+        var fromInput = byId('from_date');
+        var toInput = byId('to_date');
+
+        var term = poInput ? trimText(poInput.value) : '';
+        var custId = custInput ? trimText(custInput.value) : '';
+        var fromD = fromInput ? fromInput.value : '';
+        var toD = toInput ? toInput.value : '';
+
+        if (custId === '') {
+            hidePoSuggestions();
             return;
         }
 
         clearTimeout(timerPo);
         timerPo = setTimeout(function() {
-            $.get('tally_import_p2.php', {
-                ajax_po: '1',
-                cust_id: custId,
-                from_date: fromD,
-                to_date: toD,
-                term: term
-            }, function(data) {
-                var list = typeof data === 'string' ? JSON.parse(data) : data;
-                var html = '';
+            var currentRequest = ++poRequestNo;
+            var url = ajaxUrl
+                + '?ajax_po=1'
+                + '&cust_id=' + encodeURIComponent(custId)
+                + '&from_date=' + encodeURIComponent(fromD)
+                + '&to_date=' + encodeURIComponent(toD)
+                + '&term=' + encodeURIComponent(term);
 
-                if (list.length === 0) {
-                    $('#po_suggestions').hide();
-                    return;
+            fetch(url, {
+                method: 'GET',
+                credentials: 'same-origin',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function(response) {
+                if (!response.ok) {
+                    throw new Error('HTTP ' + response.status);
                 }
-
-                for (var i = 0; i < list.length; i++) {
-                    html += '<a href="javascript:void(0)" class="list-group-item list-group-item-action list-group-item-light py-1" style="font-size:13px;" onclick="selectPo(\'' + list[i].replace(/'/g, "\\'") + '\')">' + list[i] + '</a>';
+                return response.json();
+            })
+            .then(function(list) {
+                if (currentRequest !== poRequestNo) return;
+                renderPoList(list);
+            })
+            .catch(function(error) {
+                if (currentRequest !== poRequestNo) return;
+                if (window.console && console.error) {
+                    console.error('PO autocomplete gagal:', error);
                 }
-
-                $('#po_suggestions').html(html).show();
+                showMessage(byId('po_suggestions'), 'Gagal memuat PO', true);
             });
-        }, 300);
-    });
+        }, 250);
+    }
 
-    $(document).on('click', function(e) {
-        if (!$(e.target).closest('#po_no, #po_suggestions').length) {
-            $('#po_suggestions').hide();
+    function initAutocomplete() {
+        var customerInput = byId('cust_search');
+        var poInput = byId('po_no');
+
+        if (customerInput) {
+            customerInput.addEventListener('input', function() {
+                var custId = byId('cust_id');
+                var invNo = byId('inv_no');
+                var poNo = byId('po_no');
+
+                if (custId) custId.value = '';
+                if (invNo) invNo.value = '';
+                if (poNo) poNo.value = '';
+
+                hidePoSuggestions();
+                loadCustomerSuggestions();
+            });
+
+            customerInput.addEventListener('focus', loadCustomerSuggestions);
+            customerInput.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape' || event.keyCode === 27) {
+                    hideCustomerSuggestions();
+                }
+            });
         }
-    });
-});
+
+        if (poInput) {
+            poInput.addEventListener('input', loadPoSuggestions);
+            poInput.addEventListener('focus', loadPoSuggestions);
+            poInput.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape' || event.keyCode === 27) {
+                    hidePoSuggestions();
+                }
+            });
+        }
+
+        document.addEventListener('click', function(event) {
+            var customerBox = byId('customer_suggestions');
+            var poBox = byId('po_suggestions');
+
+            if (customerInput && customerBox
+                && event.target !== customerInput
+                && !customerBox.contains(event.target)) {
+                hideCustomerSuggestions();
+            }
+
+            if (poInput && poBox
+                && event.target !== poInput
+                && !poBox.contains(event.target)) {
+                hidePoSuggestions();
+            }
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initAutocomplete);
+    } else {
+        initAutocomplete();
+    }
+})();
+
+function selectCustomer(id, label) {
+    var custId = document.getElementById('cust_id');
+    var custSearch = document.getElementById('cust_search');
+    var customerBox = document.getElementById('customer_suggestions');
+    var invNo = document.getElementById('inv_no');
+    var poNo = document.getElementById('po_no');
+    var poBox = document.getElementById('po_suggestions');
+
+    if (custId) custId.value = id || '';
+    if (custSearch) custSearch.value = label || '';
+    if (customerBox) {
+        customerBox.innerHTML = '';
+        customerBox.style.display = 'none';
+    }
+
+    // Filter lain berasal dari customer sebelumnya, jadi dikosongkan.
+    if (invNo) invNo.value = '';
+    if (poNo) poNo.value = '';
+    if (poBox) {
+        poBox.innerHTML = '';
+        poBox.style.display = 'none';
+    }
+}
 
 function selectPo(val) {
-    $('#po_no').val(val);
-    $('#po_suggestions').hide();
+    var poNo = document.getElementById('po_no');
+    var poBox = document.getElementById('po_suggestions');
+
+    if (poNo) poNo.value = val || '';
+    if (poBox) {
+        poBox.innerHTML = '';
+        poBox.style.display = 'none';
+    }
 }
 
 /* ===========================
@@ -2122,6 +2646,20 @@ function clearRateForm() {
 </script>
 
 <style>
+/* Customer autocomplete harus berada di atas card/tab dan tidak terpotong. */
+#frmTally,
+#frmTally .row,
+#frmTally .position-relative {
+    overflow: visible !important;
+}
+#customer_suggestions,
+#po_suggestions {
+    top: 100%;
+    left: 0;
+    margin-top: 2px;
+    background: #fff;
+}
+
 @keyframes salesFadeInOut {
     0%   { opacity: 0; transform: translateY(-8px); }
     15%  { opacity: 1; transform: translateY(0); }

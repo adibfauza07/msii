@@ -1,28 +1,31 @@
 <?php
+// search_item.php
+// PHP 5.4 + SQL Server sqlsrv + jQuery UI Autocomplete
+
 require_once __DIR__ . "/../config/database_ordering.php";
 
-header("Content-Type: application/json");
+header("Content-Type: application/json; charset=UTF-8");
 
-if ($conn === false) {
+if (!isset($conn) || $conn === false) {
     echo json_encode(array());
-    exit();
+    exit;
 }
 
- $q = isset($_POST["q"]) ? trim($_POST["q"]) : "";
+$term = isset($_GET["term"]) ? trim($_GET["term"]) : "";
 
-if ($q == "") {
+if ($term === "") {
     echo json_encode(array());
-    exit();
+    exit;
 }
 
- $like      = "%" . $q . "%";
- $startLike = $q . "%";
+$like = "%" . $term . "%";
+$startLike = $term . "%";
 
- $sql = "
+$sql = "
     SELECT TOP 20
         ITEM_CODE,
         ITEM_NAME
-    FROM ITEMS
+    FROM dbo.ITEMS
     WHERE ITEM_CODE LIKE ?
        OR ITEM_NAME LIKE ?
     ORDER BY
@@ -30,20 +33,36 @@ if ($q == "") {
         ITEM_CODE
 ";
 
- $params = array($like, $like, $startLike);
- $stmt   = sqlsrv_query($conn, $sql, $params);
+$params = array($like, $like, $startLike);
+$stmt = @sqlsrv_query($conn, $sql, $params);
 
 if ($stmt === false) {
     echo json_encode(array());
-    exit();
+    exit;
 }
 
- $data = array();
+$data = array();
+
 while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+    $itemCode = isset($row["ITEM_CODE"]) ? trim((string) $row["ITEM_CODE"]) : "";
+    $itemName = isset($row["ITEM_NAME"]) ? trim((string) $row["ITEM_NAME"]) : "";
+
+    if ($itemCode === "") {
+        continue;
+    }
+
+    $labelText = $itemCode;
+    if ($itemName !== "") {
+        $labelText .= " - " . $itemName;
+    }
+
     $data[] = array(
-        "ITEM_CODE" => trim($row["ITEM_CODE"]),
-        "ITEM_NAME" => trim($row["ITEM_NAME"])
+        "label" => $labelText,
+        "value" => $itemCode
     );
 }
+
+sqlsrv_free_stmt($stmt);
+sqlsrv_close($conn);
 
 echo json_encode($data);

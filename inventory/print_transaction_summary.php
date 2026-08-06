@@ -38,6 +38,25 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $groupedData[$trtyKey][$ittyKey][] = $row;
 }
 
+// MENGURUTKAN SUSUNAN ITEM BERDASARKAN UNIT
+foreach ($groupedData as &$ittys) {
+    foreach ($ittys as &$items) {
+        usort($items, function($a, $b) {
+            $unitA = strtolower(trim(isset($a['ITEM_UNIT']) ? $a['ITEM_UNIT'] : ''));
+            $unitB = strtolower(trim(isset($b['ITEM_UNIT']) ? $b['ITEM_UNIT'] : ''));
+            
+            if ($unitA == $unitB) {
+                $codeA = isset($a['ITEM_CODE']) ? $a['ITEM_CODE'] : '';
+                $codeB = isset($b['ITEM_CODE']) ? $b['ITEM_CODE'] : '';
+                return strcmp($codeA, $codeB);
+            }
+            
+            return strcmp($unitA, $unitB);
+        });
+    }
+}
+unset($ittys, $items);
+
 $companyName = (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') ? "PT. ISHIKAWA INDONESIA" : "P.T ISHIKAWA INDONESIA";
 ?>
 
@@ -79,7 +98,19 @@ $companyName = (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] ==
         .item-code { width: 80px; }
         
         /* Subtotals */
-        .subtotal-row td { font-weight: bold; padding-top: 8px; padding-bottom: 15px; }
+        .subtotal-row td { 
+            font-weight: bold; 
+            padding-top: 5px; 
+            padding-bottom: 5px; 
+            color: #333;
+        }
+        .subtotal-first td {
+            border-top: 1px dashed #999;
+            padding-top: 8px;
+        }
+        .subtotal-last td {
+            padding-bottom: 15px;
+        }
         
         .no-print { text-align: center; margin-bottom: 20px; }
         .btn { padding: 8px 15px; cursor: pointer; border: 1px solid #ccc; background: #fff; font-weight: bold; margin: 0 5px; }
@@ -138,22 +169,38 @@ $companyName = (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] ==
                     </tr>
                 </thead>
                 <tbody>
-                    <?php 
-                    foreach ($groupedData as $trtyName => $ittys): 
-                        $trtySubtotal = 0;
-                    ?>
+                    <?php foreach ($groupedData as $trtyName => $ittys): ?>
                         <tr>
                             <td colspan="3" class="trty-header"><?php echo htmlspecialchars($trtyName); ?></td>
                         </tr>
 
-                        <?php foreach ($ittys as $ittyName => $items): ?>
+                        <?php foreach ($ittys as $ittyName => $items): 
+                            // PINDAH KE SINI: Inisialisasi ulang celengan matematika di setiap Lokasi/Tipe
+                            $unitSubtotals = [];
+                        ?>
                             <tr>
                                 <td colspan="3" class="itty-header"><?php echo htmlspecialchars($ittyName); ?></td>
                             </tr>
 
                             <?php foreach ($items as $r): 
                                 $qty = isset($r['TQTY']) ? (float)$r['TQTY'] : 0;
-                                $trtySubtotal += $qty;
+                                
+                                // Deteksi label satuan dan bersihkan spasi kosong
+                                $unitLabel = trim(isset($r['ITEM_UNIT']) ? $r['ITEM_UNIT'] : '');
+                                $unitKey = strtolower($unitLabel);
+                                if ($unitKey === '') {
+                                    $unitKey = 'unknown';
+                                    $unitLabel = '-';
+                                }
+
+                                // Masukkan angka ke celengan unit masing-masing
+                                if (!isset($unitSubtotals[$unitKey])) {
+                                    $unitSubtotals[$unitKey] = [
+                                        'label' => $unitLabel,
+                                        'total' => 0
+                                    ];
+                                }
+                                $unitSubtotals[$unitKey]['total'] += $qty;
                             ?>
                                 <tr>
                                     <td class="item-cell">
@@ -164,15 +211,26 @@ $companyName = (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] ==
                                     <td style="text-align: center;"><?php echo htmlspecialchars($r['ITEM_UNIT']); ?></td>
                                 </tr>
                             <?php endforeach; ?>
-                        <?php endforeach; ?>
-                        
-                        <tr class="subtotal-row">
-                            <td></td>
-                            <td style="text-align: right; font-size: 12px;"><?php echo number_format($trtySubtotal, 2); ?></td>
-                            <td></td>
-                        </tr>
+                            
+                            <!-- PINDAH KE SINI: CETAK RINCIAN TOTAL BERDASARKAN UNIT DI BAWAH SETIAP LOKASI -->
+                            <?php 
+                            $subCount = count($unitSubtotals);
+                            $currentCount = 0;
+                            foreach ($unitSubtotals as $sub): 
+                                $currentCount++;
+                                $rowClass = 'subtotal-row';
+                                if ($currentCount === 1) $rowClass .= ' subtotal-first';
+                                if ($currentCount === $subCount) $rowClass .= ' subtotal-last';
+                            ?>
+                                <tr class="<?php echo $rowClass; ?>">
+                                    <td style="text-align: right; font-style: italic; padding-right: 15px;">Total <?php echo htmlspecialchars($sub['label']); ?> :</td>
+                                    <td style="text-align: right; font-size: 12px;"><?php echo number_format($sub['total'], 2); ?></td>
+                                    <td style="text-align: center;"><?php echo htmlspecialchars($sub['label']); ?></td>
+                                </tr>
+                            <?php endforeach; ?>
 
-                    <?php endforeach; ?>
+                        <?php endforeach; // Akhir perulangan ITTY (Lokasi) ?>
+                    <?php endforeach; // Akhir perulangan TRTY (Kelompok Utama) ?>
                 </tbody>
             </table>
         <?php endif; ?>

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <VOUCHER REMOTEID="udi-IMCPRODUKSI-VND-22684-VND/26/07/1914" VCHTYPE="Production" ACTION="Create">
+            <GUID>udi-IMCPRODUKSI-VND-22684-VND/26/07/1914</GUID>
+            <DATE>28-Jul-2026</DATE>
+            <EFFECTIVEDATE>28-Jul-2026</EFFECTIVEDATE>
+            <VOUCHERTYPENAME>Production</VOUCHERTYPENAME>
+            <ISINVOICE>Yes</ISINVOICE>
+            <VOUCHERNUMBER>VND/26/07/1914</VOUCHERNUMBER>
+            <NARRATION>Vendor Production: 014999-0</NARRATION>
+            <INVENTORYENTRIESIN.LIST>
+              <STOCKITEMNAME>014999-0</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <RATE>0.02464</RATE>
+              <AMOUNT>-5.17</AMOUNT>
+              <ACTUALQTY>210.000000</ACTUALQTY>
+              <BILLEDQTY>210.000000</BILLEDQTY>
+              <BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>Main Location</GODOWNNAME>
+                <BATCHNAME>Primary Batch</BATCHNAME>
+                <DESTINATIONGODOWNNAME>Main Location</DESTINATIONGODOWNNAME>
+                <AMOUNT>-5.17</AMOUNT>
+                <ACTUALQTY>210.000000</ACTUALQTY>
+                <BILLEDQTY>210.000000</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>
+            </INVENTORYENTRIESIN.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

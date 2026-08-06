@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <VOUCHER REMOTEID="udi-IMCPRODUKSI-I260108B223-PRD/26/01/0342" VCHTYPE="Production" ACTION="Create">
+            <GUID>udi-IMCPRODUKSI-I260108B223-PRD/26/01/0342</GUID>
+            <DATE>08-Jan-2026</DATE>
+            <EFFECTIVEDATE>08-Jan-2026</EFFECTIVEDATE>
+            <VOUCHERTYPENAME>Production</VOUCHERTYPENAME>
+            <ISINVOICE>Yes</ISINVOICE>
+            <VOUCHERNUMBER>PRD/26/01/0342</VOUCHERNUMBER>
+            <NARRATION>Production: I260108B223</NARRATION>
+            <INVENTORYENTRIESIN.LIST>
+              <STOCKITEMNAME>014010-0 - Cover Gear Box Stacker 182979401</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <RATE>0.04629</RATE>
+              <AMOUNT>-34.72</AMOUNT>
+              <ACTUALQTY>750.000000</ACTUALQTY>
+              <BILLEDQTY>750.000000</BILLEDQTY>
+              <BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>Main Location</GODOWNNAME>
+                <BATCHNAME>Primary Batch</BATCHNAME>
+                <DESTINATIONGODOWNNAME>Main Location</DESTINATIONGODOWNNAME>
+                <AMOUNT>-34.72</AMOUNT>
+                <ACTUALQTY>750.000000</ACTUALQTY>
+                <BILLEDQTY>750.000000</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>
+            </INVENTORYENTRIESIN.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

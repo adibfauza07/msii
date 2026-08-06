@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <VOUCHER REMOTEID="udi-IMCPRODUKSI-I260105C291-PRD/26/01/0011" VCHTYPE="Production" ACTION="Create">
+            <GUID>udi-IMCPRODUKSI-I260105C291-PRD/26/01/0011</GUID>
+            <DATE>05-Jan-2026</DATE>
+            <EFFECTIVEDATE>05-Jan-2026</EFFECTIVEDATE>
+            <VOUCHERTYPENAME>Production</VOUCHERTYPENAME>
+            <ISINVOICE>Yes</ISINVOICE>
+            <VOUCHERNUMBER>PRD/26/01/0011</VOUCHERNUMBER>
+            <NARRATION>Production: I260105C291</NARRATION>
+            <INVENTORYENTRIESIN.LIST>
+              <STOCKITEMNAME>013192-0 - Cover,Valve 170480301</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <RATE>0.00366</RATE>
+              <AMOUNT>-3.42</AMOUNT>
+              <ACTUALQTY>934.000000</ACTUALQTY>
+              <BILLEDQTY>934.000000</BILLEDQTY>
+              <BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>Main Location</GODOWNNAME>
+                <BATCHNAME>Primary Batch</BATCHNAME>
+                <DESTINATIONGODOWNNAME>Main Location</DESTINATIONGODOWNNAME>
+                <AMOUNT>-3.42</AMOUNT>
+                <ACTUALQTY>934.000000</ACTUALQTY>
+                <BILLEDQTY>934.000000</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>
+            </INVENTORYENTRIESIN.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

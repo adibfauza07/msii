@@ -54,12 +54,17 @@ if ($year < 2000 || $year > 2100) {
     $year = intval(date('Y'));
 }
 
-$cust_code = isset($_GET['cust_code']) ? trim($_GET['cust_code']) : '';
-$cust_text = isset($_GET['cust_text']) ? trim($_GET['cust_text']) : '';
-$mc_no     = isset($_GET['mc_no']) ? trim($_GET['mc_no']) : '';
-$tonase    = isset($_GET['tonase']) ? trim($_GET['tonase']) : '';
-$ngt_code  = isset($_GET['ngt_code']) ? trim($_GET['ngt_code']) : '';
-$month     = isset($_GET['month']) ? intval($_GET['month']) : 0;
+$cust_code    = isset($_GET['cust_code']) ? trim($_GET['cust_code']) : '';
+$cust_text    = isset($_GET['cust_text']) ? trim($_GET['cust_text']) : '';
+$mc_no        = isset($_GET['mc_no']) ? trim($_GET['mc_no']) : '';
+$tonase       = isset($_GET['tonase']) ? trim($_GET['tonase']) : '';
+$ngt_code     = isset($_GET['ngt_code']) ? trim($_GET['ngt_code']) : '';
+$process_type = isset($_GET['process_type']) ? strtolower(trim($_GET['process_type'])) : '';
+$month        = isset($_GET['month']) ? intval($_GET['month']) : 0;
+
+if (!in_array($process_type, array('', 'injection', 'assembling'), true)) {
+    $process_type = '';
+}
 
 if ($month < 1 || $month > 12) {
     $month = 0;
@@ -150,6 +155,25 @@ if ($mc_no != "") {
 }
 
 /*
+    FILTER JENIS PROSES BERDASARKAN ITEM CODE PRODUK JADI
+    Injection : part_code LIKE '01%' atau '02%'
+    Assembling: selain prefix 01 dan 02
+*/
+if ($process_type == "injection") {
+    $where .= "
+        AND (
+            ITEM_CUSTINFO_VIEW.part_code LIKE '01%'
+            OR ITEM_CUSTINFO_VIEW.part_code LIKE '02%'
+        )
+    ";
+} elseif ($process_type == "assembling") {
+    $where .= "
+        AND ISNULL(ITEM_CUSTINFO_VIEW.part_code, '') NOT LIKE '01%'
+        AND ISNULL(ITEM_CUSTINFO_VIEW.part_code, '') NOT LIKE '02%'
+    ";
+}
+
+/*
     WHERE GLOBAL MATERIAL ACTUAL SMS
     Sumber qty: SMS_DETAIL.SMSD_QTY
     Dibuat terpisah supaya data SMS tidak dobel karena join ITEM_CUSTINFO_VIEW.
@@ -177,6 +201,34 @@ if ($tonase != "") {
 if ($mc_no != "") {
     $whereMaterialGlobal .= " AND MAC.MAC_CODE = ? ";
     $paramsMaterialGlobal[] = $mc_no;
+}
+
+/*
+    Query material global tidak join langsung ke ITEM_CUSTINFO_VIEW,
+    sehingga filter proses memakai EXISTS berdasarkan WO.ITEM_ID.
+*/
+if ($process_type == "injection") {
+    $whereMaterialGlobal .= "
+        AND EXISTS (
+            SELECT 1
+            FROM ITEM_CUSTINFO_VIEW ICV_PROCESS
+            WHERE ICV_PROCESS.ITEM_ID = WO.ITEM_ID
+              AND (
+                  ICV_PROCESS.part_code LIKE '01%'
+                  OR ICV_PROCESS.part_code LIKE '02%'
+              )
+        )
+    ";
+} elseif ($process_type == "assembling") {
+    $whereMaterialGlobal .= "
+        AND EXISTS (
+            SELECT 1
+            FROM ITEM_CUSTINFO_VIEW ICV_PROCESS
+            WHERE ICV_PROCESS.ITEM_ID = WO.ITEM_ID
+              AND ISNULL(ICV_PROCESS.part_code, '') NOT LIKE '01%'
+              AND ISNULL(ICV_PROCESS.part_code, '') NOT LIKE '02%'
+        )
+    ";
 }
 
 /*
@@ -740,7 +792,8 @@ $baseUrlParams = array(
     "cust_code" => $cust_code,
     "cust_text" => $cust_text,
     "tonase" => $tonase,
-    "mc_no" => $mc_no
+    "mc_no" => $mc_no,
+    "process_type" => $process_type
 );
 
 while ($rowNg = sqlsrv_fetch_array($stmtTopNgType, SQLSRV_FETCH_ASSOC)) {
@@ -1436,6 +1489,29 @@ $clearNgUrl = "prod_report.php?" . http_build_query($clearNgParams);
             font-size: 13px;
         }
 
+        .subtitle-process-filter {
+            display: inline-block;
+            margin-left: 14px;
+            padding-left: 14px;
+            border-left: 1px solid #b8c0ca;
+            color: #333;
+        }
+
+        .subtitle-process-filter label {
+            margin-right: 5px;
+            font-weight: bold;
+        }
+
+        .subtitle-process-filter select {
+            height: 27px;
+            min-width: 150px;
+            padding: 3px 7px;
+            border: 1px solid #aaa;
+            border-radius: 3px;
+            background: #fff;
+            font-size: 12px;
+        }
+
         .filter-box {
             background: #fff;
             border: 1px solid #dcdcdc;
@@ -1816,6 +1892,15 @@ $clearNgUrl = "prod_report.php?" . http_build_query($clearNgParams);
     Plant: <?php echo h($plantLabel); ?> |
     Server: <?php echo h($serverLabel); ?> |
     Periode: <?php echo h($periodeLabel); ?>
+
+    <span class="subtitle-process-filter">
+        <label for="process_type">Proses:</label>
+        <select name="process_type" id="process_type" form="filterForm">
+            <option value="" <?php echo ($process_type == "" ? "selected" : ""); ?>>Semua Proses</option>
+            <option value="injection" <?php echo ($process_type == "injection" ? "selected" : ""); ?>>Injection</option>
+            <option value="assembling" <?php echo ($process_type == "assembling" ? "selected" : ""); ?>>Assembling</option>
+        </select>
+    </span>
 </div>
 
 <div class="filter-box">

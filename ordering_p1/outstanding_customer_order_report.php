@@ -105,7 +105,7 @@ $rows = array();
 $printRows = array();
 $pages = array();
 $totalPages = 0;
-$rowsPerPage = 24;
+$rowsPerPage = 37;
 
 if ($is_filter) {
     $sql = "

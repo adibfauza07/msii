@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <VERSION>1</VERSION>
+    <TALLYREQUEST>Import</TALLYREQUEST>
+    <TYPE>Data</TYPE>
+    <ID>All Masters</ID>
+  </HEADER>
+  <BODY>
+    <DESC>
+      <STATICVARIABLES>
+      </STATICVARIABLES>
+    </DESC>
+    <DATA>
+      <TALLYMESSAGE xmlns:UDF="TallyUDF">
+        <STOCKITEM NAME="012815-0 - Upper Cover (Side) Ivory TL2 6153660 19D" ACTION="Delete"></STOCKITEM>
+      </TALLYMESSAGE>
+    </DATA>
+  </BODY>
+</ENVELOPE>

@@ -1,538 +1,831 @@
 <?php
-// ============================================
-// KONFIGURASI DATABASE
-// ============================================
-require_once __DIR__ . "/../config/database_ordering.php";
+// ============================================================
+// PURCHASE YEAR REPORT - GABUNGAN P1 & P2
+// PHP 5.4 + SQL Server 2008+
+// Stored procedure pada setiap plant: dbo.RPT_PURCHASE_YEAR
+// ============================================================
 
-// ============================================
-// CEK APAKAH PARAMETER SUDAH DIISI
-// ============================================
- $hasParams = isset($_GET['start_date']) && isset($_GET['end_date']);
- $isExport  = isset($_GET['export']) && $_GET['export'] === 'excel';
+set_time_limit(180);
 
- $dataRows      = array();
- $grouped       = array();
- $grandPoQty    = 0;
- $grandPoAmount = 0;
- $grandRcvQty   = 0;
- $grandRcvAmount= 0;
- $totalRows     = 0;
- $totalGroups   = 0;
- $startDate     = '';
- $endDate       = '';
- $itemCode      = '';
- $supCode       = '';
- $currentYear   = date('Y');
+if (session_id() === '') {
+    session_start();
+}
 
-if ($hasParams) {
-    $startDate = $_GET['start_date'];
-    $endDate   = $_GET['end_date'];
-    $itemCode  = isset($_GET['item_code']) ? trim($_GET['item_code']) : '';
-    $supCode   = isset($_GET['sup_code'])  ? trim($_GET['sup_code'])  : '';
+require_once __DIR__ . "/../config/global.php";
 
-    $codeParam = ($itemCode !== '') ? "%$itemCode%" : "%";
-    $supParam  = ($supCode  !== '') ? "%$supCode%"  : "%";
+$dbName = 'msData';
 
-    $sql = "{CALL RPT_PURCHASE_YEAR(?, ?, ?, ?)}";
-    $params = array(
-        array($startDate, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_DATETIME),
-        array($endDate,   SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_DATETIME),
-        array($codeParam, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_VARCHAR(20)),
-        array($supParam,  SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_VARCHAR(20))
+$serversConfig = array(
+    'p1' => array(
+        'ip' => '192.168.0.4',
+        'label' => 'Plant 1',
+        'short' => 'P1'
+    ),
+    'p2' => array(
+        'ip' => '192.168.0.9',
+        'label' => 'Plant 2',
+        'short' => 'P2'
+    )
+);
+
+function h($value)
+{
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+function sqlErrorsText()
+{
+    $errors = sqlsrv_errors(SQLSRV_ERR_ERRORS);
+
+    if (!is_array($errors) || count($errors) === 0) {
+        return 'Kesalahan SQL Server tidak diketahui.';
+    }
+
+    $messages = array();
+
+    foreach ($errors as $error) {
+        $state = isset($error['SQLSTATE']) ? $error['SQLSTATE'] : '';
+        $code = isset($error['code']) ? $error['code'] : '';
+        $message = isset($error['message']) ? $error['message'] : '';
+
+        $messages[] = trim('[' . $state . '] ' . $code . ' ' . $message);
+    }
+
+    return implode(' | ', $messages);
+}
+
+function normalizePlant($plant)
+{
+    $plant = strtolower(trim((string)$plant));
+
+    if (!in_array($plant, array('all', 'p1', 'p2'), true)) {
+        return 'all';
+    }
+
+    return $plant;
+}
+
+function plantKeys($plant)
+{
+    return $plant === 'all'
+        ? array('p1', 'p2')
+        : array($plant);
+}
+
+function plantDisplay($plant)
+{
+    if ($plant === 'p1') {
+        return 'Plant 1';
+    }
+
+    if ($plant === 'p2') {
+        return 'Plant 2';
+    }
+
+    return 'Gabungan P1 & P2';
+}
+
+/*
+ * SQLSRV mengembalikan kolom datetime sebagai objek DateTime.
+ * Fungsi ini menormalkan nilai sebelum dipakai oleh strcmp/usort.
+ */
+function sortableValue($value)
+{
+    if ($value === null) {
+        return '';
+    }
+
+    if ($value instanceof DateTime) {
+        return $value->format('Y-m-d H:i:s.u');
+    }
+
+    if (is_bool($value)) {
+        return $value ? '1' : '0';
+    }
+
+    if (is_scalar($value)) {
+        return (string)$value;
+    }
+
+    return '';
+}
+
+function openPlantConnection($serverKey, $serversConfig, $dbName)
+{
+    if (
+        !isset($_SESSION['db_user']) ||
+        trim((string)$_SESSION['db_user']) === ''
+    ) {
+        return false;
+    }
+
+    if (!isset($serversConfig[$serverKey])) {
+        return false;
+    }
+
+    $uid = $_SESSION['db_user'];
+    $pwd = isset($_SESSION['db_pass']) ? $_SESSION['db_pass'] : '';
+
+    $connectionOptions = array(
+        'Database' => $dbName,
+        'Uid' => $uid,
+        'PWD' => $pwd,
+        'CharacterSet' => 'UTF-8',
+        'LoginTimeout' => 5,
+        'ReturnDatesAsStrings' => false
     );
 
-    $stmt = sqlsrv_query($conn, $sql, $params);
+    return @sqlsrv_connect(
+        $serversConfig[$serverKey]['ip'],
+        $connectionOptions
+    );
+}
 
-    if (!$stmt) {
-        $errorMsg = "Query gagal: " . print_r(sqlsrv_errors(), true);
-    } else {
+function formatDate($date)
+{
+    if (!$date) {
+        return '';
+    }
+
+    if ($date instanceof DateTime) {
+        return $date->format('m/d/Y');
+    }
+
+    $timestamp = strtotime((string)$date);
+
+    if ($timestamp === false) {
+        return '';
+    }
+
+    return date('m/d/Y', $timestamp);
+}
+
+function formatDatePO($date)
+{
+    if (!$date) {
+        return '';
+    }
+
+    if ($date instanceof DateTime) {
+        return $date->format('d-M-y');
+    }
+
+    $timestamp = strtotime((string)$date);
+
+    if ($timestamp === false) {
+        return '';
+    }
+
+    return date('d-M-y', $timestamp);
+}
+
+function formatQty($number)
+{
+    if ((float)$number == 0) {
+        return '0';
+    }
+
+    return number_format((float)$number, 0, '.', ',');
+}
+
+function formatPOQty($number)
+{
+    if ((float)$number == 0) {
+        return '0.00';
+    }
+
+    return number_format((float)$number, 2, '.', ',');
+}
+
+function formatMoney($number)
+{
+    if ((float)$number == 0) {
+        return '0.00';
+    }
+
+    return number_format((float)$number, 2, '.', ',');
+}
+
+
+$hasParams = isset($_GET['start_date']) && isset($_GET['end_date']);
+$isExport = isset($_GET['export']) && $_GET['export'] === 'excel';
+
+$dataRows = array();
+$grouped = array();
+$errors = array();
+$serverStatus = array('p1' => false, 'p2' => false);
+
+$grandPoQty = 0;
+$grandPoAmount = 0;
+$grandRcvQty = 0;
+$grandRcvAmount = 0;
+
+$totalRows = 0;
+$startDate = '';
+$endDate = '';
+$itemCode = '';
+$supCode = '';
+$plant = isset($_GET['plant']) ? normalizePlant($_GET['plant']) : 'all';
+$currentYear = date('Y');
+
+if ($hasParams) {
+    $startDate = trim($_GET['start_date']);
+    $endDate = trim($_GET['end_date']);
+    $itemCode = isset($_GET['item_code']) ? trim($_GET['item_code']) : '';
+    $supCode = isset($_GET['sup_code']) ? trim($_GET['sup_code']) : '';
+
+    $codeParam = $itemCode !== '' ? '%' . $itemCode . '%' : '%';
+    $supParam = $supCode !== '' ? '%' . $supCode . '%' : '%';
+
+    foreach (plantKeys($plant) as $serverKey) {
+        $serverLabel = $serversConfig[$serverKey]['label'];
+        $serverShort = $serversConfig[$serverKey]['short'];
+
+        $conn = openPlantConnection($serverKey, $serversConfig, $dbName);
+
+        if ($conn === false) {
+            $errors[] = $serverLabel . ': koneksi gagal. ' . sqlErrorsText();
+            continue;
+        }
+
+        $serverStatus[$serverKey] = true;
+
+        $sql = '{CALL dbo.RPT_PURCHASE_YEAR(?, ?, ?, ?)}';
+
+        $params = array(
+            array($startDate, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_DATETIME),
+            array($endDate, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_DATETIME),
+            array($codeParam, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_VARCHAR(20)),
+            array($supParam, SQLSRV_PARAM_IN, null, SQLSRV_SQLTYPE_VARCHAR(20))
+        );
+
+        $stmt = @sqlsrv_query($conn, $sql, $params);
+
+        if ($stmt === false) {
+            $errors[] = $serverLabel . ': stored procedure gagal. ' . sqlErrorsText();
+            sqlsrv_close($conn);
+            continue;
+        }
+
         while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+            $row['_PLANT_KEY'] = $serverKey;
+            $row['_PLANT_SHORT'] = $serverShort;
+            $row['_PLANT_LABEL'] = $serverLabel;
             $dataRows[] = $row;
         }
+
         sqlsrv_free_stmt($stmt);
+        sqlsrv_close($conn);
     }
-    sqlsrv_close($conn);
 
-    // ============================================
-    // GROUPING: Supplier -> Item -> PO -> RCV
-    // ============================================
+    usort($dataRows, function ($a, $b) {
+    $fields = array(
+        '_PLANT_SHORT',
+        'SUP_CODE',
+        'ITEM_CODE',
+        'PO_DATE',
+        'PO_NUM',
+        'RCV_DATE',
+        'RCV_NOMOR'
+    );
+
+    foreach ($fields as $field) {
+        $left = isset($a[$field]) ? sortableValue($a[$field]) : '';
+        $right = isset($b[$field]) ? sortableValue($b[$field]) : '';
+
+        $compare = strcmp($left, $right);
+
+        if ($compare !== 0) {
+            return $compare;
+        }
+    }
+
+    return 0;
+});
+
+    // GROUPING: Plant -> Supplier -> Item -> PO -> Receive
     foreach ($dataRows as $row) {
-        $supKey  = trim($row['SUP_CODE']);
-        $itemKey = trim($row['ITEM_CODE']);
-        $poKey   = trim($row['PO_NUM']);
+        $plantKey = $row['_PLANT_KEY'];
+        $supKey = trim((string)$row['SUP_CODE']);
+        $itemKey = trim((string)$row['ITEM_CODE']);
+        $poKey = trim((string)$row['PO_NUM']);
 
-        // 1. Inisialisasi Supplier
-        if (!isset($grouped[$supKey])) {
-            $grouped[$supKey] = array(
-                'SUP_CODE' => trim($row['SUP_CODE']),
-                'SUP_COMP' => trim($row['SUP_COMP']),
-                'items'    => array()
+        if (!isset($grouped[$plantKey])) {
+            $grouped[$plantKey] = array(
+                'PLANT_SHORT' => $row['_PLANT_SHORT'],
+                'PLANT_LABEL' => $row['_PLANT_LABEL'],
+                'suppliers' => array()
             );
         }
 
-        // 2. Inisialisasi Item
-        if (!isset($grouped[$supKey]['items'][$itemKey])) {
-            $grouped[$supKey]['items'][$itemKey] = array(
-                'ITEM_CODE' => trim($row['ITEM_CODE']),
-                'ITEM_NAME' => trim($row['ITEM_NAME']),
-                'pos'       => array()
+        if (!isset($grouped[$plantKey]['suppliers'][$supKey])) {
+            $grouped[$plantKey]['suppliers'][$supKey] = array(
+                'SUP_CODE' => $supKey,
+                'SUP_COMP' => trim((string)$row['SUP_COMP']),
+                'items' => array()
             );
         }
 
-        // 3. Inisialisasi PO
-        if (!isset($grouped[$supKey]['items'][$itemKey]['pos'][$poKey])) {
-            $poQty   = floatval($row['QTY']);
-            $poPrice = floatval($row['POD_PRICE']);
-            
-            $grouped[$supKey]['items'][$itemKey]['pos'][$poKey] = array(
-                'PO_NUM'        => trim($row['PO_NUM']),
-                'PO_DATE'       => $row['PO_DATE'],
-                'POD_PRICE'     => $poPrice,
-                'PO_CUR'        => trim($row['PO_CUR']),
-                'QTY'           => $poQty,
-                'POD_UNIT'      => trim($row['POD_UNIT']),
-                'AMOUNT'        => $poQty * $poPrice,
+        if (!isset($grouped[$plantKey]['suppliers'][$supKey]['items'][$itemKey])) {
+            $grouped[$plantKey]['suppliers'][$supKey]['items'][$itemKey] = array(
+                'ITEM_CODE' => $itemKey,
+                'ITEM_NAME' => trim((string)$row['ITEM_NAME']),
+                'pos' => array()
+            );
+        }
+
+        if (
+            !isset(
+                $grouped[$plantKey]['suppliers'][$supKey]['items'][$itemKey]['pos'][$poKey]
+            )
+        ) {
+            $poQty = isset($row['QTY']) ? (float)$row['QTY'] : 0;
+            $poPrice = isset($row['POD_PRICE']) ? (float)$row['POD_PRICE'] : 0;
+
+            $grouped[$plantKey]['suppliers'][$supKey]['items'][$itemKey]['pos'][$poKey] = array(
+                'PO_NUM' => $poKey,
+                'PO_DATE' => isset($row['PO_DATE']) ? $row['PO_DATE'] : '',
+                'POD_PRICE' => $poPrice,
+                'PO_CUR' => isset($row['PO_CUR']) ? trim((string)$row['PO_CUR']) : '',
+                'QTY' => $poQty,
+                'POD_UNIT' => isset($row['POD_UNIT']) ? trim((string)$row['POD_UNIT']) : '',
+                'AMOUNT' => $poQty * $poPrice,
                 'TOTAL_REC_QTY' => 0,
-                'rcvs'          => array()
+                'rcvs' => array()
             );
 
-            $grandPoQty    += $poQty;
-            $grandPoAmount += ($poQty * $poPrice);
+            $grandPoQty += $poQty;
+            $grandPoAmount += $poQty * $poPrice;
         }
 
-        // 4. Masukkan baris RCV dan gabungkan jika RCV_NOMOR sama (GROUP BY RCV_NOMOR)
-        $rcvNo = trim($row['RCV_NOMOR']);
-        if ($rcvNo !== '') {
-            $rcvQty   = floatval($row['RCVD_QTY']);
-            $rcvPrice = floatval($row['RCV_PRICE']);
+        $rcvNo = isset($row['RCV_NOMOR'])
+            ? trim((string)$row['RCV_NOMOR'])
+            : '';
 
-            if (!isset($grouped[$supKey]['items'][$itemKey]['pos'][$poKey]['rcvs'][$rcvNo])) {
-                $grouped[$supKey]['items'][$itemKey]['pos'][$poKey]['rcvs'][$rcvNo] = array(
+        if ($rcvNo !== '') {
+            $rcvQty = isset($row['RCVD_QTY']) ? (float)$row['RCVD_QTY'] : 0;
+            $rcvPrice = isset($row['RCV_PRICE']) ? (float)$row['RCV_PRICE'] : 0;
+
+            if (
+                !isset(
+                    $grouped[$plantKey]['suppliers'][$supKey]['items'][$itemKey]['pos'][$poKey]['rcvs'][$rcvNo]
+                )
+            ) {
+                $grouped[$plantKey]['suppliers'][$supKey]['items'][$itemKey]['pos'][$poKey]['rcvs'][$rcvNo] = array(
                     'RCV_NOMOR' => $rcvNo,
-                    'RCV_DATE'  => $row['RCV_DATE'],
-                    'RCVD_QTY'  => 0,
+                    'RCV_DATE' => isset($row['RCV_DATE']) ? $row['RCV_DATE'] : '',
+                    'RCVD_QTY' => 0,
                     'RCV_PRICE' => $rcvPrice
                 );
             }
 
-            $grouped[$supKey]['items'][$itemKey]['pos'][$poKey]['rcvs'][$rcvNo]['RCVD_QTY'] += $rcvQty;
-            $grouped[$supKey]['items'][$itemKey]['pos'][$poKey]['TOTAL_REC_QTY'] += $rcvQty;
-            $grandRcvQty    += $rcvQty;
-            $grandRcvAmount += ($rcvQty * $rcvPrice);
+            $grouped[$plantKey]['suppliers'][$supKey]['items'][$itemKey]['pos'][$poKey]['rcvs'][$rcvNo]['RCVD_QTY'] += $rcvQty;
+            $grouped[$plantKey]['suppliers'][$supKey]['items'][$itemKey]['pos'][$poKey]['TOTAL_REC_QTY'] += $rcvQty;
+
+            $grandRcvQty += $rcvQty;
+            $grandRcvAmount += $rcvQty * $rcvPrice;
         }
     }
 
-    $totalRows   = count($dataRows);
-    $totalGroups = count($grouped);
+    $totalRows = count($dataRows);
 }
 
-// FUNGSI FORMATTING
-function formatDate($date) {
-    if (!$date) return '';
-    if ($date instanceof DateTime) return $date->format('m/d/Y');
-    $ts = strtotime($date);
-    if ($ts === false) return '';
-    return date('m/d/Y', $ts);
-}
-function formatDatePO($date) {
-    if (!$date) return '';
-    if ($date instanceof DateTime) return $date->format('d-M-y');
-    $ts = strtotime($date);
-    if ($ts === false) return '';
-    return date('d-M-y', $ts);
-}
-function formatQty($num) {
-    if ($num == 0) return '0';
-    return number_format($num, 0, '.', ','); 
-}
-function formatPOQty($num) {
-    if ($num == 0) return '0.00';
-    return number_format($num, 2, '.', ','); 
-}
-function formatMoney($num) {
-    if ($num == 0) return '0.00';
-    return number_format($num, 2, '.', ',');
-}
-
-// PROSES EXPORT EXCEL
 if ($isExport) {
-    $filename = "Purchase_Year_Report_" . date('Ymd') . ".xls";
-    header("Content-Type: application/vnd.ms-excel");
-    header("Content-Disposition: attachment; filename=\"$filename\"");
-    header("Pragma: no-cache");
-    header("Expires: 0");
+    $filename = 'Purchase_Year_' . strtoupper($plant) . '_' . date('Ymd') . '.xls';
+
+    header('Content-Type: application/vnd.ms-excel');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    header('Pragma: no-cache');
+    header('Expires: 0');
 }
 ?>
-
-<?php if (!$isExport): ?>
+<?php if (!$isExport) { ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Purchase Year - PT.IMC TEKNO INDONESIA</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <title>Purchase Year Gabungan</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+          rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+          rel="stylesheet">
+
     <style>
-        :root {
-            --bs-body-font-family: 'Plus Jakarta Sans', sans-serif;
-            --accent: #2563eb;
-            --accent-light: #dbeafe;
-            --accent-dark: #1d4ed8;
-            --bg-page: #f0f2f5;
-            --bg-card: #ffffff;
-            --border-color: #e2e8f0;
-            --text-primary: #0f172a;
-            --text-secondary: #475569;
-            --text-muted: #94a3b8;
-        }
-        body {
-            background-color: var(--bg-page);
-            color: var(--text-primary);
-            font-family: 'Times New Roman', Times, serif;
-            font-size: 13px;
-        }
-        .param-overlay {
-            position: fixed; inset: 0; background: rgba(15,23,42,0.5); backdrop-filter: blur(4px); z-index: 9999;
-            display: flex; align-items: center; justify-content: center;
-        }
-        .param-dialog { background: var(--bg-card); border-radius: 16px; width: 560px; max-width: 95vw; box-shadow: 0 25px 60px -12px rgba(0,0,0,0.25); overflow: hidden; }
-        .param-dialog-header { padding: 20px 28px 16px; border-bottom: 1px solid var(--border-color); display: flex; align-items: center; gap: 12px; }
-        .param-dialog-header .icon-wrap { width: 36px; height: 36px; border-radius: 10px; background: var(--accent-light); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 16px; }
-        .param-dialog-header .title { font-size: 15px; font-weight: 700; font-family: Arial, sans-serif; }
-        .param-dialog-body { padding: 24px 28px; font-family: Arial, sans-serif; }
-        .param-tabs { display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 20px; }
-        .param-tab { padding: 8px 16px; font-size: 12px; font-weight: 600; color: var(--accent); border-bottom: 2px solid var(--accent); background: none; border-top: none; border-left: none; border-right: none; }
-        .radio-group { display: flex; gap: 20px; margin-bottom: 20px; padding: 12px 16px; background: #f8fafc; border-radius: 10px; border: 1px solid var(--border-color); }
-        .filter-section-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-muted); margin-bottom: 14px; padding-bottom: 8px; border-bottom: 1px dashed var(--border-color); }
-        .param-field { margin-bottom: 16px; }
-        .param-field label { display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px; }
-        .param-field .form-control { font-size: 13px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); }
-        .date-range-row { display: flex; align-items: center; gap: 10px; }
-        .param-field .ac-wrap { position: relative; }
-        .param-field .ac-list { position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; margin-top: 4px; max-height: 200px; overflow-y: auto; z-index: 10001; display: none; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15); }
-        .param-field .ac-list.show { display: block; }
-        .param-field .ac-item { padding: 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid #f1f5f9; }
-        .param-field .ac-item:hover { background: var(--accent-light); }
-        .param-field .ac-item .code { font-family: monospace; font-size: 11px; font-weight: 600; color: var(--accent-dark); min-width: 90px; }
-        .param-field .ac-item .name { font-size: 11px; color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .param-dialog-footer { padding: 16px 28px 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 10px; }
-        
-        .report-container { background: var(--bg-card); border: 1px solid var(--border-color); padding: 40px; margin: 20px auto; max-width: 1400px; }
-        .report-header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 10px; }
-        .report-title { font-size: 20px; font-weight: bold; font-family: Arial, sans-serif; }
-        .report-params { font-size: 14px; display: flex; justify-content: space-between; font-weight: bold; font-family: Arial, sans-serif;}
-        
-        .report-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        .report-table thead th { border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 8px 4px; font-weight: bold; text-transform: uppercase; }
-        .report-table tbody td { padding: 4px; vertical-align: top; }
-        
-        @media print {
-            body { background: #fff !important; }
-            .no-print { display: none !important; }
-            .report-container { border: none; padding: 0; margin: 0; }
-        }
+        body{background:#f0f2f5;font-family:"Times New Roman",serif;font-size:13px}
+        .param-overlay{position:fixed;inset:0;background:rgba(15,23,42,.5);z-index:9999;display:flex;align-items:center;justify-content:center}
+        .param-dialog{background:#fff;border-radius:14px;width:600px;max-width:95vw;box-shadow:0 25px 60px rgba(0,0,0,.25);overflow:visible}
+        .param-dialog-header{padding:18px 25px;border-bottom:1px solid #e2e8f0;font-family:Arial,sans-serif}
+        .param-dialog-body{padding:22px 25px;font-family:Arial,sans-serif}
+        .param-dialog-footer{padding:15px 25px;border-top:1px solid #e2e8f0;display:flex;justify-content:flex-end;gap:8px}
+        .param-field{margin-bottom:15px}
+        .param-field label{font-size:11px;font-weight:700;color:#475569;margin-bottom:5px}
+        .date-row{display:flex;align-items:center;gap:8px}
+        .ac-wrap{position:relative}
+        .ac-list{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #cbd5e1;border-radius:7px;max-height:230px;overflow:auto;z-index:10010;display:none;box-shadow:0 10px 25px rgba(0,0,0,.15)}
+        .ac-list.show{display:block}
+        .ac-item{padding:8px 10px;border-bottom:1px solid #f1f5f9;cursor:pointer;display:grid;grid-template-columns:55px 105px 1fr;gap:8px;font-size:11px}
+        .ac-item:hover{background:#dbeafe}
+        .plant-badge{font-weight:700;color:#7c3aed}
+        .code{font-family:monospace;font-weight:700;color:#1d4ed8}
+        .report-container{background:#fff;border:1px solid #d7dee7;padding:35px;margin:20px auto;max-width:1450px}
+        .report-header{border-bottom:2px solid #000;padding-bottom:9px;margin-bottom:10px}
+        .report-title{font:bold 20px Arial,sans-serif}
+        .report-params{display:flex;justify-content:space-between;font:bold 13px Arial,sans-serif;margin-top:10px}
+        .report-table{width:100%;border-collapse:collapse;font-size:12px}
+        .report-table th{border-top:1px solid #000;border-bottom:1px solid #000;padding:7px 4px}
+        .report-table td{padding:4px}
+        .plant-row td{background:#dbeafe;font:bold 13px Arial,sans-serif;border-top:2px solid #2563eb;padding:7px}
+        .supplier-row td{font-weight:bold;padding-top:8px}
+        .item-row td{font-weight:bold;padding-left:12px}
+        .summary-box{font-family:Arial,sans-serif;font-size:12px;background:#f8fafc;border:1px solid #e2e8f0;padding:8px;margin-top:12px}
+        @media print{body{background:#fff}.no-print{display:none!important}.report-container{border:0;padding:0;margin:0;max-width:none}}
     </style>
 </head>
 <body>
+<?php if (!$hasParams) { ?>
+<div class="param-overlay">
+    <div class="param-dialog">
+        <div class="param-dialog-header">
+            <strong>Purchase Year Report — P1 & P2</strong>
+            <div class="text-secondary small">Pilih plant dan kriteria laporan</div>
+        </div>
 
-    <!-- MODAL PARAMETER UTAMA -->
-    <?php if (!$hasParams): ?>
-    <div class="param-overlay" id="paramOverlay">
-        <div class="param-dialog">
-            <div class="param-dialog-header">
-                <div class="icon-wrap"><i class="bi bi-printer"></i></div>
-                <div>
-                    <div class="title">Purchase Year Report</div>
-                    <div class="subtitle">Tentang atau isi kriteria pencetakan dokumen dibawah ini</div>
+        <div class="param-dialog-body">
+            <form id="paramForm" method="get" action="">
+                <div class="param-field">
+                    <label>Plant</label>
+                    <select class="form-select" name="plant" id="plantFilter">
+                        <option value="all">Gabungan P1 & P2</option>
+                        <option value="p1">Plant 1</option>
+                        <option value="p2">Plant 2</option>
+                    </select>
                 </div>
-            </div>
-            <div class="param-dialog-body">
-                <div class="param-tabs">
-                    <button type="button" class="param-tab">Layer</button>
+
+                <div class="param-field">
+                    <label>Periode PO</label>
+                    <div class="date-row">
+                        <input type="date"
+                               name="start_date"
+                               value="<?php echo h($currentYear . '-01-01'); ?>"
+                               class="form-control"
+                               required>
+                        <span>s/d</span>
+                        <input type="date"
+                               name="end_date"
+                               value="<?php echo h(date('Y-m-d')); ?>"
+                               class="form-control"
+                               required>
+                    </div>
                 </div>
-                <div class="radio-group">
-                    <label><input type="radio" name="destination" value="screen" checked> Tampil di Layar</label>
-                    <label><input type="radio" name="destination" value="printer"> Printer</label>
+
+                <div class="param-field">
+                    <label>Item</label>
+                    <div class="ac-wrap" id="acWrapItem">
+                        <input type="text"
+                               id="modalItemInput"
+                               class="form-control"
+                               placeholder="Kosongkan untuk semua"
+                               autocomplete="off">
+                        <input type="hidden"
+                               name="item_code"
+                               id="modalItemHidden">
+                        <div class="ac-list" id="modalItemDropdown"></div>
+                    </div>
                 </div>
-                <div class="filter-section-label">Default Filter</div>
-                <form id="paramForm" method="GET" action="">
-                    <div class="param-field">
-                        <label>Dari Tanggal</label>
-                        <div class="date-range-row">
-                            <input type="date" name="start_date" value="<?= $currentYear ?>-06-01" class="form-control" style="flex:1;" required>
-                            <span class="mx-2">s/d</span>
-                            <input type="date" name="end_date" value="<?= date('Y-m-d') ?>" class="form-control" style="flex:1;" required>
-                        </div>
+
+                <div class="param-field">
+                    <label>Supplier</label>
+                    <div class="ac-wrap" id="acWrapSup">
+                        <input type="text"
+                               id="modalSupInput"
+                               class="form-control"
+                               placeholder="Kosongkan untuk semua"
+                               autocomplete="off">
+                        <input type="hidden"
+                               name="sup_code"
+                               id="modalSupHidden">
+                        <div class="ac-list" id="modalSupDropdown"></div>
                     </div>
-                    <div class="param-field">
-                        <label>CODE (Item)</label>
-                        <div class="ac-wrap" id="acWrapItem">
-                            <input type="text" id="modalItemInput" placeholder="Kosongkan untuk semua..." autocomplete="off" class="form-control">
-                            <input type="hidden" name="item_code" id="modalItemHidden" value="">
-                            <div class="ac-list" id="modalItemDropdown"></div>
-                        </div>
-                    </div>
-                    <div class="param-field">
-                        <label>SUPPLIER</label>
-                        <div class="ac-wrap" id="acWrapSup">
-                            <input type="text" id="modalSupInput" placeholder="Kosongkan untuk semua..." autocomplete="off" class="form-control">
-                            <input type="hidden" name="sup_code" id="modalSupHidden" value="">
-                            <div class="ac-list" id="modalSupDropdown"></div>
-                        </div>
-                    </div>
-                </form>
-            </div>
-            <div class="param-dialog-footer">
-                <button type="button" class="btn btn-light btn-sm" onclick="window.location.reload();">Close</button>
-                <button type="submit" form="paramForm" class="btn btn-primary btn-sm"><i class="bi bi-printer me-1"></i> Print</button>
-            </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="param-dialog-footer">
+            <button type="submit"
+                    form="paramForm"
+                    class="btn btn-primary btn-sm">
+                <i class="bi bi-search"></i> View Report
+            </button>
         </div>
     </div>
-    <?php endif; ?>
+</div>
+<?php } ?>
 
-    <!-- NAVBAR ATAS -->
-    <?php if ($hasParams): ?>
-    <nav class="navbar navbar-light bg-white border-bottom fixed-top no-print">
-        <div class="container-fluid">
-            <span class="navbar-brand mb-0 h1" style="font-family: Arial, sans-serif; font-size: 14px; font-weight: bold;">PURCHASE YEAR</span>
-            <div>
-                <button onclick="window.location.href='?'" class="btn btn-outline-secondary btn-sm"><i class="bi bi-funnel"></i> Parameter</button>
-                <a href="?start_date=<?= urlencode($startDate) ?>&end_date=<?= urlencode($endDate) ?>&item_code=<?= urlencode($itemCode) ?>&sup_code=<?= urlencode($supCode) ?>&export=excel" class="btn btn-success btn-sm"><i class="bi bi-file-earmark-excel"></i> Excel</a>
-                <button onclick="window.print()" class="btn btn-primary btn-sm"><i class="bi bi-printer"></i> Print</button>
-            </div>
+<?php if ($hasParams) { ?>
+<nav class="navbar bg-white border-bottom fixed-top no-print">
+    <div class="container-fluid">
+        <span class="navbar-brand mb-0 h1 fs-6 fw-bold">PURCHASE YEAR</span>
+        <div>
+            <a href="?" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-funnel"></i> Parameter
+            </a>
+
+            <a class="btn btn-success btn-sm"
+               href="?plant=<?php echo urlencode($plant); ?>&start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&item_code=<?php echo urlencode($itemCode); ?>&sup_code=<?php echo urlencode($supCode); ?>&export=excel">
+                <i class="bi bi-file-earmark-excel"></i> Excel
+            </a>
+
+            <button type="button"
+                    class="btn btn-primary btn-sm"
+                    onclick="window.print();">
+                <i class="bi bi-printer"></i> Print
+            </button>
         </div>
-    </nav>
-    <div style="margin-top: 70px;"></div>
-    <?php endif; ?>
+    </div>
+</nav>
 
-<?php endif; // END OF: if (!$isExport) ?>
+<div style="height:65px"></div>
 
-<?php if ($hasParams): ?>
-    <!-- AREA DOKUMEN CETAK / EXCEL -->
-    <?php if (!$isExport): ?><main class="container-fluid"><div class="report-container"><?php endif; ?>
-        
-        <?php if ($isExport): ?>
-            <table border="0">
-                <tr><td colspan="10" style="font-size: 18px; font-weight: bold; text-align: center; font-family:Arial;">PURCHASE YEAR</td></tr>
-                <tr><td colspan="10" style="text-align: center; font-family:Arial;">From : <?= formatDatePO($startDate) ?> &nbsp;&nbsp;&nbsp; To : <?= formatDatePO($endDate) ?></td></tr>
-                <tr><td colspan="10"></td></tr>
-            </table>
-        <?php else: ?>
-            <div class="report-header">
-                <div class="report-title">PURCHASE YEAR</div>
-                <div class="report-params mt-3">
-                    <div>From : &nbsp;&nbsp;&nbsp;<?= formatDatePO($startDate) ?></div>
-                    <div>To : &nbsp;&nbsp;&nbsp;<?= formatDatePO($endDate) ?></div>
-                </div>
-            </div>
-        <?php endif; ?>
-        
-        <div class="report-table-wrap">
-            <?php if ($totalRows > 0): ?>
-            <table class="report-table" <?= $isExport ? 'border="1"' : '' ?>>
-                <thead>
+<?php if (count($errors) > 0) { ?>
+<div class="container-fluid no-print">
+    <div class="alert alert-warning">
+        <?php foreach ($errors as $error) { ?>
+            <div><?php echo h($error); ?></div>
+        <?php } ?>
+    </div>
+</div>
+<?php } ?>
+<?php } ?>
+<?php } ?>
+
+<?php if ($hasParams) { ?>
+<?php if (!$isExport) { ?><main class="container-fluid"><div class="report-container"><?php } ?>
+
+<div class="report-header">
+    <div class="report-title">PURCHASE YEAR</div>
+
+    <div class="report-params">
+        <div>Plant: <?php echo h(plantDisplay($plant)); ?></div>
+        <div>From: <?php echo h(formatDatePO($startDate)); ?></div>
+        <div>To: <?php echo h(formatDatePO($endDate)); ?></div>
+    </div>
+</div>
+
+<?php if ($isExport) { ?>
+<table border="0">
+    <tr>
+        <td colspan="10" style="font-size:18px;font-weight:bold;text-align:center">
+            PURCHASE YEAR
+        </td>
+    </tr>
+    <tr>
+        <td colspan="10" style="text-align:center">
+            <?php echo h(plantDisplay($plant)); ?> |
+            <?php echo h(formatDatePO($startDate)); ?> s/d
+            <?php echo h(formatDatePO($endDate)); ?>
+        </td>
+    </tr>
+</table>
+<?php } ?>
+
+<?php if ($totalRows > 0) { ?>
+<table class="report-table" <?php echo $isExport ? 'border="1"' : ''; ?>>
+    <thead>
+    <tr>
+        <th style="text-align:left;width:25%">Dokumen / Item / Supplier</th>
+        <th style="text-align:center">Date</th>
+        <th style="text-align:right">Price</th>
+        <th style="text-align:left">Curr</th>
+        <th style="text-align:right">PO Qty</th>
+        <th style="text-align:right">Rec Qty</th>
+        <th style="text-align:right">Rec Price</th>
+        <th style="text-align:right">Outstanding</th>
+        <th style="text-align:center">Unit</th>
+        <th style="text-align:right">Amount</th>
+    </tr>
+    </thead>
+
+    <tbody>
+    <?php foreach ($grouped as $plantGroup) { ?>
+        <tr class="plant-row">
+            <td colspan="10">
+                <?php echo h($plantGroup['PLANT_SHORT'] . ' - ' . $plantGroup['PLANT_LABEL']); ?>
+            </td>
+        </tr>
+
+        <?php foreach ($plantGroup['suppliers'] as $supplier) { ?>
+            <tr class="supplier-row">
+                <td colspan="10">
+                    <?php echo h($supplier['SUP_CODE'] . ' ' . $supplier['SUP_COMP']); ?>
+                </td>
+            </tr>
+
+            <?php foreach ($supplier['items'] as $item) { ?>
+                <tr class="item-row">
+                    <td colspan="10">
+                        <?php echo h($item['ITEM_CODE'] . ' ' . $item['ITEM_NAME']); ?>
+                    </td>
+                </tr>
+
+                <?php foreach ($item['pos'] as $po) { ?>
+                    <?php $outstanding = $po['QTY'] - $po['TOTAL_REC_QTY']; ?>
                     <tr>
-                        <th style="text-align:left; width: 25%; <?= $isExport ? 'background-color:#e2e8f0;' : '' ?>">Dokumen / Item / Supplier</th>
-                        <th style="text-align:center; <?= $isExport ? 'background-color:#e2e8f0;' : '' ?>">DATE</th>
-                        <th style="text-align:right; <?= $isExport ? 'background-color:#e2e8f0;' : '' ?>">PRICE</th>
-                        <th style="text-align:left; padding-left: 10px; <?= $isExport ? 'background-color:#e2e8f0;' : '' ?>">CURR</th>
-                        <th style="text-align:right; <?= $isExport ? 'background-color:#e2e8f0;' : '' ?>">PO QTY</th>
-                        <th style="text-align:right; <?= $isExport ? 'background-color:#e2e8f0;' : '' ?>">REC QTY</th>
-                        <th style="text-align:right; <?= $isExport ? 'background-color:#e2e8f0;' : '' ?>">REC PRICE</th>
-                        <th style="text-align:right; <?= $isExport ? 'background-color:#e2e8f0;' : '' ?>">OUTSTANDING</th>
-                        <th style="text-align:center; <?= $isExport ? 'background-color:#e2e8f0;' : '' ?>">UNIT</th>
-                        <th style="text-align:right; <?= $isExport ? 'background-color:#e2e8f0;' : '' ?>">AMOUNT</th>
+                        <td style="font-weight:bold"><?php echo h($po['PO_NUM']); ?></td>
+                        <td style="text-align:center;font-weight:bold"><?php echo h(formatDatePO($po['PO_DATE'])); ?></td>
+                        <td style="text-align:right"><?php echo h(formatMoney($po['POD_PRICE'])); ?></td>
+                        <td style="padding-left:10px"><?php echo h($po['PO_CUR']); ?></td>
+                        <td style="color:blue;font-weight:bold;text-align:right"><?php echo h(formatPOQty($po['QTY'])); ?></td>
+                        <td style="color:red;font-weight:bold;text-align:right"><?php echo h(formatQty($po['TOTAL_REC_QTY'])); ?></td>
+                        <td></td>
+                        <td style="color:green;font-weight:bold;text-align:right"><?php echo h(formatQty($outstanding)); ?></td>
+                        <td style="text-align:center"><?php echo h($po['POD_UNIT']); ?></td>
+                        <td style="text-align:right"><?php echo h(formatMoney($po['AMOUNT'])); ?></td>
                     </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($grouped as $supKey => $sup): ?>
-                        <!-- SUPPLIER LEVEL -->
-                        <tr>
-                            <td colspan="10" style="font-weight: bold;"><?= htmlspecialchars($sup['SUP_CODE'] . ' ' . $sup['SUP_COMP']) ?></td>
-                        </tr>
-                        <?php foreach ($sup['items'] as $itemKey => $item): ?>
-                            <!-- ITEM LEVEL -->
-                            <tr>
-                                <td colspan="10" style="font-weight: bold; padding-left: 10px;"><?= htmlspecialchars($item['ITEM_CODE'] . ' ' . $item['ITEM_NAME']) ?></td>
-                            </tr>
-                            <?php foreach ($item['pos'] as $poKey => $po): 
-                                $outstanding = $po['QTY'] - $po['TOTAL_REC_QTY'];
-                            ?>
-                                <!-- PO LEVEL -->
-                                <tr>
-                                    <td style="font-weight: bold;"><?= htmlspecialchars($po['PO_NUM']) ?></td>
-                                    <td style="text-align:center; font-weight: bold;"><?= formatDatePO($po['PO_DATE']) ?></td>
-                                    <td style="text-align:right;"><?= formatMoney($po['POD_PRICE']) ?></td>
-                                    <td style="padding-left: 10px;"><?= htmlspecialchars($po['PO_CUR']) ?></td>
-                                    <td style="color: blue; font-weight: bold; text-align:right;"><?= formatPOQty($po['QTY']) ?></td>
-                                    <td style="color: red; font-weight: bold; text-align:right;"><?= formatQty($po['TOTAL_REC_QTY']) ?></td>
-                                    <td></td>
-                                    <td style="color: green; font-weight: bold; text-align:right;"><?= formatQty($outstanding) ?></td>
-                                    <td style="text-align:center;"><?= htmlspecialchars($po['POD_UNIT']) ?></td>
-                                    <td style="text-align:right;"><?= formatMoney($po['AMOUNT']) ?></td>
-                                </tr>
-                                <!-- RECEIVE DETAILS LEVEL (GROUPED BY RCV_NOMOR) -->
-                                <?php foreach ($po['rcvs'] as $rcv): ?>
-                                    <tr>
-                                        <td style="color: blue; font-weight: bold; padding-left: 10px;"><?= htmlspecialchars($rcv['RCV_NOMOR']) ?></td>
-                                        <td style="text-align:center; padding-left: 20px;"><?= formatDate($rcv['RCV_DATE']) ?></td>
-                                        <td></td>
-                                        <td></td>
-                                        <td></td>
-                                        <td style="text-align:right; font-weight: bold;"><?= formatQty($rcv['RCVD_QTY']) ?></td>
-                                        <td style="text-align:right;"><?= formatMoney($rcv['RCV_PRICE']) ?></td>
-                                        <td></td>
-                                        <td></td>
-                                        <td></td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php endforeach; ?>
-                        <?php endforeach; ?>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-            <?php else: ?>
-                <?php if (!$isExport): ?><div class="text-center my-5 text-muted">Tidak ada data untuk periode ini.</div><?php endif; ?>
-            <?php endif; ?>
-        </div>
-    <?php if (!$isExport): ?></div></main><?php endif; ?>
-<?php endif; ?>
 
-<?php if (!$isExport): ?>
-    <!-- SCRIPT AUTOCOMPLETE BAWAN ANDA -->
-    <script>
-        function createAutocomplete(config) {
-            var input    = document.getElementById(config.inputId);
-            var hidden   = document.getElementById(config.hiddenId);
-            var dropdown = document.getElementById(config.dropdownId);
-            var wrapId   = config.wrapId;
-            if (!input || !hidden || !dropdown) return;
+                    <?php foreach ($po['rcvs'] as $receive) { ?>
+                    <tr>
+                        <td style="color:blue;font-weight:bold;padding-left:10px">
+                            <?php echo h($receive['RCV_NOMOR']); ?>
+                        </td>
+                        <td style="text-align:center">
+                            <?php echo h(formatDate($receive['RCV_DATE'])); ?>
+                        </td>
+                        <td></td><td></td><td></td>
+                        <td style="text-align:right;font-weight:bold">
+                            <?php echo h(formatQty($receive['RCVD_QTY'])); ?>
+                        </td>
+                        <td style="text-align:right">
+                            <?php echo h(formatMoney($receive['RCV_PRICE'])); ?>
+                        </td>
+                        <td></td><td></td><td></td>
+                    </tr>
+                    <?php } ?>
+                <?php } ?>
+            <?php } ?>
+        <?php } ?>
+    <?php } ?>
+    </tbody>
+</table>
 
-            var acTimeout = null;
-            var activeIdx = -1;
+<div class="summary-box">
+    Total baris: <strong><?php echo $totalRows; ?></strong>
+    &nbsp; | &nbsp; PO Qty:
+    <strong><?php echo h(formatPOQty($grandPoQty)); ?></strong>
+    &nbsp; | &nbsp; Receive Qty:
+    <strong><?php echo h(formatQty($grandRcvQty)); ?></strong>
+    &nbsp; | &nbsp; PO Amount:
+    <strong><?php echo h(formatMoney($grandPoAmount)); ?></strong>
+    &nbsp; | &nbsp; Receive Amount:
+    <strong><?php echo h(formatMoney($grandRcvAmount)); ?></strong>
+</div>
+<?php } else { ?>
+<div style="text-align:center;padding:35px;color:#64748b">
+    Tidak ada data untuk kriteria ini.
+</div>
+<?php } ?>
 
-            input.addEventListener('input', function() {
-                var q = this.value.trim();
-                hidden.value = '';
-                activeIdx = -1;
-                if (q.length < 1) { acHide(); return; }
-                clearTimeout(acTimeout);
-                acTimeout = setTimeout(function() { acSearch(q); }, 300);
-            });
+<?php if (!$isExport) { ?></div></main><?php } ?>
+<?php } ?>
 
-            input.addEventListener('focus', function() {
-                var q = this.value.trim();
-                if (q.length >= 1) acSearch(q);
-            });
+<?php if (!$isExport) { ?>
+<script>
+function escapeHtml(value) {
+    var div = document.createElement('div');
+    div.textContent = value || '';
+    return div.innerHTML;
+}
 
-            input.addEventListener('keydown', function(e) {
-                var items = dropdown.querySelectorAll('.ac-item');
-                if (!items.length) return;
-                if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    activeIdx = Math.min(activeIdx + 1, items.length - 1);
-                    acHighlight(items);
-                } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    activeIdx = Math.max(activeIdx - 1, 0);
-                    acHighlight(items);
-                } else if (e.key === 'Enter') {
-                    e.preventDefault();
-                    if (activeIdx >= 0 && items[activeIdx]) acSelect(items[activeIdx]);
-                } else if (e.key === 'Escape') {
-                    acHide();
-                    input.blur();
-                }
-            });
+function createAutocomplete(config) {
+    var input = document.getElementById(config.inputId);
+    var hidden = document.getElementById(config.hiddenId);
+    var dropdown = document.getElementById(config.dropdownId);
+    var wrap = document.getElementById(config.wrapId);
+    var plant = document.getElementById('plantFilter');
+    var timer = null;
 
-            document.addEventListener('click', function(e) {
-                var wrap = document.getElementById(wrapId);
-                if (wrap && !wrap.contains(e.target)) { acHide(); }
-            });
+    if (!input || !hidden || !dropdown || !wrap) {
+        return;
+    }
 
-            function acSearch(q) {
-                dropdown.innerHTML = '<div class="ac-loading" style="padding:10px; font-size:11px; text-align:center; color:#94a3b8;">Mencari...</div>';
-                dropdown.classList.add('show');
-                var fd = new FormData();
-                fd.append('q', q);
+    function hide() {
+        dropdown.classList.remove('show');
+        dropdown.innerHTML = '';
+    }
 
-                window.fetch(config.url, { method: 'POST', body: fd })
-                    .then(function(response) { return response.json(); })
-                    .then(function(data) {
-                        if (!data || !data.length) {
-                            dropdown.innerHTML = '<div class="ac-empty" style="padding:10px; font-size:11px; text-align:center; color:#94a3b8;">Tidak ditemukan</div>';
-                            return;
-                        }
-                        var html = '';
-                        for (var i = 0; i < data.length; i++) {
-                            var item = data[i];
-                            var code = acEsc(item[config.codeField]);
-                            var name = acEsc(item[config.nameField]);
-                            html += '<div class="ac-item" data-code="' + code + '" data-name="' + name + '" style="padding:8px 12px; cursor:pointer; display:flex; gap:10px; font-size:11px;">'
-                                  + '<span class="code" style="font-family:monospace; font-weight:600; color:#1d4ed8; min-width:90px;">' + code + '</span>'
-                                  + '<span class="name" style="color:#0f172a; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + name + '</span>'
-                                  + '</div>';
-                        }
-                        dropdown.innerHTML = html;
+    function search(query) {
+        dropdown.innerHTML =
+            '<div style="padding:10px;text-align:center;color:#94a3b8">Mencari...</div>';
+        dropdown.classList.add('show');
 
-                        var allItems = dropdown.querySelectorAll('.ac-item');
-                        for (var j = 0; j < allItems.length; j++) {
-                            allItems[j].addEventListener('click', function() { acSelect(this); });
-                        }
-                    })
-                    .catch(function() {
-                        dropdown.innerHTML = '<div class="ac-empty" style="padding:10px; font-size:11px; text-align:center; color:#94a3b8;">Gagal memuat data</div>';
-                    });
+        var formData = new FormData();
+        formData.append('q', query);
+        formData.append('plant', plant ? plant.value : 'all');
+
+        fetch(config.url, {
+            method: 'POST',
+            body: formData,
+            credentials: 'same-origin'
+        })
+        .then(function (response) {
+            return response.json();
+        })
+        .then(function (data) {
+            if (!data || !data.length) {
+                dropdown.innerHTML =
+                    '<div style="padding:10px;text-align:center;color:#94a3b8">Tidak ditemukan</div>';
+                return;
             }
 
-            function acSelect(el) {
-                var code = el.getAttribute('data-code');
-                var name = el.getAttribute('data-name');
-                input.value  = code + ' - ' + name;
-                hidden.value = code;
-                acHide();
+            var html = '';
+
+            for (var i = 0; i < data.length; i++) {
+                var row = data[i];
+                var code = escapeHtml(row[config.codeField] || '');
+                var name = escapeHtml(row[config.nameField] || '');
+                var plantText = escapeHtml(row.PLANT_SHORT || '');
+
+                html +=
+                    '<div class="ac-item" data-code="' + code + '" data-name="' + name + '">' +
+                    '<span class="plant-badge">' + plantText + '</span>' +
+                    '<span class="code">' + code + '</span>' +
+                    '<span>' + name + '</span>' +
+                    '</div>';
             }
 
-            function acHighlight(items) {
-                for (var i = 0; i < items.length; i++) {
-                    if (i === activeIdx) { items[i].style.background = '#dbeafe'; } 
-                    else { items[i].style.background = 'transparent'; }
-                }
-            }
+            dropdown.innerHTML = html;
 
-            function acHide() { dropdown.classList.remove('show'); dropdown.innerHTML = ''; activeIdx = -1; }
+            var items = dropdown.querySelectorAll('.ac-item');
+
+            for (var j = 0; j < items.length; j++) {
+                items[j].onclick = function () {
+                    var code = this.getAttribute('data-code') || '';
+                    var name = this.getAttribute('data-name') || '';
+
+                    input.value = code + (name ? ' - ' + name : '');
+                    hidden.value = code;
+                    hide();
+                };
+            }
+        })
+        .catch(function () {
+            dropdown.innerHTML =
+                '<div style="padding:10px;text-align:center;color:#b91c1c">Gagal memuat data</div>';
+        });
+    }
+
+    input.addEventListener('input', function () {
+        var query = this.value.replace(/^\s+|\s+$/g, '');
+        hidden.value = '';
+
+        clearTimeout(timer);
+
+        if (query.length < 1) {
+            hide();
+            return;
         }
 
-        function acEsc(s) {
-            if (!s) return '';
-            var d = document.createElement('div');
-            d.textContent = s;
-            return d.innerHTML;
+        timer = setTimeout(function () {
+            search(query);
+        }, 300);
+    });
+
+    document.addEventListener('click', function (event) {
+        if (!wrap.contains(event.target)) {
+            hide();
         }
+    });
 
-        // INIT AUTOCOMPLETES
-        createAutocomplete({
-            inputId:   'modalItemInput',
-            hiddenId:  'modalItemHidden',
-            dropdownId:'modalItemDropdown',
-            wrapId:    'acWrapItem',
-            url:       'search_item.php',
-            codeField: 'ITEM_CODE',
-            nameField: 'ITEM_NAME'
+    if (plant) {
+        plant.addEventListener('change', function () {
+            input.value = '';
+            hidden.value = '';
+            hide();
         });
+    }
+}
 
-        createAutocomplete({
-            inputId:   'modalSupInput',
-            hiddenId:  'modalSupHidden',
-            dropdownId:'modalSupDropdown',
-            wrapId:    'acWrapSup',
-            url:       'search_sup.php',
-            codeField: 'SUP_CODE',
-            nameField: 'SUP_COMP'
-        });
-    </script>
+createAutocomplete({
+    inputId: 'modalItemInput',
+    hiddenId: 'modalItemHidden',
+    dropdownId: 'modalItemDropdown',
+    wrapId: 'acWrapItem',
+    url: 'search_item_multi.php',
+    codeField: 'ITEM_CODE',
+    nameField: 'ITEM_NAME'
+});
+
+createAutocomplete({
+    inputId: 'modalSupInput',
+    hiddenId: 'modalSupHidden',
+    dropdownId: 'modalSupDropdown',
+    wrapId: 'acWrapSup',
+    url: 'search_sup_multi.php',
+    codeField: 'SUP_CODE',
+    nameField: 'SUP_COMP'
+});
+</script>
 </body>
 </html>
-<?php endif; ?>
+<?php } ?>

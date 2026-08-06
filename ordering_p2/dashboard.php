@@ -80,6 +80,19 @@ function h($value) {
             font-weight: bold;
         }
 
+        /* Style khusus untuk menu Logout */
+        .menu-link.logout {
+            margin-top: 20px;
+            border-top: 1px solid #3a4a5e;
+            padding-top: 15px;
+            color: #ff6b6b;
+        }
+
+        .menu-link.logout:hover {
+            background: #c0392b;
+            color: #ffffff;
+        }
+
         .main {
             flex: 1;
             height: 100vh;
@@ -113,6 +126,29 @@ function h($value) {
             border: none;
             background: #d4d0c8;
         }
+
+        /* Tambahan style untuk menu material slip */
+        .menu-link.material-slip {
+            background: #2c3e50;
+            border-left: 3px solid #3498db;
+        }
+
+        .menu-link.material-slip:hover {
+            background: #34495e;
+            border-left-color: #5dade2;
+        }
+
+        .menu-link.material-slip.active {
+            background: #2f65d9;
+            border-left-color: #ffffff;
+        }
+
+        /* Separator antara menu normal dan material slip */
+        .menu-separator {
+            border-top: 1px solid #3a4a5e;
+            margin: 15px 0;
+            opacity: 0.5;
+        }
     </style>
 </head>
 
@@ -127,15 +163,31 @@ function h($value) {
         </div>
 
         <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Report</a>
-		<a class="menu-link" href="master.php" target="mainFrame">MASTER CUST, PRICE, CURR</a>
+        <a class="menu-link" href="master.php" target="mainFrame">MASTER CUST, PRICE, CURR</a>
+		<a class="menu-link" href="sync_part_price_customer.php" target="mainFrame">PRICE SYNCRONISATION</a>
         <a class="menu-link" href="manual_order.php" target="mainFrame">Manual Delivery Instruction</a>
         <a class="menu-link" href="input_order.php" target="mainFrame">Input Order</a>
         <a class="menu-link" href="forecast.php" target="mainFrame">Forecast</a>
         <a class="menu-link" href="schedule.php" target="mainFrame">Schedule</a>
         <a class="menu-link" href="order_edit.php" target="mainFrame">Edit Order</a>
-		<a class="menu-link" href="depresiasi.php" target="mainFrame">DEPRESIASI</a>
-		<a class="menu-link" href="quotation.php" target="mainFrame">LIST QUOTATION</a>
-      <a class="menu-link logout" href="logout.php" target="_top">Logout</a>
+        <a class="menu-link" href="depresiasi.php" target="mainFrame">DEPRESIASI</a>
+        <a class="menu-link" href="quotation.php" target="mainFrame">LIST QUOTATION</a>
+        
+        <!-- Separator -->
+        <div class="menu-separator"></div>
+        
+        <!-- Menu Material Slip - Tambahan di sini -->
+        <a class="menu-link material-slip" href="material_slip/index.php" target="mainFrame">
+            📋 SPB TO CUSTOMER / VENDOR
+        </a>
+		
+		 <!-- Menu Material Slip - Tambahan di sini -->
+        <a class="menu-link material-slip" href="SPB/index.php" target="mainFrame">
+            📋 SPB GENERAL
+        </a>
+        
+        <!-- Logout di paling bawah -->
+        <a class="menu-link logout" href="logout.php" target="_top">Logout</a>
     </div>
 
     <div class="main">

@@ -3,10 +3,10 @@
     Perbandingan HPP IDR/USD vs Sales IDR/USD per Item per Customer
     PHP 5.4 + SQL Server 2008
 
-    Catatan:
-    - Stored procedure harus mengembalikan CUST_ID, CUST_CODE, dan CUST_COMP.
-    - Tabel dan Excel dikelompokkan per customer.
-    - Pencarian dan pemilihan grafik tetap berdasarkan item.
+    UPDATE:
+    - Untuk ITEM_CODE LIKE 02%, HPP / Unit mengikuti subtotal List Harga Material/BOM.
+    - HPP dari stored procedure hanya dipakai sebagai fallback jika harga list/BOM tidak ditemukan.
+    - Mode default: REPLACE, yaitu TOTAL_HPP_SP diganti dengan (HARGA_BOM_LIST x SALES_QTY).
 */
 set_time_limit(180);
 if (session_id() === '') {
@@ -18,6 +18,15 @@ require_once __DIR__ . "/../config/database_ordering.php";
 if (!isset($_SESSION['db_user']) || $_SESSION['db_user'] === '') {
     die('<div style="padding:24px;font-family:Arial;color:#b91c1c">Silakan login terlebih dahulu.</div>');
 }
+
+/*
+    ADD     = HPP dari sp_hpp_sales_item_idr + harga BOM/List.
+    REPLACE = HPP dari sp_hpp_sales_item_idr diganti dengan harga BOM/List jika harga BOM ditemukan.
+
+    Untuk kebutuhan ini, mode REPLACE dipakai agar contoh 023198-0 mengikuti subtotal list
+    seperti 3.355,48, bukan ditambah dengan HPP lama dari stored procedure.
+*/
+define('HPP_BOM_APPLY_MODE', 'REPLACE');
 
 $uid = $_SESSION['db_user'];
 $pwd = isset($_SESSION['db_pass']) ? $_SESSION['db_pass'] : '';
@@ -51,8 +60,449 @@ function safe_error_text($errors)
     return implode(' | ', $parts);
 }
 
+function normalize_item_code_key($value)
+{
+    return strtoupper(trim((string)$value));
+}
+
+function starts_with_02($itemCode)
+{
+    return substr(trim((string)$itemCode), 0, 2) === '02';
+}
+
+function make_placeholders($count)
+{
+    $arr = array();
+    for ($i = 0; $i < $count; $i++) {
+        $arr[] = '?';
+    }
+    return implode(',', $arr);
+}
+
+function get_default_usd_rate($conn)
+{
+    $sql = "
+        SELECT TOP 1 CURR_VRATE
+        FROM CURR_RAT
+        WHERE CURR_CODE = 'USD'
+          AND GETDATE() BETWEEN CURR_SDATE AND CURR_EDATE
+        ORDER BY CURR_SDATE DESC
+    ";
+    $stmt = @sqlsrv_query($conn, $sql, array(), array('QueryTimeout' => 30));
+    if ($stmt === false) {
+        return 0;
+    }
+    $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+    sqlsrv_free_stmt($stmt);
+    if (!$row || !isset($row['CURR_VRATE'])) {
+        return 0;
+    }
+    return (float)$row['CURR_VRATE'];
+}
+
+function infer_idr_per_usd_rate($hppIdr, $hppUsd, $salesIdr, $salesUsd, $defaultRate)
+{
+    $hppIdr = (float)$hppIdr;
+    $hppUsd = (float)$hppUsd;
+    $salesIdr = (float)$salesIdr;
+    $salesUsd = (float)$salesUsd;
+
+    if ($salesIdr > 0 && $salesUsd > 0) {
+        return $salesIdr / $salesUsd;
+    }
+    if ($hppIdr > 0 && $hppUsd > 0) {
+        return $hppIdr / $hppUsd;
+    }
+    return (float)$defaultRate;
+}
+
+function fetch_bom_list_harga_unit_by_item_code($conn, $itemCodes)
+{
+    /*
+        Mengambil harga/unit dari logic List Harga Material:
+        - Material ITTY 02 = QTY x harga IDR / 1000.
+        - Material ITTY 03/05 = QTY x harga IDR.
+        - Komponen ITTY 01 dihitung sebagai HPP BOM turunannya.
+        - Parent ITEM_CODE LIKE 02% mengambil ITTY 01 + 02 + 03 + 05.
+        - Parent lain mengambil 02 + 03 + 05, dan juga komponen 02% bila muncul sebagai sub-assembling.
+    */
+
+    $clean = array();
+    foreach ($itemCodes as $code) {
+        $code = trim((string)$code);
+        if ($code !== '') {
+            $clean[normalize_item_code_key($code)] = $code;
+        }
+    }
+
+    if (count($clean) === 0) {
+        return array();
+    }
+
+    $result = array();
+    $values = array_values($clean);
+    $chunks = array_chunk($values, 350);
+
+    foreach ($chunks as $chunk) {
+        $placeholders = make_placeholders(count($chunk));
+
+        $sql = "
+            ;WITH LatestPO AS
+            (
+                SELECT
+                    pd.ITEM_ID AS MAT_ID,
+                    pd.POD_PRICE,
+                    po.PO_DATE AS PRICE_DATE_RAW,
+                    pd.POD_UNIT,
+                    po.PO_CUR,
+                    ROW_NUMBER() OVER
+                    (
+                        PARTITION BY pd.ITEM_ID
+                        ORDER BY po.PO_DATE DESC, po.PO_ID DESC
+                    ) AS rn
+                FROM PO_DETAIL pd
+                INNER JOIN PO po
+                    ON pd.PO_ID = po.PO_ID
+            ),
+            PriceData AS
+            (
+                SELECT
+                    p.MAT_ID,
+                    p.POD_PRICE,
+                    p.PRICE_DATE_RAW,
+                    p.POD_UNIT,
+                    p.PO_CUR,
+                    c.CURR_VRATE,
+                    CAST
+                    (
+                        CASE
+                            WHEN p.POD_PRICE IS NULL THEN NULL
+                            WHEN ISNULL(p.PO_CUR, 'IDR') = 'IDR'
+                                THEN p.POD_PRICE
+                            WHEN c.CURR_VRATE IS NULL THEN NULL
+                            ELSE p.POD_PRICE * c.CURR_VRATE
+                        END
+                        AS DECIMAL(38, 8)
+                    ) AS PRICE_IDR,
+                    CASE
+                        WHEN p.POD_PRICE IS NULL THEN 'TANPA_HARGA'
+                        WHEN ISNULL(p.PO_CUR, 'IDR') <> 'IDR'
+                             AND c.CURR_VRATE IS NULL THEN 'TANPA_KURS'
+                        ELSE 'OK'
+                    END AS PRICE_STATUS
+                FROM LatestPO p
+                LEFT JOIN CURR_RAT c
+                    ON p.PO_CUR = c.CURR_CODE
+                   AND p.PRICE_DATE_RAW BETWEEN c.CURR_SDATE AND c.CURR_EDATE
+                WHERE p.rn = 1
+            ),
+            HppBomTree AS
+            (
+                SELECT
+                    bd.PART_ID AS ROOT_PART_ID,
+                    bd.ITEM_ID AS COMPONENT_ID,
+                    m.ITEM_CODE AS COMPONENT_CODE,
+                    m.ITTY_CODE,
+                    CAST(bd.QTY AS DECIMAL(38, 8)) AS TOTAL_QTY,
+                    CAST
+                    (
+                        '/' + CONVERT(VARCHAR(50), bd.PART_ID)
+                        + '/' + CONVERT(VARCHAR(50), bd.ITEM_ID) + '/'
+                        AS VARCHAR(MAX)
+                    ) AS BOM_PATH,
+                    1 AS BOM_LEVEL
+                FROM BOM_DEFAULT bd
+                INNER JOIN ITEMS root_item
+                    ON bd.PART_ID = root_item.ITEM_ID
+                INNER JOIN ITEMS m
+                    ON bd.ITEM_ID = m.ITEM_ID
+                WHERE root_item.ITTY_CODE = '01'
+                  AND root_item.ITEM_INACTIVE = 0
+                  AND m.ITEM_INACTIVE = 0
+
+                UNION ALL
+
+                SELECT
+                    bt.ROOT_PART_ID,
+                    bd.ITEM_ID AS COMPONENT_ID,
+                    m.ITEM_CODE AS COMPONENT_CODE,
+                    m.ITTY_CODE,
+                    CAST(bt.TOTAL_QTY * bd.QTY AS DECIMAL(38, 8)) AS TOTAL_QTY,
+                    CAST
+                    (
+                        bt.BOM_PATH + CONVERT(VARCHAR(50), bd.ITEM_ID) + '/'
+                        AS VARCHAR(MAX)
+                    ) AS BOM_PATH,
+                    bt.BOM_LEVEL + 1
+                FROM HppBomTree bt
+                INNER JOIN ITEMS current_item
+                    ON bt.COMPONENT_ID = current_item.ITEM_ID
+                   AND current_item.ITTY_CODE = '01'
+                INNER JOIN BOM_DEFAULT bd
+                    ON bt.COMPONENT_ID = bd.PART_ID
+                INNER JOIN ITEMS m
+                    ON bd.ITEM_ID = m.ITEM_ID
+                WHERE bt.BOM_LEVEL < 20
+                  AND current_item.ITEM_INACTIVE = 0
+                  AND m.ITEM_INACTIVE = 0
+                  AND bt.BOM_PATH NOT LIKE
+                      '%/' + CONVERT(VARCHAR(50), bd.ITEM_ID) + '/%'
+            ),
+            Hpp01Summary AS
+            (
+                SELECT
+                    bt.ROOT_PART_ID,
+                    CAST
+                    (
+                        SUM
+                        (
+                            CASE
+                                WHEN bt.ITTY_CODE = '02' THEN
+                                    ROUND((bt.TOTAL_QTY * ISNULL(pd.PRICE_IDR, 0)) / 1000.0, 2)
+                                WHEN bt.ITTY_CODE IN ('03', '05') THEN
+                                    ROUND(bt.TOTAL_QTY * ISNULL(pd.PRICE_IDR, 0), 2)
+                                ELSE 0
+                            END
+                        )
+                        AS DECIMAL(38, 8)
+                    ) AS HPP_IDR_PER_UNIT,
+                    MAX(pd.PRICE_DATE_RAW) AS HPP_DATE_RAW,
+                    SUM(CASE WHEN bt.ITTY_CODE IN ('02', '03', '05') THEN 1 ELSE 0 END) AS LEAF_COUNT,
+                    SUM
+                    (
+                        CASE
+                            WHEN bt.ITTY_CODE IN ('02', '03', '05')
+                                 AND (pd.MAT_ID IS NULL OR pd.PRICE_STATUS <> 'OK')
+                                THEN 1
+                            ELSE 0
+                        END
+                    ) AS MISSING_PRICE_COUNT
+                FROM HppBomTree bt
+                LEFT JOIN PriceData pd
+                    ON bt.COMPONENT_ID = pd.MAT_ID
+                WHERE bt.ITTY_CODE IN ('02', '03', '05')
+                GROUP BY bt.ROOT_PART_ID
+            ),
+            DirectBom AS
+            (
+                SELECT
+                    i.ITEM_ID AS PART_ID,
+                    i.ITEM_CODE AS PART_CODE,
+                    i.ITEM_NAME AS PART_NAME,
+                    m.ITEM_ID AS MAT_ID,
+                    m.ITEM_CODE AS MAT_CODE,
+                    m.ITEM_NAME AS MAT_NAME,
+                    CAST(bd.QTY AS DECIMAL(38, 8)) AS QTY,
+                    m.ITTY_CODE
+                FROM BOM_DEFAULT bd
+                INNER JOIN ITEMS m
+                    ON bd.ITEM_ID = m.ITEM_ID
+                INNER JOIN ITEMS i
+                    ON bd.PART_ID = i.ITEM_ID
+                WHERE i.ITEM_CODE IN ($placeholders)
+                  AND
+                  (
+                        m.ITTY_CODE IN ('02', '03', '05')
+                        OR
+                        (
+                            i.ITEM_CODE LIKE '02%'
+                            AND m.ITTY_CODE = '01'
+                        )
+                        OR
+                        (
+                            m.ITEM_CODE LIKE '02%'
+                            AND m.ITTY_CODE = '01'
+                        )
+                  )
+                  AND i.ITEM_INACTIVE = 0
+                  AND m.ITEM_INACTIVE = 0
+            )
+            SELECT
+                b.PART_CODE,
+                MAX(b.PART_NAME) AS PART_NAME,
+                CAST
+                (
+                    SUM
+                    (
+                        CASE
+                            WHEN b.ITTY_CODE = '01' THEN
+                                ROUND(b.QTY * ISNULL(h.HPP_IDR_PER_UNIT, 0), 2)
+                            WHEN b.ITTY_CODE = '02' THEN
+                                ROUND((b.QTY * ISNULL(pd.PRICE_IDR, 0)) / 1000.0, 2)
+                            WHEN b.ITTY_CODE IN ('03', '05') THEN
+                                ROUND(b.QTY * ISNULL(pd.PRICE_IDR, 0), 2)
+                            ELSE 0
+                        END
+                    )
+                    AS DECIMAL(38, 2)
+                ) AS BOM_HPP_IDR_UNIT,
+                COUNT(*) AS BOM_LINE_COUNT,
+                SUM
+                (
+                    CASE
+                        WHEN b.ITTY_CODE = '01'
+                             AND (h.ROOT_PART_ID IS NULL OR ISNULL(h.LEAF_COUNT, 0) = 0)
+                            THEN 1
+                        WHEN b.ITTY_CODE = '01'
+                             AND ISNULL(h.MISSING_PRICE_COUNT, 0) > 0
+                            THEN 1
+                        WHEN b.ITTY_CODE IN ('02', '03', '05')
+                             AND (pd.MAT_ID IS NULL OR pd.PRICE_STATUS <> 'OK')
+                            THEN 1
+                        ELSE 0
+                    END
+                ) AS BOM_ERROR_LINES,
+                MAX
+                (
+                    CASE
+                        WHEN b.ITTY_CODE = '01' THEN h.HPP_DATE_RAW
+                        ELSE pd.PRICE_DATE_RAW
+                    END
+                ) AS BOM_PRICE_DATE
+            FROM DirectBom b
+            LEFT JOIN PriceData pd
+                ON b.MAT_ID = pd.MAT_ID
+            LEFT JOIN Hpp01Summary h
+                ON b.MAT_ID = h.ROOT_PART_ID
+            GROUP BY b.PART_CODE
+            OPTION (MAXRECURSION 100)
+        ";
+
+        $stmt = @sqlsrv_query($conn, $sql, $chunk, array('QueryTimeout' => 180));
+        if ($stmt === false) {
+            continue;
+        }
+
+        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+            $code = isset($row['PART_CODE']) ? normalize_item_code_key($row['PART_CODE']) : '';
+            if ($code === '') {
+                continue;
+            }
+            $result[$code] = array(
+                'unit_idr' => isset($row['BOM_HPP_IDR_UNIT']) ? (float)$row['BOM_HPP_IDR_UNIT'] : 0,
+                'line_count' => isset($row['BOM_LINE_COUNT']) ? (int)$row['BOM_LINE_COUNT'] : 0,
+                'error_lines' => isset($row['BOM_ERROR_LINES']) ? (int)$row['BOM_ERROR_LINES'] : 0,
+                'price_date' => isset($row['BOM_PRICE_DATE']) ? $row['BOM_PRICE_DATE'] : null
+            );
+        }
+        sqlsrv_free_stmt($stmt);
+    }
+
+    return $result;
+}
+
+function merge_hpp_sales_row(&$merged, $row, $serverShort, $bomPriceMap, $defaultUsdRate)
+{
+    $periodKey = isset($row['PERIOD_KEY']) ? (int)$row['PERIOD_KEY'] : 0;
+    $itemCode = isset($row['ITEM_CODE']) ? trim((string)$row['ITEM_CODE']) : '';
+    $custId = isset($row['CUST_ID']) ? (int)$row['CUST_ID'] : 0;
+    $custCode = isset($row['CUST_CODE']) ? trim((string)$row['CUST_CODE']) : 'TANPA-CUSTOMER';
+    $custComp = isset($row['CUST_COMP']) ? trim((string)$row['CUST_COMP']) : 'TANPA CUSTOMER';
+
+    if ($custCode === '') {
+        $custCode = 'TANPA-CUSTOMER';
+    }
+    if ($custComp === '') {
+        $custComp = 'TANPA CUSTOMER';
+    }
+
+    if ($periodKey === 0 || $itemCode === '') {
+        return;
+    }
+
+    $salesQty = isset($row['SALES_QTY']) ? (float)$row['SALES_QTY'] : 0;
+    $spHppIdr = isset($row['TOTAL_HPP_IDR']) ? (float)$row['TOTAL_HPP_IDR'] : 0;
+    $salesIdr = isset($row['TOTAL_SALES_IDR']) ? (float)$row['TOTAL_SALES_IDR'] : 0;
+    $spHppUsd = isset($row['TOTAL_HPP_USD']) ? (float)$row['TOTAL_HPP_USD'] : 0;
+    $salesUsd = isset($row['TOTAL_SALES_USD']) ? (float)$row['TOTAL_SALES_USD'] : 0;
+    $hppErrorLines = isset($row['HPP_ERROR_LINES']) ? (int)$row['HPP_ERROR_LINES'] : 0;
+
+    $itemKey = normalize_item_code_key($itemCode);
+    $bomUnitIdr = 0;
+    $bomTotalIdr = 0;
+    $bomTotalUsd = 0;
+    $bomErrorLines = 0;
+    $usedBom = false;
+
+    if (starts_with_02($itemCode) && isset($bomPriceMap[$itemKey]) && (float)$bomPriceMap[$itemKey]['unit_idr'] > 0 && $salesQty != 0) {
+        $usedBom = true;
+        $bomUnitIdr = (float)$bomPriceMap[$itemKey]['unit_idr'];
+        $bomTotalIdr = $bomUnitIdr * $salesQty;
+        $bomErrorLines = (int)$bomPriceMap[$itemKey]['error_lines'];
+
+        $rate = infer_idr_per_usd_rate($spHppIdr, $spHppUsd, $salesIdr, $salesUsd, $defaultUsdRate);
+        if ($rate > 0) {
+            $bomTotalUsd = $bomTotalIdr / $rate;
+        }
+
+        if (HPP_BOM_APPLY_MODE === 'REPLACE') {
+            $spHppIdr = $bomTotalIdr;
+            $spHppUsd = $bomTotalUsd;
+        } else {
+            $spHppIdr += $bomTotalIdr;
+            $spHppUsd += $bomTotalUsd;
+        }
+
+        $hppErrorLines += $bomErrorLines;
+    }
+
+    $mergeKey = $periodKey . '|' . strtoupper($custCode) . '|' . strtoupper($itemCode);
+    if (!isset($merged[$mergeKey])) {
+        $salesYear = isset($row['SALES_YEAR']) ? (int)$row['SALES_YEAR'] : 0;
+        $salesMonth = isset($row['SALES_MONTH']) ? (int)$row['SALES_MONTH'] : 0;
+        $merged[$mergeKey] = array(
+            'period_key' => $periodKey,
+            'sales_year' => $salesYear,
+            'sales_month' => $salesMonth,
+            'cust_id' => $custId,
+            'cust_code' => $custCode,
+            'cust_comp' => $custComp,
+            'item_id' => isset($row['ITEM_ID']) ? (int)$row['ITEM_ID'] : 0,
+            'item_code' => $itemCode,
+            'item_name' => isset($row['ITEM_NAME']) ? trim((string)$row['ITEM_NAME']) : '',
+            'sales_qty' => 0.0,
+            'total_hpp_idr' => 0.0,
+            'total_sales_idr' => 0.0,
+            'total_hpp_usd' => 0.0,
+            'total_sales_usd' => 0.0,
+            'hpp_error_lines' => 0,
+            'sales_error_lines' => 0,
+            'sources' => array(),
+            'plants' => array()
+        );
+    }
+
+    $merged[$mergeKey]['sales_qty'] += $salesQty;
+    $merged[$mergeKey]['total_hpp_idr'] += $spHppIdr;
+    $merged[$mergeKey]['total_sales_idr'] += $salesIdr;
+    $merged[$mergeKey]['total_hpp_usd'] += $spHppUsd;
+    $merged[$mergeKey]['total_sales_usd'] += $salesUsd;
+    $merged[$mergeKey]['hpp_error_lines'] += $hppErrorLines;
+    $merged[$mergeKey]['sales_error_lines'] += isset($row['SALES_RATE_ERROR_LINES']) ? (int)$row['SALES_RATE_ERROR_LINES'] : 0;
+
+    $source = isset($row['HPP_SOURCE']) ? trim((string)$row['HPP_SOURCE']) : '';
+    if ($source !== '' && !in_array($source, $merged[$mergeKey]['sources'], true)) {
+        $merged[$mergeKey]['sources'][] = $source;
+    }
+
+    if ($usedBom) {
+        $bomLabel = (HPP_BOM_APPLY_MODE === 'REPLACE')
+            ? 'HPP MENGIKUTI LIST 02%'
+            : 'TAMBAHAN BOM LIST 02%';
+        if (!in_array($bomLabel, $merged[$mergeKey]['sources'], true)) {
+            $merged[$mergeKey]['sources'][] = $bomLabel;
+        }
+    }
+
+    if (!in_array($serverShort, $merged[$mergeKey]['plants'], true)) {
+        $merged[$mergeKey]['plants'][] = $serverShort;
+    }
+}
+
 if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
     header('Content-Type: application/json; charset=UTF-8');
+    header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
+    header('Pragma: no-cache');
 
     $plant = clean_plant(isset($_GET['plant']) ? $_GET['plant'] : 'all');
     $mode = isset($_GET['mode']) ? strtoupper(trim($_GET['mode'])) : 'YEARLY';
@@ -98,6 +548,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
     $missingCustomerColumns = false;
     $customerMappedRows = 0;
     $customerUnmappedRows = 0;
+    $bomAdjustedRows = 0;
 
     foreach ($serversToTry as $serverKey) {
         $serverLabel = isset($servers_config[$serverKey]['label']) ? $servers_config[$serverKey]['label'] : strtoupper($serverKey);
@@ -121,83 +572,46 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
             continue;
         }
 
+        $serverRows = array();
+        $serverItemCodes = array();
+
         while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
             if (!array_key_exists('CUST_CODE', $row) || !array_key_exists('CUST_COMP', $row)) {
                 $missingCustomerColumns = true;
             }
 
-            $periodKey = isset($row['PERIOD_KEY']) ? (int)$row['PERIOD_KEY'] : 0;
             $itemCode = isset($row['ITEM_CODE']) ? trim((string)$row['ITEM_CODE']) : '';
-            $custId = isset($row['CUST_ID']) ? (int)$row['CUST_ID'] : 0;
-            $custCode = isset($row['CUST_CODE']) ? trim((string)$row['CUST_CODE']) : 'TANPA-CUSTOMER';
-            $custComp = isset($row['CUST_COMP']) ? trim((string)$row['CUST_COMP']) : 'TANPA CUSTOMER';
-
-            if ($custCode === '') {
-                $custCode = 'TANPA-CUSTOMER';
-            }
-            if ($custComp === '') {
-                $custComp = 'TANPA CUSTOMER';
+            $periodKey = isset($row['PERIOD_KEY']) ? (int)$row['PERIOD_KEY'] : 0;
+            if ($periodKey === 0 || $itemCode === '') {
+                continue;
             }
 
-            if ($custCode === 'TANPA-CUSTOMER') {
+            $custCodeCheck = isset($row['CUST_CODE']) ? trim((string)$row['CUST_CODE']) : 'TANPA-CUSTOMER';
+            if ($custCodeCheck === '') $custCodeCheck = 'TANPA-CUSTOMER';
+            if ($custCodeCheck === 'TANPA-CUSTOMER') {
                 $customerUnmappedRows++;
             } else {
                 $customerMappedRows++;
             }
 
-            if ($periodKey === 0 || $itemCode === '') {
-                continue;
-            }
-
-            /*
-                Customer dimasukkan ke merge key supaya item yang sama pada
-                customer berbeda tidak tercampur. Untuk gabungan P1 & P2,
-                customer dengan kode yang sama tetap digabung.
-            */
-            $mergeKey = $periodKey . '|' . strtoupper($custCode) . '|' . strtoupper($itemCode);
-            if (!isset($merged[$mergeKey])) {
-                $salesYear = isset($row['SALES_YEAR']) ? (int)$row['SALES_YEAR'] : 0;
-                $salesMonth = isset($row['SALES_MONTH']) ? (int)$row['SALES_MONTH'] : 0;
-                $merged[$mergeKey] = array(
-                    'period_key' => $periodKey,
-                    'sales_year' => $salesYear,
-                    'sales_month' => $salesMonth,
-                    'cust_id' => $custId,
-                    'cust_code' => $custCode,
-                    'cust_comp' => $custComp,
-                    'item_id' => isset($row['ITEM_ID']) ? (int)$row['ITEM_ID'] : 0,
-                    'item_code' => $itemCode,
-                    'item_name' => isset($row['ITEM_NAME']) ? trim((string)$row['ITEM_NAME']) : '',
-                    'sales_qty' => 0.0,
-                    'total_hpp_idr' => 0.0,
-                    'total_sales_idr' => 0.0,
-                    'total_hpp_usd' => 0.0,
-                    'total_sales_usd' => 0.0,
-                    'hpp_error_lines' => 0,
-                    'sales_error_lines' => 0,
-                    'sources' => array(),
-                    'plants' => array()
-                );
-            }
-
-            $merged[$mergeKey]['sales_qty'] += isset($row['SALES_QTY']) ? (float)$row['SALES_QTY'] : 0;
-            $merged[$mergeKey]['total_hpp_idr'] += isset($row['TOTAL_HPP_IDR']) ? (float)$row['TOTAL_HPP_IDR'] : 0;
-            $merged[$mergeKey]['total_sales_idr'] += isset($row['TOTAL_SALES_IDR']) ? (float)$row['TOTAL_SALES_IDR'] : 0;
-            $merged[$mergeKey]['total_hpp_usd'] += isset($row['TOTAL_HPP_USD']) ? (float)$row['TOTAL_HPP_USD'] : 0;
-            $merged[$mergeKey]['total_sales_usd'] += isset($row['TOTAL_SALES_USD']) ? (float)$row['TOTAL_SALES_USD'] : 0;
-            $merged[$mergeKey]['hpp_error_lines'] += isset($row['HPP_ERROR_LINES']) ? (int)$row['HPP_ERROR_LINES'] : 0;
-            $merged[$mergeKey]['sales_error_lines'] += isset($row['SALES_RATE_ERROR_LINES']) ? (int)$row['SALES_RATE_ERROR_LINES'] : 0;
-
-            $source = isset($row['HPP_SOURCE']) ? trim((string)$row['HPP_SOURCE']) : '';
-            if ($source !== '' && !in_array($source, $merged[$mergeKey]['sources'], true)) {
-                $merged[$mergeKey]['sources'][] = $source;
-            }
-            if (!in_array($serverShort, $merged[$mergeKey]['plants'], true)) {
-                $merged[$mergeKey]['plants'][] = $serverShort;
+            $serverRows[] = $row;
+            if (starts_with_02($itemCode)) {
+                $serverItemCodes[normalize_item_code_key($itemCode)] = $itemCode;
             }
         }
-
         sqlsrv_free_stmt($stmt);
+
+        $bomPriceMap = fetch_bom_list_harga_unit_by_item_code($conn, array_values($serverItemCodes));
+        $defaultUsdRate = get_default_usd_rate($conn);
+
+        foreach ($serverRows as $row) {
+            $itemKey = normalize_item_code_key(isset($row['ITEM_CODE']) ? $row['ITEM_CODE'] : '');
+            if (starts_with_02(isset($row['ITEM_CODE']) ? $row['ITEM_CODE'] : '') && isset($bomPriceMap[$itemKey]) && (float)$bomPriceMap[$itemKey]['unit_idr'] > 0) {
+                $bomAdjustedRows++;
+            }
+            merge_hpp_sales_row($merged, $row, $serverShort, $bomPriceMap, $defaultUsdRate);
+        }
+
         sqlsrv_close($conn);
     }
 
@@ -205,6 +619,10 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
         $errors[] = 'Stored procedure yang aktif belum mengembalikan CUST_CODE dan CUST_COMP. Jalankan ulang SQL sp_hpp_sales_item_idr versi customer pada plant terkait.';
     } elseif ($customerMappedRows === 0 && $customerUnmappedRows > 0) {
         $errors[] = 'Seluruh transaksi masuk TANPA-CUSTOMER. Periksa relasi DIPA_PAR.PRICE_ID ke PART_VIEW.PRICE_ID dan CUST.CUST_ID.';
+    }
+
+    if ($bomAdjustedRows > 0) {
+        $errors[] = 'Info: HPP item 02% sudah mengikuti harga List/BOM pada ' . $bomAdjustedRows . ' baris transaksi. Mode: ' . HPP_BOM_APPLY_MODE . '.';
     }
 
     $result = array();
@@ -281,6 +699,7 @@ if (isset($_GET['action']) && $_GET['action'] === 'fetch') {
     exit;
 }
 ?>
+
 <!DOCTYPE html>
 <html lang="id">
 <head>

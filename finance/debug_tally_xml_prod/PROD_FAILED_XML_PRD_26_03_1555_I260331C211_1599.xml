@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <VOUCHER REMOTEID="udi-IMCPRODUKSI-I260331C211-PRD/26/03/1555" VCHTYPE="Production" ACTION="Create">
+            <GUID>udi-IMCPRODUKSI-I260331C211-PRD/26/03/1555</GUID>
+            <DATE>31-Mar-2026</DATE>
+            <EFFECTIVEDATE>31-Mar-2026</EFFECTIVEDATE>
+            <VOUCHERTYPENAME>Production</VOUCHERTYPENAME>
+            <ISINVOICE>Yes</ISINVOICE>
+            <VOUCHERNUMBER>PRD/26/03/1555</VOUCHERNUMBER>
+            <NARRATION>Production: I260331C211</NARRATION>
+            <INVENTORYENTRIESIN.LIST>
+              <STOCKITEMNAME>014810-0</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <RATE>0.03586</RATE>
+              <AMOUNT>-5.31</AMOUNT>
+              <ACTUALQTY>148.000000</ACTUALQTY>
+              <BILLEDQTY>148.000000</BILLEDQTY>
+              <BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>Main Location</GODOWNNAME>
+                <BATCHNAME>Primary Batch</BATCHNAME>
+                <DESTINATIONGODOWNNAME>Main Location</DESTINATIONGODOWNNAME>
+                <AMOUNT>-5.31</AMOUNT>
+                <ACTUALQTY>148.000000</ACTUALQTY>
+                <BILLEDQTY>148.000000</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>
+            </INVENTORYENTRIESIN.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

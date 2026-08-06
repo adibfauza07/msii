@@ -190,7 +190,7 @@ function h($value) {
 
     <div class="main">
         <div class="topbar">
-            PRODUCTION SYSTEM - PLANT 2
+            PRODUCTION SYSTEM - PLANT 1
             <div class="topbar-right">
                 <?php echo h(date("d-M-Y H:i")); ?>
             </div>

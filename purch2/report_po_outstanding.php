@@ -1,5 +1,16 @@
+
+
+
 <?php
-require_once dirname(__DIR__) . "/config/db_plant2.php";
+if (session_id() === '') {
+    session_start();
+}
+
+require_once dirname(__DIR__) . "/config/global.php";
+
+if (!isset($_SESSION['db_user']) || trim((string)$_SESSION['db_user']) === '') {
+    die('<div style="padding:24px;color:#b91c1c;background:#fff;font-family:Arial,sans-serif;">Silakan login terlebih dahulu.</div>');
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -41,17 +52,20 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
             padding-right: 6px;
             color: #1a3c5e;
         }
-        .filter-table input[type="text"] {
+        .filter-table input[type="text"],
+        .filter-table select {
             border: 1px solid #bbb;
             padding: 5px 8px;
             font-size: 12px;
             border-radius: 3px;
             outline: none;
         }
-        .filter-table input[type="text"]:focus {
+        .filter-table input[type="text"]:focus,
+        .filter-table select:focus {
             border-color: #1a3c5e;
             box-shadow: 0 0 0 2px rgba(26,60,94,0.15);
         }
+        #plant { width: 190px; }
         #sup_comp { width: 280px; }
         #start_date, #end_date { width: 120px; }
 
@@ -118,6 +132,18 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
             font-weight: 700;
             color: #1a3c5e;
         }
+
+        #status-box {
+            display: none;
+            max-width: 1200px;
+            margin: 12px auto 0;
+            padding: 8px 12px;
+            border: 1px solid #d59b36;
+            background: #fff8df;
+            color: #7a4d00;
+            line-height: 1.5;
+        }
+        #status-box.show { display: block; }
 
         /* ── Report Container ── */
         #report-container {
@@ -257,7 +283,7 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
         /* ── Print ── */
         @media print {
             body { background: #fff !important; }
-            #filter-section, #loading { display: none !important; }
+            #filter-section, #loading, #status-box { display: none !important; }
             #report-container {
                 margin: 0 !important;
                 padding: 10px 15px !important;
@@ -294,6 +320,16 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
 <div id="filter-section">
     <table class="filter-table">
         <tr>
+            <td class="label">Plant</td>
+            <td>
+                <select id="plant">
+                    <option value="all">Gabungan P1 &amp; P2</option>
+                    <option value="p1">Plant 1</option>
+                    <option value="p2">Plant 2</option>
+                </select>
+            </td>
+        </tr>
+        <tr>
             <td class="label">Supplier</td>
             <td>
                 <input type="text" id="sup_comp" placeholder="Ketik kode / nama supplier...">
@@ -329,11 +365,14 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
 <!-- ═══════════ LOADING ═══════════ -->
 <div id="loading"><span>Memuat data...</span></div>
 
+<div id="status-box"></div>
+
 <!-- ═══════════ REPORT ═══════════ -->
 <div id="report-container">
     <div class="report-header">
         <h1>PT. IMC TEKNO INDONESIA</h1>
         <h2 id="report-title">OUTSTANDING PO MONTHLY</h2>
+        <div class="plant-info" id="plant-text"></div>
         <div class="period" id="period-text"></div>
         <div class="supplier-info" id="supplier-text"></div>
     </div>
@@ -346,6 +385,7 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
         <thead>
             <tr>
                 <th class="col-no">NO</th>
+                <th style="width:48px;">PLANT</th>
                 <th class="col-po">PO NUM</th>
                 <th class="col-date">PO DATE</th>
                 <th class="col-code">CODE</th>
@@ -360,7 +400,7 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
         <tbody id="report-body"></tbody>
         <tfoot>
             <tr>
-                <td colspan="7" style="text-align:right;padding-right:10px;">TOTAL</td>
+                <td colspan="8" style="text-align:right;padding-right:10px;">TOTAL</td>
                 <td class="num" id="total-po-qty">0.00</td>
                 <td class="num" id="total-recv-qty">0.00</td>
                 <td class="num" id="total-sisa-qty">0.00</td>
@@ -421,16 +461,16 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
     $("#sup_comp").autocomplete({
         source: function(request, response) {
             $.ajax({
-                url: "search_sup.php",
+                url: "search_sup_outstanding_multi.php",
                 type: "POST",
-                data: { q: request.term },
+                data: { q: request.term, plant: $("#plant").val() },
                 dataType: "json",
                 success: function(data) {
                     if (!data || data.length === 0) { response([]); return; }
                     var items = [];
                     for (var i = 0; i < data.length; i++) {
                         items.push({
-                            label: data[i].SUP_CODE + " - " + data[i].SUP_COMP,
+                            label: "[" + (data[i].PLANT_SHORT || "") + "] " + data[i].SUP_CODE + " - " + data[i].SUP_COMP,
                             value: data[i].SUP_COMP,
                             code:  data[i].SUP_CODE
                         });
@@ -453,6 +493,29 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
         if ($(this).val() === "") { $("#sup_code").val(""); }
     });
 
+    $("#plant").on("change", function() {
+        /*
+         * Jangan mengubah kembali nilai plant ke "all".
+         * Cukup bersihkan supplier karena daftar supplier mengikuti plant.
+         */
+        $("#sup_comp").val("");
+        $("#sup_code").val("");
+
+        $("#report-table").hide();
+        $("#no-data").hide();
+        $("#record-count").hide();
+        $("#btn-print").prop("disabled", true);
+
+        $("#plant-text").text("Plant: " + plantLabel($(this).val()));
+        $("#supplier-text").text("").hide();
+
+        showStatus([]);
+    });
+
+    $("#sup_comp").on("input", function() {
+        $("#sup_code").val("");
+    });
+
     /* ── Format Number ── */
     function fmtNum(n) {
         var num = parseFloat(n);
@@ -462,12 +525,33 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
         return parts.join(".");
     }
 
+    function plantLabel(value) {
+        if (value === "p1") return "Plant 1";
+        if (value === "p2") return "Plant 2";
+        return "Gabungan P1 & P2";
+    }
+
+    function showStatus(messages) {
+        var box = $("#status-box");
+        if (!messages || !messages.length) {
+            box.removeClass("show").html("");
+            return;
+        }
+
+        var html = "";
+        for (var i = 0; i < messages.length; i++) {
+            html += "<div>" + esc(messages[i]) + "</div>";
+        }
+        box.addClass("show").html(html);
+    }
+
     /* ── Search ── */
     window.doSearch = function() {
         var startDate = $.trim($("#start_date").val());
         var endDate   = $.trim($("#end_date").val());
-        var supCode   = $.trim($("#sup_code").val());
-        var supComp   = $.trim($("#sup_comp").val());
+        var supCode       = $.trim($("#sup_code").val());
+        var supComp       = $.trim($("#sup_comp").val());
+        var selectedPlant = $("#plant").val();
 
         if (startDate === "" || endDate === "") {
             alert("Silakan pilih periode tanggal terlebih dahulu.");
@@ -478,9 +562,10 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
         $("#btn-search").prop("disabled", true);
 
         $.ajax({
-            url: "get_po_outstanding.php",
+            url: "get_po_outstanding_multi.php",
             type: "POST",
             data: {
+                plant:      selectedPlant,
                 start_date: startDate,
                 end_date:   endDate,
                 sup_code:   supCode
@@ -489,11 +574,12 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
             success: function(resp) {
                 $("#loading").hide();
                 $("#btn-search").prop("disabled", false);
-                if (!resp || !resp.data) {
-                    showNoData(startDate, endDate, supComp);
+                if (!resp || resp.status !== "success") {
+                    alert(resp && resp.message ? resp.message : "Respons server tidak valid.");
                     return;
                 }
-                renderReport(resp.data, startDate, endDate, supComp);
+                showStatus(resp.errors || []);
+                renderReport(resp.data || [], startDate, endDate, supComp, selectedPlant);
             },
             error: function(xhr, status, err) {
                 $("#loading").hide();
@@ -504,9 +590,9 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
     };
 
     /* ── Render ── */
-    function renderReport(data, startDate, endDate, supComp) {
+    function renderReport(data, startDate, endDate, supComp, plant) {
         if (data.length === 0) {
-            showNoData(startDate, endDate, supComp);
+            showNoData(startDate, endDate, supComp, plant);
             return;
         }
 
@@ -522,6 +608,7 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
 
         var sdStr = padZ(sd.getDate()) + "/" + padZ(sd.getMonth()+1) + "/" + sd.getFullYear();
         var edStr = padZ(ed.getDate()) + "/" + padZ(ed.getMonth()+1) + "/" + ed.getFullYear();
+        $("#plant-text").text("Plant: " + plantLabel(plant));
         $("#period-text").text("Period: " + sdStr + " - " + edStr);
         $("#supplier-text").text(supComp !== "" ? "Supplier: " + supComp : "Supplier: SEMUA").show();
 
@@ -539,6 +626,7 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
 
             html += "<tr>"
                 + "<td class='center'>" + (i + 1) + "</td>"
+                + "<td class='center' style='font-weight:bold;color:#6d28d9;'>" + esc(r.PLANT_SHORT) + "</td>"
                 + "<td>" + esc(r.PO_NUM) + "</td>"
                 + "<td class='center'>" + esc(r.PO_DATE) + "</td>"
                 + "<td>" + esc(r.ITEM_CODE) + "</td>"
@@ -562,12 +650,13 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
         $("#btn-print").prop("disabled", false);
     }
 
-    function showNoData(startDate, endDate, supComp) {
+    function showNoData(startDate, endDate, supComp, plant) {
         var sd = new Date(startDate);
         var ed = new Date(endDate);
         var sdStr = padZ(sd.getDate()) + "/" + padZ(sd.getMonth()+1) + "/" + sd.getFullYear();
         var edStr = padZ(ed.getDate()) + "/" + padZ(ed.getMonth()+1) + "/" + ed.getFullYear();
         $("#report-title").text("OUTSTANDING PO MONTHLY");
+        $("#plant-text").text("Plant: " + plantLabel(plant));
         $("#period-text").text("Period: " + sdStr + " - " + edStr);
         $("#supplier-text").text(supComp !== "" ? "Supplier: " + supComp : "Supplier: SEMUA").show();
         $("#report-table").hide();
@@ -579,6 +668,7 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
     window.doPrint = function() { window.print(); };
 
     window.doClear = function() {
+        $("#plant").val("all");
         $("#sup_comp").val("");
         $("#sup_code").val("");
         var n = new Date();
@@ -588,15 +678,18 @@ require_once dirname(__DIR__) . "/config/db_plant2.php";
         $("#no-data").hide();
         $("#record-count").hide();
         $("#report-title").text("OUTSTANDING PO MONTHLY");
+        $("#plant-text").text("");
         $("#period-text").text("");
         $("#supplier-text").text("").hide();
         $("#btn-print").prop("disabled", true);
+        showStatus([]);
     };
 
     function padZ(n) { return n < 10 ? "0" + n : "" + n; }
 
     function esc(s) {
-        if (!s) return "";
+        if (s === null || typeof s === "undefined") return "";
+        s = String(s);
         return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
     }
 

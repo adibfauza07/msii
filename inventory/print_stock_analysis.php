@@ -33,6 +33,8 @@ if ($passedItem !== '0' && $passedItem !== '') {
 $startDateFormatted = date('Ymd', strtotime($startDate));
 
 // 2. Eksekusi Stored Procedure
+sqlsrv_query($conn, "SET NOCOUNT ON");
+
 $sql = "EXEC sp_StockAnalysis2 @STARTDATE = ?, @PERIOD = ?, @ITEM_ID = ?";
 $params = array($startDateFormatted, $period, $itemId);
 
@@ -40,25 +42,39 @@ set_time_limit(0);
 $options = array("QueryTimeout" => 300);
 $stmt = sqlsrv_query($conn, $sql, $params, $options);
 
+if ($stmt === false) {
+    die("<div style='text-align:center; padding:50px; color:red; font-family:Arial;'>
+            <h2>🚨 Gagal Mengeksekusi Stored Procedure 🚨</h2>
+            <pre style='background:#fde8e8; padding:20px; text-align:left; border:1px solid red; display:inline-block;'>". print_r(sqlsrv_errors(), true) ."</pre>
+         </div>");
+}
+
 // 3. Proses Data & Grouping
 $groupedData = [];
 $companyName = (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') ? "P.T. IMC TEKNO INDONESIA" : "P.T. IMC TEKNO INDONESIA";
 
-if ($stmt !== false) {
+do {
     while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-        $itemKey = (isset($row['ITEM_CODE']) ? $row['ITEM_CODE'] : '') . "||" . (isset($row['ITEM_NAME']) ? $row['ITEM_NAME'] : '');
-        $locName = isset($row['LOC_NAME']) ? trim($row['LOC_NAME']) : "UNASSIGNED";
-        
-        if (!isset($groupedData[$itemKey])) {
-            $groupedData[$itemKey] = [];
+        if (isset($row['ITEM_CODE'])) {
+            $itemKey = $row['ITEM_CODE'] . "||" . (isset($row['ITEM_NAME']) ? $row['ITEM_NAME'] : '');
+            
+            // PERBAIKAN: Tarik LOC_GROUP lalu gabungkan dengan LOC_NAME
+            $locGroup = isset($row['LOC_GROUP']) ? trim($row['LOC_GROUP']) : "";
+            $locName = isset($row['LOC_NAME']) ? trim($row['LOC_NAME']) : "UNASSIGNED";
+            $locKey = trim($locGroup . " " . $locName); 
+            
+            if (!isset($groupedData[$itemKey])) {
+                $groupedData[$itemKey] = [];
+            }
+            if (!isset($groupedData[$itemKey][$locKey])) {
+                $groupedData[$itemKey][$locKey] = [];
+            }
+            
+            $groupedData[$itemKey][$locKey][] = $row;
         }
-        if (!isset($groupedData[$itemKey][$locName])) {
-            $groupedData[$itemKey][$locName] = [];
-        }
-        
-        $groupedData[$itemKey][$locName][] = $row;
     }
-}
+} while (sqlsrv_next_result($stmt));
+
 
 // Bulan String untuk Header
 $startMonthStr = date('F - Y', strtotime($startDate));
@@ -66,7 +82,6 @@ $bulanEn = array('January', 'February', 'March', 'April', 'May', 'June', 'July',
 $bulanId = array('Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember');
 $startMonthStr = str_replace($bulanEn, $bulanId, $startMonthStr);
 
-// Fungsi Format Angka ke style Indonesia (Titik untuk ribuan, Koma untuk desimal) & Strip untuk 0
 function formatCR($val) {
     if (round($val, 2) == 0) return '-';
     return number_format($val, 2, ',', '.');
@@ -82,7 +97,6 @@ function formatCR($val) {
         body { font-family: "Arial", Helvetica, sans-serif; font-size: 12px; margin: 0; background: #e0e0e0; }
         .page-container { background: #fff; width: 210mm; min-height: 297mm; margin: 20px auto; padding: 25px 40px; box-sizing: border-box; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
         
-        /* HEADER STYLING */
         .header-table { width: 100%; margin-bottom: 20px; }
         .header-table td { vertical-align: top; }
         .company-name { font-size: 15px; font-weight: normal; }
@@ -91,9 +105,8 @@ function formatCR($val) {
         .info-desc { font-size: 12px; margin-bottom: 1px; }
         .page-info { text-align: right; font-size: 11px; }
         
-        /* DATA TABLE STYLING */
         .data-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        .data-table td, .data-table th { padding: 2px 2px; vertical-align: center; border: none; word-wrap: break-word; }
+        .data-table td, .data-table th { padding: 2px 2px; vertical-align: top; border: none; word-wrap: break-word; }
 
         .item-header th, .item-header td { 
             border-top: 1px solid #000; 
@@ -103,19 +116,19 @@ function formatCR($val) {
             padding: 5px 2px;
         }
         .item-header .code { font-size: 14px; }
-        .item-header .right { text-align: right; }
         
         .loc-header td { font-weight: bold; font-style: italic; font-size: 15px; padding-top: 15px; padding-bottom: 5px; text-transform: uppercase; }
         
+        /* PERBAIKAN: Posisi Kolom Dibuat Rata Kiri */
         .beg-balance td { padding-top: 3px; padding-bottom: 3px; font-size: 12px; }
-        .beg-balance .lbl-col { text-align: right; padding-right: 15px; white-space: nowrap; }
-        .beg-balance .lbl-text { color: blue; font-style: italic; padding-right: 20px; }
-        .beg-balance .lbl-date { color: blue; font-style: italic; }
+        .beg-balance .lbl-col { text-align: left; padding-left: 10px; white-space: nowrap; }
+        .beg-balance .lbl-text { color: blue; font-style: italic; margin-right: 20px; }
+        .beg-balance .lbl-date { color: blue; font-style: italic; margin-right: 25px; }
+        .beg-balance .lbl-bal { color: black; font-style: normal; }
         
         .row-data td { font-size: 12px; padding: 2px 2px; }
-        .row-data .desc { text-align: right; padding-right: 15px; white-space: nowrap; }
+        .row-data .desc { text-align: left; padding-left: 10px; white-space: nowrap; }
         
-        /* Set All Numbers to Right */
         .num-cell { text-align: right; }
         .in-text { color: green; }
         .out-text { color: red; }
@@ -170,24 +183,22 @@ function formatCR($val) {
             </div>
         <?php else: ?>
             <table class="data-table">
-                <!-- COLGROUP: KUNCI UNTUK MEMAKSA LEBAR KOLOM PRESISI -->
+                <!-- COLGROUP: Penyesuaian Lebar Kolom -->
                 <colgroup>
-                    <col style="width: 20%;"> <!-- Doc No -->
-                    <col style="width: 35%;"> <!-- Deskripsi (Sangat lebar) -->
-                    <col style="width: 25%;">  <!-- IN (Sangat rapat) -->
-                    <col style="width: 10%;">  <!-- OUT (Sangat rapat) -->
-                    <col style="width: 10%;">  <!-- BAL (Sangat rapat) -->
+                    <col style="width: 25%;"> <!-- Doc No -->
+                    <col style="width: 42%;"> <!-- Deskripsi -->
+                    <col style="width: 11%;">  <!-- IN -->
+                    <col style="width: 11%;">  <!-- OUT -->
+                    <col style="width: 11%;">  <!-- BAL -->
                 </colgroup>
                 
                 <?php foreach ($groupedData as $itemKey => $locations): 
                     list($itemCode, $itemName) = explode("||", $itemKey);
                 ?>
-                    <!-- Simbol Kotak [] Sebelum Item -->
                     <tr>
                         <td colspan="5" style="font-weight: bold; font-size: 12px; padding-bottom: 2px;">[]</td>
                     </tr>
                     
-                    <!-- ITEM HEADER -->
                     <tr class="item-header">
                         <td colspan="2" class="code"><?php echo htmlspecialchars($itemCode); ?> &nbsp;&nbsp; <?php echo htmlspecialchars($itemName); ?></td>
                         <th class="num-cell in-text">IN</th>
@@ -195,14 +206,13 @@ function formatCR($val) {
                         <th class="num-cell">BAL</th>
                     </tr>
                     
-                    <?php foreach ($locations as $locName => $rows): 
-                        // VARIABEL PERHITUNGAN RUNNING BALANCE
+                    <?php foreach ($locations as $locKey => $rows): 
                         $runningBalance = isset($rows[0]['BAL_QTY']) ? (float)$rows[0]['BAL_QTY'] : 0;
                         $sumIn = 0;
                         $sumOut = 0;
                         $currentDate = '';
                         
-                        echo "<tr class='loc-header'><td colspan='5'>".htmlspecialchars($locName)."</td></tr>";
+                        echo "<tr class='loc-header'><td colspan='5'>".htmlspecialchars($locKey)."</td></tr>";
                         
                         foreach ($rows as $index => $r):
                             $tDateObj = $r['TRAN_DATE'];
@@ -216,21 +226,22 @@ function formatCR($val) {
                                     $lblDate = date('j-M-y', strtotime($tDateStr . ' -1 day'));
                                 }
                                 
+                                // FORMAT HTML BEGINNING BALANCE
                                 echo "<tr class='beg-balance'>
                                         <td></td>
                                         <td class='lbl-col'>
                                             <span class='lbl-text'>BEGINING BALANCE :</span>
                                             <span class='lbl-date'>{$lblDate}</span>
+                                            <span class='lbl-bal'>".formatCR($runningBalance)."</span>
                                         </td>
                                         <td></td>
                                         <td></td>
-                                        <td class='num-cell'>".formatCR($runningBalance)."</td>
+                                        <td></td>
                                       </tr>";
                                       
                                 $currentDate = $tDateStr;
                             }
                             
-                            // MATEMATIKA STOK
                             $inQty  = isset($r['TIN']) ? (float)$r['TIN'] : 0;
                             $outQty = isset($r['TOUT']) ? (float)$r['TOUT'] : 0;
                             
@@ -254,7 +265,6 @@ function formatCR($val) {
                             </tr>
                         <?php endforeach; ?>
                         
-                        <!-- GRAND TOTAL SETIAP LOKASI -->
                         <tr class="grand-total">
                             <td colspan="2" class="lbl">GRAND TOTAL :</td>
                             <td class="num-cell in-text"><?php echo formatCR($sumIn); ?></td>

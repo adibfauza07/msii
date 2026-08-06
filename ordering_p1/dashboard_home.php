@@ -173,6 +173,16 @@ function h($value) {
                 <div class="report-name">Customer List</div>
                 <a class="button" href="customer_list_report.php" target="_blank">OPEN</a>
             </div>
+			
+			 <div class="report-item">
+                <div class="report-name"> COMMMON PART  </div>
+                <a class="button" href="epson_group_report.php" target="_blank">OPEN</a>
+            </div>
+			
+			<div class="report-item">
+                <div class="report-name">LOGICAL STOCK</div>
+                <a class="button" href="delivery_schedule_prod_report.php" target="_blank">OPEN</a>
+            </div>
 
             <div class="report-item">
                 <div class="report-name">Sales Price List</div>
@@ -287,10 +297,7 @@ function h($value) {
                 <div class="report-name">Delivery Summary 1 YEAR IDR</div>
                 <a class="button" href="DeliverySum12Month_idr.php" target="_blank">OPEN</a>
             </div>
-			<div class="report-item">
-                <div class="report-name">LOGICAL STOCK</div>
-                <a class="button" href="delivery_schedule_prod_report.php" target="_blank">OPEN</a>
-            </div>
+			
 			<div class="report-item">
                 <div class="report-name">SALES INTERNAL VS VENDOR</div>
                 <a class="button" href="sales.php" target="_blank">OPEN</a>

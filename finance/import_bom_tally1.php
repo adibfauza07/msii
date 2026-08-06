@@ -47,6 +47,78 @@ function fetchAllRows($stmt) {
     return $rows;
 }
 
+
+// Ambil nilai kolom BOM, mendukung alias A..N maupun Col_A..Col_N
+function getBomField($row, $letter) {
+    $rl = array_change_key_case($row, CASE_LOWER);
+    $key = strtolower((string)$letter);
+    $colKey = 'col_' . $key;
+
+    if (array_key_exists($key, $rl)) return $rl[$key];
+    if (array_key_exists($colKey, $rl)) return $rl[$colKey];
+    return null;
+}
+
+// Simpan hasil SP ke SQL Server.
+// Data lama Tally_BOM diganti dengan hasil preview terbaru.
+function saveBomToSqlServer($rows) {
+    if (!is_array($rows) || count($rows) == 0) return 0;
+
+    qx("DELETE FROM [msData].[dbo].[Tally_BOM]", array());
+
+    $sql = "INSERT INTO [msData].[dbo].[Tally_BOM]
+            ([Col_A], [Col_B], [Col_C], [Col_D], [Col_E], [Col_F], [Col_G],
+             [Col_H], [Col_I], [Col_J], [Col_K], [Col_L], [Col_M], [Col_N])
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+    $saved = 0;
+
+    foreach ($rows as $r) {
+        $colBRaw = trim((string)getBomField($r, 'b'));
+        $colJ = trim((string)getBomField($r, 'j'));
+
+        // Ambil item code 8 karakter pertama dari Col_B.
+        $colBCode = substr($colBRaw, 0, 8);
+
+        // Buang tanda strip pemisah setelah item code.
+        // Contoh: 010476-0 - Valve Lid  ->  010476-0 Valve Lid
+        // Tanda strip di dalam item code 010476-0 tetap dipertahankan.
+        $colBDesc = trim(substr($colBRaw, 8));
+        $colBDesc = ltrim($colBDesc, "- \t\n\r\0\x0B");
+        $colB = $colBCode;
+        if ($colBDesc !== '') {
+            $colB .= ' ' . $colBDesc;
+        }
+
+        // Col_E = item code 8 karakter dari Col_B
+        $colE = $colBCode;
+
+        // Col_J hanya disimpan 8 karakter paling kiri
+        $colJ8 = substr($colJ, 0, 8);
+
+        qx($sql, array(
+            getBomField($r, 'a'),
+            $colB,
+            getBomField($r, 'c'),
+            getBomField($r, 'd'),
+            $colE,
+            getBomField($r, 'f'),
+            getBomField($r, 'g'),
+            getBomField($r, 'h'),
+            getBomField($r, 'i'),
+            $colJ8,
+            getBomField($r, 'k'),
+            getBomField($r, 'l'),
+            getBomField($r, 'm'),
+            getBomField($r, 'n')
+        ));
+
+        $saved++;
+    }
+
+    return $saved;
+}
+
 function sendToTally($xml, $url) {
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -75,77 +147,6 @@ function tallyLineError($res) {
     }
     if (stripos((string)$res, 'CURL ERROR') !== false) return trim((string)$res);
     return '';
-}
-
-
-/* =========================
-   DUPLICATE BYPASS
-   - Jika Tally mengembalikan error duplicate/already exists,
-     data BOM tersebut dilewati dan proses lanjut ke parent berikutnya.
-   ========================= */
-function isDuplicateTallyResponse($res) {
-    $text = strtolower(
-        html_entity_decode(
-            strip_tags((string)$res),
-            ENT_QUOTES,
-            'UTF-8'
-        )
-    );
-
-    $patterns = array(
-        'duplicate',
-        'already exists',
-        'already exist',
-        'exists already',
-        'name already exists',
-        'already present',
-        'is already existing',
-        'duplicate name',
-        'duplicate entry',
-        'duplicate master'
-    );
-
-    foreach ($patterns as $pattern) {
-        if (strpos($text, $pattern) !== false) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-function getBomParentName($row) {
-    $rl = array_change_key_case($row, CASE_LOWER);
-
-    if (isset($rl['b'])) {
-        return trim((string)$rl['b']);
-    }
-
-    if (isset($rl['col_b'])) {
-        return trim((string)$rl['col_b']);
-    }
-
-    return '';
-}
-
-function groupBomRowsByParent($rows) {
-    $groups = array();
-
-    foreach ($rows as $row) {
-        $parentName = getBomParentName($row);
-
-        if ($parentName === '') {
-            continue;
-        }
-
-        if (!isset($groups[$parentName])) {
-            $groups[$parentName] = array();
-        }
-
-        $groups[$parentName][] = $row;
-    }
-
-    return $groups;
 }
 
 function saveDebugXml($name, $xml) {
@@ -322,6 +323,18 @@ if ($action == 'delete_server') {
     $stmt = qx("EXECUTE sp_GenerateTallyBOM", array());
     $resultRows = fetchAllRows($stmt);
     $message = 'Preview data BOM selesai. Total row: ' . count($resultRows);
+} elseif ($action == 'send_sql') {
+    // Jalankan ulang SP lalu simpan hasilnya ke tabel Tally_BOM
+    $stmt = qx("EXECUTE sp_GenerateTallyBOM", array());
+    $resultRows = fetchAllRows($stmt);
+
+    if (count($resultRows) == 0) {
+        $message = 'Data preview kosong. Tidak ada data yang dikirim ke SQL Server.';
+    } else {
+        $savedRows = saveBomToSqlServer($resultRows);
+        $message = 'Send to SQL Server berhasil. Total row tersimpan: ' . $savedRows .
+                   '. Strip pemisah setelah item code pada Col_B dibuang, Col_E diisi 8 karakter kiri Col_B, dan Col_J dipotong menjadi 8 karakter.';
+    }
 } elseif ($action == 'preview_xml') {
     $stmt = qx("EXECUTE sp_GenerateTallyBOM", array());
     $resultRows = fetchAllRows($stmt);
@@ -336,91 +349,26 @@ if ($action == 'delete_server') {
         $message = 'Tabel Tally_BOM kosong. Klik Import ke Tabel dulu di halaman Tally Import P2 tab BOM.';
     } else {
         $url = 'http://' . $tally_ip . ':' . $tally_port;
-
-        /*
-         * PENTING:
-         * Kirim BOM PER PARENT/PART, bukan satu XML besar.
-         * Dengan cara ini jika satu parent duplicate di Tally,
-         * parent tersebut di-bypass dan proses lanjut ke data berikutnya.
-         */
-        $bomGroups = groupBomRowsByParent($resultRows);
-
-        $successCount = 0;
-        $duplicateCount = 0;
-        $failedCount = 0;
-        $processedCount = 0;
-        $idx = 0;
-
-        foreach ($bomGroups as $parentName => $parentRows) {
-            $idx++;
-            $processedCount++;
-
-            $xml = buildBomXml($parentRows);
-            $safeParent = preg_replace('/[^A-Za-z0-9_\-]/', '_', (string)$parentName);
-            $debugName = 'BOM_' . str_pad($idx, 4, '0', STR_PAD_LEFT) . '_' . $safeParent;
-
-            $res = sendToTally($xml, $url);
-            $ok = responseOk($res);
-
-            if ($ok) {
-                $successCount++;
-                continue;
-            }
-
-            // DUPLICATE: bypass dan lanjut ke parent berikutnya.
-            if (isDuplicateTallyResponse($res)) {
-                $duplicateCount++;
-                $debugFile = saveDebugXml($debugName . '_DUPLICATE_SKIPPED', $xml);
-
-                $exportDetails[] = array(
-                    'ok' => false,
-                    'duplicate' => true,
-                    'parent_name' => $parentName,
-                    'error_msg' => tallyLineError($res),
-                    'debug_file' => $debugFile,
-                    'response' => $res
-                );
-
-                continue;
-            }
-
-            // Error lain dicatat, tetapi proses tetap lanjut ke data berikutnya.
-            $failedCount++;
-            $debugFile = saveDebugXml($debugName . '_FAILED', $xml);
-
-            $exportDetails[] = array(
-                'ok' => false,
-                'duplicate' => false,
-                'parent_name' => $parentName,
-                'error_msg' => tallyLineError($res),
-                'debug_file' => $debugFile,
-                'response' => $res
-            );
-        }
-
-        if ($failedCount > 0) {
-            $finalStatus = 'Selesai dengan Error';
-        } elseif ($duplicateCount > 0) {
-            $finalStatus = 'Sukses - Duplicate Dilewati';
-        } else {
-            $finalStatus = 'Sukses';
-        }
+        $xml = buildBomXml($resultRows);
+        
+        $debugFile = saveDebugXml('BOM_Export_All', $xml);
+        $res = sendToTally($xml, $url);
+        $ok = responseOk($res);
 
         $summary = array(
             'total_items' => count($resultRows),
-            'total_parents' => count($bomGroups),
-            'processed' => $processedCount,
-            'success' => $successCount,
-            'duplicate' => $duplicateCount,
-            'failed' => $failedCount,
-            'status' => $finalStatus,
-            'debug_file' => __DIR__ . '/debug_tally_xml_bom/'
+            'status' => $ok ? 'Sukses' : 'Gagal',
+            'debug_file' => $debugFile
         );
 
-        $message = 'Import BOM selesai. Berhasil: ' . $successCount
-                 . ' | Duplicate dilewati: ' . $duplicateCount
-                 . ' | Gagal: ' . $failedCount
-                 . ' | Total Parent: ' . count($bomGroups);
+        $exportDetails[] = array(
+            'ok' => $ok,
+            'error_msg' => tallyLineError($res),
+            'debug_file' => $debugFile,
+            'response' => $res
+        );
+
+        $message = 'Import BOM selesai. Status: ' . ($ok ? 'SUKSES' : 'GAGAL');
     }
 } else {
     // Default load data
@@ -433,7 +381,7 @@ if ($action == 'delete_server') {
 
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="fw-bold text-dark mb-0">EXPORT BOM TO TALLY P2</h3>
+        <h3 class="fw-bold text-dark mb-0">EXPORT BOM TO TALLY P1</h3>
         <a href="tally_import_p2.php?tab=bom" class="btn btn-secondary btn-sm">
             <i class="bi bi-arrow-left"></i> Kembali ke Tabel BOM
         </a>
@@ -446,10 +394,10 @@ if ($action == 'delete_server') {
     <div class="alert alert-warning">
         <b>Alur Kerja:</b> 
         1. Klik <b>Preview Data</b> untuk cek data dari Database. 
-        2. Klik <b>Preview XML</b> untuk lihat bentuk XML yang akan dikirim. 
-        3. Klik <b>Send BOM to Tally</b> untuk mengirim data yang sudah ada di tabel <code>Tally_BOM</code> langsung ke Tally Server.
-        <br><b>Mode Bypass Duplicate aktif:</b> BOM dikirim per Parent/Part. Jika duplicate, data tersebut dilewati dan proses otomatis lanjut ke data berikutnya.
-        <br>Debug XML duplicate/error disimpan di: <b>/msii/finance/debug_tally_xml_bom/</b>
+        2. Klik <b>Send to SQL Server</b> untuk mengganti isi tabel <code>Tally_BOM</code> dengan hasil preview terbaru. 
+        3. Klik <b>Preview XML</b> untuk lihat bentuk XML yang akan dikirim. 
+        4. Klik <b>Send BOM to Tally</b> untuk mengirim data dari tabel <code>Tally_BOM</code> langsung ke Tally Server. 
+        <br>Debug XML disimpan di: <b>/msii/finance/debug_tally_xml_bom/</b>
     </div>
 
     <!-- PROGRESS BAR -->
@@ -508,8 +456,10 @@ if ($action == 'delete_server') {
 
                     <div class="col-md-12 d-flex align-items-center gap-2">
                         <button type="button" class="btn btn-success" onclick="setAction('preview')">Preview Data</button>
+                        <button type="button" class="btn btn-primary" onclick="confirmSendSql()">Send to SQL Server</button>
                         <button type="button" class="btn btn-warning" onclick="setAction('preview_xml')">Preview XML</button>
                         <button type="button" class="btn btn-danger" onclick="confirmExport()">Send BOM to Tally</button>
+                        <a href="cek_bom_kosong_tally.php" class="btn btn-dark">Cek BOM Kosong</a>
                     </div>
                 </div>
             </div>
@@ -546,49 +496,23 @@ if ($action == 'delete_server') {
         <div class="card shadow-sm mb-3">
             <div class="card-header fw-bold">Summary Import BOM</div>
             <div class="card-body">
-                <?php
-                $statusClass = 'success';
-                if (isset($summary['failed']) && (int)$summary['failed'] > 0) {
-                    $statusClass = 'danger';
-                } elseif (isset($summary['duplicate']) && (int)$summary['duplicate'] > 0) {
-                    $statusClass = 'warning';
-                }
-                ?>
                 <table class="table table-bordered table-sm w-auto">
                     <tr><th>Total Row BOM</th><td><?php echo h($summary['total_items']); ?></td></tr>
-                    <tr><th>Total Parent / Part</th><td><?php echo h(isset($summary['total_parents']) ? $summary['total_parents'] : 0); ?></td></tr>
-                    <tr><th>Berhasil</th><td><span class="badge bg-success"><?php echo h(isset($summary['success']) ? $summary['success'] : 0); ?></span></td></tr>
-                    <tr><th>Duplicate Dilewati</th><td><span class="badge bg-warning text-dark"><?php echo h(isset($summary['duplicate']) ? $summary['duplicate'] : 0); ?></span></td></tr>
-                    <tr><th>Gagal Lainnya</th><td><span class="badge bg-danger"><?php echo h(isset($summary['failed']) ? $summary['failed'] : 0); ?></span></td></tr>
-                    <tr><th>Status</th><td><span class="badge bg-<?php echo $statusClass; ?>"><?php echo h($summary['status']); ?></span></td></tr>
-                    <tr><th>Debug Folder</th><td><?php echo h(str_replace(__DIR__, '', $summary['debug_file'])); ?></td></tr>
+                    <tr><th>Status</th><td><span class="badge bg-<?php echo $summary['status'] == 'Sukses' ? 'success' : 'danger'; ?>"><?php echo h($summary['status']); ?></span></td></tr>
+                    <tr><th>Debug File</th><td><?php echo h(str_replace(__DIR__, '', $summary['debug_file'])); ?></td></tr>
                 </table>
 
-                <?php if (count($exportDetails) == 0) { ?>
-                    <div class="alert alert-success mt-3">
-                        <strong>Semua BOM berhasil dikirim ke Tally.</strong>
-                    </div>
-                <?php } ?>
-
                 <?php foreach ($exportDetails as $d) { ?>
-                    <?php if (isset($d['duplicate']) && $d['duplicate']) { ?>
-                        <div class="alert alert-warning mt-3">
-                            <strong>Duplicate dilewati:</strong>
-                            <?php echo h(isset($d['parent_name']) ? $d['parent_name'] : '-'); ?><br>
-                            <span>Proses tetap lanjut ke data berikutnya.</span><br>
-                            <?php if ($d['error_msg'] != '') { ?>
-                                <small><?php echo h($d['error_msg']); ?></small><br>
-                            <?php } ?>
-                            <small>Debug: <?php echo h(str_replace(__DIR__, '', $d['debug_file'])); ?></small>
-                        </div>
-                    <?php } else { ?>
+                    <?php if (!$d['ok']) { ?>
                         <div class="alert alert-danger mt-3">
-                            <strong>Error dari Tally:</strong>
-                            <?php echo h(isset($d['parent_name']) ? $d['parent_name'] : '-'); ?><br>
+                            <strong>Error dari Tally:</strong><br>
                             <pre style="white-space:pre-wrap;"><?php echo h($d['error_msg']); ?></pre>
                             <strong>Full Response:</strong>
                             <pre style="white-space:pre-wrap; max-height:300px; overflow:auto;"><?php echo h($d['response']); ?></pre>
-                            <small>Debug: <?php echo h(str_replace(__DIR__, '', $d['debug_file'])); ?></small>
+                        </div>
+                    <?php } else { ?>
+                        <div class="alert alert-success mt-3">
+                            <strong>Berhasil dikirim ke Tally.</strong>
                         </div>
                     <?php } ?>
                 <?php } ?>
@@ -652,6 +576,12 @@ function setAction(a) {
     document.getElementById('frmBom').submit();
 }
 
+function confirmSendSql() {
+    if (confirm('Kirim hasil preview ke tabel [msData].[dbo].[Tally_BOM]? Data lama akan diganti.')) {
+        setAction('send_sql');
+    }
+}
+
 function pilihServerTally() {
     var combo = document.getElementById('server_combo');
     if (!combo || combo.value == '') return;
@@ -704,7 +634,7 @@ function showExportProgress() {
 }
 
 function confirmExport() {
-    if (confirm('Kirim seluruh data BOM ke Tally sekarang? Duplicate akan dilewati otomatis dan proses lanjut ke data berikutnya.')) {
+    if (confirm('Kirim seluruh data BOM ke Tally sekarang? (Pastikan tabel Tally_BOM sudah terisi dari halaman sebelumnya)')) {
         showExportProgress();
         // Beri jeda 200ms agar UI sempat render progress bar sebelum form submit
         setTimeout(function () {

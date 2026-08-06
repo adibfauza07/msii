@@ -1,0 +1,52 @@
+# Dependencies (JavaScript & PHP)
+node_modules/
+vendor/
+.assets/
+.debug_tally_cleanup/
+.debug_tally_xml/
+.debug_tally_xml_bom/
+.debug_tally_xml_prod/
+.debug_tally_xml_sales_p1/
+.debug_tally_xml_sales_p2/
+.debug_tally_xml_sop/
+
+# Environment Configurations (Sensitif / Rahasia)
+.env
+.env.local
+.env.production
+.env.development
+config.php (jika berisi password)
+
+# Package Manager Logs & Caches
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.eslintcache
+.phpunit.result.cache
+
+# Build Outputs (JS)
+dist/
+build/
+.next/
+out/
+
+# Storage & Framework Logs (PHP/Laravel)
+storage/*.key
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+bootstrap/cache/*
+
+# Editor & IDE Settings
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS Garbage Files
+.DS_Store
+Thumbs.db

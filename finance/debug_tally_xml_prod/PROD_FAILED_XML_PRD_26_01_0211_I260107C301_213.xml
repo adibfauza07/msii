@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ENVELOPE>
+  <HEADER>
+    <TALLYREQUEST>Import Data</TALLYREQUEST>
+  </HEADER>
+  <BODY>
+    <IMPORTDATA>
+      <REQUESTDESC>
+        <REPORTNAME>Vouchers</REPORTNAME>
+      </REQUESTDESC>
+      <REQUESTDATA>
+        <TALLYMESSAGE xmlns:UDF="TallyUDF">
+          
+          <VOUCHER REMOTEID="udi-IMCPRODUKSI-I260107C301-PRD/26/01/0211" VCHTYPE="Production" ACTION="Create">
+            <GUID>udi-IMCPRODUKSI-I260107C301-PRD/26/01/0211</GUID>
+            <DATE>07-Jan-2026</DATE>
+            <EFFECTIVEDATE>07-Jan-2026</EFFECTIVEDATE>
+            <VOUCHERTYPENAME>Production</VOUCHERTYPENAME>
+            <ISINVOICE>Yes</ISINVOICE>
+            <VOUCHERNUMBER>PRD/26/01/0211</VOUCHERNUMBER>
+            <NARRATION>Production: I260107C301</NARRATION>
+            <INVENTORYENTRIESIN.LIST>
+              <STOCKITEMNAME>013406-0 - Lever Gap Adjust 171510403</STOCKITEMNAME>
+              <ISDEEMEDPOSITIVE>Yes</ISDEEMEDPOSITIVE>
+              <RATE>0.04349</RATE>
+              <AMOUNT>-50.02</AMOUNT>
+              <ACTUALQTY>1150.000000</ACTUALQTY>
+              <BILLEDQTY>1150.000000</BILLEDQTY>
+              <BATCHALLOCATIONS.LIST>
+                <GODOWNNAME>Main Location</GODOWNNAME>
+                <BATCHNAME>Primary Batch</BATCHNAME>
+                <DESTINATIONGODOWNNAME>Main Location</DESTINATIONGODOWNNAME>
+                <AMOUNT>-50.02</AMOUNT>
+                <ACTUALQTY>1150.000000</ACTUALQTY>
+                <BILLEDQTY>1150.000000</BILLEDQTY>
+              </BATCHALLOCATIONS.LIST>
+            </INVENTORYENTRIESIN.LIST>
+          </VOUCHER>
+        </TALLYMESSAGE>
+      </REQUESTDATA>
+    </IMPORTDATA>
+  </BODY>
+</ENVELOPE>

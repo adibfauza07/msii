@@ -1078,13 +1078,24 @@ $forecastText =
     "Forecast " . $forecastLabel2 . ": " . fmt_num_cell($f2) .
     " | " .
     "Forecast " . $forecastLabel3 . ": " . fmt_num_cell($f3);
+
+/* LOCATION berasal dari output sp_PivotDeliverySchedule_ByCustomer.
+   Mapping defensif: jika SP lama masih mengirim kode C, tampilkan COMMON. */
+$location = safe_trim(isset($hrow["LOCATION"]) ? $hrow["LOCATION"] : "");
+if (strtoupper($location) === "C") {
+    $location = "COMMON";
+}
 ?>
 
 <div class="item-title">
     <?php echo h(safe_trim($hrow["CUST_CODE"])); ?> -
     <?php echo h(safe_trim($hrow["CUST_COMP"])); ?><br>
     <?php echo h(safe_trim($hrow["ITEM_CODE"])); ?> -
-    <?php echo h(safe_trim($hrow["ITEM_NAME"])); ?><br>
+    <?php echo h(safe_trim($hrow["ITEM_NAME"])); ?>
+    <?php if ($location !== "") { ?>
+        - <?php echo h($location); ?>
+    <?php } ?>
+    <br>
     <span class="forecast-title"><?php echo h($forecastText); ?></span>
 </div>
 

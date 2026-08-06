@@ -174,6 +174,10 @@ function h($value) {
         <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Dashboard / Report</a>
 
         <div class="menu-section">PPIC Entry</div>
+		<a class="menu-link" href="hitung_label.php" target="mainFrame">REPORT KEBUTUHAN LABEL PLANT2</a>
+		<a class="menu-link" href="packaging.php" target="mainFrame">REPORT KEBUTUHAN PACK DAN BOX PLANT2</a>
+		<a class="menu-link" href="hitung_label_vendor.php" target="mainFrame">REPORT KEBUTUHAN LABEL VENDOR</a>
+		<a class="menu-link" href="packaging_vendor.php" target="mainFrame">REPORT KEBUTUHAN PACK DAN BOX VENDOR</a>
         <a class="menu-link" href="grid_input.php" target="mainFrame">LIST MASTER HITACHI</a>
         <a class="menu-link" href="input.php" target="mainFrame">BUAT QR HITACHI LABEL</a>
         <a class="menu-link" href="label_plant2.php" target="mainFrame">LABEL MANUAL PLANT 2</a>
@@ -184,6 +188,10 @@ function h($value) {
         <a class="menu-link" href="master_item_prod.php" target="mainFrame">BOM MASTER</a>
         <a class="menu-link" href="master_machine.php" target="mainFrame">MASTER MACHINE</a>
         <a class="menu-link" href="master_process.php" target="mainFrame">MASTER PROSES</a>
+		<a class="menu-link" href="mcs.php" target="_blank">MCS</a>
+		<a class="menu-link" href="mcs_production.php" target="_blank">MCS MP</a>
+       
+		
 
        
 

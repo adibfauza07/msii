@@ -68,12 +68,19 @@ function print_row_units($row, $nextRow = null) {
     $type = isset($row["ROW_TYPE"]) ? $row["ROW_TYPE"] : "";
 
     if ($type === "CUSTOMER") return 1.35;
-    if ($type === "ITEM") return 1.05;
-    if ($type === "PRICE") {
-        $units = 1.00;
-        if ($nextRow === null || in_array($nextRow["ROW_TYPE"], array("ITEM", "CUSTOMER"), true)) {
-            $units += 0.20; // ruang separator antar item
+
+    if ($type === "ITEM_PRICE") {
+        $units = 1.05;
+
+        // Tambahkan sedikit ruang ketika item berikutnya mulai.
+        if (
+            $nextRow === null
+            || $nextRow["ROW_TYPE"] === "CUSTOMER"
+            || ($nextRow["ROW_TYPE"] === "ITEM_PRICE" && !empty($nextRow["SHOW_ITEM"]))
+        ) {
+            $units += 0.20;
         }
+
         return $units;
     }
 
@@ -86,7 +93,6 @@ function paginate_print_rows($rows, $maxUnits = 30.5) {
     $usedUnits = 0.0;
 
     $currentCustomer = null;
-    $currentItem = null;
     $count = count($rows);
 
     for ($i = 0; $i < $count; $i++) {
@@ -99,7 +105,7 @@ function paginate_print_rows($rows, $maxUnits = 30.5) {
             $page = array();
             $usedUnits = 0.0;
 
-            // Ulangi context customer/item pada halaman lanjutan supaya mudah dibaca.
+            // Ulangi customer pada halaman lanjutan.
             if ($row["ROW_TYPE"] !== "CUSTOMER" && $currentCustomer !== null) {
                 $repeatCustomer = $currentCustomer;
                 $repeatCustomer["CONTINUED"] = 1;
@@ -107,11 +113,11 @@ function paginate_print_rows($rows, $maxUnits = 30.5) {
                 $usedUnits += 1.35;
             }
 
-            if ($row["ROW_TYPE"] === "PRICE" && $currentItem !== null) {
-                $repeatItem = $currentItem;
-                $repeatItem["CONTINUED"] = 1;
-                $page[] = $repeatItem;
-                $usedUnits += 1.05;
+            // Jika halaman terpotong di tengah beberapa harga untuk item yang sama,
+            // tampilkan kembali identitas item pada baris pertama halaman lanjutan.
+            if ($row["ROW_TYPE"] === "ITEM_PRICE" && empty($row["SHOW_ITEM"])) {
+                $row["SHOW_ITEM"] = 1;
+                $row["CONTINUED"] = 1;
             }
         }
 
@@ -120,9 +126,6 @@ function paginate_print_rows($rows, $maxUnits = 30.5) {
 
         if ($row["ROW_TYPE"] === "CUSTOMER") {
             $currentCustomer = $row;
-            $currentItem = null;
-        } elseif ($row["ROW_TYPE"] === "ITEM") {
-            $currentItem = $row;
         }
     }
 
@@ -157,29 +160,38 @@ if ($is_filter) {
     $sql = "
         SET NOCOUNT ON;
 
-        SELECT
-            ISNULL(PARTNUM, '') AS PARTNUM,
-            ISNULL(ITEM_CODE, '') AS ITEM_CODE,
-            ISNULL(PRICE_CODE, '') AS PRICE_CODE,
-            ISNULL(ITEM_NO, '') AS ITEM_NO,
-            ISNULL(ITEM_NAME, '') AS ITEM_NAME,
-            ISNULL(CUST_CODE, '') AS CUST_CODE,
-            ISNULL(CUST_COMP, '') AS CUST_COMP,
-            ISNULL(PRDT_PRICE, 0) AS PRDT_PRICE,
-            PRDT_START,
-            PRDT_END,
-            ISNULL(PRDT_QNO, '') AS PRDT_QNO
-        FROM dbo.RPT_SALES_PRICE_HISTORY_VIEW
+        SELECT DISTINCT
+            PART.PART_NUM AS PARTNUM,
+            PART.PART_CODE AS ITEM_CODE,
+            PART.PRICE_CODE AS PRICE_CODE,
+            PART.PART_NO AS ITEM_NO,
+            PART.PART_NAME AS ITEM_NAME,
+            CUST.CUST_CODE AS CUST_CODE,
+            CUST.CUST_COMP AS CUST_COMP,
+            ISNULL(PRICE_DETAIL.PRDT_PRICE, 0) AS PRDT_PRICE,
+            PRICE_DETAIL.PRDT_START,
+            PRICE_DETAIL.PRDT_END,
+            ISNULL(PRICE_DETAIL.PRDT_QNO, '') AS PRDT_QNO
+        FROM dbo.PART_VIEW AS PART
+        INNER JOIN dbo.CUST AS CUST
+            ON PART.CUST_ID = CUST.CUST_ID
+        LEFT OUTER JOIN dbo.PRICE_DETAIL AS PRICE_DETAIL
+            ON PART.PRICE_ID = PRICE_DETAIL.PRICE_ID
         WHERE
-            ? = '%'
-            OR CUST_CODE = ?
+            DATEDIFF(DAY, GETDATE(), PRICE_DETAIL.PRDT_START) <= 0
+            AND DATEDIFF(DAY, GETDATE(), PRICE_DETAIL.PRDT_END) >= 0
+            AND (
+                ? = '%'
+                OR CUST.CUST_CODE = ?
+            )
         ORDER BY
-            CUST_CODE,
-            ITEM_CODE,
-            ITEM_NO,
-            ITEM_NAME,
-            PRDT_START,
-            PRDT_END
+            CUST.CUST_CODE,
+            PART.PART_NUM,
+            PART.PART_CODE,
+            PART.PART_NO,
+            PART.PART_NAME,
+            PRICE_DETAIL.PRDT_START,
+            PRICE_DETAIL.PRDT_END
     ";
 
     $stmt = sqlsrv_query($conn, $sql, array($cust_code, $cust_code));
@@ -224,26 +236,23 @@ if ($is_filter) {
         }
 
         $itemKey = $r["ITEM_CODE"] . "|" . $r["ITEM_NO"] . "|" . $r["ITEM_NAME"];
+        $showItem = ($itemKey != $lastItem);
 
-        if ($itemKey != $lastItem) {
-            $printRows[] = array(
-                "ROW_TYPE"   => "ITEM",
-                "ITEM_CODE"  => $r["ITEM_CODE"],
-                "PRICE_CODE" => $r["PRICE_CODE"],
-                "ITEM_NO"    => $r["ITEM_NO"],
-                "ITEM_NAME"  => $r["ITEM_NAME"]
-            );
-
-            $lastItem = $itemKey;
-        }
-
+        // Item dan detail harga dibuat dalam satu baris agar semua kolom sejajar.
         $printRows[] = array(
-            "ROW_TYPE"   => "PRICE",
+            "ROW_TYPE"   => "ITEM_PRICE",
+            "SHOW_ITEM"  => $showItem ? 1 : 0,
+            "ITEM_CODE"  => $r["ITEM_CODE"],
+            "PRICE_CODE" => $r["PRICE_CODE"],
+            "ITEM_NO"    => $r["ITEM_NO"],
+            "ITEM_NAME"  => $r["ITEM_NAME"],
             "PRDT_PRICE" => $r["PRDT_PRICE"],
             "PRDT_START" => $r["PRDT_START"],
             "PRDT_END"   => $r["PRDT_END"],
             "PRDT_QNO"   => $r["PRDT_QNO"]
         );
+
+        $lastItem = $itemKey;
     }
 
     if (count($printRows) == 0) {
@@ -511,18 +520,21 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
             font-weight: 600;
         }
 
-        .item-row td {
+        .item-price-row td {
             height: 24px;
             padding-top: 4px;
             padding-bottom: 4px;
-            font-weight: 500;
+            vertical-align: middle;
         }
 
-        .price-row td { height: 23px; }
-        .price-row .col-price { text-align: right; font-variant-numeric: tabular-nums; }
-        .price-row .col-start,
-        .price-row .col-end,
-        .price-row .col-quot { text-align: left; }
+        .item-price-row .col-part { font-weight: 500; }
+        .item-price-row .col-price {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+        .item-price-row .col-start,
+        .item-price-row .col-end,
+        .item-price-row .col-quot { text-align: left; }
 
         .dash-row td {
             border-left: 1px solid var(--grid);
@@ -615,8 +627,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                 height: 6.5mm;
             }
 
-            .item-row td { height: 5.8mm; }
-            .price-row td { height: 5.6mm; }
+            .item-price-row td { height: 5.8mm; }
             .dash-row td { height: 1mm; }
         }
     </style>
@@ -759,22 +770,16 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                                 <?php if (!empty($r["CONTINUED"])) { ?><span class="continued-note">(lanjutan)</span><?php } ?>
                             </td>
                         </tr>
-                    <?php } elseif ($r["ROW_TYPE"] == "ITEM") { ?>
-                        <tr class="item-row">
+                    <?php } elseif ($r["ROW_TYPE"] == "ITEM_PRICE") { ?>
+                        <tr class="item-price-row">
                             <td class="col-part">
-                                [<?php echo h($r["ITEM_CODE"]); ?>]
-                                [<?php echo h($r["ITEM_NO"]); ?>]
-                                [<?php echo h($r["ITEM_NAME"]); ?>]
-                                <?php if (!empty($r["CONTINUED"])) { ?><span class="continued-note">(lanjutan)</span><?php } ?>
+                                <?php if (!empty($r["SHOW_ITEM"])) { ?>
+                                    [<?php echo h($r["ITEM_CODE"]); ?>]
+                                    [<?php echo h($r["ITEM_NO"]); ?>]
+                                    [<?php echo h($r["ITEM_NAME"]); ?>]
+                                    <?php if (!empty($r["CONTINUED"])) { ?><span class="continued-note">(lanjutan)</span><?php } ?>
+                                <?php } ?>
                             </td>
-                            <td class="col-price"></td>
-                            <td class="col-start"></td>
-                            <td class="col-end"></td>
-                            <td class="col-quot"></td>
-                        </tr>
-                    <?php } elseif ($r["ROW_TYPE"] == "PRICE") { ?>
-                        <tr class="price-row">
-                            <td class="col-part"></td>
 
                             <td class="col-price num">
                                 <?php echo h(fmt_price($r["PRDT_PRICE"])); ?>
@@ -795,8 +800,13 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
 
                         <?php
                             $next = isset($pageRows[$i + 1]) ? $pageRows[$i + 1] : null;
+                            $nextStartsItem = (
+                                $next !== null
+                                && $next["ROW_TYPE"] == "ITEM_PRICE"
+                                && !empty($next["SHOW_ITEM"])
+                            );
 
-                            if ($next === null || $next["ROW_TYPE"] == "ITEM" || $next["ROW_TYPE"] == "CUSTOMER") {
+                            if ($next === null || $next["ROW_TYPE"] == "CUSTOMER" || $nextStartsItem) {
                         ?>
                             <tr class="dash-row">
                                 <td colspan="5"></td>

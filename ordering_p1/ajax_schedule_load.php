@@ -49,7 +49,7 @@ $sql = "
     FROM dbo.DELI_SCH
     WHERE PRICE_ID = ?
       AND YEAR(DELS_DATE) BETWEEN YEAR(GETDATE()) - 1 AND YEAR(GETDATE()) + 1
-    ORDER BY DELS_DATE
+    ORDER BY DELS_DATE ASC
 ";
 
 $stmt = sqlsrv_query($conn, $sql, array($price_id));

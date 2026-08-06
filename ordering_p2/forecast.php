@@ -814,7 +814,9 @@ function searchItemLocal() {
         hideItemSearchSuggest();
 
         itemRowsCache = itemRowsAll;
-        renderItemGrid(itemRowsAll);
+        
+        // Memperbarui grid tabel tanpa merebut fokus kursor
+        renderItemGrid(itemRowsAll, true); 
 
         setStatus("Item loaded: " + itemRowsAll.length);
         return;
@@ -835,7 +837,7 @@ function searchItemLocal() {
         }
 
         /*
-            Grid kiri dibatasi maksimal 10 item.
+            Grid kiri dibatasi maksimal 15 item.
         */
         if (result.length >= 15) {
             break;
@@ -844,9 +846,13 @@ function searchItemLocal() {
 
     itemRowsCache = result;
 
-    renderItemGrid(result);
+    // 1. Memperbarui isi grid tabel berdasarkan hasil pencarian (tanpa merebut kursor)
+    renderItemGrid(result, true); 
+    
+    // 2. Memunculkan kotak dropdown saran pencarian (BARIS INI SANGAT PENTING)
     showItemSearchSuggest(result);
 
+    // 3. Memperbarui status di bawah kotak pencarian
     setStatus("Hasil pencarian item: " + result.length + " dari " + itemRowsAll.length);
 }
 
@@ -863,9 +869,9 @@ function itemSearchKeyDown(e) {
             e.preventDefault ? e.preventDefault() : e.returnValue = false;
             searchItemLocal();
 
-            if (itemSuggestRows.length > 0) {
-                chooseItemSuggest(0);
-            }
+            // if (itemSuggestRows.length > 0) {
+            //     chooseItemSuggest(0);
+            // }
 
             return false;
         }
@@ -910,7 +916,7 @@ function renderItems(rows) {
     setStatus("Item loaded: " + itemRowsAll.length);
 }
 
-function renderItemGrid(rows) {
+function renderItemGrid(rows, preventFocus) {
     var body = document.getElementById("itemBody");
 
     body.innerHTML = "";
@@ -960,12 +966,15 @@ function renderItemGrid(rows) {
         })(rows[i]);
     }
 
-    var firstRow = body.getElementsByTagName("tr")[0];
+   var firstRow = body.getElementsByTagName("tr")[0];
 
     if (firstRow) {
-        selectItemRow(firstRow);
-        loadForecast();
-        firstRow.focus();
+        // Blok ini MENCEGAH auto-load ke database dan mencegah kursor pindah saat sedang mengetik
+        if (!preventFocus) {
+            selectItemRow(firstRow);
+            loadSchedule();
+            firstRow.focus();
+        }
     }
 }
 
@@ -1510,7 +1519,7 @@ document.getElementById("ITEM_SEARCH").onkeyup = function (e) {
 
     itemSearchTimer = setTimeout(function () {
         searchItemLocal();
-    }, 150);
+    }, 800);
 };
 
 document.getElementById("ITEM_SEARCH").onblur = function () {

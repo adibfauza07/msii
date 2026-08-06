@@ -128,6 +128,7 @@ function h($value) {
 
         <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Report</a>
 		<a class="menu-link" href="master.php" target="mainFrame">MASTER CUST, PRICE, CURR</a>
+		<a class="menu-link" href="sync_part_price_customer.php" target="mainFrame">PRICE SYNCRONISATION</a>
         <a class="menu-link" href="manual_order.php" target="mainFrame">Manual Delivery Instruction</a>
         <a class="menu-link" href="input_order.php" target="mainFrame">Input Order</a>
         <a class="menu-link" href="forecast.php" target="mainFrame">Forecast</a>
@@ -135,6 +136,12 @@ function h($value) {
         <a class="menu-link" href="order_edit.php" target="mainFrame">Edit Order</a>
 		<a class="menu-link" href="depresiasi.php" target="mainFrame">DEPRESIASI</a>
 		<a class="menu-link" href="quotation.php" target="mainFrame">LIST QUOTATION</a>
+		
+		<!-- Menu Material Slip - Tambahan di sini -->
+        <a class="menu-link material-slip" href="material_slip/index.php" target="mainFrame">
+            📋 SPB
+        </a>
+		
       <a class="menu-link logout" href="logout.php" target="_top">Logout</a>
     </div>
 

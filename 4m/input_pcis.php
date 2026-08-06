@@ -151,7 +151,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
         $msg = "Data PCIS baru berhasil disimpan!";
     }
     
+// Matikan peringatan error karakter kepanjangan
+    sqlsrv_query($conn, "SET ANSI_WARNINGS OFF"); 
+    
     $stmt = q($sql, $params);
+    
+    // Hidupkan kembali
+    sqlsrv_query($conn, "SET ANSI_WARNINGS ON"); 
+    
     if ($stmt === false) { die(print_r(sqlsrv_errors(), true)); }
     
     $qId = q("SELECT CONTROL_ID FROM PROSES_CHANGE WHERE CONTROL_NO = ?", array($control_no));

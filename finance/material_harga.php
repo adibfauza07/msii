@@ -1,7 +1,7 @@
 <?php
 /**
- * List Harga Material Konsumsi - INTERNAL ONLY
- * Harga vendor / produksi luar dihapus.
+ * List Harga Material Konsumsi + HPP Assembling
+ * Parent ITEM_CODE 02% mengambil komponen ITTY 01 memakai HPP BOM.
  * Gabung IDR & USD, Total Harga dikonversi ke IDR
  * PHP 5.4 + SQL Server 2008
  */
@@ -45,76 +45,197 @@ $action           = isset($_GET['action']) ? $_GET['action'] : '';
 // ============================================
 function getMaterialHarga($filter_part_id = '', $filter_itty_code = '', $filter_periode = '') {
     /*
-     * HANYA INTERNAL / BOM
-     * - BOM_DEFAULT
-     * - Material ITTY 02 / 03
-     * - Harga PO terakhir per material
-     * - Currency non-IDR dikonversi memakai CURR_RAT.CURR_VRATE
+     * ATURAN HARGA:
      *
-     * Harga vendor / RECEIVE RCV_TYPE=3 sudah dihapus.
+     * 1. Parent/part biasa:
+     *    - menampilkan material ITTY 02 dan 03 dari BOM_DEFAULT.
+     *
+     * 2. Parent assembling dengan ITEM_CODE LIKE '02%':
+     *    - menampilkan material ITTY 01, 02 dan 03.
+     *    - ITTY 01 memakai HPP item tersebut yang dihitung dari BOM turunannya.
+     *
+     * 3. Rumus:
+     *    - ITTY 01 = BOM_QTY x HPP item ITTY 01.
+     *    - ITTY 02 = BOM_QTY x harga PO IDR / 1000.
+     *    - ITTY 03 = BOM_QTY x harga PO IDR.
+     *
+     * 4. HPP ITTY 01 dihitung recursive maksimal 20 level sampai material
+     *    daun ITTY 02/03. Harga daun memakai PO terakhir dan kurs sesuai PO_DATE.
+     *
+     * Kompatibel SQL Server 2008 dan PHP 5.4.
      */
 
     $sql = "
-        SELECT
-            b.PART_ID,
-            b.PART_CODE,
-            b.PART_NAME,
-            b.MAT_ID,
-            b.MAT_CODE,
-            b.MAT_NAME,
-            b.QTY AS BOM_QTY,
-            b.ITTY_CODE,
+        ;WITH LatestPO AS
+        (
+            SELECT
+                pd.ITEM_ID AS MAT_ID,
+                pd.POD_PRICE,
+                po.PO_DATE AS PRICE_DATE_RAW,
+                pd.POD_UNIT,
+                po.PO_CUR,
+                ROW_NUMBER() OVER
+                (
+                    PARTITION BY pd.ITEM_ID
+                    ORDER BY po.PO_DATE DESC, po.PO_ID DESC
+                ) AS rn
+            FROM PO_DETAIL pd
+            INNER JOIN PO po
+                ON pd.PO_ID = po.PO_ID
+        ),
+        PriceData AS
+        (
+            SELECT
+                p.MAT_ID,
+                p.POD_PRICE,
+                p.PRICE_DATE_RAW,
+                p.POD_UNIT,
+                p.PO_CUR,
+                c.CURR_VRATE,
 
-            CASE b.ITTY_CODE
-                WHEN '02' THEN 'Kg (÷1000)'
-                WHEN '03' THEN 'Pcs'
-                ELSE b.ITTY_CODE
-            END AS SATUAN_HITUNG,
+                CAST
+                (
+                    CASE
+                        WHEN p.POD_PRICE IS NULL THEN NULL
+                        WHEN ISNULL(p.PO_CUR, 'IDR') = 'IDR'
+                            THEN p.POD_PRICE
+                        WHEN c.CURR_VRATE IS NULL THEN NULL
+                        ELSE p.POD_PRICE * c.CURR_VRATE
+                    END
+                    AS DECIMAL(38, 8)
+                ) AS PRICE_IDR,
 
-            ISNULL(p.POD_PRICE, 0) AS HARGA_PO,
-            CONVERT(VARCHAR(10), p.PRICE_DATE_RAW, 23) AS TGL_PO,
-            p.POD_UNIT AS SATUAN_PO,
-            ISNULL(p.PO_CUR, '-') AS MATA_UANG,
-            c.CURR_VRATE AS KURS_VRATE,
+                CASE
+                    WHEN p.POD_PRICE IS NULL THEN 'TANPA_HARGA'
+                    WHEN ISNULL(p.PO_CUR, 'IDR') <> 'IDR'
+                         AND c.CURR_VRATE IS NULL THEN 'TANPA_KURS'
+                    ELSE 'OK'
+                END AS PRICE_STATUS
 
-            CASE
-                WHEN b.ITTY_CODE = '02' THEN
-                    ROUND(
-                        (
-                            b.QTY *
-                            CASE
-                                WHEN ISNULL(p.PO_CUR, 'IDR') = 'IDR'
-                                    THEN ISNULL(p.POD_PRICE, 0)
-                                ELSE
-                                    ISNULL(p.POD_PRICE, 0) * ISNULL(c.CURR_VRATE, 0)
-                            END
-                        ) / 1000,
-                        2
-                    )
+            FROM LatestPO p
+            LEFT JOIN CURR_RAT c
+                ON p.PO_CUR = c.CURR_CODE
+               AND p.PRICE_DATE_RAW BETWEEN c.CURR_SDATE AND c.CURR_EDATE
+            WHERE p.rn = 1
+        ),
+        HppBomTree AS
+        (
+            /* Level pertama BOM untuk seluruh item ITTY 01. */
+            SELECT
+                bd.PART_ID AS ROOT_PART_ID,
+                bd.ITEM_ID AS COMPONENT_ID,
+                m.ITTY_CODE,
+                CAST(bd.QTY AS DECIMAL(38, 8)) AS TOTAL_QTY,
+                CAST
+                (
+                    '/' + CONVERT(VARCHAR(50), bd.PART_ID)
+                    + '/' + CONVERT(VARCHAR(50), bd.ITEM_ID) + '/'
+                    AS VARCHAR(MAX)
+                ) AS BOM_PATH,
+                1 AS BOM_LEVEL
 
-                WHEN b.ITTY_CODE = '03' THEN
-                    ROUND(
-                        b.QTY *
+            FROM BOM_DEFAULT bd
+            INNER JOIN ITEMS root_item
+                ON bd.PART_ID = root_item.ITEM_ID
+            INNER JOIN ITEMS m
+                ON bd.ITEM_ID = m.ITEM_ID
+
+            WHERE root_item.ITTY_CODE = '01'
+              AND root_item.ITEM_INACTIVE = 0
+              AND m.ITEM_INACTIVE = 0
+
+            UNION ALL
+
+            /* Turunkan kembali bila komponen masih ITTY 01. */
+            SELECT
+                bt.ROOT_PART_ID,
+                bd.ITEM_ID AS COMPONENT_ID,
+                m.ITTY_CODE,
+                CAST(bt.TOTAL_QTY * bd.QTY AS DECIMAL(38, 8)) AS TOTAL_QTY,
+                CAST
+                (
+                    bt.BOM_PATH + CONVERT(VARCHAR(50), bd.ITEM_ID) + '/'
+                    AS VARCHAR(MAX)
+                ) AS BOM_PATH,
+                bt.BOM_LEVEL + 1
+
+            FROM HppBomTree bt
+            INNER JOIN ITEMS current_item
+                ON bt.COMPONENT_ID = current_item.ITEM_ID
+               AND current_item.ITTY_CODE = '01'
+            INNER JOIN BOM_DEFAULT bd
+                ON bt.COMPONENT_ID = bd.PART_ID
+            INNER JOIN ITEMS m
+                ON bd.ITEM_ID = m.ITEM_ID
+
+            WHERE bt.BOM_LEVEL < 20
+              AND current_item.ITEM_INACTIVE = 0
+              AND m.ITEM_INACTIVE = 0
+              AND bt.BOM_PATH NOT LIKE
+                  '%/' + CONVERT(VARCHAR(50), bd.ITEM_ID) + '/%'
+        ),
+        Hpp01Summary AS
+        (
+            SELECT
+                bt.ROOT_PART_ID,
+
+                CAST
+                (
+                    SUM
+                    (
                         CASE
-                            WHEN ISNULL(p.PO_CUR, 'IDR') = 'IDR'
-                                THEN ISNULL(p.POD_PRICE, 0)
-                            ELSE
-                                ISNULL(p.POD_PRICE, 0) * ISNULL(c.CURR_VRATE, 0)
-                        END,
-                        2
+                            WHEN bt.ITTY_CODE = '02' THEN
+                                ROUND
+                                (
+                                    (bt.TOTAL_QTY * ISNULL(pd.PRICE_IDR, 0)) / 1000.0,
+                                    2
+                                )
+
+                            WHEN bt.ITTY_CODE = '03' THEN
+                                ROUND
+                                (
+                                    bt.TOTAL_QTY * ISNULL(pd.PRICE_IDR, 0),
+                                    2
+                                )
+
+                            ELSE 0
+                        END
                     )
+                    AS DECIMAL(38, 8)
+                ) AS HPP_IDR_PER_UNIT,
 
-                ELSE 0
-            END AS TOTAL_HARGA,
+                MAX(pd.PRICE_DATE_RAW) AS HPP_DATE_RAW,
 
-            CASE
-                WHEN p.POD_PRICE IS NULL THEN 'TANPA_HARGA'
-                WHEN ISNULL(p.PO_CUR, 'IDR') <> 'IDR'
-                     AND c.CURR_VRATE IS NULL THEN 'TANPA_KURS'
-                ELSE 'OK'
-            END AS STATUS_HARGA
+                SUM
+                (
+                    CASE
+                        WHEN bt.ITTY_CODE IN ('02', '03') THEN 1
+                        ELSE 0
+                    END
+                ) AS LEAF_COUNT,
 
-        FROM
+                SUM
+                (
+                    CASE
+                        WHEN bt.ITTY_CODE IN ('02', '03')
+                             AND
+                             (
+                                 pd.MAT_ID IS NULL
+                                 OR pd.PRICE_STATUS <> 'OK'
+                             )
+                            THEN 1
+                        ELSE 0
+                    END
+                ) AS MISSING_PRICE_COUNT
+
+            FROM HppBomTree bt
+            LEFT JOIN PriceData pd
+                ON bt.COMPONENT_ID = pd.MAT_ID
+
+            WHERE bt.ITTY_CODE IN ('02', '03')
+            GROUP BY bt.ROOT_PART_ID
+        ),
+        DirectBom AS
         (
             SELECT
                 i.ITEM_ID AS PART_ID,
@@ -125,48 +246,163 @@ function getMaterialHarga($filter_part_id = '', $filter_itty_code = '', $filter_
                 m.ITEM_CODE AS MAT_CODE,
                 m.ITEM_NAME AS MAT_NAME,
 
-                bd.QTY,
+                CAST(bd.QTY AS DECIMAL(38, 8)) AS QTY,
                 m.ITTY_CODE
 
             FROM BOM_DEFAULT bd
-
             INNER JOIN ITEMS m
                 ON bd.ITEM_ID = m.ITEM_ID
-
             INNER JOIN ITEMS i
                 ON bd.PART_ID = i.ITEM_ID
 
-            WHERE m.ITTY_CODE IN ('02', '03')
+            WHERE
+                (
+                    m.ITTY_CODE IN ('02', '03')
+                    OR
+                    (
+                        i.ITEM_CODE LIKE '02%'
+                        AND m.ITTY_CODE = '01'
+                    )
+                )
               AND i.ITEM_INACTIVE = 0
               AND m.ITEM_INACTIVE = 0
-        ) b
+        )
 
-        LEFT JOIN
+        SELECT
+            x.PART_ID,
+            x.PART_CODE,
+            x.PART_NAME,
+            x.MAT_ID,
+            x.MAT_CODE,
+            x.MAT_NAME,
+            x.BOM_QTY,
+            x.ITTY_CODE,
+            x.SATUAN_HITUNG,
+            x.HARGA_PO,
+            CONVERT(VARCHAR(10), x.PRICE_DATE_RAW, 23) AS TGL_PO,
+            x.SATUAN_PO,
+            x.MATA_UANG,
+            x.KURS_VRATE,
+            x.TOTAL_HARGA,
+            x.STATUS_HARGA,
+            x.SUMBER_HARGA
+
+        FROM
         (
             SELECT
-                pd.ITEM_ID AS MAT_ID,
-                pd.POD_PRICE,
-                po.PO_DATE AS PRICE_DATE_RAW,
-                pd.POD_UNIT,
-                po.PO_CUR,
+                b.PART_ID,
+                b.PART_CODE,
+                b.PART_NAME,
+                b.MAT_ID,
+                b.MAT_CODE,
+                b.MAT_NAME,
+                b.QTY AS BOM_QTY,
+                b.ITTY_CODE,
 
-                ROW_NUMBER() OVER
+                CASE b.ITTY_CODE
+                    WHEN '01' THEN 'Pcs x HPP'
+                    WHEN '02' THEN 'Kg (/1000)'
+                    WHEN '03' THEN 'Pcs'
+                    ELSE b.ITTY_CODE
+                END AS SATUAN_HITUNG,
+
+                CAST
                 (
-                    PARTITION BY pd.ITEM_ID
-                    ORDER BY po.PO_DATE DESC, po.PO_ID DESC
-                ) AS rn
+                    CASE
+                        WHEN b.ITTY_CODE = '01'
+                            THEN ISNULL(h.HPP_IDR_PER_UNIT, 0)
+                        ELSE ISNULL(pd.POD_PRICE, 0)
+                    END
+                    AS DECIMAL(38, 8)
+                ) AS HARGA_PO,
 
-            FROM PO_DETAIL pd
+                CASE
+                    WHEN b.ITTY_CODE = '01'
+                        THEN h.HPP_DATE_RAW
+                    ELSE pd.PRICE_DATE_RAW
+                END AS PRICE_DATE_RAW,
 
-            INNER JOIN PO po
-                ON pd.PO_ID = po.PO_ID
-        ) p
-            ON b.MAT_ID = p.MAT_ID
-           AND p.rn = 1
+                CASE
+                    WHEN b.ITTY_CODE = '01'
+                        THEN 'HPP/Pcs'
+                    ELSE pd.POD_UNIT
+                END AS SATUAN_PO,
 
-        LEFT JOIN CURR_RAT c
-            ON p.PO_CUR = c.CURR_CODE
-           AND p.PRICE_DATE_RAW BETWEEN c.CURR_SDATE AND c.CURR_EDATE
+                CASE
+                    WHEN b.ITTY_CODE = '01'
+                        THEN 'IDR'
+                    ELSE ISNULL(pd.PO_CUR, '-')
+                END AS MATA_UANG,
+
+                CASE
+                    WHEN b.ITTY_CODE = '01'
+                        THEN NULL
+                    ELSE pd.CURR_VRATE
+                END AS KURS_VRATE,
+
+                CAST
+                (
+                    CASE
+                        WHEN b.ITTY_CODE = '01' THEN
+                            ROUND
+                            (
+                                b.QTY * ISNULL(h.HPP_IDR_PER_UNIT, 0),
+                                2
+                            )
+
+                        WHEN b.ITTY_CODE = '02' THEN
+                            ROUND
+                            (
+                                (b.QTY * ISNULL(pd.PRICE_IDR, 0)) / 1000.0,
+                                2
+                            )
+
+                        WHEN b.ITTY_CODE = '03' THEN
+                            ROUND
+                            (
+                                b.QTY * ISNULL(pd.PRICE_IDR, 0),
+                                2
+                            )
+
+                        ELSE 0
+                    END
+                    AS DECIMAL(38, 2)
+                ) AS TOTAL_HARGA,
+
+                CASE
+                    WHEN b.ITTY_CODE = '01'
+                         AND
+                         (
+                             h.ROOT_PART_ID IS NULL
+                             OR ISNULL(h.LEAF_COUNT, 0) = 0
+                         )
+                        THEN 'TANPA_HPP'
+
+                    WHEN b.ITTY_CODE = '01'
+                         AND ISNULL(h.MISSING_PRICE_COUNT, 0) > 0
+                        THEN 'HPP_TIDAK_LENGKAP'
+
+                    WHEN b.ITTY_CODE = '01'
+                        THEN 'OK'
+
+                    WHEN pd.MAT_ID IS NULL
+                        THEN 'TANPA_HARGA'
+
+                    ELSE pd.PRICE_STATUS
+                END AS STATUS_HARGA,
+
+                CASE
+                    WHEN b.ITTY_CODE = '01'
+                        THEN 'HPP BOM ITTY 01'
+                    ELSE 'PO TERAKHIR'
+                END AS SUMBER_HARGA
+
+            FROM DirectBom b
+            LEFT JOIN PriceData pd
+                ON b.MAT_ID = pd.MAT_ID
+            LEFT JOIN Hpp01Summary h
+                ON b.MAT_ID = h.ROOT_PART_ID
+        ) x
 
         WHERE 1 = 1
     ";
@@ -174,21 +410,36 @@ function getMaterialHarga($filter_part_id = '', $filter_itty_code = '', $filter_
     $params = array();
 
     if ($filter_part_id != '') {
-        $sql .= " AND b.PART_ID = ?";
+        $sql .= " AND x.PART_ID = ?";
         $params[] = $filter_part_id;
     }
 
     if ($filter_itty_code != '') {
-        $sql .= " AND b.ITTY_CODE = ?";
+        $sql .= " AND x.ITTY_CODE = ?";
         $params[] = $filter_itty_code;
     }
 
     if ($filter_periode != '') {
-        $sql .= " AND CONVERT(VARCHAR(10), p.PRICE_DATE_RAW, 23) LIKE ?";
+        /*
+         * ITTY 01 memakai tanggal PO terbaru dari material daun pembentuk HPP.
+         * ITTY 02/03 memakai tanggal PO material langsung.
+         */
+        $sql .= " AND CONVERT(VARCHAR(10), x.PRICE_DATE_RAW, 23) LIKE ?";
         $params[] = $filter_periode . '%';
     }
 
-    $sql .= " ORDER BY b.PART_CODE, b.ITTY_CODE, b.MAT_CODE";
+    $sql .= "
+        ORDER BY
+            x.PART_CODE,
+            CASE x.ITTY_CODE
+                WHEN '01' THEN 1
+                WHEN '02' THEN 2
+                WHEN '03' THEN 3
+                ELSE 9
+            END,
+            x.MAT_CODE
+        OPTION (MAXRECURSION 100)
+    ";
 
     $stmt = q($sql, $params);
 
@@ -212,14 +463,20 @@ function getDaftarPart() {
             i.ITEM_NAME AS PART_NAME
 
         FROM BOM_DEFAULT bd
-
         INNER JOIN ITEMS m
             ON bd.ITEM_ID = m.ITEM_ID
-
         INNER JOIN ITEMS i
             ON bd.PART_ID = i.ITEM_ID
 
-        WHERE m.ITTY_CODE IN ('02', '03')
+        WHERE
+            (
+                m.ITTY_CODE IN ('02', '03')
+                OR
+                (
+                    i.ITEM_CODE LIKE '02%'
+                    AND m.ITTY_CODE = '01'
+                )
+            )
           AND i.ITEM_INACTIVE = 0
           AND m.ITEM_INACTIVE = 0
 
@@ -267,6 +524,9 @@ $data_material = getMaterialHarga(
 $total_harga_idr = 0;
 $jml_tanpa_harga = 0;
 $jml_tanpa_kurs = 0;
+$jml_tanpa_hpp = 0;
+$jml_hpp_tidak_lengkap = 0;
+$jml_itty01 = 0;
 $jml_itty02 = 0;
 $jml_itty03 = 0;
 $jml_usd = 0;
@@ -276,10 +536,18 @@ foreach ($data_material as $row) {
 
     if ($row['STATUS_HARGA'] == 'TANPA_HARGA') $jml_tanpa_harga++;
     if ($row['STATUS_HARGA'] == 'TANPA_KURS') $jml_tanpa_kurs++;
+    if ($row['STATUS_HARGA'] == 'TANPA_HPP') $jml_tanpa_hpp++;
+    if ($row['STATUS_HARGA'] == 'HPP_TIDAK_LENGKAP') $jml_hpp_tidak_lengkap++;
+    if ($row['ITTY_CODE'] == '01') $jml_itty01++;
     if ($row['ITTY_CODE'] == '02') $jml_itty02++;
     if ($row['ITTY_CODE'] == '03') $jml_itty03++;
     if ($row['MATA_UANG'] == 'USD') $jml_usd++;
 }
+
+$jml_error_harga = $jml_tanpa_harga
+    + $jml_tanpa_kurs
+    + $jml_tanpa_hpp
+    + $jml_hpp_tidak_lengkap;
 
 $parts_unique = array();
 
@@ -360,7 +628,7 @@ $serverIpDisplay = isset($serverName)
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>List Harga Material Konsumsi - PT. IMC TEKNO INDONESIA</title>
+    <title>List Harga Material + HPP Assembling - PT. IMC TEKNO INDONESIA</title>
 
     <style>
         * {
@@ -563,7 +831,7 @@ $serverIpDisplay = isset($serverName)
 
         .stats-box {
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: repeat(6, 1fr);
             gap: 12px;
             margin: 15px 0;
         }
@@ -580,7 +848,8 @@ $serverIpDisplay = isset($serverName)
         .stat-card.c2 { border-left-color: #1565c0; }
         .stat-card.c3 { border-left-color: #2e7d32; }
         .stat-card.c4 { border-left-color: #f57c00; }
-        .stat-card.c5 { border-left-color: #c62828; }
+        .stat-card.c5 { border-left-color: #6a1b9a; }
+        .stat-card.c6 { border-left-color: #c62828; }
 
         .stat-label {
             font-size: 11px;
@@ -599,7 +868,8 @@ $serverIpDisplay = isset($serverName)
         .stat-card.c2 .stat-value { color: #1565c0; }
         .stat-card.c3 .stat-value { color: #2e7d32; }
         .stat-card.c4 .stat-value { color: #f57c00; }
-        .stat-card.c5 .stat-value { color: #c62828; }
+        .stat-card.c5 .stat-value { color: #6a1b9a; }
+        .stat-card.c6 .stat-value { color: #c62828; }
 
         .table-container {
             background: white;
@@ -652,6 +922,11 @@ $serverIpDisplay = isset($serverName)
             border-radius: 12px;
             font-size: 10px;
             font-weight: 600;
+        }
+
+        .badge-01 {
+            background: #fff3e0;
+            color: #e65100;
         }
 
         .badge-02 {
@@ -774,8 +1049,8 @@ $serverIpDisplay = isset($serverName)
 
     <div class="header">
         <div>
-            <h1>📦 List Harga Material Konsumsi (IDR)</h1>
-            <p>PT. IMC TEKNO INDONESIA | Di-trace System | Internal / BOM</p>
+            <h1>📦 List Harga Material + HPP Assembling (IDR)</h1>
+            <p>PT. IMC TEKNO INDONESIA | Di-trace System | BOM + HPP ITTY 01</p>
         </div>
 
         <div class="header-right">
@@ -906,6 +1181,13 @@ $serverIpDisplay = isset($serverName)
                         </option>
 
                         <option
+                            value="01"
+                            <?php echo ($filter_itty_code == '01') ? 'selected' : ''; ?>
+                        >
+                            01 - HPP BOM (Assembling 02%)
+                        </option>
+
+                        <option
                             value="02"
                             <?php echo ($filter_itty_code == '02') ? 'selected' : ''; ?>
                         >
@@ -960,9 +1242,14 @@ $serverIpDisplay = isset($serverName)
 
     <div class="formula-box">
         <h3>
-            📐 Rumus Perhitungan Internal / BOM
+            📐 Rumus BOM + HPP Assembling
             (USD Otomatis ke IDR)
         </h3>
+
+        <div class="formula-item">
+            <span class="badge badge-01">ITTY 01</span>
+            = BOM_QTY × HPP item 01 (HPP dihitung recursive dari BOM 02/03)
+        </div>
 
         <div class="formula-item">
             <span class="badge badge-02">ITTY 02</span>
@@ -985,56 +1272,35 @@ $serverIpDisplay = isset($serverName)
     <div class="stats-box">
 
         <div class="stat-card c1">
-            <div class="stat-label">
-                Total Material
-            </div>
-
-            <div class="stat-value">
-                <?php echo count($data_material); ?>
-            </div>
+            <div class="stat-label">Total Material</div>
+            <div class="stat-value"><?php echo count($data_material); ?></div>
         </div>
 
         <div class="stat-card c2">
-            <div class="stat-label">
-                Jumlah Part Aktif
-            </div>
-
-            <div class="stat-value">
-                <?php echo $jml_part; ?>
-            </div>
+            <div class="stat-label">Jumlah Part Aktif</div>
+            <div class="stat-value"><?php echo $jml_part; ?></div>
         </div>
 
         <div class="stat-card c3">
-            <div class="stat-label">
-                Grand Total (IDR)
-            </div>
-
-            <div
-                class="stat-value"
-                style="font-size:15px;"
-            >
+            <div class="stat-label">Grand Total (IDR)</div>
+            <div class="stat-value" style="font-size:15px;">
                 <?php echo number_format($total_harga_idr, 2); ?>
             </div>
         </div>
 
         <div class="stat-card c4">
-            <div class="stat-label">
-                Material USD
-            </div>
-
-            <div class="stat-value">
-                <?php echo $jml_usd; ?>
-            </div>
+            <div class="stat-label">Material USD</div>
+            <div class="stat-value"><?php echo $jml_usd; ?></div>
         </div>
 
         <div class="stat-card c5">
-            <div class="stat-label">
-                ⚠ Error (Harga/Kurs)
-            </div>
+            <div class="stat-label">ITTY 01 / HPP</div>
+            <div class="stat-value"><?php echo $jml_itty01; ?></div>
+        </div>
 
-            <div class="stat-value">
-                <?php echo $jml_tanpa_harga + $jml_tanpa_kurs; ?>
-            </div>
+        <div class="stat-card c6">
+            <div class="stat-label">⚠ Error Harga/HPP/Kurs</div>
+            <div class="stat-value"><?php echo $jml_error_harga; ?></div>
         </div>
 
     </div>
@@ -1056,10 +1322,10 @@ $serverIpDisplay = isset($serverName)
                 <th>Material Name</th>
                 <th class="text-center">ITTY</th>
                 <th class="text-right">BOM QTY</th>
-                <th class="text-right">Harga PO</th>
+                <th class="text-right">Harga Dasar</th>
                 <th class="text-center">Curr</th>
                 <th class="text-right">Kurs (VRATE)</th>
-                <th>Tgl Harga</th>
+                <th>Tgl Harga/HPP</th>
                 <th>Unit</th>
                 <th class="text-right">Total Harga (IDR)</th>
                 <th class="text-center">Status</th>
@@ -1214,7 +1480,21 @@ $serverIpDisplay = isset($serverName)
 
                     <td class="text-center">
                         <?php
-                        if ($row['STATUS_HARGA'] == 'TANPA_HARGA'):
+                        if ($row['STATUS_HARGA'] == 'TANPA_HPP'):
+                        ?>
+                            <span class="badge badge-error">
+                                ⚠ Tanpa HPP
+                            </span>
+
+                        <?php
+                        elseif ($row['STATUS_HARGA'] == 'HPP_TIDAK_LENGKAP'):
+                        ?>
+                            <span class="badge badge-warning">
+                                ⚠ HPP Tidak Lengkap
+                            </span>
+
+                        <?php
+                        elseif ($row['STATUS_HARGA'] == 'TANPA_HARGA'):
                         ?>
                             <span class="badge badge-error">
                                 ⚠ Tanpa Harga
@@ -1297,7 +1577,7 @@ $serverIpDisplay = isset($serverName)
             Database: msdata |
             Plant: <?php echo $plantDisplay; ?>
             (<?php echo $serverIpDisplay; ?>) |
-            Harga internal / BOM saja,
+            Assembling ITEM_CODE 02% memakai HPP komponen ITTY 01;
             currency otomatis dikonversi ke IDR menggunakan VRATE
         </p>
     </div>

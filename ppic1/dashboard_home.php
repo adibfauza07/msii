@@ -232,6 +232,10 @@ function h($value) {
                 <div class="report-name">INSTRUCTION MATERIAL CHILD PART</div>
                 <a class="button" href="report_material_child.php" target="_blank">OPEN</a>
             </div>
+			<div class="report-item">
+                <div class="report-name">STOK PLAN VS ACTUAL</div>
+                <a class="button" href="report_stok_actual.php" target="_blank">OPEN</a>
+            </div>
             
 
         </div>
