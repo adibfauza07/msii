@@ -93,17 +93,23 @@ function fmt_num_cell($value) {
 
 $is_filter = get_param("RUN", "") == "1";
 
+// 1. Tentukan nilai default terlebih dahulu
 $defaultStart = date("Y-m-01");
-$defaultEnd   = date("Y-m-d");
+$defaultEnd   = date("Y-m-t"); // Secara default menggunakan akhir bulan ini
 
+// 2. Ambil nilai input dari form (menggunakan parameter atau default)
 $start_input = date_input_value(get_param("START_DATE", ""), $defaultStart);
-$end_input   = date_input_value(get_param("END_DATE", ""), $defaultEnd);
+
+// Memaksa END_DATE agar SELALU menjadi akhir bulan berdasarkan bulan di START_DATE
+$end_input   = date("Y-m-t", strtotime($start_input)); 
+
 $cust_code   = get_param("CUST_CODE", "");
 
 if ($is_filter && $cust_code == "") {
     $cust_code = "%";
 }
 
+// 3. Terakhir, format menjadi Ymd untuk dikirim ke SQL
 $start_ymd = ymd_param($start_input);
 $end_ymd   = ymd_param($end_input);
 
@@ -399,10 +405,10 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                 overflow: hidden;
             }
         }
-		.negative-balance {
-    color: red;
-    font-weight: bold;
-}
+        .negative-balance {
+            color: red;
+            font-weight: bold;
+        }
     </style>
 </head>
 
@@ -424,7 +430,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                id="END_DATE"
                name="END_DATE"
                class="filter-date"
-               value="<?php echo h($end_input); ?>">
+               value="<?php echo h($end_input); ?>" readonly title="End date otomatis di akhir bulan" style="background:#e9ecef; cursor:not-allowed;">
 
         Customer:
         <div class="autocomplete-wrap">
@@ -572,7 +578,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
         </td>
     <?php } ?>
 </tr>
-					   
+                    
                     </tbody>
                 </table>
 
@@ -810,6 +816,22 @@ document.getElementById("CUST_CODE").onblur = function () {
         hideSuggest();
     }, 250);
 };
+
+// Tambahan agar jika START_DATE diubah via UI, END_DATE otomatis ganti ke akhir bulan
+document.getElementById("START_DATE").addEventListener("change", function() {
+    var startDate = this.value;
+    if (startDate) {
+        var dateObj = new Date(startDate);
+        // Set ke hari ke-0 di bulan depan (sama dengan hari terakhir bulan ini)
+        var lastDay = new Date(dateObj.getFullYear(), dateObj.getMonth() + 1, 0);
+        
+        var y = lastDay.getFullYear();
+        var m = String(lastDay.getMonth() + 1).padStart(2, '0');
+        var d = String(lastDay.getDate()).padStart(2, '0');
+        
+        document.getElementById("END_DATE").value = y + '-' + m + '-' + d;
+    }
+});
 </script>
 
 </body>

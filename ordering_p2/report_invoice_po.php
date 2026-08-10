@@ -61,9 +61,21 @@ if ($stmt === false) {
 }
 
 $rows = array();
+$seen = array(); // Array untuk melacak data yang sudah dimasukkan
 
 while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-    $rows[] = $row;
+    // Membuat kunci unik (hash) dari Part No, Part Code, dan Qty 
+    // agar baris duplikat bisa disaring dan dibuang
+    $partNo = isset($row["PART_NO"]) ? trim((string)$row["PART_NO"]) : "";
+    $partCode = isset($row["PART_CODE"]) ? trim((string)$row["PART_CODE"]) : "";
+    $qty = isset($row["QTY"]) ? (string)$row["QTY"] : "";
+    
+    $hash = md5($partNo . "-" . $partCode . "-" . $qty);
+
+    if (!isset($seen[$hash])) {
+        $rows[] = $row;
+        $seen[$hash] = true;
+    }
 }
 
 if (count($rows) == 0) {
@@ -100,9 +112,9 @@ for ($i = 0; $i < count($rows); $i++) {
 
     $price = 0;
 
-    if (isset($rows[$i]["PART_PRICE"]) && (float)$rows[$i]["PART_PRICE"] != 0) {
+    if (isset($rows[$i]["PART_PRICE"]) && $rows[$i]["PART_PRICE"] !== null) {
         $price = (float)$rows[$i]["PART_PRICE"];
-    } elseif (isset($rows[$i]["ORDP_PRICE"])) {
+    } elseif (isset($rows[$i]["ORDP_PRICE"]) && $rows[$i]["ORDP_PRICE"] !== null) {
         $price = (float)$rows[$i]["ORDP_PRICE"];
     }
 
@@ -519,9 +531,9 @@ for ($i = 0; $i < count($rows); $i++) {
 
                 $price = 0;
 
-                if (isset($r["PART_PRICE"]) && (float)$r["PART_PRICE"] != 0) {
+                if (isset($r["PART_PRICE"]) && $r["PART_PRICE"] !== null) {
                     $price = (float)$r["PART_PRICE"];
-                } elseif (isset($r["ORDP_PRICE"])) {
+                } elseif (isset($r["ORDP_PRICE"]) && $r["ORDP_PRICE"] !== null) {
                     $price = (float)$r["ORDP_PRICE"];
                 }
 

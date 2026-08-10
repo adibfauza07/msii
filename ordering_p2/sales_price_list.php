@@ -51,11 +51,18 @@ function fmt_date($value) {
     return date("d-M-Y", $ts);
 }
 
-function fmt_price($value) {
+// UPDATE: Fungsi fmt_price menambahkan pemisah ribuan untuk IDR
+function fmt_price($value, $currency = "") {
     if ($value === null || $value === "") {
         $value = 0;
     }
 
+    // Jika mata uang IDR, format tanpa desimal (0) dan pakai koma (,) sebagai pemisah ribuan.
+    if (strtoupper(trim($currency)) === "IDR") {
+        return number_format((float)$value, 0, ".", ",");
+    }
+
+    // Untuk mata uang lain, tetap 4 desimal, tanpa pemisah ribuan (sesuai kode asli Anda)
     return number_format((float)$value, 4, ".", "");
 }
 
@@ -164,6 +171,7 @@ if ($is_filter) {
             PART.PART_NUM AS PARTNUM,
             PART.PART_CODE AS ITEM_CODE,
             PART.PRICE_CODE AS PRICE_CODE,
+            PART.CURR_CODE AS CURR_CODE,
             PART.PART_NO AS ITEM_NO,
             PART.PART_NAME AS ITEM_NAME,
             CUST.CUST_CODE AS CUST_CODE,
@@ -205,6 +213,7 @@ if ($is_filter) {
             "PARTNUM"    => safe_trim($r["PARTNUM"]),
             "ITEM_CODE"  => safe_trim($r["ITEM_CODE"]),
             "PRICE_CODE" => safe_trim($r["PRICE_CODE"]),
+            "CURR_CODE"  => safe_trim($r["CURR_CODE"]),
             "ITEM_NO"    => safe_trim($r["ITEM_NO"]),
             "ITEM_NAME"  => safe_trim($r["ITEM_NAME"]),
             "CUST_CODE"  => safe_trim($r["CUST_CODE"]),
@@ -244,6 +253,7 @@ if ($is_filter) {
             "SHOW_ITEM"  => $showItem ? 1 : 0,
             "ITEM_CODE"  => $r["ITEM_CODE"],
             "PRICE_CODE" => $r["PRICE_CODE"],
+            "CURR_CODE"  => $r["CURR_CODE"],
             "ITEM_NO"    => $r["ITEM_NO"],
             "ITEM_NAME"  => $r["ITEM_NAME"],
             "PRDT_PRICE" => $r["PRDT_PRICE"],
@@ -782,7 +792,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                             </td>
 
                             <td class="col-price num">
-                                <?php echo h(fmt_price($r["PRDT_PRICE"])); ?>
+                                <?php echo h(fmt_price($r["PRDT_PRICE"], $r["CURR_CODE"])); ?>
                             </td>
 
                             <td class="col-start">
