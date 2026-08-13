@@ -196,11 +196,11 @@ function buildConsumptXml($rows) {
         $unik = isset($rl['uniqueid']) ? trim((string)$rl['uniqueid']) : '';
         $vchNo = isset($rl['vch_no']) ? trim((string)$rl['vch_no']) : '';
         
-        // PERBAIKAN: Hitung H-1 Akhir Bulan berdasarkan tanggal transaksi (tanggal asli dari DB)
+        // Hitung H-1 Akhir Bulan berdasarkan tanggal transaksi (tanggal asli dari DB)
         $origDate = isset($rl['date']) ? normalizeSqlDate($rl['date']) : date('Y-m-d');
         $dObj = new DateTime($origDate);
         $dObj->modify('last day of this month')->modify('-1 day');
-        $forcedRawDate = $dObj->format('Y-m-d'); // Tanggal sudah diubah jadi H-1 bulan tsb
+        $forcedRawDate = $dObj->format('Y-m-d'); 
         
         $dateTally = date('Ymd', strtotime($forcedRawDate)); 
         
@@ -216,9 +216,9 @@ function buildConsumptXml($rows) {
         
         $guid = 'udi-IMCconsumpt-' . $unik . '-' . $vchNo;
 
-        // XML MENGGUNAKAN STRUKTUR PROD TETAPI TANPA TAG BATCH (KARENA RAW MATERIAL BUKAN BATCH)
+        // XML MENGGUNAKAN ACTION="Alter" UNTUK MEMPERBARUI DATA YANG SUDAH ADA DI TALLY
         $vouchersXml .= '
-          <VOUCHER REMOTEID="'.x($guid).'" VCHTYPE="Consumption Material" ACTION="Create">
+          <VOUCHER REMOTEID="'.x($guid).'" VCHTYPE="Consumption Material" ACTION="Alter">
             <GUID>'.x($guid).'</GUID>
             <DATE>'.x($dateTally).'</DATE>
             <EFFECTIVEDATE>'.x($dateTally).'</EFFECTIVEDATE>
@@ -272,7 +272,6 @@ $tally_port = isset($defaultSrv['TallyPort']) ? $defaultSrv['TallyPort'] : '9002
 
 $action = isset($_POST['action']) ? $_POST['action'] : '';
 
-// Mengembalikan filter tanggal form ke default agar tidak membingungkan user
 $fromDate = isset($_POST['from_date']) ? $_POST['from_date'] : date('Y-m-01');
 $toDate = isset($_POST['to_date']) ? $_POST['to_date'] : date('Y-m-d');
 
@@ -291,7 +290,7 @@ if ($action == 'test') {
 } elseif ($action == 'preview') {
     $stmt = qx("EXECUTE sp_GenerateTallyConsumtion ?, ?", array($fromDate, $toDate));
     $resultRows = fetchAllRows($stmt);
-    // NORMALISASI ITEM (Potong 8 Karakter seperti Prod)
+    // NORMALISASI ITEM
     $resultRows = normalizeItemRows8($resultRows);
     $message = 'Preview data Consumption selesai. ITEM ditampilkan 8 karakter (ITEM_CODE). Total: ' . count($resultRows);
 } elseif ($action == 'import_table') {
@@ -308,11 +307,11 @@ if ($action == 'test') {
         $unik = isset($rl['uniqueid']) ? trim($rl['uniqueid']) : '';
         $vchNo = isset($rl['vch_no']) ? trim($rl['vch_no']) : '';
         
-        // PERBAIKAN: Ubah tanggal transaksi menjadi H-1 di akhir bulan sesuai bulan transaksi tersebut
+        // Ubah tanggal transaksi menjadi H-1 di akhir bulan sesuai bulan transaksi tersebut
         $origDate = isset($rl['date']) ? normalizeSqlDate($rl['date']) : date('Y-m-d');
         $dObj = new DateTime($origDate);
         $dObj->modify('last day of this month')->modify('-1 day');
-        $date = $dObj->format('Y-m-d'); // Tanggal sudah jadi H-1 (misal 30 Januari 2026)
+        $date = $dObj->format('Y-m-d'); 
         
         $item = isset($rl['item_material']) ? trim($rl['item_material']) : '';
         $qty = isset($rl['cons_qty']) ? (float)$rl['cons_qty'] : 0;
@@ -325,7 +324,7 @@ if ($action == 'test') {
             $unik, $vchNo, $date, $item, $qty, $rate, $amount, $narration
         ));
     }
-    $message = 'Berhasil simpan ke tabel tally_consumtion dengan format ITEM_CODE dan penyesuaian H-1 Akhir Bulan. Total: ' . count($rows) . ' baris.';
+    $message = 'Berhasil simpan ke tabel tally_consumtion. Total: ' . count($rows) . ' baris.';
     $stmt = qx("SELECT UNIQUEID, VCH_NO, [DATE], ITEM_MATERIAL, CONS_QTY, CONS_RATE, CONS_AMOUNT, NARRATION FROM dbo.tally_consumtion ORDER BY [DATE], VCH_NO", array());
     $resultRows = fetchAllRows($stmt);
 } elseif ($action == 'export') {
@@ -388,7 +387,7 @@ if ($action == 'test') {
             'error' => $failedCount > 0 ? 'Lihat tabel Detail Data Tidak Masuk di bawah.' : '',
         );
 
-        $message = 'Kirim ke Tally selesai. Berhasil masuk: ' . $successCount . ', tidak masuk: ' . $failedCount . ', total: ' . count($resultRows);
+        $message = 'Kirim UPDATE (Alter) ke Tally selesai. Berhasil diupdate: ' . $successCount . ', Gagal diupdate: ' . $failedCount . ', total: ' . count($resultRows);
     }
 } else {
     $stmt = qx("EXECUTE sp_GenerateTallyConsumtion ?, ?", array($fromDate, $toDate));
@@ -401,7 +400,7 @@ if ($action == 'test') {
 
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h3 class="fw-bold text-dark mb-0">EXPORT CONSUMPTION MATERIAL TO TALLY <?php echo h($current_plant_label); ?></h3>
+        <h3 class="fw-bold text-dark mb-0">UPDATE (ALTER) CONSUMPTION MATERIAL TALLY <?php echo h($current_plant_label); ?></h3>
         <a href="<?php echo h($back_import_url); ?>" class="btn btn-secondary btn-sm"><i class="bi bi-arrow-left"></i> Kembali</a>
     </div>
 
@@ -409,17 +408,17 @@ if ($action == 'test') {
         <div class="alert alert-info"><?php echo h($message); ?></div>
     <?php } ?>
 
-    <div class="alert alert-warning py-2">
-        <strong>Pembaruan Sistem:</strong> Script ini sudah disamakan 100% dengan struktur <b>import_prod_tally.php</b>. Kode ITEM otomatis dipotong menjadi 8 karakter. Seluruh data transaksi otomatis di-set ke tanggal H-1 Akhir Bulan.
+    <div class="alert alert-danger py-2">
+        <strong>PENTING:</strong> Script ini saat ini diatur untuk <b>ALTER (UPDATE)</b> data yang sudah ada di Tally berdasarkan VCH_NO dan UNIQUEID. Tanggal akan otomatis di-set ke H-1 Akhir Bulan.
     </div>
 
     <div id="exportProgressBox" class="card shadow-sm mb-3" style="display:none;">
-        <div class="card-header fw-bold">Progress Import Consumption</div>
+        <div class="card-header fw-bold">Progress Update Consumption</div>
         <div class="card-body">
             <div class="progress" style="height:26px;">
                 <div id="exportProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:5%">Preparing...</div>
             </div>
-            <div id="exportProgressText" class="mt-2 text-muted">Mohon tunggu, sedang memproses data...</div>
+            <div id="exportProgressText" class="mt-2 text-muted">Mohon tunggu, sedang memproses update data...</div>
         </div>
     </div>
 
@@ -481,7 +480,7 @@ if ($action == 'test') {
                     <div class="col-md-8 d-flex align-items-end gap-2">
                         <button type="button" class="btn btn-success" onclick="setAction('preview')">Preview Data</button>
                         <button type="button" class="btn btn-info" onclick="setAction('import_table')">Import ke Tally_Consumpt</button>
-                        <button type="button" class="btn btn-danger" onclick="confirmExport()">Send to Tally</button>
+                        <button type="button" class="btn btn-danger" onclick="confirmExport()">Update ke Tally (Alter)</button>
                     </div>
                 </div>
             </div>
@@ -505,18 +504,18 @@ if ($action == 'test') {
                 bar.className = 'progress-bar bg-<?php echo h($summaryColor); ?>';
                 bar.style.width = '100%';
                 bar.innerHTML = '100% Selesai';
-                if (txt) txt.innerHTML = 'Import selesai. Status: <?php echo h($summary['status']); ?>.';
+                if (txt) txt.innerHTML = 'Update selesai. Status: <?php echo h($summary['status']); ?>.';
             }
         });
         </script>
 
         <div class="card shadow-sm mb-3">
-            <div class="card-header fw-bold">Summary Import Consumption</div>
+            <div class="card-header fw-bold">Summary Update Consumption</div>
             <div class="card-body">
                 <table class="table table-bordered table-sm w-auto">
                     <tr><th>Total Voucher</th><td><?php echo h($summary['total']); ?></td></tr>
-                    <tr><th>Berhasil Masuk</th><td><span class="badge bg-success"><?php echo h($summary['success']); ?></span></td></tr>
-                    <tr><th>Tidak Masuk</th><td><span class="badge bg-<?php echo $summary['failed'] > 0 ? 'danger' : 'secondary'; ?>"><?php echo h($summary['failed']); ?></span></td></tr>
+                    <tr><th>Berhasil Diupdate</th><td><span class="badge bg-success"><?php echo h($summary['success']); ?></span></td></tr>
+                    <tr><th>Gagal Diupdate</th><td><span class="badge bg-<?php echo $summary['failed'] > 0 ? 'danger' : 'secondary'; ?>"><?php echo h($summary['failed']); ?></span></td></tr>
                     <tr><th>Status</th><td><span class="badge bg-<?php echo h($summaryColor); ?>"><?php echo h($summary['status']); ?></span></td></tr>
                     <?php if ($summary['failed'] > 0) { ?>
                         <tr><th>Folder Debug</th><td><?php echo h(str_replace(__DIR__, '', $summary['debug'])); ?></td></tr>
@@ -525,12 +524,12 @@ if ($action == 'test') {
 
                 <?php if ($summary['failed'] > 0) { ?>
                     <div class="alert alert-warning mt-3 mb-0">
-                        <strong><?php echo h($summary['failed']); ?> voucher tidak masuk.</strong>
+                        <strong><?php echo h($summary['failed']); ?> voucher gagal diupdate.</strong>
                         Detail VCH No., UNIQUEID, ITEM_CODE, dan pesan Tally ditampilkan di bawah.
                     </div>
                 <?php } else { ?>
                     <div class="alert alert-success mt-3 mb-0">
-                        <strong>Semua voucher berhasil masuk ke Tally.</strong>
+                        <strong>Semua voucher berhasil diupdate di Tally.</strong>
                     </div>
                 <?php } ?>
             </div>
@@ -538,7 +537,7 @@ if ($action == 'test') {
 
         <?php if (!empty($failedRows)) { ?>
             <div class="card shadow-sm mb-3 border-danger">
-                <div class="card-header fw-bold text-danger">Detail Data Tidak Masuk ke Tally</div>
+                <div class="card-header fw-bold text-danger">Detail Data Gagal Diupdate ke Tally</div>
                 <div class="card-body">
                     <div class="table-responsive" style="max-height:500px;">
                         <table class="table table-bordered table-striped table-sm align-middle">
@@ -605,7 +604,6 @@ if ($action == 'test') {
                             <td><b><?php echo h(isset($rl['vch_no']) ? $rl['vch_no'] : ''); ?></b></td>
                             <td>
                                 <?php 
-                                // Tampilkan juga di UI agar preview mencerminkan tanggal H-1 yang benar
                                 $origUI = isset($rl['date']) ? normalizeSqlDate($rl['date']) : '';
                                 if($origUI !== '') {
                                     $dObjUI = new DateTime($origUI);
@@ -651,11 +649,11 @@ function showExportProgress() {
     if (box) box.style.display = 'block';
     var pct = 5;
     if (bar) {
-        bar.className = 'progress-bar progress-bar-striped progress-bar-animated';
+        bar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-warning';
         bar.style.width = pct + '%';
         bar.innerHTML = pct + '%';
     }
-    if (txt) txt.innerHTML = 'Mohon tunggu, sedang memproses data Consumption ke Tally Server...';
+    if (txt) txt.innerHTML = 'Mohon tunggu, sedang memproses update data Consumption ke Tally Server...';
 
     window._progressTimer = setInterval(function () {
         if (pct < 90) {
@@ -672,7 +670,7 @@ function showExportProgress() {
 }
 
 function confirmExport() {
-    if (confirm('Kirim seluruh data Consumption ke Tally sekarang? Script XML akan langsung dikirim menggunakan format ITEM_CODE dan tanggal akan disesuaikan ke H-1 Akhir Bulan.')) {
+    if (confirm('YAKIN INGIN MENGUBAH DATA DI TALLY? Proses ini akan meng-ALTER (mengedit) voucher yang sudah ada dan memperbarui tanggalnya menjadi H-1 di Akhir Bulan.')) {
         showExportProgress();
         setTimeout(function () {
             setAction('export');

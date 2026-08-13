@@ -1,61 +1,50 @@
 <?php
 /**
  * AUTO GABUNGAN BOM & HARGA MATERIAL (PLANT 1 & PLANT 2)
- * Script ini berjalan tanpa pilihan plant di UI.
- * Semua data ditarik dari P1 & P2, harga saling menutupi (Cross-Plant).
- * Jika harga tetap 0 di kedua server = SUBCON.
+ * Script ini berfungsi sebagai rincian (detail) dari P&L Dashboard.
+ * Menampilkan struktur BOM, HPP per unit, Total COGS, dan Status Margin (Loss/Profit) per Bulan.
  */
 
 if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// ============================================
-// 1. GLOBAL DATABASE CONFIGURATION (DUAL SERVER)
-// ============================================
-$databaseName = "msData";
+if (!isset($_SESSION['db_user']) || $_SESSION['db_user'] == "") {
+    die('<div style="padding:24px;color:#F85149;font-family:sans-serif;">Silakan login terlebih dahulu.</div>');
+}
 
-// Hardcode UID/PWD untuk Bypass Login (Ganti dengan session login Anda jika digunakan)
-$uid = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : "sa";
-$pwd = isset($_SESSION['db_pass']) ? $_SESSION['db_pass'] : "password_sa_anda";
+$uid = $_SESSION['db_user'];
+$pwd = isset($_SESSION['db_pass']) ? $_SESSION['db_pass'] : "";
+$databaseName = "msData";
 
 $servers = array(
     'P1' => '192.168.0.4',
     'P2' => '192.168.0.9'
 );
 
-$connectionOptions = array(
-    "Database" => $databaseName,
-    "Uid" => $uid,
-    "PWD" => $pwd,
-    "CharacterSet" => "UTF-8"
-);
+$connectionOptions = array("Database" => $databaseName, "Uid" => $uid, "PWD" => $pwd, "CharacterSet" => "UTF-8");
 
-// Buka Koneksi ke P1 dan P2
-$connP1 = sqlsrv_connect($servers['P1'], $connectionOptions);
-$connP2 = sqlsrv_connect($servers['P2'], $connectionOptions);
+$connP1 = @sqlsrv_connect($servers['P1'], $connectionOptions);
+$connP2 = @sqlsrv_connect($servers['P2'], $connectionOptions);
 
 if ($connP1 === false && $connP2 === false) {
     die("Koneksi ke semua Database Gagal (P1 dan P2 down).");
 }
 
-// ============================================
-// 2. FUNGSI HELPER QUERY
-// ============================================
 function q($conn, $sql, $params = array()) {
     if (!$conn) return false;
     $stmt = sqlsrv_query($conn, $sql, $params);
-    if ($stmt === false) {
-        // Jangan die(), biarkan false agar script tetap jalan di plant sebelahnya
-        error_log("Query Error: " . print_r(sqlsrv_errors(), true));
-        return false; 
-    }
+    if ($stmt === false) return false; 
     return $stmt;
 }
 
-// ============================================
-// 3. FUNGSI AMBIL DAFTAR PART
-// ============================================
+// SETUP BULAN DAN TAHUN
+$bulan = isset($_GET['bulan']) ? str_pad($_GET['bulan'], 2, '0', STR_PAD_LEFT) : date('m');
+$tahun = isset($_GET['tahun']) ? $_GET['tahun'] : date('Y');
+
+$tglAwalTime = "$tahun-$bulan-01 00:00:00";
+$tglAkhirTime = date("Y-m-t", strtotime("$tahun-$bulan-01")) . " 23:59:59";
+
 function getDaftarPart($connP1, $connP2) {
     $sql = "
         SELECT DISTINCT i.ITEM_ID AS PART_ID, i.ITEM_CODE AS PART_CODE, i.ITEM_NAME AS PART_NAME
@@ -67,41 +56,20 @@ function getDaftarPart($connP1, $connP2) {
     ";
     
     $parts = array();
-
-    // Tarik dari P1
     if ($connP1) {
         $stmt = q($connP1, $sql);
-        if ($stmt) {
-            while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-                $parts[$row['PART_ID']] = $row;
-            }
-        }
+        if ($stmt) { while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) { $parts[$row['PART_ID']] = $row; } }
     }
-
-    // Tarik dari P2
     if ($connP2) {
         $stmt = q($connP2, $sql);
-        if ($stmt) {
-            while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-                $parts[$row['PART_ID']] = $row;
-            }
-        }
+        if ($stmt) { while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) { $parts[$row['PART_ID']] = $row; } }
     }
-
-    // Urutkan berdasarkan PART_CODE
-    usort($parts, function($a, $b) {
-        return strcmp($a['PART_CODE'], $b['PART_CODE']);
-    });
-
+    usort($parts, function($a, $b) { return strcmp($a['PART_CODE'], $b['PART_CODE']); });
     return $parts;
 }
 
-// ============================================
-// 4. FUNGSI UTAMA: AMBIL DATA MATERIAL BOM
-// ============================================
-function getMaterialHarga($conn, $plant_source, $filter_part_id = '', $filter_itty_code = '', $filter_periode = '') {
+function getMaterialHarga($conn, $plant_source, $filter_part_id = '') {
     if (!$conn) return array();
-
     $sql = "
         ;WITH LatestPO AS
         (
@@ -124,7 +92,7 @@ function getMaterialHarga($conn, $plant_source, $filter_part_id = '', $filter_it
                      ELSE 'OK'
                 END AS PRICE_STATUS
             FROM LatestPO p
-            LEFT JOIN CURR_RAT c ON p.PO_CUR = c.CURR_CODE AND p.PRICE_DATE_RAW BETWEEN c.CURR_SDATE AND c.CURR_EDATE
+            LEFT JOIN CURR_RAT c ON p.PO_CUR = c.CURR_CODE AND p.PRICE_DATE_RAW BETWEEN c.CURR_SDATE AND ISNULL(c.CURR_EDATE, p.PRICE_DATE_RAW)
             WHERE p.rn = 1
         ),
         HppBomTree AS
@@ -218,119 +186,111 @@ function getMaterialHarga($conn, $plant_source, $filter_part_id = '', $filter_it
 
     $params = array();
     if ($filter_part_id != '') { $sql .= " AND x.PART_ID = ?"; $params[] = $filter_part_id; }
-    if ($filter_itty_code != '') { $sql .= " AND x.ITTY_CODE = ?"; $params[] = $filter_itty_code; }
-    if ($filter_periode != '') { $sql .= " AND CONVERT(VARCHAR(10), x.PRICE_DATE_RAW, 23) LIKE ?"; $params[] = $filter_periode . '%'; }
 
     $sql .= " ORDER BY x.PART_CODE, CASE x.ITTY_CODE WHEN '01' THEN 1 WHEN '02' THEN 2 WHEN '03' THEN 3 ELSE 9 END, x.MAT_CODE OPTION (MAXRECURSION 100)";
 
     $stmt = q($conn, $sql, $params);
     $data = array();
     if ($stmt) {
-        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-            $data[] = $row;
-        }
+        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) { $data[] = $row; }
     }
     return $data;
 }
 
+// =========================================================================
+// FUNGSI TARIK DATA SALES MURNI (REVENUE & QTY) PER ITEM DI BULAN TERSEBUT
+// =========================================================================
+function getSalesDataPerItem($conn, $part_id, $tglMulai, $tglSelesai) {
+    if (!$conn || $part_id == '') return null;
+    $sql = "
+        SELECT SUM(DIPA_PAR.QTY) AS QTY_SOLD,
+               SUM(DIPA_PAR.QTY * DIPA_PAR.PART_PRICE * CASE WHEN APV.CURR_CODE IN ('IDR', 'RP') OR APV.CURR_CODE IS NULL THEN 1 ELSE ISNULL(RV.CURR_VRATE, 1) END) AS TOTAL_REVENUE
+        FROM DI
+        INNER JOIN DIPA_PAR ON DI.DI_ID = DIPA_PAR.DI_ID
+        INNER JOIN PRICE ON DIPA_PAR.PRICE_ID = PRICE.PRICE_ID
+        LEFT JOIN ACTIVE_PRICE_VIEW AS APV ON PRICE.PRICE_ID = APV.PRICE_ID
+        LEFT JOIN CURR_RAT AS RV ON APV.CURR_CODE = RV.CURR_CODE AND DI.DI_DATE BETWEEN RV.CURR_SDATE AND ISNULL(RV.CURR_EDATE, DI.DI_DATE)
+        WHERE PRICE.PART_ID = ? AND DI.DI_DATE >= ? AND DI.DI_DATE <= ?
+    ";
+    $stmt = @sqlsrv_query($conn, $sql, [$part_id, $tglMulai, $tglSelesai]);
+    if ($stmt) {
+        $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC);
+        sqlsrv_free_stmt($stmt);
+        return $row;
+    }
+    return null;
+}
 
-// ============================================
-// VARIABEL FILTER GET
-// ============================================
-$filter_part_id   = isset($_GET['part_id']) ? trim($_GET['part_id']) : '';
-$filter_itty_code = isset($_GET['itty_code']) ? trim($_GET['itty_code']) : '';
-$filter_periode   = isset($_GET['periode']) ? trim($_GET['periode']) : '';
-$action           = isset($_GET['action']) ? $_GET['action'] : '';
+$filter_part_id = isset($_GET['part_id']) ? trim($_GET['part_id']) : '';
 
-// 1. Tarik Data Utama
 $daftar_part = getDaftarPart($connP1, $connP2);
-$data_P1 = getMaterialHarga($connP1, 'P1', $filter_part_id, $filter_itty_code, $filter_periode);
-$data_P2 = getMaterialHarga($connP2, 'P2', $filter_part_id, $filter_itty_code, $filter_periode);
+$data_P1 = getMaterialHarga($connP1, 'P1', $filter_part_id);
+$data_P2 = getMaterialHarga($connP2, 'P2', $filter_part_id);
 
-// 2. Map Data P1 dan P2 menggunakan KEY: PART_ID + MAT_ID
-$map_P1 = array();
-$map_P2 = array();
-
+$map_P1 = array(); $map_P2 = array();
 foreach ($data_P1 as $row) { $map_P1[$row['PART_ID'] . '_' . $row['MAT_ID']] = $row; }
 foreach ($data_P2 as $row) { $map_P2[$row['PART_ID'] . '_' . $row['MAT_ID']] = $row; }
 
-// Kumpulkan semua KEY unik dari P1 dan P2
 $all_keys = array_unique(array_merge(array_keys($map_P1), array_keys($map_P2)));
-
-// 3. Proses Merge Gabungan (Cross-Plant Logic)
 $final_data = array();
 
 foreach ($all_keys as $key) {
     $row_P1 = isset($map_P1[$key]) ? $map_P1[$key] : null;
     $row_P2 = isset($map_P2[$key]) ? $map_P2[$key] : null;
-    
     $harga_P1 = $row_P1 ? (float)$row_P1['TOTAL_HARGA'] : 0;
     $harga_P2 = $row_P2 ? (float)$row_P2['TOTAL_HARGA'] : 0;
     
     $chosen_row = null;
-
-    // Logika Pemilihan Prioritas Harga
     if ($harga_P1 > 0 && $harga_P2 > 0) {
-        // Jika dua-duanya ada harga, ambil P1 sebagai default
-        $chosen_row = $row_P1;
-        $chosen_row['STATUS_HARGA'] = 'OK';
-        
+        $chosen_row = $row_P1; $chosen_row['STATUS_HARGA'] = 'OK';
     } elseif ($harga_P1 > 0 && $harga_P2 == 0) {
-        // P1 ada, P2 kosong (Jika row_P2 tadinya ada, berarti ini Cross Plant)
         $chosen_row = $row_P1;
-        if ($row_P2) {
-            $chosen_row['STATUS_HARGA'] = 'CROSS_PLANT';
-            $chosen_row['SUMBER_HARGA'] = 'Diambil dr P1';
-        }
-        
+        if ($row_P2) { $chosen_row['STATUS_HARGA'] = 'CROSS_PLANT'; $chosen_row['SUMBER_HARGA'] = 'Diambil dr P1'; }
     } elseif ($harga_P1 == 0 && $harga_P2 > 0) {
-        // P2 ada, P1 kosong
         $chosen_row = $row_P2;
-        if ($row_P1) {
-            $chosen_row['STATUS_HARGA'] = 'CROSS_PLANT';
-            $chosen_row['SUMBER_HARGA'] = 'Diambil dr P2';
-        }
-
+        if ($row_P1) { $chosen_row['STATUS_HARGA'] = 'CROSS_PLANT'; $chosen_row['SUMBER_HARGA'] = 'Diambil dr P2'; }
     } else {
-        // Dua-duanya 0 / Tidak ada harga = SUBCON
         $chosen_row = $row_P1 ? $row_P1 : $row_P2;
-        $chosen_row['STATUS_HARGA'] = 'SUBCON';
-        $chosen_row['HARGA_PO'] = 0;
-        $chosen_row['TOTAL_HARGA'] = 0;
+        $chosen_row['STATUS_HARGA'] = 'SUBCON'; $chosen_row['HARGA_PO'] = 0; $chosen_row['TOTAL_HARGA'] = 0;
     }
-    
     $final_data[] = $chosen_row;
 }
 
-// Sorting hasil gabungan: PART_CODE -> ITTY_CODE -> MAT_CODE
 usort($final_data, function($a, $b) {
     $cmp = strcmp($a['PART_CODE'], $b['PART_CODE']);
     if ($cmp !== 0) return $cmp;
-    
     $ittyA = ($a['ITTY_CODE'] == '01') ? 1 : (($a['ITTY_CODE'] == '02') ? 2 : (($a['ITTY_CODE'] == '03') ? 3 : 9));
     $ittyB = ($b['ITTY_CODE'] == '01') ? 1 : (($b['ITTY_CODE'] == '02') ? 2 : (($b['ITTY_CODE'] == '03') ? 3 : 9));
     if ($ittyA != $ittyB) return $ittyA - $ittyB;
-    
     return strcmp($a['MAT_CODE'], $b['MAT_CODE']);
 });
 
-// PROSES AJAX
-if ($action == 'get_data') {
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode($final_data);
-    exit;
-}
-
-// ============================================
-// 4. HITUNG STATISTIK TOTAL
-// ============================================
 $total_harga_idr = 0; $jml_tanpa_harga = 0; $jml_subcon = 0; $jml_cross = 0;
-
 foreach ($final_data as $row) {
     $total_harga_idr += (float)$row['TOTAL_HARGA'];
     if ($row['STATUS_HARGA'] == 'TANPA_HARGA') $jml_tanpa_harga++;
     if ($row['STATUS_HARGA'] == 'SUBCON') $jml_subcon++;
     if ($row['STATUS_HARGA'] == 'CROSS_PLANT') $jml_cross++;
+}
+
+// -------------------------------------------------------------
+// PENGAMBILAN DATA PENJUALAN MURNI BERDASARKAN BULAN DAN PART
+// -------------------------------------------------------------
+$qty_sold = 0;
+$revenue_sold = 0;
+
+if ($filter_part_id != '') {
+    $salesP1 = getSalesDataPerItem($connP1, $filter_part_id, $tglAwalTime, $tglAkhirTime);
+    $salesP2 = getSalesDataPerItem($connP2, $filter_part_id, $tglAwalTime, $tglAkhirTime);
+    
+    if ($salesP1) {
+        $qty_sold += (float)$salesP1['QTY_SOLD'];
+        $revenue_sold += (float)$salesP1['TOTAL_REVENUE'];
+    }
+    if ($salesP2) {
+        $qty_sold += (float)$salesP2['QTY_SOLD'];
+        $revenue_sold += (float)$salesP2['TOTAL_REVENUE'];
+    }
 }
 
 ?>
@@ -339,52 +299,63 @@ foreach ($final_data as $row) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gabungan Harga Material BOM</title>
+    <title>Rincian BOM & Margin Material</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f2f5; color: #333; padding: 20px; }
-        .container { max-width: 1600px; margin: 0 auto; }
-        .header { background: linear-gradient(135deg, #1a237e, #283593); color: white; padding: 20px; border-radius: 10px 10px 0 0; }
-        .filter-box { background: white; padding: 20px; border: 1px solid #e0e0e0; border-bottom:none;}
+        body { font-family: 'DM Sans', sans-serif; background: #f0f2f5; color: #333; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; }
+        .header { background: #2563EB; color: white; padding: 20px; border-radius: 10px 10px 0 0; }
+        .filter-box { background: white; padding: 20px; border: 1px solid #e0e0e0; border-bottom:none; border-radius: 0 0 10px 10px; margin-bottom: 20px;}
         .filter-row { display: flex; gap: 15px; align-items: flex-end; }
         .filter-group { display: flex; flex-direction: column; }
-        .filter-group select { padding: 8px; border: 2px solid #e0e0e0; border-radius: 6px; font-size: 13px; min-width:300px;}
+        .filter-group select, .filter-group input { padding: 8px; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 13px; }
+        .filter-group select { min-width:300px; }
         .btn { padding: 9px 20px; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; color: white; font-weight:bold; text-decoration:none;}
-        .btn-primary { background: #1a237e; } .btn-warning { background: #f57c00; }
+        .btn-primary { background: #2563EB; } .btn-warning { background: #F59E0B; }
         
         .stats-box { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 15px 0; }
-        .stat-card { background: white; padding: 15px; border-radius: 8px; border-left: 4px solid #1a237e; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
-        .stat-label { font-size: 11px; color: #888; font-weight: 600; }
-        .stat-value { font-size: 18px; font-weight: 700; margin-top: 3px; }
+        .stat-card { background: white; padding: 15px; border-radius: 8px; border-left: 4px solid #2563EB; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+        .stat-label { font-size: 11px; color: #6B7280; font-weight: 700; text-transform: uppercase;}
+        .stat-value { font-size: 18px; font-weight: 700; margin-top: 3px; color: #1F2937;}
         
-        table { width: 100%; border-collapse: collapse; font-size: 12px; background: white; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        thead { background: #37474f; color: white; } th, td { padding: 9px; border-bottom: 1px solid #eee; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border-radius:8px; overflow:hidden;}
+        thead { background: #F3F4F6; color: #4B5563; } th, td { padding: 10px; border-bottom: 1px solid #E5E7EB; }
         .text-right { text-align: right; } .text-center { text-align: center; }
         
-        .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; }
-        .badge-01 { background: #fff3e0; color: #e65100; } .badge-02 { background: #e3f2fd; color: #1565c0; } .badge-03 { background: #e8f5e9; color: #2e7d32; }
-        .badge-error { background: #ffebee; color: #c62828; } .badge-success { background: #e8f5e9; color: #2e7d32; }
-        .badge-subcon { background: #e0f7fa; color: #00838f; border: 1px solid #00acc1; }
-        .badge-cross { background: #e8eaf6; color: #283593; border: 1px solid #3f51b5; cursor:help;}
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: bold; }
+        .badge-01 { background: #FEF3C7; color: #B45309; } .badge-02 { background: #DBEAFE; color: #1D4ED8; } .badge-03 { background: #D1FAE5; color: #15803D; }
+        .badge-error { background: #FEE2E2; color: #B91C1C; } .badge-success { background: #D1FAE5; color: #15803D; }
+        .badge-subcon { background: #E0F2FE; color: #0369A1; border: 1px solid #38BDF8; }
+        .badge-cross { background: #EDE9FE; color: #0369A1; border: 1px solid #7DD3FC; cursor:help;}
         
-        .part-header { background: #e8eaf6 !important; font-weight: bold; color: #1a237e; }
-        .subtotal-row { background: #f5f5f5 !important; font-weight: bold; }
-        .grand-total { background: #1a237e !important; color: white !important; font-weight: bold; font-size:14px;}
-        .plant-label { font-size: 10px; color:#666; font-weight:normal; display:block; margin-top:3px;}
+        .part-header { background: #EFF6FF !important; font-weight: bold; color: #1E40AF; }
+        .subtotal-row { background: #F9FAFB !important; font-weight: bold; color: #374151;}
+        .grand-total { background: #2563EB !important; color: white !important; font-weight: bold; font-size:14px;}
+        .qty-row { background: #FEF3C7 !important; color: #92400E !important; font-weight: bold; font-size:14px;}
+        .plant-label { font-size: 10px; color:#6B7280; font-weight:normal; display:block; margin-top:3px;}
     </style>
 </head>
 <body>
 <div class="container">
     <div class="header">
-        <h1>📦 List Harga BOM (Gabungan Plant 1 & Plant 2)</h1>
-        <p style="opacity:0.8; font-size:13px; margin-top:5px;">Sistem otomatis mencari harga secara Cross-Plant jika nominal = 0</p>
+        <h2 style="margin:0; font-size:20px;">📦 Rincian HPP BOM & Analisis Margin Material</h2>
+        <p style="opacity:0.8; font-size:13px; margin-top:5px; margin-bottom:0;">Membongkar struktur bahan baku (BOM) dan membandingkan Harga Modal (HPP) dengan Harga Penjualan murni di bulan terkait.</p>
     </div>
 
     <div class="filter-box">
         <form method="GET">
             <div class="filter-row">
                 <div class="filter-group">
-                    <label style="font-size:11px; font-weight:bold; margin-bottom:5px;">Pilih Part Aktif</label>
+                    <label style="font-size:11px; font-weight:bold; margin-bottom:5px;">Bulan</label>
+                    <input type="number" name="bulan" min="1" max="12" value="<?php echo (int)$bulan; ?>" style="width:70px;">
+                </div>
+                <div class="filter-group">
+                    <label style="font-size:11px; font-weight:bold; margin-bottom:5px;">Tahun</label>
+                    <input type="number" name="tahun" value="<?php echo $tahun; ?>" style="width:90px;">
+                </div>
+                <div class="filter-group">
+                    <label style="font-size:11px; font-weight:bold; margin-bottom:5px;">Pilih Item Barang Jadi (FG)</label>
                     <select name="part_id">
                         <option value="">-- Semua Part --</option>
                         <?php foreach ($daftar_part as $part): ?>
@@ -394,19 +365,21 @@ foreach ($final_data as $row) {
                         <?php endforeach; ?>
                     </select>
                 </div>
+                
                 <div class="filter-group" style="flex-direction:row; gap:5px;">
-                    <button type="submit" class="btn btn-primary">🔍 Cari</button>
-                    <a href="?" class="btn btn-warning">✖ Reset</a>
+                    <button type="submit" class="btn btn-primary">Cari Detail</button>
+                    <a href="laporan_laba_rugi.php" class="btn btn-warning" style="background:#4B5563;">Kembali ke Dashboard</a>
                 </div>
             </div>
         </form>
     </div>
 
+    <?php if ($filter_part_id != ''): ?>
     <div class="stats-box">
-        <div class="stat-card"><div class="stat-label">Total Material BOM</div><div class="stat-value"><?php echo count($final_data); ?></div></div>
-        <div class="stat-card"><div class="stat-label">Grand Total (IDR)</div><div class="stat-value"><?php echo number_format($total_harga_idr, 2); ?></div></div>
-        <div class="stat-card" style="border-left-color:#3f51b5;"><div class="stat-label">Harga Cross-Plant 🔄</div><div class="stat-value"><?php echo $jml_cross; ?></div></div>
-        <div class="stat-card" style="border-left-color:#00838f;"><div class="stat-label">Produksi SUBCON 🔧</div><div class="stat-value"><?php echo $jml_subcon; ?></div></div>
+        <div class="stat-card"><div class="stat-label">Total Material BOM</div><div class="stat-value"><?php echo count($final_data); ?> Item</div></div>
+        <div class="stat-card"><div class="stat-label">HPP / Unit (IDR)</div><div class="stat-value">Rp <?php echo number_format($total_harga_idr, 2, ',', '.'); ?></div></div>
+        <div class="stat-card" style="border-left-color:#3B82F6;"><div class="stat-label">Harga Bantuan Cross-Plant</div><div class="stat-value"><?php echo $jml_cross; ?> Material</div></div>
+        <div class="stat-card" style="border-left-color:#0284C7;"><div class="stat-label">Indikasi Maklon (Subcon)</div><div class="stat-value"><?php echo $jml_subcon; ?> Material</div></div>
     </div>
 
     <table>
@@ -419,7 +392,7 @@ foreach ($final_data as $row) {
                 <th class="text-center">ITTY</th>
                 <th class="text-right">BOM QTY</th>
                 <th class="text-right">Harga Dasar</th>
-                <th class="text-right">Total Harga</th>
+                <th class="text-right">Total Harga Modal</th>
                 <th class="text-center">Status</th>
             </tr>
         </thead>
@@ -435,7 +408,7 @@ foreach ($final_data as $row) {
             ?>
                             <tr class="subtotal-row">
                                 <td colspan="7" class="text-right">Subtotal <?php echo $current_part; ?></td>
-                                <td class="text-right"><?php echo number_format($subtotal_part, 2); ?></td>
+                                <td class="text-right">Rp <?php echo number_format($subtotal_part, 2, ',', '.'); ?></td>
                                 <td></td>
                             </tr>
             <?php
@@ -458,42 +431,102 @@ foreach ($final_data as $row) {
                         </td>
                         <td><?php echo $row['MAT_NAME']; ?></td>
                         <td class="text-center"><span class="badge badge-<?php echo $row['ITTY_CODE']; ?>"><?php echo $row['ITTY_CODE']; ?></span></td>
-                        <td class="text-right"><?php echo number_format((float)$row['BOM_QTY'], 4); ?></td>
-                        <td class="text-right"><?php echo number_format((float)$row['HARGA_PO'], 2); ?></td>
-                        <td class="text-right" style="color:#1a237e; font-weight:bold;"><?php echo number_format((float)$row['TOTAL_HARGA'], 2); ?></td>
+                        <td class="text-right"><?php echo number_format((float)$row['BOM_QTY'], 4, ',', '.'); ?></td>
+                        <td class="text-right">Rp <?php echo number_format((float)$row['HARGA_PO'], 2, ',', '.'); ?></td>
+                        <td class="text-right" style="color:#1E40AF; font-weight:bold;">Rp <?php echo number_format((float)$row['TOTAL_HARGA'], 2, ',', '.'); ?></td>
                         <td class="text-center">
                             <?php if ($row['STATUS_HARGA'] == 'CROSS_PLANT'): ?>
-                                <span class="badge badge-cross" title="<?php echo $row['SUMBER_HARGA']; ?>">🔄 Cross</span>
+                                <span class="badge badge-cross" title="<?php echo $row['SUMBER_HARGA']; ?>">Cross Plant</span>
                             <?php elseif ($row['STATUS_HARGA'] == 'SUBCON'): ?>
-                                <span class="badge badge-subcon">🔧 Subcon</span>
+                                <span class="badge badge-subcon">Subcon</span>
                             <?php elseif ($row['STATUS_HARGA'] == 'TANPA_HARGA'): ?>
-                                <span class="badge badge-error">⚠ Error</span>
+                                <span class="badge badge-error">Error</span>
                             <?php else: ?>
-                                <span class="badge badge-success">✓ OK</span>
+                                <span class="badge badge-success">OK</span>
                             <?php endif; ?>
                         </td>
                     </tr>
             <?php endforeach; ?>
                 <tr class="subtotal-row">
                     <td colspan="7" class="text-right">Subtotal <?php echo $current_part; ?></td>
-                    <td class="text-right"><?php echo number_format($subtotal_part, 2); ?></td>
+                    <td class="text-right">Rp <?php echo number_format($subtotal_part, 2, ',', '.'); ?></td>
                     <td></td>
                 </tr>
+                
                 <tr class="grand-total">
-                    <td colspan="7" class="text-right">GRAND TOTAL (IDR)</td>
-                    <td class="text-right"><?php echo number_format($total_harga_idr, 2); ?></td>
+                    <td colspan="7" class="text-right">HPP (MODAL) / UNIT</td>
+                    <td class="text-right">Rp <?php echo number_format($total_harga_idr, 2, ',', '.'); ?></td>
                     <td></td>
                 </tr>
+                
+                <!-- BLOK PENANDAAN LOSS / PROFIT (MURNI BERDASARKAN BULAN YANG DIPILIH) -->
+                <?php if ($qty_sold > 0): ?>
+                    <?php 
+                        $harga_jual_satuan = $revenue_sold / $qty_sold;
+                        $margin_per_unit = $harga_jual_satuan - $total_harga_idr;
+                        $is_loss_unit = ($margin_per_unit < 0);
+                        
+                        $total_cogs = $total_harga_idr * $qty_sold;
+                        $gross_profit = $revenue_sold - $total_cogs;
+                        $is_loss_total = ($gross_profit < 0);
+                    ?>
+                    
+                    <tr><td colspan="9" style="background:#F3F4F6; height:5px; padding:0;"></td></tr>
+                    
+                    <tr style="background:#EFF6FF; font-weight:bold; font-size:14px; color:#1E40AF;">
+                        <td colspan="7" class="text-right">HARGA JUAL (SALES) / UNIT</td>
+                        <td class="text-right">Rp <?php echo number_format($harga_jual_satuan, 2, ',', '.'); ?></td>
+                        <td></td>
+                    </tr>
+                    <tr style="background:<?php echo $is_loss_unit ? '#FEE2E2' : '#D1FAE5'; ?>; color:<?php echo $is_loss_unit ? '#DC2626' : '#065F46'; ?>; font-weight:bold; font-size:14px;">
+                        <td colspan="7" class="text-right">MARGIN PER UNIT (SALES - HPP)</td>
+                        <td class="text-right">
+                            <?php echo $is_loss_unit ? '📉 RUGI' : '📈 UNTUNG'; ?>
+                            Rp <?php echo number_format(abs($margin_per_unit), 2, ',', '.'); ?>
+                        </td>
+                        <td></td>
+                    </tr>
+
+                    <tr><td colspan="9" style="background:#F3F4F6; height:15px; padding:0;"></td></tr>
+
+                    <tr class="qty-row">
+                        <td colspan="7" class="text-right">TOTAL QTY TERJUAL (BULAN <?php echo $bulan."/".$tahun; ?>)</td>
+                        <td class="text-right">x <?php echo number_format($qty_sold, 0, ',', '.'); ?> Unit</td>
+                        <td></td>
+                    </tr>
+                    <tr style="background:<?php echo $is_loss_total ? '#FEE2E2' : '#DBEAFE'; ?>; color:<?php echo $is_loss_total ? '#DC2626' : '#1D4ED8'; ?>; font-weight:bold; font-size:16px;">
+                        <td colspan="7" class="text-right">TOTAL STATUS MARGIN KESELURUHAN</td>
+                        <td class="text-right">
+                            <?php echo $is_loss_total ? '📉 TOTAL RUGI' : '📈 TOTAL UNTUNG'; ?>
+                            Rp <?php echo number_format(abs($gross_profit), 2, ',', '.'); ?>
+                        </td>
+                        <td></td>
+                    </tr>
+                <?php else: ?>
+                    <tr><td colspan="9" style="background:#FEF3C7; height:5px; padding:0;"></td></tr>
+                    <tr style="background:#FFFBEB; font-weight:bold; color:#B45309;">
+                        <td colspan="9" class="text-center" style="padding:15px;">
+                            Tidak ada data penjualan (Sales) untuk item ini pada bulan <?php echo $bulan."/".$tahun; ?>. <br>
+                            <span style="font-weight:normal; font-size:11px;">Silakan ganti periode bulan/tahun di atas jika ingin melihat riwayat penjualan lainnya.</span>
+                        </td>
+                    </tr>
+                <?php endif; ?>
+
             <?php else: ?>
-                <tr><td colspan="9" class="text-center" style="padding: 30px;">Tidak ada data ditemukan</td></tr>
+                <tr><td colspan="9" class="text-center" style="padding: 30px;">Barang Jadi (FG) ini belum memiliki resep BOM (Material Kosong).</td></tr>
             <?php endif; ?>
         </tbody>
     </table>
+    <?php else: ?>
+        <div style="background:white; padding:40px; text-align:center; border-radius:8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-top:20px;">
+            <h3 style="color:#6B7280; margin-bottom:10px;">Pilih Item Terlebih Dahulu</h3>
+            <p style="color:#9CA3AF; font-size:14px;">Gunakan tombol di laporan P&L Dashboard, atau pilih Part dari menu dropdown di atas untuk melihat rincian BOM dan Margin.</p>
+        </div>
+    <?php endif; ?>
 </div>
 </body>
 </html>
 <?php
-// Tutup Koneksi
 if ($connP1) sqlsrv_close($connP1);
 if ($connP2) sqlsrv_close($connP2);
 ?>

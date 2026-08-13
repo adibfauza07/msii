@@ -196,9 +196,13 @@ function buildConsumptXml($rows) {
         $unik = isset($rl['uniqueid']) ? trim((string)$rl['uniqueid']) : '';
         $vchNo = isset($rl['vch_no']) ? trim((string)$rl['vch_no']) : '';
         
-        // PERBAIKAN: Menggunakan normalizeSqlDate agar object DateTime tidak menyebabkan error Fatal
-        $rawDate = isset($rl['date']) ? normalizeSqlDate($rl['date']) : date('Y-m-d');
-        $dateTally = date('Ymd', strtotime($rawDate)); 
+        // PERBAIKAN: Hitung H-1 Akhir Bulan berdasarkan tanggal transaksi (tanggal asli dari DB)
+        $origDate = isset($rl['date']) ? normalizeSqlDate($rl['date']) : date('Y-m-d');
+        $dObj = new DateTime($origDate);
+        $dObj->modify('last day of this month')->modify('-1 day');
+        $forcedRawDate = $dObj->format('Y-m-d'); // Tanggal sudah diubah jadi H-1 bulan tsb
+        
+        $dateTally = date('Ymd', strtotime($forcedRawDate)); 
         
         $itemCode = isset($rl['item_material']) ? trim((string)$rl['item_material']) : '';
         
@@ -267,8 +271,11 @@ $tally_ip = isset($defaultSrv['TallyIP']) ? $defaultSrv['TallyIP'] : '127.0.0.1'
 $tally_port = isset($defaultSrv['TallyPort']) ? $defaultSrv['TallyPort'] : '9002';
 
 $action = isset($_POST['action']) ? $_POST['action'] : '';
+
+// Mengembalikan filter tanggal form ke default agar tidak membingungkan user
 $fromDate = isset($_POST['from_date']) ? $_POST['from_date'] : date('Y-m-01');
 $toDate = isset($_POST['to_date']) ? $_POST['to_date'] : date('Y-m-d');
+
 $message = '';
 $resultRows = array();
 $summary = null;
@@ -300,7 +307,13 @@ if ($action == 'test') {
         
         $unik = isset($rl['uniqueid']) ? trim($rl['uniqueid']) : '';
         $vchNo = isset($rl['vch_no']) ? trim($rl['vch_no']) : '';
-        $date = isset($rl['date']) ? normalizeSqlDate($rl['date']) : '';
+        
+        // PERBAIKAN: Ubah tanggal transaksi menjadi H-1 di akhir bulan sesuai bulan transaksi tersebut
+        $origDate = isset($rl['date']) ? normalizeSqlDate($rl['date']) : date('Y-m-d');
+        $dObj = new DateTime($origDate);
+        $dObj->modify('last day of this month')->modify('-1 day');
+        $date = $dObj->format('Y-m-d'); // Tanggal sudah jadi H-1 (misal 30 Januari 2026)
+        
         $item = isset($rl['item_material']) ? trim($rl['item_material']) : '';
         $qty = isset($rl['cons_qty']) ? (float)$rl['cons_qty'] : 0;
         
@@ -312,7 +325,7 @@ if ($action == 'test') {
             $unik, $vchNo, $date, $item, $qty, $rate, $amount, $narration
         ));
     }
-    $message = 'Berhasil simpan ke tabel tally_consumtion dengan format ITEM_CODE. Total: ' . count($rows) . ' baris.';
+    $message = 'Berhasil simpan ke tabel tally_consumtion dengan format ITEM_CODE dan penyesuaian H-1 Akhir Bulan. Total: ' . count($rows) . ' baris.';
     $stmt = qx("SELECT UNIQUEID, VCH_NO, [DATE], ITEM_MATERIAL, CONS_QTY, CONS_RATE, CONS_AMOUNT, NARRATION FROM dbo.tally_consumtion ORDER BY [DATE], VCH_NO", array());
     $resultRows = fetchAllRows($stmt);
 } elseif ($action == 'export') {
@@ -397,7 +410,7 @@ if ($action == 'test') {
     <?php } ?>
 
     <div class="alert alert-warning py-2">
-        <strong>Pembaruan Sistem:</strong> Script ini sudah disamakan 100% dengan struktur <b>import_prod_tally.php</b>. Kode ITEM otomatis dipotong menjadi 8 karakter.
+        <strong>Pembaruan Sistem:</strong> Script ini sudah disamakan 100% dengan struktur <b>import_prod_tally.php</b>. Kode ITEM otomatis dipotong menjadi 8 karakter. Seluruh data transaksi otomatis di-set ke tanggal H-1 Akhir Bulan.
     </div>
 
     <div id="exportProgressBox" class="card shadow-sm mb-3" style="display:none;">
@@ -590,7 +603,17 @@ if ($action == 'test') {
                         <tr>
                             <td><?php echo h(isset($rl['uniqueid']) ? $rl['uniqueid'] : ''); ?></td>
                             <td><b><?php echo h(isset($rl['vch_no']) ? $rl['vch_no'] : ''); ?></b></td>
-                            <td><?php echo h(isset($rl['date']) ? normalizeSqlDate($rl['date']) : ''); ?></td>
+                            <td>
+                                <?php 
+                                // Tampilkan juga di UI agar preview mencerminkan tanggal H-1 yang benar
+                                $origUI = isset($rl['date']) ? normalizeSqlDate($rl['date']) : '';
+                                if($origUI !== '') {
+                                    $dObjUI = new DateTime($origUI);
+                                    $dObjUI->modify('last day of this month')->modify('-1 day');
+                                    echo h($dObjUI->format('Y-m-d'));
+                                }
+                                ?>
+                            </td>
                             <td><b><?php echo h(isset($rl['item_material']) ? $rl['item_material'] : ''); ?></b></td>
                             <td class="text-end"><?php echo h(isset($rl['cons_qty']) ? $rl['cons_qty'] : ''); ?></td>
                             <td class="text-end"><?php echo h(isset($rl['cons_rate']) ? rate5($rl['cons_rate']) : '0.00000'); ?></td>
@@ -649,7 +672,7 @@ function showExportProgress() {
 }
 
 function confirmExport() {
-    if (confirm('Kirim seluruh data Consumption ke Tally sekarang? Script XML akan langsung dikirim menggunakan format ITEM_CODE.')) {
+    if (confirm('Kirim seluruh data Consumption ke Tally sekarang? Script XML akan langsung dikirim menggunakan format ITEM_CODE dan tanggal akan disesuaikan ke H-1 Akhir Bulan.')) {
         showExportProgress();
         setTimeout(function () {
             setAction('export');

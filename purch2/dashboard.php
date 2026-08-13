@@ -177,7 +177,8 @@ function h($value) {
         <a class="menu-link" href="requisition.php" target="mainFrame">PURCHASE REQUESTION</a>
         <a class="menu-link" href="quotation.php" target="mainFrame">QUOTATION</a>
         <a class="menu-link" href="po.php" target="mainFrame">PURCHASE ORDER</a>
-		 <a class="menu-link" href="label_plant2.php" target="mainFrame">RECEIVE</a>
+		 <!-- <a class="menu-link" href="label_plant2.php" target="mainFrame">RECEIVE</a> -->
+         <a class="menu-link" href="receive.php" target="mainFrame">RECEIVE</a>
         
         <div class="menu-section">Master</div>
         <a class="menu-link" href="master_supplier.php" target="mainFrame">MASTER SUPPLIER </a>

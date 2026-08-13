@@ -190,6 +190,12 @@ function h($value) {
                          </div>
 			
 			<div class="report-item">
+                <div class="report-name">MACHINE CAPICITY PLAN 3 MONTH </div>
+				 <a class="button" href="capacity_plan.php" target="_blank">OPEN</a>
+                         </div>
+			
+			
+			<div class="report-item">
                 <div class="report-name">MRP</div>
 				<a class="button" href="mrp.php" target="_blank">OPEN</a>
             </div>

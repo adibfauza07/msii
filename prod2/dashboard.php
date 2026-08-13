@@ -174,10 +174,11 @@ function h($value) {
         <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Dashboard / Report</a>
 
         <div class="menu-section">PRODUCTION Entry</div>
-        <a class="menu-link" href="requisition.php" target="mainFrame">PRODUCTION REQUESTION</a>
-        <a class="menu-link" href="quotation.php" target="mainFrame">QUOTATION</a>
-        <a class="menu-link" href="po.php" target="mainFrame">PRODUCTION ORDER</a>
-		 <a class="menu-link" href="label_plant2.php" target="mainFrame">RECEIVE</a>
+        <a class="menu-link" href="label_material_input.php" target="mainFrame">CETAK LABEL MATERIAL</a>
+        <a class="menu-link" href="input_prod.php" target="mainFrame">INPUT PRODUCTION</a>
+		 <a class="menu-link" href="input_sms.php" target="mainFrame">SMS PRODUCTION</a>
+        
+        
         
         <div class="menu-section">Master</div>
         <a class="menu-link" href="master_supplier.php" target="mainFrame">MASTER SUPPLIER </a>

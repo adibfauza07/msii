@@ -116,8 +116,11 @@ $plantLabel = isset($_SESSION['active_plant']) ? strtoupper($_SESSION['active_pl
         <i class="bi bi-graph-down-arrow me-2"></i> Aging AP
     </a>
 	
-	<a href="hpp_vs_sales.php">
-        <i class="bi bi-graph-down-arrow me-2"></i> TEST BOM
+	<a href="laporan_laba_rugi.php">
+        <i class="bi bi-graph-down-arrow me-2"></i> LAPORAN LABA RUGI
+    </a>
+	<a href="jurnal_material.php">
+        <i class="bi bi-graph-down-arrow me-2"></i> JURNAL MATERIAL
     </a>
 	
 

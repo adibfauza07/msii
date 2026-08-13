@@ -1,6 +1,11 @@
 <?php
 // C:\xampp\htdocs\msii\finance\inv_coretax.php
 
+// Pastikan fitur session berjalan untuk menyimpan data manual
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
+}
+
 $config1 = __DIR__ . '/config/database_aging.php';
 $config2 = __DIR__ . '/../config/database_aging.php';
 
@@ -20,63 +25,33 @@ function fmt($v) {
     if ($v instanceof DateTime) {
         return $v->format('Y-m-d');
     }
-
     if ($v === null) {
         return '';
     }
-
     return (string)$v;
 }
 
 function toNumberCoretax($v) {
-    if ($v instanceof DateTime) {
-        return 0;
-    }
-
-    if ($v === null || $v === '') {
-        return 0;
-    }
+    if ($v instanceof DateTime) return 0;
+    if ($v === null || $v === '') return 0;
 
     $s = trim((string)$v);
     $s = str_replace(' ', '', $s);
 
-    if (preg_match('/^0[\.,][0-9]+$/', $s)) {
-        $s = str_replace(',', '.', $s);
-        return (float)$s;
-    }
-
     if (strpos($s, ',') !== false && strpos($s, '.') !== false) {
         $lastComma = strrpos($s, ',');
         $lastDot   = strrpos($s, '.');
-
         if ($lastComma > $lastDot) {
             $s = str_replace('.', '', $s);
             $s = str_replace(',', '.', $s);
         } else {
             $s = str_replace(',', '', $s);
         }
-
-        return (float)$s;
+    } elseif (strpos($s, ',') !== false) {
+        $s = str_replace(',', '.', $s);
     }
 
-    if (strpos($s, ',') !== false) {
-        if (preg_match('/^[0-9]{1,3}(,[0-9]{3})+$/', $s)) {
-            $s = str_replace(',', '', $s);
-        } else {
-            $s = str_replace(',', '.', $s);
-        }
-
-        return (float)$s;
-    }
-
-    if (strpos($s, '.') !== false) {
-        if (preg_match('/^[0-9]{1,3}(\.[0-9]{3})+$/', $s)) {
-            $s = str_replace('.', '', $s);
-        }
-
-        return (float)$s;
-    }
-
+    $s = preg_replace('/[^\d\.\-]/', '', $s);
     return (float)$s;
 }
 
@@ -93,14 +68,14 @@ function getCoretaxRows($invNo) {
         }
     }
 
+    $idx = 0;
     while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+        $r['_RowIndex'] = $idx++;
         $rows[] = $r;
     }
 
     return array($cols, $rows);
 }
-
-
 
 function getExportCoretaxColumns() {
     return array(
@@ -121,9 +96,9 @@ function getExportCoretaxColumns() {
     );
 }
 
+// PERBAIKAN: Pembulatan ditetapkan 2 digit desimal di semua perhitungan (round, 2)
 function applyManualRateCoretax($rows, $rate) {
     $newRows = array();
-
     $rateNum = toNumberCoretax($rate);
 
     if ($rateNum <= 0) {
@@ -134,16 +109,16 @@ function applyManualRateCoretax($rows, $rate) {
         $hargaUsd = isset($r['Harga Satuan']) ? toNumberCoretax($r['Harga Satuan']) : 0;
         $qty      = isset($r['Jumlah Barang Jasa']) ? toNumberCoretax($r['Jumlah Barang Jasa']) : 0;
 
-        $priceSebelumRound = $hargaUsd * $rateNum;
-        $dppSebelumRound   = $priceSebelumRound * $qty;
-        $dppNilaiLain      = $dppSebelumRound * 11 / 12;
-        $ppnSebelumRound   = $dppNilaiLain * 0.12;
+        $hargaSatuanRp   = round($hargaUsd * $rateNum, 2);
+        $dpp             = round($hargaSatuanRp * $qty, 2);
+        $dppNilaiLain    = round($dpp * 11 / 12, 2);
+        $ppn             = round($dppNilaiLain * 0.12, 2);
 
-        $r['Harga Satuan']       = round($priceSebelumRound, 0);
-        $r['DPP']                = round($dppSebelumRound, 0);
-        $r['DPP Nilai Lain']     = round($dppNilaiLain, 0);
+        $r['Harga Satuan']       = $hargaSatuanRp;
+        $r['DPP']                = $dpp;
+        $r['DPP Nilai Lain']     = $dppNilaiLain;
         $r['Tarif PPN']          = 12;
-        $r['PPN']                = round($ppnSebelumRound, 0);
+        $r['PPN']                = $ppn;
         $r['Tarif PPnBM']        = 0;
         $r['PPnBM']              = 0;
 
@@ -155,13 +130,14 @@ function applyManualRateCoretax($rows, $rate) {
 
 function coretaxRowKey($r) {
     if (isset($r['RowKey']) && trim((string)$r['RowKey']) != '') {
-        return trim((string)$r['RowKey']);
+        return md5(trim((string)$r['RowKey']));
     }
 
     $ref = isset($r['Referensi']) ? trim((string)$r['Referensi']) : '';
     $baris = isset($r['Baris']) ? trim((string)$r['Baris']) : '';
+    $nama = isset($r['Nama Barang/Jasa']) ? trim((string)$r['Nama Barang/Jasa']) : '';
 
-    return $ref . '|' . $baris;
+    return md5($ref . '|' . $baris . '|' . $nama);
 }
 
 function getManualPriceScope($type, $a, $b, $c) {
@@ -184,18 +160,19 @@ function applyManualPriceOverrideCoretax($rows, $scope) {
         $key = coretaxRowKey($r);
 
         if (isset($manual[$key])) {
-            $hargaManual = toNumberCoretax($manual[$key]);
+            // PERBAIKAN: 2 Digit desimal
+            $hargaManual = round(toNumberCoretax($manual[$key]), 2); 
             $qty = isset($r['Jumlah Barang Jasa']) ? toNumberCoretax($r['Jumlah Barang Jasa']) : 0;
 
-            $dpp = $hargaManual * $qty;
-            $dppLain = $dpp * 11 / 12;
-            $ppn = $dppLain * 0.12;
+            $dpp = round($hargaManual * $qty, 2);
+            $dppLain = round($dpp * 11 / 12, 2);
+            $ppn = round($dppLain * 0.12, 2);
 
-            $r['Harga Satuan']   = round($hargaManual, 0);
-            $r['DPP']            = round($dpp, 0);
-            $r['DPP Nilai Lain'] = round($dppLain, 0);
+            $r['Harga Satuan']   = $hargaManual;
+            $r['DPP']            = $dpp;
+            $r['DPP Nilai Lain'] = $dppLain;
             $r['Tarif PPN']      = 12;
-            $r['PPN']            = round($ppn, 0);
+            $r['PPN']            = $ppn;
             $r['Tarif PPnBM']    = 0;
             $r['PPnBM']          = 0;
         }
@@ -210,7 +187,6 @@ function xmlGet($row, $field, $default) {
     if (isset($row[$field])) {
         return fmt($row[$field]);
     }
-
     return $default;
 }
 
@@ -218,36 +194,40 @@ function xmlDateCoretax($v) {
     if ($v instanceof DateTime) {
         return $v->format('Y-m-d');
     }
-
     $v = trim((string)$v);
-
     if (strlen($v) >= 10) {
         return substr($v, 0, 10);
     }
-
     return $v;
 }
 
+// PERBAIKAN: Cetak 2 angka di belakang koma (atau tanpa koma jika bulat murni)
 function xmlNumberCoretax($v) {
-    $n = toNumberCoretax($v);
-    return (string)round($n, 0);
+    $n = round(toNumberCoretax($v), 2);
+    
+    // Jika bulat murni, print tanpa desimal. Jika ada desimal, paksa print 2 digit.
+    if (floor($n) == $n) {
+        return number_format($n, 0, '.', '');
+    } else {
+        $str = number_format($n, 2, '.', '');
+        // Hapus trailing zero jika hanya 1 desimal (e.g., .50 jadi .5) opsional.
+        // Coretax fine dengan .xx, jadi kita kembalikan number_format 2 digit
+        return $str;
+    }
 }
 
 function xmlAddText($doc, $parent, $name, $value) {
     $el = $doc->createElement($name);
-
-    if ($value !== null && $value !== '') {
-        $el->appendChild($doc->createTextNode((string)$value));
-    }
-
+    $el->appendChild($doc->createTextNode((string)$value)); 
     $parent->appendChild($el);
-
     return $el;
 }
 
 function buildCoretaxXml($rows) {
     $doc = new DOMDocument('1.0', 'utf-8');
-    $doc->formatOutput = true;
+    
+    $doc->preserveWhiteSpace = false;
+    $doc->formatOutput = false;
 
     $root = $doc->createElement('TaxInvoiceBulk');
     $root->setAttribute('xmlns:xsd', 'http://www.w3.org/2001/XMLSchema');
@@ -265,11 +245,9 @@ function buildCoretaxXml($rows) {
 
     foreach ($rows as $r) {
         $ref = xmlGet($r, 'Referensi', '');
-
         if ($ref == '') {
             $ref = xmlGet($r, 'Nomor Dokumen Pembeli', '');
         }
-
         if ($ref == '') {
             $ref = 'NO_REF';
         }
@@ -278,7 +256,6 @@ function buildCoretaxXml($rows) {
             $groups[$ref] = array();
             $order[] = $ref;
         }
-
         $groups[$ref][] = $r;
     }
 
@@ -296,18 +273,28 @@ function buildCoretaxXml($rows) {
             $addInfo = 'TD.00501';
         }
 
+        $refDesc = xmlGet($head, 'Referensi', '');
+        $buyerDocNum = xmlGet($head, 'Nomor Dokumen Pembeli', '');
+        
+        if ($buyerDocNum == '') {
+            $buyerDocNum = $refDesc;
+        }
+        if ($buyerDocNum == '') {
+            $buyerDocNum = 'NO_REF';
+        }
+
         xmlAddText($doc, $taxInvoice, 'TaxInvoiceDate', xmlDateCoretax(isset($head['Tanggal Faktur']) ? $head['Tanggal Faktur'] : ''));
         xmlAddText($doc, $taxInvoice, 'TaxInvoiceOpt', xmlGet($head, 'Jenis Faktur', 'Normal'));
         xmlAddText($doc, $taxInvoice, 'TrxCode', $trxCode);
         xmlAddText($doc, $taxInvoice, 'AddInfo', $addInfo);
         xmlAddText($doc, $taxInvoice, 'CustomDoc', xmlGet($head, 'Dokumen Pendukung', '0'));
-        xmlAddText($doc, $taxInvoice, 'RefDesc', xmlGet($head, 'Referensi', ''));
+        xmlAddText($doc, $taxInvoice, 'RefDesc', $refDesc);
         xmlAddText($doc, $taxInvoice, 'FacilityStamp', xmlGet($head, 'Cap Fasilitas', ''));
         xmlAddText($doc, $taxInvoice, 'SellerIDTKU', xmlGet($head, 'ID TKU Penjual', '0010714269052000000000'));
         xmlAddText($doc, $taxInvoice, 'BuyerTin', xmlGet($head, 'NPWP/NIK Pembeli', '0000000000000000'));
         xmlAddText($doc, $taxInvoice, 'BuyerDocument', xmlGet($head, 'Jenis ID Pembeli', 'Other ID'));
         xmlAddText($doc, $taxInvoice, 'BuyerCountry', xmlGet($head, 'Negara Pembeli', 'IDN'));
-        xmlAddText($doc, $taxInvoice, 'BuyerDocumentNumber', xmlGet($head, 'Nomor Dokumen Pembeli', ''));
+        xmlAddText($doc, $taxInvoice, 'BuyerDocumentNumber', $buyerDocNum);
         xmlAddText($doc, $taxInvoice, 'BuyerName', xmlGet($head, 'Nama Pembeli', ''));
         xmlAddText($doc, $taxInvoice, 'BuyerAdress', xmlGet($head, 'Alamat Pembeli', ''));
         xmlAddText($doc, $taxInvoice, 'BuyerEmail', xmlGet($head, 'Email Pembeli', ''));
@@ -336,7 +323,11 @@ function buildCoretaxXml($rows) {
         }
     }
 
-    return $doc->saveXML();
+    $xmlStr = $doc->saveXML();
+    $xmlStr = str_replace(array("\r", "\n", "\t"), '', $xmlStr);
+    $xmlStr = str_replace('?>', "?>\n", $xmlStr);
+
+    return $xmlStr;
 }
 
 function downloadCoretaxXml($rows, $filename) {
@@ -372,18 +363,15 @@ function downloadCoretaxExcel($rows, $filename) {
     foreach ($exportCols as $col) {
         $title = $col['title'];
         $headClass = '';
-
         if ($title == 'Nama Barang/Jasa' || $title == 'Harga Satuan' || $title == 'Jumlah Barang Jasa') {
             $headClass = 'head-red';
         }
-
         echo "<th class=\"" . $headClass . "\">" . h($title) . "</th>";
     }
     echo "</tr>";
 
     foreach ($rows as $r) {
         echo "<tr>";
-
         foreach ($exportCols as $col) {
             $field = $col['field'];
             $type  = $col['type'];
@@ -395,7 +383,6 @@ function downloadCoretaxExcel($rows, $filename) {
                 echo "<td class=\"txt\">" . h(fmt($val)) . "</td>";
             }
         }
-
         echo "</tr>";
     }
 
@@ -404,6 +391,14 @@ function downloadCoretaxExcel($rows, $filename) {
 }
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
+
+if ($action == 'clear_session') {
+    if (isset($_SESSION['coretax_manual_price'])) {
+        unset($_SESSION['coretax_manual_price']);
+    }
+    header('Location: inv_coretax.php');
+    exit;
+}
 
 if ($action == 'save_price') {
     header('Content-Type: application/json; charset=utf-8');
@@ -422,7 +417,6 @@ if ($action == 'save_price') {
     if (!isset($_SESSION['coretax_manual_price'])) {
         $_SESSION['coretax_manual_price'] = array();
     }
-
     if (!isset($_SESSION['coretax_manual_price'][$scope])) {
         $_SESSION['coretax_manual_price'][$scope] = array();
     }
@@ -433,9 +427,39 @@ if ($action == 'save_price') {
     exit;
 }
 
+if ($action == 'save_price_bulk') {
+    header('Content-Type: application/json; charset=utf-8');
+    
+    $json = file_get_contents('php://input');
+    $data = json_decode($json, true);
+    
+    if ($data && isset($data['inv_no']) && isset($data['prices'])) {
+        $invNo = trim($data['inv_no']);
+        $scope = getManualPriceScope('INV', $invNo, '', '');
+        
+        if (!isset($_SESSION['coretax_manual_price'])) {
+            $_SESSION['coretax_manual_price'] = array();
+        }
+        if (!isset($_SESSION['coretax_manual_price'][$scope])) {
+            $_SESSION['coretax_manual_price'][$scope] = array();
+        }
+        
+        foreach ($data['prices'] as $p) {
+            if(isset($p['key']) && isset($p['price'])){
+                $_SESSION['coretax_manual_price'][$scope][$p['key']] = toNumberCoretax($p['price']);
+            }
+        }
+        
+        echo json_encode(array('success' => true));
+        exit;
+    }
+    
+    echo json_encode(array('success' => false, 'message' => 'Invalid payload'));
+    exit;
+}
+
 if ($action == 'search_invoice') {
     header('Content-Type: application/json; charset=utf-8');
-
     $term = isset($_GET['term']) ? trim($_GET['term']) : '';
 
     if ($term == '') {
@@ -455,7 +479,6 @@ if ($action == 'search_invoice') {
     ";
 
     $stmt = q($sql, array('%' . $term . '%'));
-
     $data = array();
 
     while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
@@ -479,7 +502,6 @@ if ($action == 'export_excel' || $action == 'export_xml') {
 
     $result = getCoretaxRows($invNo);
     $rows = $result[1];
-
     $rows = applyManualRateCoretax($rows, $rate);
 
     $scope = getManualPriceScope('INV', $invNo, '', '');
@@ -506,13 +528,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btn_load'])) {
     $rate  = isset($_POST['rate']) ? trim($_POST['rate']) : '16922';
 
     if ($invNo != '') {
+        
+        $scope = getManualPriceScope('INV', $invNo, '', '');
+        if (isset($_SESSION['coretax_manual_price'][$scope])) {
+            unset($_SESSION['coretax_manual_price'][$scope]);
+        }
+
         $result = getCoretaxRows($invNo);
         $cols = $result[0];
         $rows = $result[1];
 
         $rows = applyManualRateCoretax($rows, $rate);
-
-        $scope = getManualPriceScope('INV', $invNo, '', '');
         $rows = applyManualPriceOverrideCoretax($rows, $scope);
 
         $isLoaded = true;
@@ -586,7 +612,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btn_load'])) {
                             </button>
                         <?php } ?>
 
-                        <a href="inv_coretax.php" class="btn btn-outline-danger">
+                        <a href="inv_coretax.php?action=clear_session" class="btn btn-outline-danger">
                             Clear
                         </a>
                     </div>
@@ -681,7 +707,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btn_load'])) {
                                     </tr>
                                 <?php } ?>
                             </tbody>
-
                         </table>
                     </div>
                 </div>
@@ -732,7 +757,6 @@ if (input) {
                 if (xhr.readyState == 4) {
                     if (xhr.status == 200) {
                         var data = parseJsonSafe(xhr.responseText);
-
                         box.innerHTML = '';
 
                         if (!data || data.length == 0) {
@@ -750,7 +774,6 @@ if (input) {
                     }
                 }
             };
-
             xhr.send();
         }, 250);
     };
@@ -758,13 +781,11 @@ if (input) {
 
 function parseJsonSafe(text) {
     var data = [];
-
     try {
         data = JSON.parse(text);
     } catch (err) {
         data = [];
     }
-
     return data;
 }
 
@@ -783,53 +804,61 @@ function createAutoItem(item) {
 }
 
 function cleanNumberCoretax(v) {
-    v = String(v);
-    v = v.replace(/,/g, '');
-    v = v.replace(/[^\d\.\-]/g, '');
-
-    var n = parseFloat(v);
-
-    if (isNaN(n)) {
-        return 0;
+    v = String(v).replace(/^\s+|\s+$/g, '');
+    if (v === '') return 0;
+    
+    if (v.indexOf('.') > -1 && v.indexOf(',') > -1) {
+        var lastComma = v.lastIndexOf(',');
+        var lastDot = v.lastIndexOf('.');
+        if (lastComma > lastDot) {
+            v = v.replace(/\./g, '');
+            v = v.replace(',', '.');
+        } else {
+            v = v.replace(/,/g, '');
+        }
+    } else if (v.indexOf(',') > -1) {
+        v = v.replace(',', '.'); 
     }
-
-    return n;
+    
+    v = v.replace(/[^\d\.\-]/g, '');
+    var n = parseFloat(v);
+    return isNaN(n) ? 0 : n;
 }
 
-function round0Coretax(n) {
-    return Math.round(n);
+// PERBAIKAN: Format Javascript selalu dipaksa 2 digit desimal, membuang .00 jika bulat
+function formatExactJS(n) {
+    var s = n.toFixed(2);
+    s = s.replace(/\.00$/, ''); // hapus .00 jika bulat murni
+    return s;
 }
 
 function findChildByClass(parent, className) {
     var els = parent.getElementsByTagName('*');
-
     for (var i = 0; i < els.length; i++) {
         if ((' ' + els[i].className + ' ').indexOf(' ' + className + ' ') > -1) {
             return els[i];
         }
     }
-
     return null;
 }
 
+// PERBAIKAN: Pembulatan ditetapkan 2 digit desimal di JS (Math.round * 100 / 100)
 function recalcGridRow(inputObj) {
     var tr = inputObj.parentNode.parentNode;
     var price = cleanNumberCoretax(inputObj.value);
     var qty = cleanNumberCoretax(tr.getAttribute('data-qty'));
 
-    var dpp = round0Coretax(price * qty);
-    var dppLain = round0Coretax((price * qty) * 11 / 12);
-    var ppn = round0Coretax(((price * qty) * 11 / 12) * 0.12);
+    var dpp = Math.round((price * qty) * 100) / 100;
+    var dppLain = Math.round((dpp * 11 / 12) * 100) / 100;
+    var ppn = Math.round((dppLain * 0.12) * 100) / 100;
 
     var dppCell = findChildByClass(tr, 'cell-dpp');
     var dppLainCell = findChildByClass(tr, 'cell-dpp-lain');
     var ppnCell = findChildByClass(tr, 'cell-ppn');
 
-    if (dppCell) dppCell.innerHTML = dpp;
-    if (dppLainCell) dppLainCell.innerHTML = dppLain;
-    if (ppnCell) ppnCell.innerHTML = ppn;
-
-    inputObj.value = round0Coretax(price);
+    if (dppCell) dppCell.innerHTML = formatExactJS(dpp);
+    if (dppLainCell) dppLainCell.innerHTML = formatExactJS(dppLain);
+    if (ppnCell) ppnCell.innerHTML = formatExactJS(ppn);
 }
 
 function savePriceInv(inputObj, asyncMode) {
@@ -916,10 +945,22 @@ document.onfocusout = function(e) {
 
 function saveAllManualPricesInvSync() {
     var inputs = document.getElementsByClassName('price-edit');
-
+    var invNo = document.getElementById('inv_no').value.replace(/^\s+|\s+$/g, '');
+    
+    if (invNo == '' || inputs.length == 0) return;
+    
+    var payload = [];
     for (var i = 0; i < inputs.length; i++) {
-        savePriceInv(inputs[i], false);
+        payload.push({
+            key: inputs[i].getAttribute('data-key'),
+            price: cleanNumberCoretax(inputs[i].value)
+        });
     }
+    
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', 'inv_coretax.php?action=save_price_bulk', false);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.send(JSON.stringify({ inv_no: invNo, prices: payload }));
 }
 
 function exportCoretaxInv(type) {
@@ -967,10 +1008,8 @@ function isChildOf(child, parent) {
         if (child == parent) {
             return true;
         }
-
         child = child.parentNode;
     }
-
     return false;
 }
 </script>
@@ -984,27 +1023,22 @@ function isChildOf(child, parent) {
     .d-flex {
         display: none !important;
     }
-
     body {
         background: #fff !important;
     }
-
     .card {
         border: none !important;
         box-shadow: none !important;
     }
-
     .card-header {
         font-weight: bold;
         background: #fff !important;
         color: #000 !important;
     }
-
     .table-responsive {
         max-height: none !important;
         overflow: visible !important;
     }
-
     table {
         font-size: 10px;
     }

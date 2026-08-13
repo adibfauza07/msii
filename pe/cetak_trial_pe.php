@@ -210,19 +210,20 @@ function chk($val) {
                     <div style="width: 48%;">
                         <div class="bold">*APPEARANCE :</div>
                         <table style="width: 100%; border:none; font-size:8px;">
-                            <tr><td style="border:none;">&bull; NO BURRY</td><td style="border:none; text-align:right;">OK (V) / NG (X) <?= chk(isset($data['CHK_BURRY']) ? $data['CHK_BURRY'] : '') ?></td></tr>
-                            <tr><td style="border:none;">&bull; NO SHORTMOLD</td><td style="border:none; text-align:right;">OK (V) / NG (X) <?= chk(isset($data['CHK_SHORTMOLD']) ? $data['CHK_SHORTMOLD'] : '') ?></td></tr>
-                            <tr><td style="border:none;">&bull; NO BURNING</td><td style="border:none; text-align:right;">OK (V) / NG (X) <?= chk(isset($data['CHK_BURNING']) ? $data['CHK_BURNING'] : '') ?></td></tr>
-                            <tr><td style="border:none;">&bull; NO DENTED</td><td style="border:none; text-align:right;">OK (V) / NG (X) <?= chk(isset($data['CHK_DENTED']) ? $data['CHK_DENTED'] : '') ?></td></tr>
-                            <tr><td style="border:none;">&bull; NO SCRATCH</td><td style="border:none; text-align:right;">OK (V) / NG (X) <?= chk(isset($data['CHK_SCRATCH']) ? $data['CHK_SCRATCH'] : '') ?></td></tr>
+                            <tr><td style="border:none;">&bull; BURRY</td><td style="border:none; text-align:right;">YA (V) / TIDAK (X) <?= chk(isset($data['CHK_BURRY']) ? $data['CHK_BURRY'] : '') ?></td></tr>
+                            <tr><td style="border:none;">&bull; SHORTMOLD</td><td style="border:none; text-align:right;">YA (V) / TIDAK (X) <?= chk(isset($data['CHK_SHORTMOLD']) ? $data['CHK_SHORTMOLD'] : '') ?></td></tr>
+                            <tr><td style="border:none;">&bull; BURNING</td><td style="border:none; text-align:right;">YA (V) / TIDAK (X) <?= chk(isset($data['CHK_BURNING']) ? $data['CHK_BURNING'] : '') ?></td></tr>
+                            <tr><td style="border:none;">&bull; DENTED</td><td style="border:none; text-align:right;">YA (V) / TIDAK (X) <?= chk(isset($data['CHK_DENTED']) ? $data['CHK_DENTED'] : '') ?></td></tr>
+                            <tr><td style="border:none;">&bull; SCRATCH</td><td style="border:none; text-align:right;">YA (V) / TIDAK (X) <?= chk(isset($data['CHK_SCRATCH']) ? $data['CHK_SCRATCH'] : '') ?></td></tr>
                         </table>
                     </div>
                     <div style="width: 48%; padding-top: 10px;">
                         <table style="width: 100%; border:none; font-size:8px;">
-                            <tr><td style="border:none;">&bull; NO VOID</td><td style="border:none; text-align:right;">OK (V) / NG (X) <?= chk(isset($data['CHK_VOID']) ? $data['CHK_VOID'] : '') ?></td></tr>
-                            <tr><td style="border:none;">&bull; NO WELD LINE</td><td style="border:none; text-align:right;">OK (V) / NG (X) <?= chk(isset($data['CHK_WELDLINE']) ? $data['CHK_WELDLINE'] : '') ?></td></tr>
-                            <tr><td style="border:none;">&bull; NO SINK MARK</td><td style="border:none; text-align:right;">OK (V) / NG (X) <?= chk(isset($data['CHK_SINKMARK']) ? $data['CHK_SINKMARK'] : '') ?></td></tr>
-                            <tr><td style="border:none;">&bull; NO SILVER MARK</td><td style="border:none; text-align:right;">OK (V) / NG (X) <?= chk(isset($data['CHK_SILVER']) ? $data['CHK_SILVER'] : '') ?></td></tr>
+                            <tr><td style="border:none;">&bull; VOID</td><td style="border:none; text-align:right;">YA (V) / TIDAK (X) <?= chk(isset($data['CHK_VOID']) ? $data['CHK_VOID'] : '') ?></td></tr>
+                            <tr><td style="border:none;">&bull; WELD LINE</td><td style="border:none; text-align:right;">YA (V) / TIDAK (X) <?= chk(isset($data['CHK_WELDLINE']) ? $data['CHK_WELDLINE'] : '') ?></td></tr>
+                            <tr><td style="border:none;">&bull; SINK MARK</td><td style="border:none; text-align:right;">YA (V) / TIDAK (X) <?= chk(isset($data['CHK_SINKMARK']) ? $data['CHK_SINKMARK'] : '') ?></td></tr>
+                            <tr><td style="border:none;">&bull; SILVER MARK</td><td style="border:none; text-align:right;">YA (V) / TIDAK (X) <?= chk(isset($data['CHK_SILVER']) ? $data['CHK_SILVER'] : '') ?></td></tr>
+                            <tr><td style="border:none;">&bull; STEP</td><td style="border:none; text-align:right;">YA (V) / TIDAK (X) <?= chk(isset($data['CHK_SILVER']) ? $data['CHK_SILVER'] : '') ?></td></tr>
                         </table>
                     </div>
                 </div>
@@ -278,7 +279,8 @@ function chk($val) {
                         </div>
                     </div>
                     <div style="width: 30%; border-left: 1px solid #000; padding: 3px; font-size: 8px;">
-                        <div class="bold text-center" style="margin-bottom: 2px;">OK (V) / NG (X)</div>
+                        <div class="bold text-center" style="margin-bottom: 2px;">Mold Problem</div>
+                        <div class="bold text-center" style="margin-bottom: 2px;">YA (V) / TIDAK (X)</div>
                         <!-- Kolom MOLD -->
                         <table style="width: 100%; border:none;">
                             <tr><td style="border:none; padding:1px;">&bull; Ejector Jam</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_EJECTOR_JAM']) ? $data['CHK_EJECTOR_JAM'] : '') ?></td></tr>
@@ -294,15 +296,15 @@ function chk($val) {
                 </div>
             </td>
             <td style="padding: 3px; font-size: 8px;">
-                <div class="bold text-center" style="margin-bottom: 2px;">OK (V) / NG (X)</div>
+                <div class="bold text-center" style="margin-bottom: 2px;">YA (V) / TIDAK (X)</div>
                 <!-- Kolom MACHINE -->
                     <table style="width: 100%; border:none;">
-                        <tr><td style="border:none; padding:1px;">&bull; BACKFLOW</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_BACKFLOW']) ? $data['CHK_BACKFLOW'] : '') ?></td></tr>
-                        <tr><td style="border:none; padding:1px;">&bull; ROBOT</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_ROBOT']) ? $data['CHK_ROBOT'] : '') ?></td></tr>
+                        <tr><td style="border:none; padding:1px;">&bull; BACKFLOW</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_BACKFLOW']) ? $data['CHK_BACKFLOW'] : '') ?></td><td style="border:none; padding:1px;"></td><td style="border:none; padding:1px;"></td><td style="border:none; padding:1px;">%</td></tr>
+                        <tr><td style="border:none; padding:1px;">&bull; ROBOT ERROR</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_ROBOT']) ? $data['CHK_ROBOT'] : '') ?></td></tr>
                         <tr><td style="border:none; padding:1px;">&bull; HEATER BARREL</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_HEATER_BARREL']) ? $data['CHK_HEATER_BARREL'] : '') ?></td></tr>
-                        <tr><td style="border:none; padding:1px;">&bull; CONVEYOR</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_CONVEYOR']) ? $data['CHK_CONVEYOR'] : '') ?></td></tr>
-                        <tr><td style="border:none; padding:1px;">&bull; MTC</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_MTC']) ? $data['CHK_MTC'] : '') ?></td></tr>
-                        <tr><td style="border:none; padding:1px;">&bull; HEATER CONTROL</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_HEATER_CONTROL']) ? $data['CHK_HEATER_CONTROL'] : '') ?></td></tr>
+                        <tr><td style="border:none; padding:1px;">&bull; CONVEYOR USE</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_CONVEYOR']) ? $data['CHK_CONVEYOR'] : '') ?></td></tr>
+                        <tr><td style="border:none; padding:1px;">&bull; MTC USE</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_MTC']) ? $data['CHK_MTC'] : '') ?></td></tr>
+                        <tr><td style="border:none; padding:1px;">&bull; HEATER CONTROL USE</td><td style="border:none; padding:1px; text-align:right;"><?= chk(isset($data['CHK_HEATER_CONTROL']) ? $data['CHK_HEATER_CONTROL'] : '') ?></td></tr>
                     </table>
                     <div style="margin-top: 5px; font-size:8px;">*Remark : <?= isset($data['MACHINE_REMARK']) ? htmlspecialchars($data['MACHINE_REMARK']) : '' ?></div>
                 
@@ -378,7 +380,15 @@ function chk($val) {
                 <!-- Kolom APPROVED -->
                 <td style="height: 65px;">
                     <?php if (isset($data['APPROVED']) && trim(strtoupper($data['APPROVED'])) == 'GUNAWAN S'): ?>
-                        <img src="../assets/images/ttd_wahyu.png" style="height:45px; mix-blend-mode: multiply;" alt="TTD Gunawan"><br>
+                        <img src="../assets/images/ttd_wawan.png" 
+                             style="height: 45px; 
+                                    position: relative; 
+                                    top: 12px; 
+                                    transform: scale(1.9); 
+                                    transform-origin: center; 
+                                    mix-blend-mode: multiply; 
+                                    filter: contrast(270%) brightness(200%);" 
+                             alt="TTD Gunawan"><br>
                     <?php endif; ?>
                     <?= isset($data['APPROVED']) ? htmlspecialchars($data['APPROVED']) : '' ?>
                 </td>

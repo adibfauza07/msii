@@ -189,6 +189,10 @@ function h($value) {
                 <div class="report-name">MONTHLY PRODUCTION INJECTION</div>
                 <a class="button" href="monthly_injection.php" target="_blank">OPEN</a>
             </div>
+            <div class="report-item">
+                <div class="report-name">CETAK LABEL MATERIAL</div>
+                <a class="button" href="label_material_input.php" target="_blank">OPEN</a>
+            </div>
 			
            
             

@@ -21,8 +21,8 @@ if (isset($_POST['btnHapusTransaksi'])) {
             sqlsrv_query($conn, "DELETE FROM INV_TRAN WHERE TRAN_ID = ?", array($idToDelete));
             
             if ($isPlant1) {
-                // Hapus data BC berdasarkan TRAN_DOC milik TRAN_ID yang mau dihapus
-                sqlsrv_query($conn, "DELETE FROM $TABEL_BC WHERE TRAN_DOC = (SELECT TRAN_DOC FROM TRANS WHERE TRAN_ID = ?)", array($idToDelete));
+                // PERBAIKAN: Menggunakan NO_TRANS sesuai struktur tabel BC_TRANS
+                sqlsrv_query($conn, "DELETE FROM $TABEL_BC WHERE NO_TRANS = (SELECT TRAN_DOC FROM TRANS WHERE TRAN_ID = ?)", array($idToDelete));
             }
             
             $stmtDel = sqlsrv_query($conn, "DELETE FROM TRANS WHERE TRAN_ID = ?", array($idToDelete));
@@ -45,10 +45,9 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
     $isUpdate = isset($_POST['btnUpdateTransaksi']);
     $currentID = $_POST['hapus_id'];
 
-    // VARIABEL UMUM (P1 & P2)
     $tranDoc   = substr(trim($_POST['TRAN_DOC']), 0, 30);
-    $tranDate  = $_POST['TRAN_DATE'];   // Input Date
-    $tranADate = $_POST['TRAN_ADATE'];  // Trans. Date
+    $tranDate  = $_POST['TRAN_DATE'];   
+    $tranADate = $_POST['TRAN_ADATE'];  
     $trtyCode  = $_POST['TRTY_CODE'];
     $supCode   = $_POST['SUP_CODE'];
     $remark    = substr(trim($_POST['TRAN_REM']), 0, 50);
@@ -63,7 +62,6 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
     } else {
         sqlsrv_begin_transaction($conn);
         try {
-            // CEK DUPLIKAT DOKUMEN
             if (!$isUpdate && $trtyCode != '14') {
                 $cekDoc = sqlsrv_query($conn, "SELECT TOP 1 TRAN_DOC FROM TRANS WHERE TRAN_DOC = ?", array($tranDoc));
                 if ($cekDoc && sqlsrv_fetch_array($cekDoc)) {
@@ -71,9 +69,6 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
                 }
             }
 
-            // ===================================================================
-            // BLOK LOGIKA SIMPAN KHUSUS PLANT 1
-            // ===================================================================
             if ($isPlant1) {
                 $jenisBC   = isset($_POST['JENIS_BC']) ? $_POST['JENIS_BC'] : '';
                 $nomorBC   = isset($_POST['NOMOR_BC']) ? substr(trim($_POST['NOMOR_BC']), 0, 50) : '';
@@ -84,10 +79,10 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
                     $stmtHead = sqlsrv_query($conn, $sqlHead, $paramsHead);
                     if ($stmtHead === false) throw new Exception("Gagal Update Header (P1):\n" . print_r(sqlsrv_errors(), true));
                     
-                    // UPDATE BC MENGGUNAKAN TRAN_DOC
-                    sqlsrv_query($conn, "DELETE FROM $TABEL_BC WHERE TRAN_DOC=?", array($tranDoc));
-                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (TRAN_DOC, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($tranDoc, $jenisBC, $nomorBC));
-                    if ($stmtBC === false) throw new Exception("Gagal Update Tabel BC (Cek apakah kolom TRAN_DOC ada):\n" . print_r(sqlsrv_errors(), true));
+                    // PERBAIKAN: Menggunakan NO_TRANS
+                    sqlsrv_query($conn, "DELETE FROM $TABEL_BC WHERE NO_TRANS=?", array($tranDoc));
+                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (NO_TRANS, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($tranDoc, $jenisBC, $nomorBC));
+                    if ($stmtBC === false) throw new Exception("Gagal Update Tabel BC:\n" . print_r(sqlsrv_errors(), true));
 
                     $targetID = $currentID;
                 } else {
@@ -100,15 +95,11 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
                     $rowID = sqlsrv_fetch_array($stmtHead);
                     $targetID = $rowID['ID'];
 
-                    // INSERT BC MENGGUNAKAN TRAN_DOC
-                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (TRAN_DOC, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($tranDoc, $jenisBC, $nomorBC));
-                    if ($stmtBC === false) throw new Exception("Gagal Insert Tabel BC (Cek apakah kolom TRAN_DOC ada):\n" . print_r(sqlsrv_errors(), true));
+                    // PERBAIKAN: Menggunakan NO_TRANS
+                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (NO_TRANS, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($tranDoc, $jenisBC, $nomorBC));
+                    if ($stmtBC === false) throw new Exception("Gagal Insert Tabel BC:\n" . print_r(sqlsrv_errors(), true));
                 }
-            } 
-            // ===================================================================
-            // BLOK LOGIKA SIMPAN KHUSUS PLANT 2 (BERSIH DARI BC)
-            // ===================================================================
-            else {
+            } else {
                 if ($isUpdate) {
                     $sqlHead = "UPDATE TRANS SET TRAN_DATE=?, TRTY_CODE=?, SUP_CODE=?, TRAN_REM=?, TRAN_ADATE=? WHERE TRAN_ID=?";
                     $paramsHead = array($tranDate, $trtyCode, $supCode, $remark, $tranADate, $currentID);
@@ -128,7 +119,6 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
                 }
             }
 
-            // --- INSERT DETAIL BARANG ---
             if ($isUpdate) {
                 $stmtDelDet = sqlsrv_query($conn, "DELETE FROM INV_TRAN WHERE TRAN_ID=?", array($targetID));
                 if ($stmtDelDet === false) throw new Exception("Gagal Reset Detail INV_TRAN");
@@ -174,13 +164,13 @@ $currentID = isset($_GET['id']) ? $_GET['id'] : null;
 $isEntry = ($mode == 'new' || $mode == 'edit');
 
 $dataHeader = [
-    'TRAN_ID' => '', 'TRAN_DOC' => 'AUTO', 'TRAN_DATE' => date('Y-m-d'), 'TRAN_ADATE' => date('Y-m-d'), 
+    'TRAN_ID' => '', 'TRAN_DOC' => '', 'TRAN_DATE' => date('Y-m-d'), 'TRAN_ADATE' => date('Y-m-d'), 
     'TRTY_CODE' => '', 'SUP_CODE' => '', 'TRAN_REM' => '', 'JENIS_BC' => '', 'NOMOR_BC' => ''
 ];
 $dataDetail = [];
 
 if ($mode == 'new') {
-    $dataHeader['TRAN_DOC'] = "TR-" . date('ymd-His'); 
+    $dataHeader['TRAN_DOC'] = ""; 
 } else {
     if (!$currentID) {
         $qLast = sqlsrv_query($conn, "SELECT TOP 1 TRAN_ID FROM TRANS ORDER BY TRAN_ID DESC");
@@ -188,18 +178,24 @@ if ($mode == 'new') {
     }
 
     if ($currentID) {
-        // FETCH DATA (P1 MENGGUNAKAN JOIN BERDASARKAN TRAN_DOC)
         if ($isPlant1) {
+            // PERBAIKAN: Melakukan JOIN menggunakan T.TRAN_DOC = B.NO_TRANS
             $sqlHead = "SELECT T.*, B.JENIS_BC, B.NOMOR_BC 
                         FROM TRANS T 
-                        LEFT JOIN $TABEL_BC B ON T.TRAN_DOC = B.TRAN_DOC 
+                        LEFT JOIN $TABEL_BC B ON T.TRAN_DOC = B.NO_TRANS 
                         WHERE T.TRAN_ID = ?";
         } else {
             $sqlHead = "SELECT * FROM TRANS WHERE TRAN_ID = ?";
         }
         
         $qHead = sqlsrv_query($conn, $sqlHead, array($currentID));
-        if ($qHead && $rHead = sqlsrv_fetch_array($qHead, SQLSRV_FETCH_ASSOC)) {
+        
+        if ($qHead === false) {
+            $sqlHeadFallback = "SELECT * FROM TRANS WHERE TRAN_ID = ?";
+            $qHead = sqlsrv_query($conn, $sqlHeadFallback, array($currentID));
+        }
+        
+        if ($qHead !== false && $rHead = sqlsrv_fetch_array($qHead, SQLSRV_FETCH_ASSOC)) {
             $dataHeader = $rHead;
             if (!isset($dataHeader['JENIS_BC'])) $dataHeader['JENIS_BC'] = '';
             if (!isset($dataHeader['NOMOR_BC'])) $dataHeader['NOMOR_BC'] = '';
@@ -265,7 +261,7 @@ while($qT && $r=sqlsrv_fetch_array($qT)) {
                         <div class="mx-1" style="min-width: 250px;">
                             <select id="cariDokumen" class="form-select form-select-sm select2" style="width: 100%;">
                                 <?php if($currentID && !$isEntry): ?>
-                                    <option value="<?php echo $currentID; ?>" selected><?php echo $dataHeader['TRAN_DOC']; ?></option>
+                                    <option value="<?php echo $currentID; ?>" selected><?php echo htmlspecialchars($dataHeader['TRAN_DOC']); ?></option>
                                 <?php endif; ?>
                             </select>
                         </div>
@@ -298,7 +294,7 @@ while($qT && $r=sqlsrv_fetch_array($qT)) {
                         <div class="col-12 col-md-4 col-lg-3">
                             <label class="small fw-bold">No. Dokumen</label>
                             <input type="text" class="form-control form-control-sm fw-bold text-primary" name="TRAN_DOC" maxlength="30"
-                                   value="<?php echo $dataHeader['TRAN_DOC']; ?>" required>
+                                   value="<?php echo htmlspecialchars($dataHeader['TRAN_DOC']); ?>" required <?php echo !$isEntry ? 'readonly' : ''; ?>>
                         </div>
                         <div class="col-12 col-md-4 col-lg-3">
                             <label class="small fw-bold">Tipe Transaksi</label>
@@ -480,8 +476,6 @@ while($qT && $r=sqlsrv_fetch_array($qT)) {
                         $clsPart = "disabled"; 
                         $lnkPart = "#";
 
-                        // --- UPDATE LOGIKA PART SLIP ---
-                        // Sekarang aktif untuk TRTY 03, 04, 08, dan 09
                         if ($currentID && in_array($trty, ['03', '04', '08', '09'])) {
                             $clsPart = ""; 
                             $lnkPart = "print_slip_physical.php?id=$currentID";
@@ -633,7 +627,6 @@ $(document).ready(function() {
     
     $(document).on('keypress', '.input-qty-edit', function(e) { if(e.which == 13) { e.preventDefault(); $(this).closest('tr').find('.btn-save-row').click(); } });
 
-    // FUNGSI KLIK TOMBOL REKAP ICL
     $('#btnTampilIcl').click(function() {
         var start = $('#icl_start_date').val();
         var end   = $('#icl_end_date').val();

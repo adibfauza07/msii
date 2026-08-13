@@ -128,7 +128,7 @@ function renderBox($checked) {
                         <tr>
                             <td>Department</td>
                             <td>:</td>
-                            <td style="border-bottom:1px solid #000 !important;"><?php echo htmlspecialchars($d['DEP_NAME'] ? $d['DEP_NAME'] : $d['DEP_CODE']); ?></td>
+                            <td style="border-bottom:1px solid #000 !important;"><?php echo htmlspecialchars($d['DEP_NAME'] ? $d['DEP_NAME'] : 'PPIC'); ?></td>
                         </tr>
                         <tr>
                             <td>Sign</td>
