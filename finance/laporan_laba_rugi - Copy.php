@@ -158,7 +158,6 @@ function cariHargaCrossPlant($matCode) {
     return 0;
 }
 
-
 // =========================================================================
 // 2. SETUP PERIODE & INPUT MANUAL OVERHEAD
 // =========================================================================
@@ -191,7 +190,6 @@ function fetchDetail($conn, $sql, $params = array(), $plantName = "P1") {
     return $results;
 }
 
-
 // =========================================================================
 // 3. DATA PENJUALAN (SALES)
 // =========================================================================
@@ -213,9 +211,8 @@ $dtSales = array_merge(
 );
 $totalPendapatan = array_sum(array_column($dtSales, 'TOTAL_IDR'));
 
-
 // =========================================================================
-// 4. DATA MATERIAL KONSUMSI (Tally Consumpt)
+// 4. DATA MATERIAL KONSUMSI (Tally Consumpt) - Basis 53,24%
 // =========================================================================
 function fetchConsumptionLinked($conn, $start, $end, $plantName) {
     $results = array();
@@ -251,7 +248,6 @@ $dtConsumpt = array_merge(
     fetchConsumptionLinked($connP2, $tglAwal, $tglAkhir, 'P2')
 );
 $totalMaterialKonsumsi = array_sum(array_column($dtConsumpt, 'TOTAL_IDR'));
-
 
 // =========================================================================
 // 5. DATA PENERIMAAN (PEMBELIAN & SUBCON)
@@ -344,7 +340,65 @@ $jumlahStokAll = count($dtStokAwal) + count($dtStokAkhir) + count($dtMatAwal) + 
 
 
 // =========================================================================
-// 7. DATA P&L PER ITEM BARANG JADI (Analisis Margin Profitability)
+// 7. ANALISIS FLOW MATERIAL (Pembanding Rumus Manual vs Tally Sistem)
+// =========================================================================
+$matFlow = array();
+
+// A. Saldo Awal
+foreach ($dtMatAwal as $r) {
+    $code = trim($r['ITEM_CODE']);
+    if (!isset($matFlow[$code])) $matFlow[$code] = array('ITEM_CODE'=>$code, 'AWAL'=>0, 'BELI'=>0, 'AKHIR'=>0, 'TALLY'=>0);
+    $matFlow[$code]['AWAL'] += (float)$r['TOTAL_IDR'];
+}
+// B. Pembelian (Exclude Subcon)
+foreach ($dtRecv as $r) {
+    if ($r['TIPE'] == 'PEMBELIAN MATERIAL') {
+        $code = trim($r['ITEM_CODE']);
+        if (!isset($matFlow[$code])) $matFlow[$code] = array('ITEM_CODE'=>$code, 'AWAL'=>0, 'BELI'=>0, 'AKHIR'=>0, 'TALLY'=>0);
+        $matFlow[$code]['BELI'] += (float)$r['TOTAL_IDR'];
+    }
+}
+// C. Saldo Akhir
+foreach ($dtMatAkhir as $r) {
+    $code = trim($r['ITEM_CODE']);
+    if (!isset($matFlow[$code])) $matFlow[$code] = array('ITEM_CODE'=>$code, 'AWAL'=>0, 'BELI'=>0, 'AKHIR'=>0, 'TALLY'=>0);
+    $matFlow[$code]['AKHIR'] += (float)$r['TOTAL_IDR'];
+}
+// D. Aktual Tally Consumpt (Data Sumber 53.24%)
+foreach ($dtConsumpt as $r) {
+    $code = trim($r['ITEM_CODE']);
+    if (!isset($matFlow[$code])) $matFlow[$code] = array('ITEM_CODE'=>$code, 'AWAL'=>0, 'BELI'=>0, 'AKHIR'=>0, 'TALLY'=>0);
+    $matFlow[$code]['TALLY'] += (float)$r['TOTAL_IDR'];
+}
+
+// Variables for Grand Total Table
+$totAwal = 0; $totBeli = 0; $totAkhir = 0; 
+$totKonsumsiRumus = 0; $totTally = 0; 
+
+foreach ($matFlow as &$row) {
+    $row['KONSUMSI_RUMUS'] = $row['AWAL'] + $row['BELI'] - $row['AKHIR'];
+    // Persentase didasarkan pada TALLY (Sistem) agar matching dengan P&L
+    $row['PERSEN_SALES_TALLY'] = ($totalPendapatan > 0) ? ($row['TALLY'] / $totalPendapatan) * 100 : 0;
+    
+    $totAwal += $row['AWAL'];
+    $totBeli += $row['BELI'];
+    $totAkhir += $row['AKHIR'];
+    $totKonsumsiRumus += $row['KONSUMSI_RUMUS'];
+    $totTally += $row['TALLY'];
+}
+unset($row);
+
+$totPersenTally = ($totalPendapatan > 0) ? ($totTally / $totalPendapatan) * 100 : 0;
+
+// Urutkan berdasarkan Tally Terbesar
+usort($matFlow, function($a, $b) {
+    if ($a['TALLY'] == $b['TALLY']) return 0;
+    return ($a['TALLY'] < $b['TALLY']) ? 1 : -1;
+});
+
+
+// =========================================================================
+// 8. DATA P&L PER ITEM BARANG JADI (Analisis Margin Profitability)
 // =========================================================================
 $sqlPLItem = "
     SELECT i.ITEM_ID, i.ITEM_CODE, i.ITEM_NAME, 
@@ -361,19 +415,16 @@ $sqlPLItem = "
 ";
 
 $sqlErrorMsg = "";
-
 function fetchPLItemSafe($conn, $sql, $params, $plantName) {
     global $sqlErrorMsg;
     $results = array();
     if (!$conn) return $results;
-    
     $stmt = sqlsrv_query($conn, $sql, $params);
     if ($stmt === false) {
         $err = sqlsrv_errors();
         $sqlErrorMsg .= "<strong>[Data " . $plantName . " Gagal Dimuat]</strong> " . htmlspecialchars($err[0]['message']) . "<br>";
         return $results;
     }
-    
     while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         $row['PLANT'] = $plantName;
         $results[] = $row;
@@ -402,7 +453,7 @@ foreach ($dtPLItemRaw as $row) {
     
     $dtPLItem[] = array(
         'PLANT' => $row['PLANT'],
-        'PART_ID' => $row['ITEM_ID'], // Disimpan untuk Hyperlink
+        'PART_ID' => $row['ITEM_ID'], 
         'ITEM_CODE' => $itemCode,
         'ITEM_NAME' => $row['ITEM_NAME'],
         'QTY_SOLD' => $qtySold,
@@ -414,7 +465,7 @@ foreach ($dtPLItemRaw as $row) {
     );
 }
 
-// Urutkan Profit (Dukungan PHP 5.4)
+// Urutkan Profit
 usort($dtPLItem, function($a, $b) {
     if ($a['GROSS_PROFIT'] == $b['GROSS_PROFIT']) return 0;
     return ($a['GROSS_PROFIT'] < $b['GROSS_PROFIT']) ? 1 : -1;
@@ -422,7 +473,7 @@ usort($dtPLItem, function($a, $b) {
 
 
 // =========================================================================
-// 8. KALKULASI FINAL LABA RUGI GLOBAL
+// 9. KALKULASI FINAL LABA RUGI GLOBAL
 // =========================================================================
 $totalOverheadPabrik = $biayaGaji + $biayaListrik;
 $hppProduksi = $totalMaterialKonsumsi + $totalOverheadPabrik + $totalSubcon;
@@ -496,10 +547,11 @@ function fRp($val) {
     <div class="tabs">
         <button class="tab-btn active" onclick="openTab(event, 'tabPL')">Laporan P&L</button>
         <button class="tab-btn" onclick="openTab(event, 'tabPLItem')">P&L Per Item (<?php echo count($dtPLItem); ?>)</button>
+        <button class="tab-btn" onclick="openTab(event, 'tabMatFlow')">Flow & % Material (<?php echo count($matFlow); ?>)</button>
         <button class="tab-btn" onclick="openTab(event, 'tabSales')">Penjualan (<?php echo count($dtSales); ?>)</button>
-        <button class="tab-btn" onclick="openTab(event, 'tabConsumpt')">Material Konsumsi (<?php echo count($dtConsumpt); ?>)</button>
-        <button class="tab-btn" onclick="openTab(event, 'tabRecv')">Penerimaan & Subcon (<?php echo count($dtRecv); ?>)</button>
-        <button class="tab-btn" onclick="openTab(event, 'tabStok')">Opname Gudang (<?php echo $jumlahStokAll; ?>)</button>
+        <button class="tab-btn" onclick="openTab(event, 'tabConsumpt')">Konsumsi Tally (<?php echo count($dtConsumpt); ?>)</button>
+        <button class="tab-btn" onclick="openTab(event, 'tabRecv')">Penerimaan (<?php echo count($dtRecv); ?>)</button>
+        <button class="tab-btn" onclick="openTab(event, 'tabStok')">Opname (<?php echo $jumlahStokAll; ?>)</button>
     </div>
 
     <!-- TAB 1: PROFIT & LOSS GLOBAL -->
@@ -533,7 +585,7 @@ function fRp($val) {
         </table>
     </div>
 
-    <!-- TAB 6: P&L PER ITEM (PROFITABILITY) -->
+    <!-- TAB 2: P&L PER ITEM (PROFITABILITY) -->
     <div id="tabPLItem" class="tab-content">
         <div class="scrollable" style="padding:10px;">
             <?php if ($sqlErrorMsg != ""): ?>
@@ -560,14 +612,11 @@ function fRp($val) {
                     <?php foreach($dtPLItem as $r): ?>
                     <tr>
                         <td><span class="badge-<?php echo strtolower($r['PLANT']); ?>"><?php echo $r['PLANT']; ?></span></td>
-                        
-                        <!-- HYPERLINK KE CEK_BOM.PHP -->
                         <td>
                             <a href="cek_bom.php?part_id=<?php echo $r['PART_ID']; ?>&bulan=<?php echo (int)$bulan; ?>&tahun=<?php echo $tahun; ?>" target="_blank" style="color:#2563EB; text-decoration:none;" title="Lihat Rincian BOM & Material">
-    <b><?php echo $r['ITEM_CODE']; ?></b> <i class="fas fa-external-link-alt" style="font-size:10px; margin-left:3px;"></i>
-</a>
+                                <b><?php echo $r['ITEM_CODE']; ?></b> <i class="fas fa-external-link-alt" style="font-size:10px; margin-left:3px;"></i>
+                            </a>
                         </td>
-
                         <td><?php echo $r['ITEM_NAME']; ?></td>
                         <td class="val-right"><?php echo number_format($r['QTY_SOLD']); ?></td>
                         <td class="val-right"><?php echo fRp($r['HPP_PER_UNIT']); ?></td>
@@ -588,7 +637,69 @@ function fRp($val) {
         </div>
     </div>
 
-    <!-- TAB 2: DETAIL SALES -->
+    <!-- TAB 3: ANALISIS MATERIAL FLOW -->
+    <div id="tabMatFlow" class="tab-content">
+        <div class="scrollable">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>No</th>
+                        <th>Kode Material</th>
+                        <th style="text-align:right; color:#4B5563;">(+) Stok Awal (Rp)</th>
+                        <th style="text-align:right; color:#059669;">(+) Pembelian (Rp)</th>
+                        <th style="text-align:right; color:#DC2626;">(-) Stok Akhir (Rp)</th>
+                        <th style="text-align:right; border-right:2px solid #E5E7EB;" title="Rumus: Awal + Beli - Akhir">Konsumsi (Awal+Beli-Akhir)</th>
+                        <th style="text-align:right; background:#F0FDF4; color:#166534;" title="Tally Sistem (Data Asli 53.24%)">Konsumsi Tally (Sistem)</th>
+                        <th style="text-align:right; background:#F0FDF4; color:#166534;">% Tally thd Sales</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php 
+                    $no = 1;
+                    foreach($matFlow as $r): 
+                    ?>
+                    <tr>
+                        <td><?php echo $no++; ?></td>
+                        <!-- MENGUBAH KODE MATERIAL MENJADI LINK KE WIP.PHP -->
+                        <td>
+                            <a href="wip.php?start_date=<?php echo $tglAwal; ?>&end_date=<?php echo $tglAwalBulanDepan; ?>&detail_material=<?php echo urlencode(trim($r['ITEM_CODE'])); ?>" target="_blank" style="color:#2563EB; text-decoration:none;" title="Lihat Persentase Pemakaian Material di Produksi">
+                                <b><?php echo $r['ITEM_CODE']; ?></b> <i class="fas fa-external-link-alt" style="font-size:10px; margin-left:3px;"></i>
+                            </a>
+                        </td>
+                        <td class="val-right" style="color:#4B5563;"><?php echo fRp($r['AWAL']); ?></td>
+                        <td class="val-right" style="color:#059669;"><?php echo fRp($r['BELI']); ?></td>
+                        <td class="val-right" style="color:#DC2626;"><?php echo fRp($r['AKHIR']); ?></td>
+                        <td class="val-right" style="border-right:2px solid #E5E7EB;">
+                            <?php echo fRp($r['KONSUMSI_RUMUS']); ?>
+                        </td>
+                        <td class="val-right" style="font-weight:bold; background:#DCFCE7; color:#166534;">
+                            <?php echo fRp($r['TALLY']); ?>
+                        </td>
+                        <td class="val-right" style="background:#F0FDF4;">
+                            <span class="persen-badge" style="background:#EFF6FF; color:#1E40AF; border:1px solid #BFDBFE;">
+                                <?php echo number_format($r['PERSEN_SALES_TALLY'], 2, ',', '.'); ?> %
+                            </span>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+                <!-- BARIS GRAND TOTAL DITAMBAHKAN AGAR TIDAK BINGUNG -->
+                <tfoot>
+                    <tr style="font-weight:bold; background:#E5E7EB; font-size:13px;">
+                        <td colspan="2" class="val-right" style="padding:12px;">GRAND TOTAL:</td>
+                        <td class="val-right" style="padding:12px; color:#4B5563;"><?php echo fRp($totAwal); ?></td>
+                        <td class="val-right" style="padding:12px; color:#059669;"><?php echo fRp($totBeli); ?></td>
+                        <td class="val-right" style="padding:12px; color:#DC2626;"><?php echo fRp($totAkhir); ?></td>
+                        <td class="val-right" style="padding:12px; border-right:2px solid #D1D5DB;"><?php echo fRp($totKonsumsiRumus); ?></td>
+                        <td class="val-right" style="padding:12px; background:#BBF7D0; color:#166534; font-size:14px;"><?php echo fRp($totTally); ?></td>
+                        <td class="val-right" style="padding:12px; background:#BBF7D0; color:#1E40AF; font-size:14px;"><?php echo number_format($totPersenTally, 2, ',', '.'); ?> %</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- TAB 4: DETAIL SALES -->
     <div id="tabSales" class="tab-content">
         <div class="scrollable">
             <table class="data-table">
@@ -606,7 +717,7 @@ function fRp($val) {
         </div>
     </div>
 
-    <!-- TAB 3: DETAIL MATERIAL KONSUMSI -->
+    <!-- TAB 5: DETAIL MATERIAL KONSUMSI (TALLY) -->
     <div id="tabConsumpt" class="tab-content">
         <div class="scrollable">
             <table class="data-table">
@@ -615,7 +726,13 @@ function fRp($val) {
                     <?php foreach($dtConsumpt as $r): ?>
                     <tr>
                         <td><span class="badge-<?php echo strtolower($r['PLANT']); ?>"><?php echo $r['PLANT']; ?></span></td>
-                        <td><?php echo $r['VCH_NO']; ?></td><td><?php echo $r['TANGGAL']; ?></td><td><b><?php echo $r['ITEM_CODE']; ?></b></td>
+                        <td><?php echo $r['VCH_NO']; ?></td><td><?php echo $r['TANGGAL']; ?></td>
+                        <!-- MENGUBAH KODE MATERIAL MENJADI LINK KE WIP.PHP -->
+                        <td>
+                            <a href="wip.php?start_date=<?php echo $tglAwal; ?>&end_date=<?php echo $tglAwalBulanDepan; ?>&detail_material=<?php echo urlencode(trim($r['ITEM_CODE'])); ?>" target="_blank" style="color:#2563EB; text-decoration:none;" title="Lihat Persentase Pemakaian Material di Produksi">
+                                <b><?php echo $r['ITEM_CODE']; ?></b> <i class="fas fa-external-link-alt" style="font-size:10px; margin-left:3px;"></i>
+                            </a>
+                        </td>
                         <td><?php echo number_format($r['QTY'], 2); ?></td><td><?php echo number_format($r['RATE'], 2); ?></td><td class="val-right"><?php echo fRp($r['TOTAL_IDR']); ?></td>
                     </tr>
                     <?php endforeach; ?>
@@ -624,7 +741,7 @@ function fRp($val) {
         </div>
     </div>
 
-    <!-- TAB 4: DETAIL PENERIMAAN / SUBCON -->
+    <!-- TAB 6: DETAIL PENERIMAAN / SUBCON -->
     <div id="tabRecv" class="tab-content">
         <div class="scrollable">
             <table class="data-table">
@@ -642,7 +759,7 @@ function fRp($val) {
         </div>
     </div>
 
-    <!-- TAB 5: DETAIL OPNAME / STOK -->
+    <!-- TAB 7: DETAIL OPNAME / STOK -->
     <div id="tabStok" class="tab-content">
         <div class="scrollable">
             <table class="data-table">

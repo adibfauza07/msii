@@ -244,6 +244,10 @@ function h($value) {
                 <div class="report-name">STOK PLAN VS ACTUAL</div>
                 <a class="button" href="report_stok_actual.php" target="_blank">OPEN</a>
             </div>
+			<div class="report-item">
+                <div class="report-name">STOK PLAN VS ACTUAL PART COMMON </div>
+                <a class="button" href="part_common.php" target="_blank">OPEN</a>
+            </div>
 
 
             

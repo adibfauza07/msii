@@ -178,6 +178,11 @@ function h($value) {
                 <div class="report-name">GRAFIK MATERIAL CONSUME VS SALES P1 DAN P2 </div>
                 <a class="button" href="hpp_sales.php" target="_blank">OPEN</a>
             </div>
+			
+			 <div class="report-item">
+                <div class="report-name">COMMON PART</div>
+                <a class="button" href="part_common.php" target="_blank">OPEN</a>
+            </div>
 
             <div class="report-item">
                 <div class="report-name">Customer List</div>

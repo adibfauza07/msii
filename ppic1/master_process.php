@@ -67,7 +67,9 @@ if ($action == "load_process") {
             ISNULL(PROC_EFFICIENTCY, 0) AS PROC_EFFICIENTCY,
             ISNULL(PROC_MEASURE, 0) AS PROC_MEASURE,
             ISNULL(PROC_HOURS, 0) AS PROC_HOURS,
-            ISNULL(PROC_MMDAY, 0) AS PROC_MMDAY
+            ISNULL(PROC_MMDAY, 0) AS PROC_MMDAY,
+            ISNULL(PROC_MMDAY2, 0) AS PROC_MMDAY2,
+            ISNULL(PROC_MMDAY3, 0) AS PROC_MMDAY3
         FROM dbo.PROCESS
         ORDER BY PROC_NAME
     ";
@@ -86,7 +88,9 @@ if ($action == "load_process") {
             "PROC_EFFICIENTCY" => (float)$r["PROC_EFFICIENTCY"],
             "PROC_MEASURE" => (float)$r["PROC_MEASURE"],
             "PROC_HOURS" => (float)$r["PROC_HOURS"],
-            "PROC_MMDAY" => (float)$r["PROC_MMDAY"]
+            "PROC_MMDAY" => (float)$r["PROC_MMDAY"],
+            "PROC_MMDAY2" => (float)$r["PROC_MMDAY2"],
+            "PROC_MMDAY3" => (float)$r["PROC_MMDAY3"]
         );
     }
 
@@ -145,6 +149,8 @@ if ($action == "save_process") {
     $proc_measure = to_float(post_value("PROC_MEASURE", "0"));
     $proc_hours = to_float(post_value("PROC_HOURS", "0"));
     $proc_mmday = to_float(post_value("PROC_MMDAY", "0"));
+    $proc_mmday2 = to_float(post_value("PROC_MMDAY2", "0"));
+    $proc_mmday3 = to_float(post_value("PROC_MMDAY3", "0"));
 
     if ($proc_name == "") {
         json_out(array("success" => false, "message" => "PROSES belum diisi."));
@@ -158,7 +164,9 @@ if ($action == "save_process") {
                 PROC_EFFICIENTCY = ?,
                 PROC_MEASURE = ?,
                 PROC_HOURS = ?,
-                PROC_MMDAY = ?
+                PROC_MMDAY = ?,
+                PROC_MMDAY2 = ?,
+                PROC_MMDAY3 = ?
             WHERE PROC_ID = ?
         ";
 
@@ -168,6 +176,8 @@ if ($action == "save_process") {
             $proc_measure,
             $proc_hours,
             $proc_mmday,
+            $proc_mmday2,
+            $proc_mmday3,
             $proc_id
         );
 
@@ -182,10 +192,10 @@ if ($action == "save_process") {
 
     $sql = "
         INSERT INTO dbo.PROCESS
-            (PROC_NAME, PROC_EFFICIENTCY, PROC_MEASURE, PROC_HOURS, PROC_MMDAY)
+            (PROC_NAME, PROC_EFFICIENTCY, PROC_MEASURE, PROC_HOURS, PROC_MMDAY, PROC_MMDAY2, PROC_MMDAY3)
         OUTPUT INSERTED.PROC_ID
         VALUES
-            (?, ?, ?, ?, ?)
+            (?, ?, ?, ?, ?, ?, ?)
     ";
 
     $params = array(
@@ -193,7 +203,9 @@ if ($action == "save_process") {
         $proc_eff,
         $proc_measure,
         $proc_hours,
-        $proc_mmday
+        $proc_mmday,
+        $proc_mmday2,
+        $proc_mmday3
     );
 
     $stmt = sqlsrv_query($conn, $sql, $params);
@@ -422,7 +434,7 @@ if ($action == "delete_station") {
         }
 
         .process-wrap {
-            width: 640px;
+            width: 840px; /* Increased to fit new columns */
             height: 230px;
         }
 
@@ -517,6 +529,8 @@ if ($action == "delete_station") {
                             <th style="width:90px;">MEASURE</th>
                             <th style="width:90px;">HOURS</th>
                             <th style="width:100px;">MMDAY</th>
+                            <th style="width:100px;">MMDAY2</th>
+                            <th style="width:100px;">MMDAY3</th>
                         </tr>
                     </thead>
                     <tbody id="processBody"></tbody>
@@ -618,7 +632,9 @@ function makeProcessRow(r) {
         "<td><input name='PROC_EFFICIENTCY' value='" + html(r.PROC_EFFICIENTCY || 0) + "'></td>" +
         "<td><input name='PROC_MEASURE' value='" + html(r.PROC_MEASURE || 0) + "'></td>" +
         "<td><input name='PROC_HOURS' value='" + html(r.PROC_HOURS || 0) + "'></td>" +
-        "<td><input name='PROC_MMDAY' value='" + html(r.PROC_MMDAY || 0) + "'></td>";
+        "<td><input name='PROC_MMDAY' value='" + html(r.PROC_MMDAY || 0) + "'></td>" +
+        "<td><input name='PROC_MMDAY2' value='" + html(r.PROC_MMDAY2 || 0) + "'></td>" +
+        "<td><input name='PROC_MMDAY3' value='" + html(r.PROC_MMDAY3 || 0) + "'></td>";
 
     tr.onclick = function () {
         selectProcessRow(tr);
@@ -772,7 +788,9 @@ function newProcessRow() {
         PROC_EFFICIENTCY: 90,
         PROC_MEASURE: 0,
         PROC_HOURS: 1,
-        PROC_MMDAY: 25
+        PROC_MMDAY: 25,
+        PROC_MMDAY2: 0,
+        PROC_MMDAY3: 0
     });
 
     body.insertBefore(tr, body.firstChild);
@@ -823,7 +841,9 @@ function processData(tr) {
         PROC_EFFICIENTCY: tr.querySelector("input[name='PROC_EFFICIENTCY']").value,
         PROC_MEASURE: tr.querySelector("input[name='PROC_MEASURE']").value,
         PROC_HOURS: tr.querySelector("input[name='PROC_HOURS']").value,
-        PROC_MMDAY: tr.querySelector("input[name='PROC_MMDAY']").value
+        PROC_MMDAY: tr.querySelector("input[name='PROC_MMDAY']").value,
+        PROC_MMDAY2: tr.querySelector("input[name='PROC_MMDAY2']").value,
+        PROC_MMDAY3: tr.querySelector("input[name='PROC_MMDAY3']").value
     };
 }
 
@@ -861,7 +881,9 @@ function saveSelectedProcess() {
         "&PROC_EFFICIENTCY=" + enc(r.PROC_EFFICIENTCY) +
         "&PROC_MEASURE=" + enc(r.PROC_MEASURE) +
         "&PROC_HOURS=" + enc(r.PROC_HOURS) +
-        "&PROC_MMDAY=" + enc(r.PROC_MMDAY);
+        "&PROC_MMDAY=" + enc(r.PROC_MMDAY) +
+        "&PROC_MMDAY2=" + enc(r.PROC_MMDAY2) +
+        "&PROC_MMDAY3=" + enc(r.PROC_MMDAY3);
 
     ajaxPost("?action=save_process", data, function(res) {
         if (!res.success) {

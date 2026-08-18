@@ -47,8 +47,20 @@ $action = postv("action","");
 $editId = intval(getv("edit","0"));
 
 /* ======================================================
-   AKSI SPESIFIK: TRIGGER ON/OFF & UPDATE PRICE 
+   AKSI SPESIFIK: SET NEXT ICL, TRIGGER ON/OFF, UPDATE PRICE 
 ====================================================== */
+if ($action == "set_next_icl") {
+    $nextVal = intval(postv("upd_rcv_id", "0")); 
+    if ($nextVal > 0) {
+        $sqlSet = "UPDATE dbo.REFS SET NEXT_PR = ? WHERE REF_ID = 1";
+        if (sqlsrv_query($conn, $sqlSet, array($nextVal))) {
+            $message = "SET NEXT ICL BERHASIL diubah menjadi: " . $nextVal;
+        } else {
+            $error = "Gagal mengubah NEXT ICL:\n" . sql_error_text();
+        }
+    }
+}
+
 if ($action == "trigger_off") {
     $sqlOff = "BEGIN 
                ALTER TABLE [dbo].[receive_detail] DISABLE TRIGGER add_inv_recvd; 
@@ -77,18 +89,6 @@ if ($action == "update_price") {
     $stmtUpd = sqlsrv_query($conn, "EXEC sp_update_price_rec ?, ?, ?", array($updRcvId, $updItemId, $updPoId));
     if ($stmtUpd === false) $error = "Update Price Gagal:\n".sql_error_text();
     else $message = "UPDATE PRICE SELESAI";
-}
-
-if ($action == "set_next_icl") {
-    $nextVal = intval(postv("upd_rcv_id", "0")); // Memanfaatkan input tersembunyi yang sudah ada
-    if ($nextVal > 0) {
-        $sqlSet = "UPDATE dbo.REFS SET NEXT_PR = ? WHERE REF_ID = 1";
-        if (sqlsrv_query($conn, $sqlSet, array($nextVal))) {
-            $message = "SET NEXT ICL BERHASIL diubah menjadi: " . $nextVal;
-        } else {
-            $error = "Gagal mengubah NEXT ICL:\n" . sql_error_text();
-        }
-    }
 }
 
 /* ======================================================
@@ -148,11 +148,12 @@ if ($action == "save") {
 
     if ($rcvDate == "") $rcvDate = date("Y-m-d");
 
-    $autoNoUsed = false;
+    // Jika ICL NO dikosongkan oleh user, generate ulang
     if ($rcvNo == "") {
         $rcvNo = generate_rcv_no($conn);
-        $autoNoUsed = true;
     }
+
+    $isNewRecord = ($rcvId == 0); // Penanda apakah ini data baru
 
     if ($supId <= 0) $error = "Supplier wajib dipilih.";
 
@@ -175,22 +176,49 @@ if ($action == "save") {
             sqlsrv_begin_transaction($conn);
             $ok = true;
 
-            if ($rcvId > 0) {
+            // 1. HEADER (Menggunakan SET NOCOUNT ON untuk mengatasi Error Trigger pada SQL Server)
+            // 1. HEADER
+            if (!$isNewRecord) {
                 $sqlH = "UPDATE dbo.RECEIVE SET RCV_NO=?, RCV_DONO=?, RCV_DATE=?, RCV_PIC=?, SUP_ID=?, RCV_TYPE=? WHERE RCV_ID=?";
                 $stmtH = sqlsrv_query($conn, $sqlH, array($rcvNo, $rcvDono, $rcvDate, $rcvPic, $supId, $rcvType, $rcvId));
                 if ($stmtH === false) { $ok=false; $error="Simpan header gagal:\n".sql_error_text(); }
             } else {
-                $sqlH = "INSERT INTO dbo.RECEIVE (RCV_NO, RCV_DONO, RCV_DATE, RCV_PIC, SUP_ID, RCV_TYPE) OUTPUT INSERTED.RCV_ID VALUES (?, ?, ?, ?, ?, ?)";
+                // Solusi Standar SQL Server untuk Insert tabel yang memiliki Trigger aktif
+                $sqlH = "
+                    SET NOCOUNT ON;
+                    DECLARE @OutputTbl TABLE (NEW_ID INT);
+                    
+                    INSERT INTO dbo.RECEIVE (RCV_NO, RCV_DONO, RCV_DATE, RCV_PIC, SUP_ID, RCV_TYPE) 
+                    OUTPUT INSERTED.RCV_ID INTO @OutputTbl
+                    VALUES (?, ?, ?, ?, ?, ?);
+                    
+                    SELECT NEW_ID FROM @OutputTbl;
+                ";
                 $stmtH = sqlsrv_query($conn, $sqlH, array($rcvNo, $rcvDono, $rcvDate, $rcvPic, $supId, $rcvType));
+                
                 if ($stmtH === false) {
                     $ok=false; $error="Simpan header gagal:\n".sql_error_text();
                 } else {
-                    $new = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_NUMERIC);
-                    if ($new) $rcvId = intval($new[0]);
-                    else { $ok=false; $error="RCV_ID baru tidak terbaca."; }
+                    $new = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_ASSOC);
+                    if ($new && isset($new['NEW_ID'])) {
+                        $rcvId = intval($new['NEW_ID']);
+                    } else { 
+                        // Jika driver PDO/SQLSRV butuh skip result pembacaan struktur, kita next_result()
+                        if (sqlsrv_next_result($stmtH)) {
+                            $new = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_ASSOC);
+                            if ($new && isset($new['NEW_ID'])) {
+                                $rcvId = intval($new['NEW_ID']);
+                            } else {
+                                $ok=false; $error="RCV_ID baru tidak terbaca (Next Result).";
+                            }
+                        } else {
+                            $ok=false; $error="RCV_ID baru tidak terbaca."; 
+                        }
+                    }
                 }
             }
 
+            // 2. BC TRANS
             if ($ok) {
                 sqlsrv_query($conn, "DELETE FROM dbo.BC_TRANS WHERE NO_TRANS=?", array($rcvNo));
                 if ($jenisBc != "" || $nomorBc != "") {
@@ -200,6 +228,7 @@ if ($action == "save") {
                 }
             }
 
+            // 3. DETAILS
             if ($ok) {
                 $stmtDel = sqlsrv_query($conn, "DELETE FROM dbo.RECEIVE_DETAIL WHERE RCV_ID = ?", array($rcvId));
                 if ($stmtDel === false) { $ok=false; $error="Hapus detail lama gagal:\n".sql_error_text(); }
@@ -222,7 +251,8 @@ if ($action == "save") {
 
             if ($ok) {
                 sqlsrv_commit($conn);
-                if ($autoNoUsed) inc_next_rcv_no($conn);
+                // Selalu increment ICL jika data baru berhasil disave (Meskipun diedit manual oleh user)
+                if ($isNewRecord) inc_next_rcv_no($conn); 
                 header("Location: receive.php?edit=".$rcvId."&msg=saved");
                 exit;
             } else {
@@ -270,6 +300,9 @@ if ($editId > 0) {
     ";
     $stmtD = sqlsrv_query($conn,$sqlD,array($editId));
     if ($stmtD !== false) while ($rd = sqlsrv_fetch_array($stmtD, SQLSRV_FETCH_ASSOC)) $details[] = $rd;
+} else {
+    // Generate ICL baru jika form mode Add New
+    $header["RCV_NO"] = generate_rcv_no($conn);
 }
 
 if (getv("msg") == "saved") $message = "Receive berhasil disimpan.";
@@ -457,14 +490,10 @@ function triggerUpdatePrice() {
     }
 }
 
-document.addEventListener("DOMContentLoaded",function(){var rows=document.querySelectorAll("#detailBody tr");for(var i=0;i<rows.length;i++){rows[i].onclick=function(){selectDetailRow(this);};}});
-document.addEventListener("click",function(e){initAC();if(acBox&&!acBox.contains(e.target)){if(!e.target||!e.target.getAttribute||e.target.getAttribute("autocomplete")!=="off")hideAC();}});
-
 // Aksi Tombol Cetak ICL
 function cetakICL() {
     var rcvId = byId("rcv_id").value;
     if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
-    // Arahkan ke file cetak PHP Anda (sesuaikan nama file report-nya nanti)
     window.open("print_icl.php?id=" + encodeURIComponent(rcvId), "CETAK_ICL", "width=900,height=700,scrollbars=yes");
 }
 
@@ -479,7 +508,6 @@ function cetakICLOto() {
 function cetakSchedule() {
     var rcvNo = document.querySelector('.rcv-no').value;
     if (!rcvNo) { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
-    // Delphi Logic: LeftStr(DS_RECEIVERCV_NO.AsString,6)
     var shortNo = rcvNo.substring(0, 6);
     window.open("print_schedule.php?no=" + encodeURIComponent(shortNo), "CETAK_SCH", "width=900,height=700,scrollbars=yes");
 }
@@ -497,6 +525,9 @@ function setNextICL() {
         byId("execForm").submit();
     }
 }
+
+document.addEventListener("DOMContentLoaded",function(){var rows=document.querySelectorAll("#detailBody tr");for(var i=0;i<rows.length;i++){rows[i].onclick=function(){selectDetailRow(this);};}});
+document.addEventListener("click",function(e){initAC();if(acBox&&!acBox.contains(e.target)){if(!e.target||!e.target.getAttribute||e.target.getAttribute("autocomplete")!=="off")hideAC();}});
 </script>
 </head>
 <body>
@@ -521,7 +552,8 @@ function setNextICL() {
 <!-- Panel 1: Receive Header -->
 <table class="form-table">
 <tr>
-<td style="width:25%"><span class="label">I.C.L No.</span><input type="text" name="rcv_no" class="rcv-no" value="<?php echo h($header["RCV_NO"]); ?>" placeholder="Auto" readonly></td>
+<!-- FIX: Hapus readonly pada rcv_no agar dapat diedit manual -->
+<td style="width:25%"><span class="label">I.C.L No.</span><input type="text" name="rcv_no" class="rcv-no" value="<?php echo h($header["RCV_NO"]); ?>"></td>
 <td style="width:25%"><span class="label">Date</span><input type="date" name="rcv_date" class="date" value="<?php echo h($header["RCV_DATE"]); ?>"></td>
 <td style="width:50%"><span class="label">D.O #</span><input type="text" name="rcv_dono" value="<?php echo h($header["RCV_DONO"]); ?>"></td>
 </tr>
@@ -602,17 +634,19 @@ $price=isset($d["POD_PRICE"])?floatval($d["POD_PRICE"]):0;
 </table>
 
 <div class="bottom-buttons">
-<div>
-    <button type="button" class="btn" onclick="addRow()">+ Tambah Baris</button>
-</div>
-
-<div>
-    JANGAN LUPA KLIK TOMBOL ON LAGI SETELAH KLIK TOMBOL OFF
-    <button type="button" class="btn" style="background:#f2dede;color:#900;border-color:#900;" onclick="triggerAction('trigger_off')">OFF</button>
-    <button type="button" class="btn" style="background:#ffeb3b;color:#000;border-color:#b99d00;" onclick="triggerUpdatePrice()">UPDATE</button>
-    <button type="button" class="btn" style="background:#dff0d8;color:#006100;border-color:#006100;" onclick="triggerAction('trigger_on')">ON</button>
-</div>
-
+    <div>
+        <button type="button" class="btn" onclick="addRow()">+ Tambah Baris</button>
+    </div>
+    <div style="text-align: right;">
+        <div>
+            <button type="button" class="btn" style="background:#f2dede;color:#900;border-color:#900;" onclick="triggerAction('trigger_off')">OFF</button>
+            <button type="button" class="btn" style="background:#ffeb3b;color:#000;border-color:#b99d00;" onclick="triggerUpdatePrice()">UPDATE</button>
+            <button type="button" class="btn" style="background:#dff0d8;color:#006100;border-color:#006100;" onclick="triggerAction('trigger_on')">ON</button>
+        </div>
+        <div style="margin-top: 6px; color: #cc0000; font-weight: bold; border: 2px solid #cc0000; padding: 4px 8px; display: inline-block; background: #ffffff; font-size: 11px;">
+            JANGAN LUPA KLIK TOMBOL ON LAGI SETELAH KLIK TOMBOL OFF
+        </div>
+    </div>
 </div>
 </form>
 
@@ -652,18 +686,19 @@ Search:
 <th style="width:50px;">Detail</th>
 </tr>
 </thead>
+<!-- FIX: List Navigasi tidak menggunakan tag <a> agar fungsi OnClick Baris berfungsi penuh -->
 <tbody id="rcvListBody">
 <?php while($r=sqlsrv_fetch_array($stmtList, SQLSRV_FETCH_ASSOC)){ ?>
 <?php $rcvIdLink=intval($r["RCV_ID"]); ?>
 <tr class="po-row" onclick="goEdit('<?php echo h($rcvIdLink); ?>')" style="cursor:pointer;">
-    <td class="center go-btn" style="color:#000080;font-weight:bold;">▶</td>
-    <td><?php echo h($r["RCV_NO"]); ?></td>
-    <td><?php echo h(fmt_date_view($r["RCV_DATE"])); ?></td>
-    <td><?php echo h($r["RCV_DONO"]); ?></td>
-    <td><?php echo h($r["RCV_PIC"]); ?></td>
-    <td><?php echo h($r["SUP_CODE"]); ?></td>
-    <td><?php echo h($r["SUP_COMP"]); ?></td>
-    <td class="num"><?php echo h(number_format(floatval($r["DETAIL_COUNT"]),0,".",",")); ?></td>
+<td class="center go-btn" style="color:#000080;font-weight:bold;">▶</td>
+<td><?php echo h($r["RCV_NO"]); ?></td>
+<td><?php echo h(fmt_date_view($r["RCV_DATE"])); ?></td>
+<td><?php echo h($r["RCV_DONO"]); ?></td>
+<td><?php echo h($r["RCV_PIC"]); ?></td>
+<td><?php echo h($r["SUP_CODE"]); ?></td>
+<td><?php echo h($r["SUP_COMP"]); ?></td>
+<td class="num"><?php echo h(number_format(floatval($r["DETAIL_COUNT"]),0,".",",")); ?></td>
 </tr>
 <?php } ?>
 </tbody>

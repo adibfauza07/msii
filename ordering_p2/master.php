@@ -1339,7 +1339,7 @@ if ($selectedCurrCode != "") {
                                 <tr class="<?php echo $s == date_out($detailData["PRDT_START"]) && !$isNewDetail ? "selected" : ""; ?>" onclick="location.href='master.php?tab=price&item_id=<?php echo intval($selectedItemId); ?>&price_id=<?php echo intval($selectedPriceId); ?>&prdt_start=<?php echo urlencode($s); ?>'">
                                     <td><?php echo h($s); ?></td>
                                     <td><?php echo h(date_out($r["PRDT_END"])); ?></td>
-                                    <td class="right"><?php echo h(fmt_num($r["PRDT_PRICE"], 4)); ?></td>
+                                    <td class="right"><?php echo h((float)$r["PRDT_PRICE"]); ?></td>
                                     <td><?php echo h($r["CURR_CODE"]); ?></td>
                                     <td><?php echo h($r["PRDT_QNO"]); ?></td>
                                 </tr>
@@ -1428,7 +1428,8 @@ if ($selectedCurrCode != "") {
                         <tbody>
                             <?php for ($i = 0; $i < count($rateList); $i++) { $r = $rateList[$i]; $s = date_out($r["CURR_SDATE"]); ?>
                                 <tr class="<?php echo $s == date_out($rateData["CURR_SDATE"]) ? "selected" : ""; ?>" onclick="location.href='master.php?tab=currency&curr_code=<?php echo urlencode($r["CURR_CODE"]); ?>&rate_sdate=<?php echo urlencode($s); ?>'">
-                                    <td><?php echo h($s); ?></td><td><?php echo h(date_out($r["CURR_EDATE"])); ?></td><td class="right"><?php echo h(fmt_num($r["CURR_CRATE"], 4)); ?></td><td class="right"><?php echo h(fmt_num($r["CURR_VRATE"], 4)); ?></td><td><?php echo h($r["CURR_MM"]); ?></td><td><?php echo h($r["CURR_YY"]); ?></td>
+                                    <td><?php echo h($s); ?></td><td><?php echo h(date_out($r["CURR_EDATE"])); ?></td>
+<td class="right"><?php echo h((float)$r["CURR_CRATE"]); ?></td><td class="right"><?php echo h((float)$r["CURR_VRATE"]); ?></td><td><?php echo h($r["CURR_MM"]); ?></td><td><?php echo h($r["CURR_YY"]); ?></td>
                                 </tr>
                             <?php } ?>
                         </tbody>

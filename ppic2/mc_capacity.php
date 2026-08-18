@@ -96,19 +96,77 @@ $machineFilter = get_value("machine", "");
 $stationFilter = get_value("station", "");
 $export = strtolower(get_value("export", ""));
 
-$workDaysMonth = to_float(get_value("work_days", "25"), 25);
-$workHourDays = to_float(get_value("work_hours", "21"), 21);
-$eff = to_float(get_value("eff", "0.90"), 0.90);
+/* ======================================================
+   LOAD MASTER DATA PROCESS & MAG 
+   (Digunakan untuk mengisi Form Input Default UI otomatis)
+====================================================== */
+$sqlProc = "SELECT PROCESS.PROC_ID, PROCESS.PROC_NAME, PROCESS.PROC_EFFICIENTCY, 
+                   PROCESS.PROC_MEASURE, PROCESS.PROC_HOURS, PROCESS.PROC_MMDAY, 
+                   PROCESS.PROC_MMDAY2, PROCESS.PROC_MMDAY3, MAG.MAG_LOC, MAG.MAG_STATION
+            FROM PROCESS 
+            INNER JOIN MAG ON PROCESS.PROC_ID = MAG.PROC_ID";
 
-if ($workDaysMonth <= 0) {
-    $workDaysMonth = 25;
+$stmtProc = sqlsrv_query($conn, $sqlProc);
+$processMap = array();
+
+// Nilai default dasar sebelum membaca Database
+$db_work_days = 25;
+$db_work_hours = 21;
+$db_eff = 0.90;
+
+if ($stmtProc !== false) {
+    $first = true;
+    while ($p = sqlsrv_fetch_array($stmtProc, SQLSRV_FETCH_ASSOC)) {
+        $st = trim((string)$p["MAG_STATION"]);
+        if ($st !== "") {
+            $processMap[$st] = $p;
+            
+            // Ambil data baris pertama dari DB sebagai default global jika form tidak difilter
+            if ($first) {
+                if (isset($p["PROC_MMDAY"]) && is_numeric($p["PROC_MMDAY"])) {
+                    $db_work_days = floatval($p["PROC_MMDAY"]);
+                }
+                if (isset($p["PROC_HOURS"]) && is_numeric($p["PROC_HOURS"])) {
+                    $db_work_hours = floatval($p["PROC_HOURS"]);
+                }
+                if (isset($p["PROC_EFFICIENTCY"]) && is_numeric($p["PROC_EFFICIENTCY"])) {
+                    $effVal = floatval($p["PROC_EFFICIENTCY"]);
+                    $db_eff = ($effVal > 1) ? ($effVal / 100) : $effVal; // Handle format persen
+                }
+                $first = false;
+            }
+        }
+    }
 }
-if ($workHourDays <= 0) {
-    $workHourDays = 21;
+
+// Jika user melakukan filter Station spesifik, gunakan nilai khusus dari station tersebut ke dalam Form
+if ($stationFilter !== "" && isset($processMap[$stationFilter])) {
+    $pData = $processMap[$stationFilter];
+    if (isset($pData["PROC_MMDAY"]) && is_numeric($pData["PROC_MMDAY"])) {
+        $db_work_days = floatval($pData["PROC_MMDAY"]);
+    }
+    if (isset($pData["PROC_HOURS"]) && is_numeric($pData["PROC_HOURS"])) {
+        $db_work_hours = floatval($pData["PROC_HOURS"]);
+    }
+    if (isset($pData["PROC_EFFICIENTCY"]) && is_numeric($pData["PROC_EFFICIENTCY"])) {
+        $effVal = floatval($pData["PROC_EFFICIENTCY"]);
+        $db_eff = ($effVal > 1) ? ($effVal / 100) : $effVal;
+    }
 }
-if ($eff <= 0) {
-    $eff = 0.90;
-}
+
+/* 
+   Ambil nilai dari GET parameter (jika di-klik tombol FILTER/SUBMIT). 
+   Jika form belum disubmit atau nilainya kosong (""), maka otomatis menggunakan data hasil query DB ($db_...).
+*/
+$workDaysMonth = to_float(get_value("work_days", ""), $db_work_days);
+$workHourDays = to_float(get_value("work_hours", ""), $db_work_hours);
+$eff = to_float(get_value("eff", ""), $db_eff);
+
+// Proteksi jika nilainya diisi nol atau negatif
+if ($workDaysMonth <= 0) $workDaysMonth = $db_work_days;
+if ($workHourDays <= 0) $workHourDays = $db_work_hours;
+if ($eff <= 0) $eff = $db_eff;
+
 
 $startDate = $monthInput . "-01";
 if (strtotime($startDate) === false) {
@@ -159,26 +217,43 @@ while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $cytm = isset($r["ITEM_CYTM"]) ? floatval($r["ITEM_CYTM"]) : 0;
     $cav = isset($r["ITEM_CAVT"]) ? floatval($r["ITEM_CAVT"]) : 0;
 
-    /*
-        Rumus sesuai format MC Capacity Plan:
-        Output Hour       = 3600 / CYTM x CAV
-        Output / Day      = Output Hour x Work Hour / Days
-        Work Hour / Month = Work Days / Month x Work Hour / Days x Eff
-        Time Usage / Hour = ORDER / Output Hour
-        MC Usage / Days   = Time Usage / Hour / Work Hour / Days
-        Capacity Usage %  = MC Usage / Days / Work Days / Month x 100
-    */
     $outputHour = 0;
     if ($cytm > 0) {
         $outputHour = (3600.0 / $cytm) * $cav;
     }
 
-    $outputDay = $outputHour * $workHourDays;
-    $workHourMonth = $workDaysMonth * $workHourDays * $eff;
+    // Assign fallback values based on the input form parameters
+    $rowWorkDaysMonth = $workDaysMonth;
+    $rowWorkHourDays  = $workHourDays;
+    $rowEff           = $eff;
+    $workHourMonth    = $workDaysMonth * $workHourDays * $eff; 
+
+    // Override individual table row calculations if MAG_STATION matches an entry in the PROCESS DB
+    if (isset($processMap[$station])) {
+        $pData = $processMap[$station];
+
+        if (isset($pData["PROC_MMDAY"]) && is_numeric($pData["PROC_MMDAY"])) {
+            $workHourMonth = floatval($pData["PROC_MMDAY"]);
+            $rowWorkDaysMonth = floatval($pData["PROC_MMDAY"]); // Opsional, sesuaikan apakah WorkDays mengikuti DB per baris
+        }
+
+        if (isset($pData["PROC_HOURS"]) && floatval($pData["PROC_HOURS"]) > 0) {
+            $rowWorkHourDays = floatval($pData["PROC_HOURS"]);
+        }
+
+        if (isset($pData["PROC_EFFICIENTCY"]) && is_numeric($pData["PROC_EFFICIENTCY"])) {
+            $effVal = floatval($pData["PROC_EFFICIENTCY"]);
+            $rowEff = ($effVal > 1) ? ($effVal / 100) : $effVal;
+        }
+        
+        $workHourMonth = $rowWorkDaysMonth * $rowWorkHourDays * $rowEff;
+    }
+
+    $outputDay = $outputHour * $rowWorkHourDays;
     $timeUsageHour = ($outputHour > 0) ? ($woQty / $outputHour) : 0;
-    $mcUsageDays = ($workHourDays > 0) ? ($timeUsageHour / $workHourDays) : 0;
+    $mcUsageDays = ($rowWorkHourDays > 0) ? ($timeUsageHour / $rowWorkHourDays) : 0;
     $availableTimeHour = $workHourMonth;
-    $capacityUsage = ($workDaysMonth > 0) ? ($mcUsageDays / $workDaysMonth * 100) : 0;
+    $capacityUsage = ($rowWorkDaysMonth > 0) ? ($mcUsageDays / $rowWorkDaysMonth * 100) : 0;
 
     $groupKey = $machineNo;
 
@@ -202,9 +277,9 @@ while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         "OUTPUT_HOUR" => $outputHour,
         "OUTPUT_DAY" => $outputDay,
         "ORDER" => $woQty,
-        "WORK_DAYS_MONTH" => $workDaysMonth,
-        "WORK_HOUR_DAYS" => $workHourDays,
-        "EFF" => $eff,
+        "WORK_DAYS_MONTH" => $rowWorkDaysMonth,
+        "WORK_HOUR_DAYS" => $rowWorkHourDays,
+        "EFF" => $rowEff,
         "WORK_HOUR_MONTH" => $workHourMonth,
         "TIME_USAGE_HOUR" => $timeUsageHour,
         "MC_USAGE_DAYS" => $mcUsageDays,
@@ -224,7 +299,6 @@ uksort($groups, "cmp_machine_group");
 
 /* ======================================================
    EXPORT EXCEL
-   Format HTML TABLE supaya kolom terpisah dan garis/border tampil di Excel.
 ====================================================== */
 if ($export == "excel") {
     while (ob_get_level() > 0) {

@@ -188,6 +188,11 @@ function h($value) {
                 <div class="report-name">MACHINE CAPICITY</div>
 				 <a class="button" href="mc_capacity.php" target="_blank">OPEN</a>
                          </div>
+						 
+			<div class="report-item">
+                <div class="report-name">MACHINE CAPICITY PLAN 3 MONTH </div>
+				 <a class="button" href="capacity_plan.php" target="_blank">OPEN</a>
+                         </div>			 
 			
 			<div class="report-item">
                 <div class="report-name">MRP</div>
@@ -236,7 +241,11 @@ function h($value) {
                 <div class="report-name">STOK PLAN VS ACTUAL</div>
                 <a class="button" href="report_stok_actual.php" target="_blank">OPEN</a>
             </div>
-            
+            <div class="report-item">
+                <div class="report-name">STOK PLAN VS ACTUAL PART COMMON </div>
+                <a class="button" href="part_common.php" target="_blank">OPEN</a>
+            </div>
+
 
         </div>
     </div>

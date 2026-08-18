@@ -1,58 +1,53 @@
 <?php
 // =========================================================================
-// MASTER DASHBOARD P&L KONSOLIDASI (P1 & P2) + CROSS-PLANT PRICING ENGINE
-// Menggabungkan Sales, Consumption Material (Tally), Receive, Opname Stok (SOP)
-// Dan Mesin Pencari Harga Lintas Plant (Cross-Plant Cross-Reference).
+// DASHBOARD TRUE P&L (PROFIT & LOSS) MANUFAKTUR P1 & P2
 // =========================================================================
 
 set_time_limit(300);
-if (session_status() == PHP_SESSION_NONE) {
-    session_start();
-}
+if (session_status() == PHP_SESSION_NONE) { session_start(); }
 
-if (!isset($_SESSION['db_user']) || $_SESSION['db_user'] == "") {
-    die('<div style="padding:24px;color:#F85149;font-family:sans-serif;">Silakan login terlebih dahulu.</div>');
-}
-
-$uid = $_SESSION['db_user'];
-$pwd = isset($_SESSION['db_pass']) ? $_SESSION['db_pass'] : "";
+// KONEKSI DATABASE DUAL SERVER (PLANT 1 & PLANT 2)
+$uid = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : "sa";
+$pwd = isset($_SESSION['db_pass']) ? $_SESSION['db_pass'] : "password_anda";
 $dbName = "msData";
 
-// BUKA KONEKSI KE DUA SERVER (PLANT 1 & PLANT 2)
-$connectionOptions = array("Database" => $dbName, "Uid" => $uid, "PWD" => $pwd, "CharacterSet" => "UTF-8");
-$connP1 = @sqlsrv_connect("192.168.0.4", $connectionOptions);
-$connP2 = @sqlsrv_connect("192.168.0.9", $connectionOptions);
+$connP1 = @sqlsrv_connect("192.168.0.4", array("Database" => $dbName, "Uid" => $uid, "PWD" => $pwd, "CharacterSet" => "UTF-8"));
+$connP2 = @sqlsrv_connect("192.168.0.9", array("Database" => $dbName, "Uid" => $uid, "PWD" => $pwd, "CharacterSet" => "UTF-8"));
 
-// HELPER QUERY
-function q($conn, $sql, $params = array()) {
-    if (!$conn) return false;
-    $stmt = sqlsrv_query($conn, $sql, $params);
-    if ($stmt === false) return false;
-    return $stmt;
-}
-
-// =========================================================================
-// POLYFILL PHP 5.4: Tambahkan fungsi array_column jika tidak tersedia
-// =========================================================================
 if (!function_exists('array_column')) {
-    function array_column(array $input, $columnKey, $indexKey = null) {
-        $array = array();
-        foreach ($input as $value) {
-            if (!is_array($value)) continue;
-            if (is_null($indexKey)) {
-                $array[] = $value[$columnKey];
-            } else {
-                $array[$value[$indexKey]] = $value[$columnKey];
-            }
-        }
+    function array_column(array $input, $columnKey) {
+        $array = array(); 
+        foreach ($input as $value) { $array[] = $value[$columnKey]; } 
         return $array;
     }
 }
 
+function q($conn, $sql, $params = array()) {
+    if (!$conn) return false;
+    return sqlsrv_query($conn, $sql, $params);
+}
+
+function fetchAll($conn, $sql, $params = array(), $plantName = "P1") {
+    $results = array();
+    if (!$conn) return $results;
+    $stmt = q($conn, $sql, $params);
+    if ($stmt) {
+        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+            $row['PLANT'] = $plantName;
+            $results[] = $row;
+        }
+        sqlsrv_free_stmt($stmt);
+    }
+    return $results;
+}
+
 // =========================================================================
-// 1. MESIN PENCARI HARGA MATERIAL CROSS-PLANT (+ HPP BOM UNTUK ITTY 01)
+// 1. ENGINE HPP (MASTER HARGA & NAMA MATERIAL)
 // =========================================================================
+$GLOBAL_MAP_MAT = array();
+
 function getMaterialHargaMaster($connP1, $connP2) {
+    global $GLOBAL_MAP_MAT;
     $sql = "
         ;WITH LatestPO AS (
             SELECT pd.ITEM_ID AS MAT_ID, pd.POD_PRICE, po.PO_DATE AS PRICE_DATE_RAW, pd.POD_UNIT, po.PO_CUR,
@@ -81,9 +76,7 @@ function getMaterialHargaMaster($connP1, $connP2) {
             INNER JOIN ITEMS root_item ON bd.PART_ID = root_item.ITEM_ID
             INNER JOIN ITEMS m ON bd.ITEM_ID = m.ITEM_ID
             WHERE root_item.ITTY_CODE = '01' AND root_item.ITEM_INACTIVE = 0 AND m.ITEM_INACTIVE = 0
-
             UNION ALL
-
             SELECT bt.ROOT_PART_ID, bd.ITEM_ID AS COMPONENT_ID, m.ITTY_CODE,
                    CAST(bt.TOTAL_QTY * bd.QTY AS DECIMAL(38, 8)) AS TOTAL_QTY,
                    CAST(bt.BOM_PATH + CONVERT(VARCHAR(50), bd.ITEM_ID) + '/' AS VARCHAR(MAX)) AS BOM_PATH,
@@ -119,291 +112,52 @@ function getMaterialHargaMaster($connP1, $connP2) {
         OPTION (MAXRECURSION 100)
     ";
 
-    $mapHarga = array();
-    
-    if ($connP1) {
-        $stmt = q($connP1, $sql);
-        if ($stmt) {
-            while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-                $mapHarga['P1_' . trim($row['MAT_CODE'])] = (float)$row['HARGA_IDR'];
-            }
-            sqlsrv_free_stmt($stmt);
-        }
+    $d1 = fetchAll($connP1, $sql, array(), 'P1'); 
+    foreach ($d1 as $r) {
+        $GLOBAL_MAP_MAT['P1_'.trim($r['MAT_CODE'])] = array('HPP' => (float)$r['HARGA_IDR'], 'NAME' => trim($r['MAT_NAME']));
     }
     
-    if ($connP2) {
-        $stmt = q($connP2, $sql);
-        if ($stmt) {
-            while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-                $mapHarga['P2_' . trim($row['MAT_CODE'])] = (float)$row['HARGA_IDR'];
-            }
-            sqlsrv_free_stmt($stmt);
-        }
+    $d2 = fetchAll($connP2, $sql, array(), 'P2'); 
+    foreach ($d2 as $r) {
+        $GLOBAL_MAP_MAT['P2_'.trim($r['MAT_CODE'])] = array('HPP' => (float)$r['HARGA_IDR'], 'NAME' => trim($r['MAT_NAME']));
     }
-    
-    return $mapHarga;
 }
+getMaterialHargaMaster($connP1, $connP2);
 
-$GLOBAL_MAP_HARGA = getMaterialHargaMaster($connP1, $connP2);
-
-function cariHargaCrossPlant($matCode) {
-    global $GLOBAL_MAP_HARGA;
+function getHpp($matCode) {
+    global $GLOBAL_MAP_MAT; 
     $code = trim($matCode);
-    
-    $hargaP1 = isset($GLOBAL_MAP_HARGA['P1_' . $code]) ? $GLOBAL_MAP_HARGA['P1_' . $code] : 0;
-    $hargaP2 = isset($GLOBAL_MAP_HARGA['P2_' . $code]) ? $GLOBAL_MAP_HARGA['P2_' . $code] : 0;
-    
-    if ($hargaP1 > 0) return $hargaP1;
-    if ($hargaP2 > 0) return $hargaP2;
+    if (isset($GLOBAL_MAP_MAT['P1_' . $code]) && $GLOBAL_MAP_MAT['P1_' . $code]['HPP'] > 0) return $GLOBAL_MAP_MAT['P1_' . $code]['HPP'];
+    if (isset($GLOBAL_MAP_MAT['P2_' . $code]) && $GLOBAL_MAP_MAT['P2_' . $code]['HPP'] > 0) return $GLOBAL_MAP_MAT['P2_' . $code]['HPP'];
     return 0;
 }
 
 // =========================================================================
-// 2. SETUP PERIODE & INPUT MANUAL OVERHEAD
+// 2. SETUP PERIODE & VARIABEL
 // =========================================================================
 $bulan = isset($_GET['bulan']) ? str_pad($_GET['bulan'], 2, '0', STR_PAD_LEFT) : date('m');
 $tahun = isset($_GET['tahun']) ? $_GET['tahun'] : date('Y');
 
+// TANGGAL AWAL = TGL 1 BULAN INI (Untuk Saldo Awal)
 $tglAwal = "$tahun-$bulan-01";
 $tglAkhir = date("Y-m-t", strtotime($tglAwal)); 
-$tglAwalBulanDepan = date('Y-m-d', strtotime('+1 month', strtotime($tglAwal)));
 
-$tglAwalTime = $tglAwal . " 00:00:00";
-$tglAkhirTime = $tglAkhir . " 23:59:59";
-$tglAwalBulanDepanTime = $tglAwalBulanDepan . " 00:00:00";
+// TANGGAL OPNAME = TGL 1 BULAN BERIKUTNYA (Untuk Stok Akhir Fisik)
+$tglOpname = date("Y-m-01", strtotime("+1 month", strtotime($tglAwal)));
 
-$biayaGaji      = isset($_GET['gaji']) ? (float)$_GET['gaji'] : 0;
-$biayaListrik   = isset($_GET['listrik']) ? (float)$_GET['listrik'] : 0;
-$biayaOpr       = isset($_GET['operasional']) ? (float)$_GET['operasional'] : 0;
+$tAwalT = $tglAwal . " 00:00:00";
+$tAkhirT = $tglAkhir . " 23:59:59";
 
-function fetchDetail($conn, $sql, $params = array(), $plantName = "P1") {
-    $results = array();
-    if (!$conn) return $results;
-    $stmt = @sqlsrv_query($conn, $sql, $params);
-    if ($stmt) {
-        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-            $row['PLANT'] = $plantName;
-            $results[] = $row;
-        }
-        sqlsrv_free_stmt($stmt);
-    }
-    return $results;
-}
+$biayaGaji = isset($_GET['gaji']) ? (float)$_GET['gaji'] : 0;
+$biayaListrik = isset($_GET['listrik']) ? (float)$_GET['listrik'] : 0;
+$biayaOpr = isset($_GET['operasional']) ? (float)$_GET['operasional'] : 0;
 
 // =========================================================================
-// 3. DATA PENJUALAN (SALES)
+// 3. TARIK DATA SALES (PENJUALAN)
 // =========================================================================
 $sqlSales = "
-    SELECT DI.DI_NO, CONVERT(VARCHAR(10), DI.DI_DATE, 120) AS TANGGAL, C.CUST_ABBR, DIPA_PAR.QTY,
-           (DIPA_PAR.QTY * DIPA_PAR.PART_PRICE * CASE WHEN APV.CURR_CODE IN ('IDR', 'RP') OR APV.CURR_CODE IS NULL THEN 1 ELSE ISNULL(RV.CURR_VRATE, 1) END) AS TOTAL_IDR
-    FROM DI
-    INNER JOIN DIPA_PAR ON DI.DI_ID = DIPA_PAR.DI_ID
-    INNER JOIN PRICE ON DIPA_PAR.PRICE_ID = PRICE.PRICE_ID
-    LEFT JOIN ACTIVE_PRICE_VIEW AS APV ON PRICE.PRICE_ID = APV.PRICE_ID
-    LEFT JOIN CURR_RAT AS RV ON APV.CURR_CODE = RV.CURR_CODE AND DI.DI_DATE BETWEEN RV.CURR_SDATE AND ISNULL(RV.CURR_EDATE, DI.DI_DATE)
-    LEFT JOIN CUST C ON DI.CUST_ID = C.CUST_ID
-    WHERE DI.DI_DATE >= ? AND DI.DI_DATE <= ?
-    ORDER BY DI.DI_DATE DESC
-";
-$dtSales = array_merge(
-    fetchDetail($connP1, $sqlSales, [$tglAwalTime, $tglAkhirTime], 'P1'),
-    fetchDetail($connP2, $sqlSales, [$tglAwalTime, $tglAkhirTime], 'P2')
-);
-$totalPendapatan = array_sum(array_column($dtSales, 'TOTAL_IDR'));
-
-// =========================================================================
-// 4. DATA MATERIAL KONSUMSI (Tally Consumpt) - Basis 53,24%
-// =========================================================================
-function fetchConsumptionLinked($conn, $start, $end, $plantName) {
-    $results = array();
-    if (!$conn) return $results;
-    
-    $stmt = @sqlsrv_query($conn, "EXECUTE sp_GenerateTallyConsumtion ?, ?", array($start, $end));
-    if ($stmt) {
-        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-            $rl = array_change_key_case($row, CASE_LOWER);
-            $itemCode = isset($rl['item_material']) ? trim($rl['item_material']) : '';
-            $qty = isset($rl['cons_qty']) ? (float)$rl['cons_qty'] : 0;
-            
-            $hargaMaster = cariHargaCrossPlant($itemCode);
-            $totalIdr = $qty * $hargaMaster;
-
-            $results[] = array(
-                'PLANT' => $plantName,
-                'VCH_NO' => isset($rl['vch_no']) ? $rl['vch_no'] : '',
-                'TANGGAL' => isset($rl['date']) ? $rl['date'] : '',
-                'ITEM_CODE' => $itemCode,
-                'QTY' => $qty,
-                'RATE' => $hargaMaster,
-                'TOTAL_IDR' => $totalIdr
-            );
-        }
-        sqlsrv_free_stmt($stmt);
-    }
-    return $results;
-}
-
-$dtConsumpt = array_merge(
-    fetchConsumptionLinked($connP1, $tglAwal, $tglAkhir, 'P1'),
-    fetchConsumptionLinked($connP2, $tglAwal, $tglAkhir, 'P2')
-);
-$totalMaterialKonsumsi = array_sum(array_column($dtConsumpt, 'TOTAL_IDR'));
-
-// =========================================================================
-// 5. DATA PENERIMAAN (PEMBELIAN & SUBCON)
-// =========================================================================
-$sqlReceive = "
-    SELECT r.RCV_NO, CONVERT(VARCHAR(10), r.RCV_DATE, 120) AS TANGGAL,
-           CASE WHEN r.RCV_TYPE = 1 THEN 'PEMBELIAN MATERIAL' ELSE 'JASA SUBCON' END AS TIPE,
-           m.ITEM_CODE, rd.RCVD_QTY AS QTY,
-           (rd.RCVD_QTY * rd.POD_PRICE * CASE WHEN ISNULL(po.PO_CUR, 'IDR') IN ('IDR','RP') THEN 1 ELSE ISNULL(c.CURR_VRATE, 1) END) AS TOTAL_IDR
-    FROM RECEIVE r
-    INNER JOIN RECEIVE_DETAIL rd ON r.RCV_ID = rd.RCV_ID
-    INNER JOIN PO po ON rd.PO_ID = po.PO_ID
-    INNER JOIN ITEMS m ON rd.ITEM_ID = m.ITEM_ID
-    LEFT JOIN CURR_RAT c ON po.PO_CUR = c.CURR_CODE AND r.RCV_DATE BETWEEN c.CURR_SDATE AND ISNULL(c.CURR_EDATE, r.RCV_DATE)
-    WHERE r.RCV_TYPE IN (1,3) AND r.RCV_DATE >= ? AND r.RCV_DATE <= ?
-    ORDER BY r.RCV_DATE DESC
-";
-$dtRecv = array_merge(
-    fetchDetail($connP1, $sqlReceive, [$tglAwalTime, $tglAkhirTime], 'P1'),
-    fetchDetail($connP2, $sqlReceive, [$tglAwalTime, $tglAkhirTime], 'P2')
-);
-$totalPembelian = 0; $totalSubcon = 0;
-foreach($dtRecv as $r) {
-    if ($r['TIPE'] == 'JASA SUBCON') $totalSubcon += (float)$r['TOTAL_IDR'];
-    else $totalPembelian += (float)$r['TOTAL_IDR'];
-}
-
-// =========================================================================
-// 6. DATA SALDO STOK (BARANG JADI & MATERIAL)
-// =========================================================================
-function fetchStokLinked($conn, $tglOpname, $plantName, $tipeStok = 'FG') {
-    $results = array();
-    if (!$conn) return $results;
-    
-    $condition = ($tipeStok == 'FG') ? "i.ITTY_CODE = '01'" : "i.ITTY_CODE <> '01'";
-
-    $sql = "
-        SELECT s.SOP_REF AS SOP_NO, 
-               CONVERT(VARCHAR(10), s.SOP_SDATE, 120) AS TANGGAL, 
-               i.ITEM_CODE, 
-               i.ITTY_CODE,
-               SUM(t.TAG_QTY) AS QTY
-        FROM SOP s
-        INNER JOIN TAGS t ON s.SOP_ID = t.SOP_ID
-        INNER JOIN ITEMS i ON t.ITEM_ID = i.ITEM_ID
-        WHERE $condition 
-          AND CONVERT(VARCHAR(10), s.SOP_SDATE, 120) = ?
-        GROUP BY s.SOP_REF, s.SOP_SDATE, i.ITEM_CODE, i.ITTY_CODE
-    ";
-    
-    $stmt = @sqlsrv_query($conn, $sql, [$tglOpname]);
-    
-    if ($stmt) {
-        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-            $itemCode = trim($row['ITEM_CODE']);
-            $qty = (float)$row['QTY'];
-            $hargaMaster = cariHargaCrossPlant($itemCode);
-            
-            if ($row['ITTY_CODE'] == '02') {
-                $totalIdr = ($qty * $hargaMaster) / 1000;
-            } else {
-                $totalIdr = $qty * $hargaMaster;
-            }
-
-            $results[] = array(
-                'PLANT' => $plantName,
-                'SOP_NO' => $row['SOP_NO'],
-                'TANGGAL' => $row['TANGGAL'],
-                'ITEM_CODE' => $itemCode,
-                'ITTY_CODE' => $row['ITTY_CODE'],
-                'QTY' => $qty,
-                'HARGA_HPP' => $hargaMaster,
-                'TOTAL_IDR' => $totalIdr
-            );
-        }
-        sqlsrv_free_stmt($stmt);
-    }
-    return $results;
-}
-
-$dtStokAwal = array_merge(fetchStokLinked($connP1, $tglAwal, 'P1', 'FG'), fetchStokLinked($connP2, $tglAwal, 'P2', 'FG'));
-$totalFgAwal = array_sum(array_column($dtStokAwal, 'TOTAL_IDR'));
-
-$dtStokAkhir = array_merge(fetchStokLinked($connP1, $tglAwalBulanDepan, 'P1', 'FG'), fetchStokLinked($connP2, $tglAwalBulanDepan, 'P2', 'FG'));
-$totalFgAkhir = array_sum(array_column($dtStokAkhir, 'TOTAL_IDR'));
-
-$dtMatAwal = array_merge(fetchStokLinked($connP1, $tglAwal, 'P1', 'MAT'), fetchStokLinked($connP2, $tglAwal, 'P2', 'MAT'));
-$dtMatAkhir = array_merge(fetchStokLinked($connP1, $tglAwalBulanDepan, 'P1', 'MAT'), fetchStokLinked($connP2, $tglAwalBulanDepan, 'P2', 'MAT'));
-$jumlahStokAll = count($dtStokAwal) + count($dtStokAkhir) + count($dtMatAwal) + count($dtMatAkhir);
-
-
-// =========================================================================
-// 7. ANALISIS FLOW MATERIAL (Pembanding Rumus Manual vs Tally Sistem)
-// =========================================================================
-$matFlow = array();
-
-// A. Saldo Awal
-foreach ($dtMatAwal as $r) {
-    $code = trim($r['ITEM_CODE']);
-    if (!isset($matFlow[$code])) $matFlow[$code] = array('ITEM_CODE'=>$code, 'AWAL'=>0, 'BELI'=>0, 'AKHIR'=>0, 'TALLY'=>0);
-    $matFlow[$code]['AWAL'] += (float)$r['TOTAL_IDR'];
-}
-// B. Pembelian (Exclude Subcon)
-foreach ($dtRecv as $r) {
-    if ($r['TIPE'] == 'PEMBELIAN MATERIAL') {
-        $code = trim($r['ITEM_CODE']);
-        if (!isset($matFlow[$code])) $matFlow[$code] = array('ITEM_CODE'=>$code, 'AWAL'=>0, 'BELI'=>0, 'AKHIR'=>0, 'TALLY'=>0);
-        $matFlow[$code]['BELI'] += (float)$r['TOTAL_IDR'];
-    }
-}
-// C. Saldo Akhir
-foreach ($dtMatAkhir as $r) {
-    $code = trim($r['ITEM_CODE']);
-    if (!isset($matFlow[$code])) $matFlow[$code] = array('ITEM_CODE'=>$code, 'AWAL'=>0, 'BELI'=>0, 'AKHIR'=>0, 'TALLY'=>0);
-    $matFlow[$code]['AKHIR'] += (float)$r['TOTAL_IDR'];
-}
-// D. Aktual Tally Consumpt (Data Sumber 53.24%)
-foreach ($dtConsumpt as $r) {
-    $code = trim($r['ITEM_CODE']);
-    if (!isset($matFlow[$code])) $matFlow[$code] = array('ITEM_CODE'=>$code, 'AWAL'=>0, 'BELI'=>0, 'AKHIR'=>0, 'TALLY'=>0);
-    $matFlow[$code]['TALLY'] += (float)$r['TOTAL_IDR'];
-}
-
-// Variables for Grand Total Table
-$totAwal = 0; $totBeli = 0; $totAkhir = 0; 
-$totKonsumsiRumus = 0; $totTally = 0; 
-
-foreach ($matFlow as &$row) {
-    $row['KONSUMSI_RUMUS'] = $row['AWAL'] + $row['BELI'] - $row['AKHIR'];
-    // Persentase didasarkan pada TALLY (Sistem) agar matching dengan P&L
-    $row['PERSEN_SALES_TALLY'] = ($totalPendapatan > 0) ? ($row['TALLY'] / $totalPendapatan) * 100 : 0;
-    
-    $totAwal += $row['AWAL'];
-    $totBeli += $row['BELI'];
-    $totAkhir += $row['AKHIR'];
-    $totKonsumsiRumus += $row['KONSUMSI_RUMUS'];
-    $totTally += $row['TALLY'];
-}
-unset($row);
-
-$totPersenTally = ($totalPendapatan > 0) ? ($totTally / $totalPendapatan) * 100 : 0;
-
-// Urutkan berdasarkan Tally Terbesar
-usort($matFlow, function($a, $b) {
-    if ($a['TALLY'] == $b['TALLY']) return 0;
-    return ($a['TALLY'] < $b['TALLY']) ? 1 : -1;
-});
-
-
-// =========================================================================
-// 8. DATA P&L PER ITEM BARANG JADI (Analisis Margin Profitability)
-// =========================================================================
-$sqlPLItem = "
-    SELECT i.ITEM_ID, i.ITEM_CODE, i.ITEM_NAME, 
-           SUM(DIPA_PAR.QTY) AS QTY_SOLD,
-           SUM(DIPA_PAR.QTY * DIPA_PAR.PART_PRICE * CASE WHEN APV.CURR_CODE IN ('IDR', 'RP') OR APV.CURR_CODE IS NULL THEN 1 ELSE ISNULL(RV.CURR_VRATE, 1) END) AS TOTAL_REVENUE
+    SELECT i.ITEM_CODE, i.ITEM_NAME, SUM(DIPA_PAR.QTY) AS QTY_SOLD,
+           SUM(DIPA_PAR.QTY * DIPA_PAR.PART_PRICE * CASE WHEN ISNULL(APV.CURR_CODE, 'IDR') IN ('IDR', 'RP') THEN 1 ELSE ISNULL(RV.CURR_VRATE, 1) END) AS REVENUE
     FROM DI
     INNER JOIN DIPA_PAR ON DI.DI_ID = DIPA_PAR.DI_ID
     INNER JOIN PRICE ON DIPA_PAR.PRICE_ID = PRICE.PRICE_ID
@@ -411,418 +165,537 @@ $sqlPLItem = "
     LEFT JOIN ACTIVE_PRICE_VIEW AS APV ON PRICE.PRICE_ID = APV.PRICE_ID
     LEFT JOIN CURR_RAT AS RV ON APV.CURR_CODE = RV.CURR_CODE AND DI.DI_DATE BETWEEN RV.CURR_SDATE AND ISNULL(RV.CURR_EDATE, DI.DI_DATE)
     WHERE DI.DI_DATE >= ? AND DI.DI_DATE <= ?
-    GROUP BY i.ITEM_ID, i.ITEM_CODE, i.ITEM_NAME
+    GROUP BY i.ITEM_CODE, i.ITEM_NAME
 ";
+$dtSales = array_merge(fetchAll($connP1, $sqlSales, array($tAwalT, $tAkhirT), 'P1'), fetchAll($connP2, $sqlSales, array($tAwalT, $tAkhirT), 'P2'));
 
-$sqlErrorMsg = "";
-function fetchPLItemSafe($conn, $sql, $params, $plantName) {
-    global $sqlErrorMsg;
-    $results = array();
-    if (!$conn) return $results;
-    $stmt = sqlsrv_query($conn, $sql, $params);
-    if ($stmt === false) {
-        $err = sqlsrv_errors();
-        $sqlErrorMsg .= "<strong>[Data " . $plantName . " Gagal Dimuat]</strong> " . htmlspecialchars($err[0]['message']) . "<br>";
-        return $results;
-    }
-    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-        $row['PLANT'] = $plantName;
-        $results[] = $row;
-    }
-    sqlsrv_free_stmt($stmt);
-    return $results;
-}
+$totalRevenue = 0; $totalStdCogs = 0;
+$salesList = array();
+foreach ($dtSales as $r) {
+    $code = trim($r['ITEM_CODE']);
+    $qty = (float)$r['QTY_SOLD'];
+    $rev = (float)$r['REVENUE'];
+    $hpp = getHpp($code);
+    $cogs = $qty * $hpp; 
 
-$dtPLItemRaw = array_merge(
-    fetchPLItemSafe($connP1, $sqlPLItem, [$tglAwalTime, $tglAkhirTime], 'P1'),
-    fetchPLItemSafe($connP2, $sqlPLItem, [$tglAwalTime, $tglAkhirTime], 'P2')
-);
-
-// Proses Kalkulasi HPP dan Margin per Item
-$dtPLItem = array();
-foreach ($dtPLItemRaw as $row) {
-    $itemCode = trim($row['ITEM_CODE']);
-    $qtySold = (float)$row['QTY_SOLD'];
-    $revenue = (float)$row['TOTAL_REVENUE'];
+    $totalRevenue += $rev;
+    $totalStdCogs += $cogs;
     
-    $hppPerUnit = cariHargaCrossPlant($itemCode);
-    $totalCogs = $qtySold * $hppPerUnit;
-    
-    $grossProfit = $revenue - $totalCogs;
-    $marginPersen = ($revenue != 0) ? ($grossProfit / $revenue) * 100 : 0;
-    
-    $dtPLItem[] = array(
-        'PLANT' => $row['PLANT'],
-        'PART_ID' => $row['ITEM_ID'], 
-        'ITEM_CODE' => $itemCode,
-        'ITEM_NAME' => $row['ITEM_NAME'],
-        'QTY_SOLD' => $qtySold,
-        'REVENUE' => $revenue,
-        'HPP_PER_UNIT' => $hppPerUnit,
-        'TOTAL_COGS' => $totalCogs,
-        'GROSS_PROFIT' => $grossProfit,
-        'MARGIN_PERSEN' => $marginPersen
+    $salesList[] = array(
+        'PLANT' => $r['PLANT'], 'CODE' => $code, 'NAME' => $r['ITEM_NAME'], 
+        'QTY' => $qty, 'REVENUE' => $rev, 'HPP' => $hpp, 'COGS' => $cogs,
+        'PROFIT' => $rev - $cogs, 'MARGIN' => ($rev>0) ? (($rev-$cogs)/$rev)*100 : 0
     );
 }
 
-// Urutkan Profit
-usort($dtPLItem, function($a, $b) {
-    if ($a['GROSS_PROFIT'] == $b['GROSS_PROFIT']) return 0;
-    return ($a['GROSS_PROFIT'] < $b['GROSS_PROFIT']) ? 1 : -1;
-});
+// =========================================================================
+// 4. TARIK DATA BIAYA VENDOR (RCV_TYPE = 3)
+// =========================================================================
+$sqlVendorSubcon = "
+    SELECT ISNULL(SUM(
+        rd.RCVD_QTY * rd.POD_PRICE * 
+        CASE WHEN ISNULL(po.PO_CUR, 'IDR') IN ('IDR', 'RP') THEN 1 
+             ELSE ISNULL(cr.CURR_VRATE, 1) END
+    ), 0) AS TOTAL_VENDOR_COST
+    FROM RECEIVE r
+    INNER JOIN RECEIVE_DETAIL rd ON r.RCV_ID = rd.RCV_ID
+    INNER JOIN PO po ON rd.PO_ID = po.PO_ID
+    LEFT JOIN CURR_RAT cr ON po.PO_CUR = cr.CURR_CODE AND r.RCV_DATE BETWEEN cr.CURR_SDATE AND ISNULL(cr.CURR_EDATE, r.RCV_DATE)
+    WHERE r.RCV_TYPE = 3 
+      AND r.RCV_DATE >= ? AND r.RCV_DATE <= ?
+";
+$vendorP1 = fetchAll($connP1, $sqlVendorSubcon, array($tAwalT, $tAkhirT));
+$vendorP2 = fetchAll($connP2, $sqlVendorSubcon, array($tAwalT, $tAkhirT));
+$totalBiayaVendor = (isset($vendorP1[0]['TOTAL_VENDOR_COST']) ? (float)$vendorP1[0]['TOTAL_VENDOR_COST'] : 0) + 
+                    (isset($vendorP2[0]['TOTAL_VENDOR_COST']) ? (float)$vendorP2[0]['TOTAL_VENDOR_COST'] : 0);
+
+$sqlVendorDetail = "
+    SELECT r.RCV_NO, r.RCV_DATE, po.PO_NUM, i.ITEM_CODE, i.ITEM_NAME,
+           rd.RCVD_QTY, rd.POD_PRICE, po.PO_CUR,
+           ISNULL(cr.CURR_VRATE, 1) AS KURS,
+           (rd.RCVD_QTY * rd.POD_PRICE * 
+            CASE WHEN ISNULL(po.PO_CUR, 'IDR') IN ('IDR', 'RP') THEN 1 
+                 ELSE ISNULL(cr.CURR_VRATE, 1) END
+           ) AS TOTAL_IDR
+    FROM RECEIVE r
+    INNER JOIN RECEIVE_DETAIL rd ON r.RCV_ID = rd.RCV_ID
+    INNER JOIN PO po ON rd.PO_ID = po.PO_ID
+    INNER JOIN ITEMS i ON rd.ITEM_ID = i.ITEM_ID
+    LEFT JOIN CURR_RAT cr ON po.PO_CUR = cr.CURR_CODE AND r.RCV_DATE BETWEEN cr.CURR_SDATE AND ISNULL(cr.CURR_EDATE, r.RCV_DATE)
+    WHERE r.RCV_TYPE = 3 
+      AND r.RCV_DATE >= ? AND r.RCV_DATE <= ?
+    ORDER BY r.RCV_DATE DESC
+";
+$vendorDetailP1 = fetchAll($connP1, $sqlVendorDetail, array($tAwalT, $tAkhirT), 'P1');
+$vendorDetailP2 = fetchAll($connP2, $sqlVendorDetail, array($tAwalT, $tAkhirT), 'P2');
+$vendorDetailList = array_merge($vendorDetailP1, $vendorDetailP2);
 
 
 // =========================================================================
-// 9. KALKULASI FINAL LABA RUGI GLOBAL
+// 5. TARIK DATA MUTASI SP & TAG FISIK
 // =========================================================================
-$totalOverheadPabrik = $biayaGaji + $biayaListrik;
-$hppProduksi = $totalMaterialKonsumsi + $totalOverheadPabrik + $totalSubcon;
-$cogs = $hppProduksi + $totalFgAwal - $totalFgAkhir;
-$labaKotor = $totalPendapatan - $cogs;
-$labaBersih = $labaKotor - $biayaOpr;
-$persentaseMaterial = ($totalPendapatan > 0) ? ($totalMaterialKonsumsi / $totalPendapatan) * 100 : 0;
 
-function fRp($val) {
-    if ($val < 0) return "(Rp " . number_format(abs($val), 0, ',', '.') . ")";
-    return "Rp " . number_format($val, 0, ',', '.');
+function fetchMutasiSP($conn, $tAwal, $tAkhir) {
+    $res = array();
+    if (!$conn) return $res;
+    
+    $sql = "{CALL dbo.sp_laporan_mutasi_bahanbaku1(?, ?)}";
+    $stmt = sqlsrv_query($conn, $sql, array($tAwal, $tAkhir));
+    
+    if ($stmt) {
+        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+            if (isset($row["KODE_BARANG"])) {
+                $code = trim($row["KODE_BARANG"]);
+                if ($code != "") {
+                    if (!isset($res[$code])) {
+                        $res[$code] = $row;
+                        $res[$code]['MASUK'] = (float)$row['MASUK'];
+                        $res[$code]['KELUAR'] = (float)$row['KELUAR'];
+                    } else {
+                        $res[$code]['MASUK'] += (float)$row['MASUK'];
+                        $res[$code]['KELUAR'] += (float)$row['KELUAR'];
+                    }
+                }
+            }
+        }
+        sqlsrv_free_stmt($stmt);
+    }
+    return $res;
 }
 
+// FUNGSI TARIK TAG (Berlaku untuk Saldo Awal & Saldo Akhir)
+function fetchTagData($conn, $targetDate) {
+    $res = array();
+    if (!$conn) return $res;
+    
+    $sql = "
+        SELECT i.ITEM_CODE, SUM(TAGS.TAG_QTY) AS STOK
+        FROM TAGS 
+        INNER JOIN SOP ON TAGS.SOP_ID = SOP.SOP_ID
+        INNER JOIN ITEMS i ON TAGS.ITEM_ID = i.ITEM_ID
+        WHERE CAST(SOP.SOP_SDATE AS DATE) = ?
+        GROUP BY i.ITEM_CODE
+    ";
+    $stmt = sqlsrv_query($conn, $sql, array($targetDate));
+    
+    if ($stmt) {
+        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+            if (isset($row["ITEM_CODE"])) {
+                $res[trim($row["ITEM_CODE"])] = (float)$row['STOK'];
+            }
+        }
+        sqlsrv_free_stmt($stmt);
+    }
+    return $res;
+}
+
+// 1. Tarik Data Mutasi In / Out
+$mutasiP1 = fetchMutasiSP($connP1, $tglAwal, $tglAkhir);
+$mutasiP2 = fetchMutasiSP($connP2, $tglAwal, $tglAkhir);
+
+// 2. Tarik Data Tag Tgl 1 Bulan Ini (Untuk Saldo Awal)
+$tagAwalP1 = fetchTagData($connP1, $tglAwal);
+$tagAwalP2 = fetchTagData($connP2, $tglAwal);
+
+// 3. Tarik Data Tag Tgl 1 Bulan Depan (Untuk Stok Akhir Fisik)
+$tagAkhirP1 = fetchTagData($connP1, $tglOpname);
+$tagAkhirP2 = fetchTagData($connP2, $tglOpname);
+
+$matFlowList = array();
+$totalMaterialLoss = 0;
+
+$allMatKeys = array_unique(array_merge(
+    array_keys($mutasiP1), array_keys($mutasiP2),
+    array_keys($tagAwalP1), array_keys($tagAwalP2),
+    array_keys($tagAkhirP1), array_keys($tagAkhirP2)
+));
+
+foreach ($allMatKeys as $code) {
+    $hpp = getHpp($code);
+    
+    $m1 = isset($mutasiP1[$code]) ? $mutasiP1[$code] : null;
+    $m2 = isset($mutasiP2[$code]) ? $mutasiP2[$code] : null;
+    
+    $plantSource = "P1 & P2"; 
+    // Simplified plant detection
+    if (!$m1 && !$m2) {
+        if((isset($tagAwalP1[$code]) || isset($tagAkhirP1[$code])) && !(isset($tagAwalP2[$code]) || isset($tagAkhirP2[$code]))) $plantSource = "P1";
+        if(!(isset($tagAwalP1[$code]) || isset($tagAkhirP1[$code])) && (isset($tagAwalP2[$code]) || isset($tagAkhirP2[$code]))) $plantSource = "P2";
+    } else {
+        if ($m1 && !$m2) $plantSource = "P1";
+        if (!$m1 && $m2) $plantSource = "P2";
+    }
+    
+    $matName = $m1 ? $m1['NAMA_BARANG'] : ($m2 ? $m2['NAMA_BARANG'] : '-');
+    $satuan = $m1 ? $m1['SATUAN'] : ($m2 ? $m2['SATUAN'] : '-');
+    if($matName == '-') $matName = isset($GLOBAL_MAP_MAT['P1_'.$code]['NAME']) ? $GLOBAL_MAP_MAT['P1_'.$code]['NAME'] : (isset($GLOBAL_MAP_MAT['P2_'.$code]['NAME']) ? $GLOBAL_MAP_MAT['P2_'.$code]['NAME'] : '-');
+    
+    // --- 1. SALDO AWAL DIAMBIL DARI TAG BULAN INI ---
+    $awalP1 = isset($tagAwalP1[$code]) ? $tagAwalP1[$code] : 0;
+    $awalP2 = isset($tagAwalP2[$code]) ? $tagAwalP2[$code] : 0;
+    $awal = $awalP1 + $awalP2;
+
+    $masuk  = ($m1 ? $m1['MASUK'] : 0) + ($m2 ? $m2['MASUK'] : 0);
+    $keluar = ($m1 ? $m1['KELUAR'] : 0) + ($m2 ? $m2['KELUAR'] : 0);
+    
+    // --- 2. SALDO AKHIR SISTEM DIHITUNG ULANG DARI SALDO AWAL FISIK ---
+    $akhir = $awal + $masuk - $keluar;
+    
+    // --- 3. STOK OPNAME (FISIK) DIAMBIL DARI TAG BULAN DEPAN ---
+    $opnameP1 = isset($tagAkhirP1[$code]) ? $tagAkhirP1[$code] : 0;
+    $opnameP2 = isset($tagAkhirP2[$code]) ? $tagAkhirP2[$code] : 0;
+    $opname = $opnameP1 + $opnameP2;
+    
+    // --- 4. SELISIH (STOK FISIK - STOK SISTEM) ---
+    $selisih = $opname - $akhir;
+    
+    $status = ($selisih != 0) ? "TIDAK SESUAI" : "SESUAI";
+
+    // Hitung Loss (Minus = Barang Hilang = Biaya Positif)
+    $lossRupiah = ($selisih * -1 * $hpp); 
+    
+    // Tambahkan ke Total Loss Pabrik
+    $totalMaterialLoss += $lossRupiah;
+
+    if ($awal != 0 || $masuk != 0 || $keluar != 0 || $opname != 0 || $selisih != 0) {
+        $matFlowList[] = array(
+            'PLANT' => $plantSource, 
+            'CODE' => $code, 
+            'NAME' => $matName, 
+            'SATUAN' => $satuan,
+            'HPP' => $hpp, 
+            'AWAL' => $awal,
+            'MASUK' => $masuk,
+            'KELUAR' => $keluar,
+            'AKHIR' => $akhir,
+            'OPNAME' => $opname,
+            'SELISIH' => $selisih,
+            'LOSS_IDR' => $lossRupiah,
+            'STATUS' => $status
+        );
+    }
+}
+
+// Urutkan berdasarkan LOSS Rupiah tertinggi
+usort($matFlowList, function($a, $b) {
+    if ($a['LOSS_IDR'] == $b['LOSS_IDR']) return 0;
+    return ($a['LOSS_IDR'] < $b['LOSS_IDR']) ? 1 : -1;
+});
+
+// =========================================================================
+// 6. KALKULASI FINAL PROFIT / LOSS
+// =========================================================================
+$stdGrossProfit = $totalRevenue - $totalStdCogs;
+
+$actualGrossProfit = $stdGrossProfit - $totalMaterialLoss - ($biayaGaji + $biayaListrik + $totalBiayaVendor);
+$netProfit = $actualGrossProfit - $biayaOpr;
+
+$pctStdCogs = ($totalRevenue > 0) ? ($totalStdCogs / $totalRevenue) * 100 : 0;
+$pctLoss = ($totalRevenue > 0) ? ($totalMaterialLoss / $totalRevenue) * 100 : 0;
+$pctActualHpp = ($totalRevenue > 0) ? (($totalStdCogs + $totalMaterialLoss) / $totalRevenue) * 100 : 0;
+$pctVendor = ($totalRevenue > 0) ? ($totalBiayaVendor / $totalRevenue) * 100 : 0; 
+
+function fRp($val) { 
+    return ($val < 0 ? "-" : "") . "Rp " . number_format(abs($val), 0, ',', '.'); 
+}
 ?>
 
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard Validasi & Laba Rugi Manufaktur (Cross-Plant Link)</title>
+    <title>Dashboard True P&L Manufaktur</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body { font-family: 'DM Sans', sans-serif; background: #F3F4F6; padding: 20px; color: #1F2937; margin:0;}
-        .card { background: #FFF; border-radius: 10px; padding: 25px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
-        h2 { margin-top:0; color: #2563EB; font-size: 22px; }
+        body { font-family: 'DM Sans', sans-serif; background: #f0f2f5; padding: 20px; color: #1F2937; margin:0;}
+        .card { background: #FFF; border-radius: 8px; padding: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .header-title { color: #1E3A8A; font-size: 24px; font-weight: 700; margin-bottom: 20px; border-bottom: 2px solid #E5E7EB; padding-bottom: 10px;}
         
-        .filter-row { display: flex; gap: 10px; background: #F9FAFB; padding: 15px; border-radius: 8px; border: 1px solid #E5E7EB; margin-bottom: 20px; flex-wrap: wrap;}
-        .form-group { display: flex; flex-direction: column; gap: 4px; }
-        .form-group label { font-size: 11px; font-weight: 700; color: #4B5563; text-transform: uppercase;}
-        .form-group input, .form-group select { padding: 8px; border: 1px solid #D1D5DB; border-radius: 6px; font-size: 13px; }
-        .btn-submit { background: #2563EB; color: white; border: none; padding: 0 20px; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top:18px;}
+        .filter-box { display: flex; gap: 10px; background: #F8FAFC; padding: 15px; border: 1px solid #E2E8F0; border-radius: 6px; margin-bottom: 20px;}
+        .form-group { display: flex; flex-direction: column; gap: 5px; }
+        .form-group label { font-size: 11px; font-weight: 700; color: #64748B;}
+        .form-group input { padding: 8px; border: 1px solid #CBD5E1; border-radius: 4px;}
+        .btn-blue { background: #2563EB; color: white; border: none; padding: 8px 20px; border-radius: 4px; font-weight: 600; cursor: pointer; margin-top: 18px;}
         
-        .tabs { display: flex; border-bottom: 2px solid #E5E7EB; margin-bottom: 20px; gap: 5px; overflow-x: auto;}
-        .tab-btn { background: none; border: none; padding: 10px 20px; font-size: 14px; font-weight: 600; color: #6B7280; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; white-space: nowrap;}
-        .tab-btn.active { color: #2563EB; border-bottom-color: #2563EB; }
+        .tabs { display: flex; border-bottom: 2px solid #E2E8F0; margin-bottom: 15px; overflow-x: auto; white-space: nowrap;}
+        .tab { padding: 10px 20px; cursor: pointer; font-weight: 600; color: #64748B; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+        .tab.active { color: #1E40AF; border-bottom-color: #1E40AF; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
         
-        .data-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-        .data-table th { background: #F3F4F6; padding: 10px; text-align: left; border-bottom: 2px solid #D1D5DB; }
-        .data-table td { padding: 8px 10px; border-bottom: 1px solid #E5E7EB; }
-        .badge-p1 { background: #DBEAFE; color: #1E40AF; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; }
-        .badge-p2 { background: #FEF3C7; color: #991B1B; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; }
-        .val-right { text-align: right; font-weight: 600;}
-
-        .pl-table { width: 100%; font-size: 14px; border-collapse: collapse; }
-        .pl-table td { padding: 10px; border-bottom: 1px solid #E5E7EB; }
-        .pl-table .section { font-weight: bold; background: #F9FAFB; }
-        .pl-table .indent { padding-left: 30px; }
-        .pl-table .total-row { font-weight: bold; color: white; background: #2563EB; }
-        .text-red { color: #DC2626; }
-        .persen-badge { background: #DBEAFE; color: #2563EB; font-size: 12px; font-weight: bold; padding: 2px 8px; border-radius: 4px; margin-left: 10px; }
+        /* TABEL RATA KIRI & KECIL */
+        .table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .table th { background: #F1F5F9; padding: 10px; text-align: left; border-bottom: 2px solid #CBD5E1; color: #334155;}
+        .table td { padding: 8px 10px; border-bottom: 1px solid #E2E8F0; text-align: left; }
         
-        .scrollable { max-height: 500px; overflow-y: auto; border: 1px solid #E5E7EB; border-radius: 8px;}
+        .text-red { color: #DC2626; font-weight: 600;}
+        .text-green { color: #059669; font-weight: 600;}
+        .text-right { text-align: right; }
+        
+        .pl-table { width: 100%; font-size: 15px; border-collapse: collapse; margin-top: 10px;}
+        .pl-table td { padding: 12px; border-bottom: 1px solid #E2E8F0; }
+        .pl-table .section { font-weight: 700; background: #F8FAFC; color: #1E3A8A;}
+        .pl-table .indent { padding-left: 30px; }
+        .pl-table .total { font-weight: 700; font-size: 16px; background: #DBEAFE; color: #1E40AF;}
+        .pl-table .grand-total { font-weight: 700; font-size: 18px; background: #1E3A8A; color: white;}
+        
+        .badge { font-size: 12px; padding: 3px 8px; border-radius: 4px; margin-left: 10px; font-weight: 600; cursor: pointer;}
+        .badge-gray { background: #E2E8F0; color: #334155; border:1px solid #CBD5E1;}
+        .badge-red { background: #FEE2E2; color: #991B1B; border:1px solid #FCA5A5;}
+        .badge-blue { background: #DBEAFE; color: #1E40AF; border:1px solid #93C5FD;}
+        .badge-purple { background: #F3E8FF; color: #6B21A8; border:1px solid #D8B4FE;}
+        .badge:hover { opacity: 0.8; }
+        
+        /* Pewarnaan Status */
+        .st-sesuai { color: #059669; font-weight: 700; }
+        .st-tidak { color: #DC2626; font-weight: 700; }
+        
+        /* Style untuk Tag/Badge Plant */
+        .plant-tag { font-size: 10px; font-weight:bold; background:#1E40AF; color:#FFF; padding:2px 6px; border-radius:3px; display:inline-block; }
+        .plant-tag.gabungan { background:#6B21A8; }
+        .plant-tag.plant2 { background:#047857; }
     </style>
 </head>
 <body>
 
 <div class="card">
-    <h2><i class="fas fa-search-dollar"></i> Dashboard P&L Manufaktur (Cross-Plant Price Link)</h2>
-    <form method="GET" class="filter-row">
+    <div class="header-title">📊 True Profit & Loss Dashboard (P1 + P2)</div>
+    
+    <form method="GET" class="filter-box">
         <div class="form-group"><label>Bulan</label><input type="number" name="bulan" min="1" max="12" value="<?php echo (int)$bulan; ?>"></div>
         <div class="form-group"><label>Tahun</label><input type="number" name="tahun" value="<?php echo $tahun; ?>"></div>
         <div class="form-group"><label>Gaji Pabrik (Rp)</label><input type="number" name="gaji" value="<?php echo $biayaGaji; ?>"></div>
         <div class="form-group"><label>Listrik Pabrik (Rp)</label><input type="number" name="listrik" value="<?php echo $biayaListrik; ?>"></div>
-        <div class="form-group"><label>Beban Kantor (Rp)</label><input type="number" name="operasional" value="<?php echo $biayaOpr; ?>"></div>
-        <button type="submit" class="btn-submit">Proses Data</button>
+        <div class="form-group"><label>Beban Opr (Rp)</label><input type="number" name="operasional" value="<?php echo $biayaOpr; ?>"></div>
+        <button type="submit" class="btn-blue">Proses Data</button>
     </form>
 
     <div class="tabs">
-        <button class="tab-btn active" onclick="openTab(event, 'tabPL')">Laporan P&L</button>
-        <button class="tab-btn" onclick="openTab(event, 'tabPLItem')">P&L Per Item (<?php echo count($dtPLItem); ?>)</button>
-        <button class="tab-btn" onclick="openTab(event, 'tabMatFlow')">Flow & % Material (<?php echo count($matFlow); ?>)</button>
-        <button class="tab-btn" onclick="openTab(event, 'tabSales')">Penjualan (<?php echo count($dtSales); ?>)</button>
-        <button class="tab-btn" onclick="openTab(event, 'tabConsumpt')">Konsumsi Tally (<?php echo count($dtConsumpt); ?>)</button>
-        <button class="tab-btn" onclick="openTab(event, 'tabRecv')">Penerimaan (<?php echo count($dtRecv); ?>)</button>
-        <button class="tab-btn" onclick="openTab(event, 'tabStok')">Opname (<?php echo $jumlahStokAll; ?>)</button>
+        <div class="tab active" onclick="openTab(event, 'tPL')">Laporan P&L Aktual</div>
+        <div class="tab" onclick="openTab(event, 'tSales')">Detail 1: Sales & HPP</div>
+        <div class="tab" onclick="openTab(event, 'tLoss')">Detail 3: Mutasi & Loss Produksi ⚠️</div>
+        <div class="tab" onclick="openTab(event, 'tVendor')">Detail 2: Maklon Vendor</div>
     </div>
 
-    <!-- TAB 1: PROFIT & LOSS GLOBAL -->
-    <div id="tabPL" class="tab-content active">
+    <!-- TAB 1: TRUE P&L -->
+    <div id="tPL" class="tab-content active">
+        <div style="background:#FEF2F2; padding:10px; color:#991B1B; font-size:13px; border:1px solid #FCA5A5; border-radius:4px; margin-bottom:15px;">
+            <b>INFO:</b> Saldo Awal diambil dari SOP Tag tgl <b><?php echo date('d/m/Y', strtotime($tglAwal)); ?></b>. Stok Akhir/Opname ditarik dari SOP Tag tgl <b><?php echo date('d/m/Y', strtotime($tglOpname)); ?></b>.
+        </div>
         <table class="pl-table">
             <tr class="section"><td colspan="2">I. PENDAPATAN</td></tr>
-            <tr><td class="indent">Penjualan Sales</td><td class="val-right" style="color:#059669;"><?php echo fRp($totalPendapatan); ?></td></tr>
+            <tr><td class="indent">Penjualan Bersih (Sales)</td><td class="text-right text-green"><?php echo fRp($totalRevenue); ?></td></tr>
             
             <tr class="section"><td colspan="2">II. HARGA POKOK PENJUALAN (COGS)</td></tr>
             <tr>
-                <td class="indent">
-                    Material Konsumsi (Tally Consumpt + Cross-Plant Price)
-                    <span class="persen-badge"><?php echo number_format($persentaseMaterial, 2, ',', '.'); ?>%</span>
+                <td class="indent">HPP Modal Barang (Material)
+                    <span class="badge badge-gray" onclick="document.querySelectorAll('.tab')[1].click();"><?php echo number_format($pctStdCogs, 2); ?>% dari Sales 🔗</span>
                 </td>
-                <td class="val-right"><?php echo fRp($totalMaterialKonsumsi); ?></td>
+                <td class="text-right text-red"><?php echo fRp($totalStdCogs); ?></td>
             </tr>
-            <tr><td class="indent">Gaji & Listrik Pabrik</td><td class="val-right"><?php echo fRp($biayaGaji + $biayaListrik); ?></td></tr>
-            <tr><td class="indent">Jasa Maklon Subcon (Receive Type 3)</td><td class="val-right"><?php echo fRp($totalSubcon); ?></td></tr>
-            <tr style="background:#EFF6FF; font-weight:bold;"><td class="indent">Total Harga Pokok Produksi</td><td class="val-right"><?php echo fRp($hppProduksi); ?></td></tr>
             
-            <tr><td class="indent">Ditambah: Saldo Awal Barang Jadi (FG)</td><td class="val-right"><?php echo fRp($totalFgAwal); ?></td></tr>
-            <tr><td class="indent">Dikurangi: Saldo Akhir Barang Jadi (FG)</td><td class="val-right text-red">(<?php echo fRp($totalFgAkhir); ?>)</td></tr>
-            <tr style="font-weight:bold;"><td class="indent">TOTAL COGS</td><td class="val-right text-red">(<?php echo fRp($cogs); ?>)</td></tr>
+            <tr class="total"><td class="indent">LABA KOTOR STANDAR (TEORI)</td><td class="text-right"><?php echo fRp($stdGrossProfit); ?></td></tr>
             
-            <tr class="total-row"><td>III. LABA KOTOR (GROSS PROFIT)</td><td class="val-right"><?php echo fRp($labaKotor); ?></td></tr>
+            <tr class="section"><td colspan="2">III. BIAYA PABRIK & PEMBOROSAN PRODUKSI</td></tr>
+            <tr>
+                <td class="indent">Biaya Jasa Produksi Vendor / Maklon (Tipe 3) 
+                    <?php if($pctVendor>0): ?>
+                        <span class="badge badge-purple" onclick="document.querySelectorAll('.tab')[3].click();"><?php echo number_format($pctVendor, 2); ?>% 🔗</span>
+                    <?php endif; ?>
+                </td>
+                <td class="text-right text-red"><?php echo fRp($totalBiayaVendor); ?></td>
+            </tr>
+            <tr><td class="indent">Biaya Gaji & Listrik Pabrik</td><td class="text-right text-red"><?php echo fRp($biayaGaji + $biayaListrik); ?></td></tr>
+            <tr>
+                <td class="indent">Pemborosan Material (Berdasarkan Selisih Tag Opname) ⚠️
+                    <span class="badge badge-red" onclick="document.querySelectorAll('.tab')[2].click();"><?php echo number_format($pctLoss, 2); ?>% dari Sales 🔗</span>
+                </td>
+                <td class="text-right <?php echo ($totalMaterialLoss > 0) ? 'text-red' : 'text-green'; ?>">
+                    <?php echo fRp($totalMaterialLoss); ?>
+                </td>
+            </tr>
             
-            <tr class="section"><td colspan="2">IV. BEBAN OPERASIONAL</td></tr>
-            <tr><td class="indent">Beban Kantor</td><td class="val-right text-red">(<?php echo fRp($biayaOpr); ?>)</td></tr>
+            <tr style="background:#F8FAFC;">
+                <td class="indent" style="font-weight:700; color:#1E3A8A;">Total Beban Pabrik & Material Aktual
+                    <span class="badge badge-blue"><?php echo number_format($pctActualHpp + $pctVendor, 2); ?>% dari Sales</span>
+                </td>
+                <td class="text-right text-red" style="font-weight:700; border-top:2px solid #CBD5E1;">
+                    <?php echo fRp($totalStdCogs + $totalMaterialLoss + $totalBiayaVendor); ?>
+                </td>
+            </tr>
             
-            <tr class="total-row" style="background:#059669;"><td>V. LABA BERSIH (NET PROFIT)</td><td class="val-right"><?php echo fRp($labaBersih); ?></td></tr>
+            <tr class="total"><td class="indent">LABA KOTOR AKTUAL</td><td class="text-right"><?php echo fRp($actualGrossProfit); ?></td></tr>
+            
+            <tr class="section"><td colspan="2">IV. BIAYA OPERASIONAL</td></tr>
+            <tr><td class="indent">Biaya Kantor / Operasional</td><td class="text-right text-red"><?php echo fRp($biayaOpr); ?></td></tr>
+            
+            <tr class="grand-total"><td class="indent">LABA BERSIH (NET PROFIT)</td><td class="text-right"><?php echo fRp($netProfit); ?></td></tr>
         </table>
     </div>
 
-    <!-- TAB 2: P&L PER ITEM (PROFITABILITY) -->
-    <div id="tabPLItem" class="tab-content">
-        <div class="scrollable" style="padding:10px;">
-            <?php if ($sqlErrorMsg != ""): ?>
-                <div style="background:#FEE2E2; border:1px solid #F87171; color:#991B1B; padding:15px; border-radius:8px; margin-bottom:15px;">
-                    <h4 style="margin-top:0; margin-bottom:10px;"><i class="fas fa-exclamation-triangle"></i> Gagal Memuat Data Item</h4>
-                    <?php echo $sqlErrorMsg; ?>
-                </div>
-            <?php endif; ?>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Plant</th>
-                        <th>Item Code</th>
-                        <th>Item Name</th>
-                        <th style="text-align:right;">Qty Sold</th>
-                        <th style="text-align:right;">HPP / Unit (Cross-Plant)</th>
-                        <th style="text-align:right;">Total COGS</th>
-                        <th style="text-align:right;">Total Revenue</th>
-                        <th style="text-align:right;">Gross Profit</th>
-                        <th style="text-align:right;">Margin (%)</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach($dtPLItem as $r): ?>
-                    <tr>
-                        <td><span class="badge-<?php echo strtolower($r['PLANT']); ?>"><?php echo $r['PLANT']; ?></span></td>
-                        <td>
-                            <a href="cek_bom.php?part_id=<?php echo $r['PART_ID']; ?>&bulan=<?php echo (int)$bulan; ?>&tahun=<?php echo $tahun; ?>" target="_blank" style="color:#2563EB; text-decoration:none;" title="Lihat Rincian BOM & Material">
-                                <b><?php echo $r['ITEM_CODE']; ?></b> <i class="fas fa-external-link-alt" style="font-size:10px; margin-left:3px;"></i>
-                            </a>
-                        </td>
-                        <td><?php echo $r['ITEM_NAME']; ?></td>
-                        <td class="val-right"><?php echo number_format($r['QTY_SOLD']); ?></td>
-                        <td class="val-right"><?php echo fRp($r['HPP_PER_UNIT']); ?></td>
-                        <td class="val-right" style="color:#DC2626;"><?php echo fRp($r['TOTAL_COGS']); ?></td>
-                        <td class="val-right" style="color:#059669;"><?php echo fRp($r['REVENUE']); ?></td>
-                        <td class="val-right" style="font-weight:bold; color:<?php echo ($r['GROSS_PROFIT'] < 0) ? '#DC2626' : '#2563EB'; ?>;">
-                            <?php echo fRp($r['GROSS_PROFIT']); ?>
-                        </td>
-                        <td class="val-right">
-                            <span class="persen-badge" style="background:<?php echo ($r['MARGIN_PERSEN'] < 0) ? '#FEE2E2' : '#DBEAFE'; ?>; color:<?php echo ($r['MARGIN_PERSEN'] < 0) ? '#DC2626' : '#2563EB'; ?>;">
-                                <?php echo number_format($r['MARGIN_PERSEN'], 2, ',', '.'); ?>%
-                            </span>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+    <!-- TAB 2: SALES & MARGIN -->
+    <div id="tSales" class="tab-content">
+        <div style="background:#F1F5F9; padding:15px; border-radius:6px; margin-bottom:15px; font-size:14px; border:1px solid #CBD5E1;">
+            <b>Rincian HPP (Modal Material Terjual):</b>
         </div>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Plant</th><th>Item Code</th><th>Item Name</th><th>Qty Terjual</th>
+                    <th>HPP Modal/Unit</th><th>Total COGS</th>
+                    <th>Total Revenue</th><th>Margin Teori</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach($salesList as $s): ?>
+                <tr>
+                    <td><b><?php echo $s['PLANT']; ?></b></td><td><?php echo $s['CODE']; ?></td><td><?php echo $s['NAME']; ?></td>
+                    <td><?php echo number_format($s['QTY']); ?></td>
+                    <td><?php echo fRp($s['HPP']); ?></td><td class="text-red"><?php echo fRp($s['COGS']); ?></td>
+                    <td class="text-green"><?php echo fRp($s['REVENUE']); ?></td>
+                    <td>
+                        <span style="padding:2px 8px; border-radius:4px; font-weight:bold; background:<?php echo ($s['MARGIN']<10)?'#FEE2E2':'#DCFCE7'; ?>; color:<?php echo ($s['MARGIN']<10)?'#DC2626':'#059669'; ?>;">
+                            <?php echo number_format($s['MARGIN'], 1); ?>%
+                        </span>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
     </div>
 
-    <!-- TAB 3: ANALISIS MATERIAL FLOW -->
-    <div id="tabMatFlow" class="tab-content">
-        <div class="scrollable">
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>No</th>
-                        <th>Kode Material</th>
-                        <th style="text-align:right; color:#4B5563;">(+) Stok Awal (Rp)</th>
-                        <th style="text-align:right; color:#059669;">(+) Pembelian (Rp)</th>
-                        <th style="text-align:right; color:#DC2626;">(-) Stok Akhir (Rp)</th>
-                        <th style="text-align:right; border-right:2px solid #E5E7EB;" title="Rumus: Awal + Beli - Akhir">Konsumsi (Awal+Beli-Akhir)</th>
-                        <th style="text-align:right; background:#F0FDF4; color:#166534;" title="Tally Sistem (Data Asli 53.24%)">Konsumsi Tally (Sistem)</th>
-                        <th style="text-align:right; background:#F0FDF4; color:#166534;">% Tally thd Sales</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php 
-                    $no = 1;
-                    foreach($matFlow as $r): 
-                    ?>
-                    <tr>
-                        <td><?php echo $no++; ?></td>
-                        <!-- MENGUBAH KODE MATERIAL MENJADI LINK KE WIP.PHP -->
-                        <td>
-                            <a href="wip.php?start_date=<?php echo $tglAwal; ?>&end_date=<?php echo $tglAwalBulanDepan; ?>&detail_material=<?php echo urlencode(trim($r['ITEM_CODE'])); ?>" target="_blank" style="color:#2563EB; text-decoration:none;" title="Lihat Persentase Pemakaian Material di Produksi">
-                                <b><?php echo $r['ITEM_CODE']; ?></b> <i class="fas fa-external-link-alt" style="font-size:10px; margin-left:3px;"></i>
-                            </a>
-                        </td>
-                        <td class="val-right" style="color:#4B5563;"><?php echo fRp($r['AWAL']); ?></td>
-                        <td class="val-right" style="color:#059669;"><?php echo fRp($r['BELI']); ?></td>
-                        <td class="val-right" style="color:#DC2626;"><?php echo fRp($r['AKHIR']); ?></td>
-                        <td class="val-right" style="border-right:2px solid #E5E7EB;">
-                            <?php echo fRp($r['KONSUMSI_RUMUS']); ?>
-                        </td>
-                        <td class="val-right" style="font-weight:bold; background:#DCFCE7; color:#166534;">
-                            <?php echo fRp($r['TALLY']); ?>
-                        </td>
-                        <td class="val-right" style="background:#F0FDF4;">
-                            <span class="persen-badge" style="background:#EFF6FF; color:#1E40AF; border:1px solid #BFDBFE;">
-                                <?php echo number_format($r['PERSEN_SALES_TALLY'], 2, ',', '.'); ?> %
-                            </span>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-                <!-- BARIS GRAND TOTAL DITAMBAHKAN AGAR TIDAK BINGUNG -->
-                <tfoot>
-                    <tr style="font-weight:bold; background:#E5E7EB; font-size:13px;">
-                        <td colspan="2" class="val-right" style="padding:12px;">GRAND TOTAL:</td>
-                        <td class="val-right" style="padding:12px; color:#4B5563;"><?php echo fRp($totAwal); ?></td>
-                        <td class="val-right" style="padding:12px; color:#059669;"><?php echo fRp($totBeli); ?></td>
-                        <td class="val-right" style="padding:12px; color:#DC2626;"><?php echo fRp($totAkhir); ?></td>
-                        <td class="val-right" style="padding:12px; border-right:2px solid #D1D5DB;"><?php echo fRp($totKonsumsiRumus); ?></td>
-                        <td class="val-right" style="padding:12px; background:#BBF7D0; color:#166534; font-size:14px;"><?php echo fRp($totTally); ?></td>
-                        <td class="val-right" style="padding:12px; background:#BBF7D0; color:#1E40AF; font-size:14px;"><?php echo number_format($totPersenTally, 2, ',', '.'); ?> %</td>
-                    </tr>
-                </tfoot>
-            </table>
+    <!-- TAB 3: MATERIAL LOSS -->
+    <div id="tLoss" class="tab-content">
+        <div style="background:#FEF2F2; padding:15px; border-radius:6px; margin-bottom:15px; font-size:14px; border:1px solid #FCA5A5;">
+            <b>Tabel Rekonsiliasi Material P1 & P2:</b> <br/>
+            - <b>Saldo Awal</b> diambil murni dari Tag SOP Tgl: <b><?php echo date('d/m/Y', strtotime($tglAwal)); ?></b> <br/>
+            - <b>Saldo Akhir Sistem</b> = Saldo Awal (Tag) + In - Out <br/>
+            - <b>Stok Opname</b> diambil murni dari Tag SOP Tgl: <b><?php echo date('d/m/Y', strtotime($tglOpname)); ?></b>
         </div>
-    </div>
-
-    <!-- TAB 4: DETAIL SALES -->
-    <div id="tabSales" class="tab-content">
-        <div class="scrollable">
-            <table class="data-table">
-                <thead><tr><th>Plant</th><th>DI NO</th><th>Tanggal</th><th>Customer</th><th>QTY</th><th style="text-align:right;">Total IDR</th></tr></thead>
-                <tbody>
-                    <?php foreach($dtSales as $r): ?>
-                    <tr>
-                        <td><span class="badge-<?php echo strtolower($r['PLANT']); ?>"><?php echo $r['PLANT']; ?></span></td>
-                        <td><?php echo $r['DI_NO']; ?></td><td><?php echo $r['TANGGAL']; ?></td><td><?php echo $r['CUST_ABBR']; ?></td>
-                        <td><?php echo number_format($r['QTY']); ?></td><td class="val-right"><?php echo fRp($r['TOTAL_IDR']); ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- TAB 5: DETAIL MATERIAL KONSUMSI (TALLY) -->
-    <div id="tabConsumpt" class="tab-content">
-        <div class="scrollable">
-            <table class="data-table">
-                <thead><tr><th>Plant</th><th>VCH No</th><th>Tanggal</th><th>Item Material</th><th>Cons. QTY</th><th>Rate (Cross-Plant)</th><th style="text-align:right;">Total Amount (IDR)</th></tr></thead>
-                <tbody>
-                    <?php foreach($dtConsumpt as $r): ?>
-                    <tr>
-                        <td><span class="badge-<?php echo strtolower($r['PLANT']); ?>"><?php echo $r['PLANT']; ?></span></td>
-                        <td><?php echo $r['VCH_NO']; ?></td><td><?php echo $r['TANGGAL']; ?></td>
-                        <!-- MENGUBAH KODE MATERIAL MENJADI LINK KE WIP.PHP -->
-                        <td>
-                            <a href="wip.php?start_date=<?php echo $tglAwal; ?>&end_date=<?php echo $tglAwalBulanDepan; ?>&detail_material=<?php echo urlencode(trim($r['ITEM_CODE'])); ?>" target="_blank" style="color:#2563EB; text-decoration:none;" title="Lihat Persentase Pemakaian Material di Produksi">
-                                <b><?php echo $r['ITEM_CODE']; ?></b> <i class="fas fa-external-link-alt" style="font-size:10px; margin-left:3px;"></i>
-                            </a>
-                        </td>
-                        <td><?php echo number_format($r['QTY'], 2); ?></td><td><?php echo number_format($r['RATE'], 2); ?></td><td class="val-right"><?php echo fRp($r['TOTAL_IDR']); ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- TAB 6: DETAIL PENERIMAAN / SUBCON -->
-    <div id="tabRecv" class="tab-content">
-        <div class="scrollable">
-            <table class="data-table">
-                <thead><tr><th>Plant</th><th>RCV No</th><th>Tipe Penerimaan</th><th>Item Code</th><th>QTY</th><th style="text-align:right;">Total IDR</th></tr></thead>
-                <tbody>
-                    <?php foreach($dtRecv as $r): ?>
-                    <tr>
-                        <td><span class="badge-<?php echo strtolower($r['PLANT']); ?>"><?php echo $r['PLANT']; ?></span></td>
-                        <td><?php echo $r['RCV_NO']; ?></td><td><b><?php echo $r['TIPE']; ?></b></td><td><?php echo $r['ITEM_CODE']; ?></td>
-                        <td><?php echo number_format($r['QTY']); ?></td><td class="val-right"><?php echo fRp($r['TOTAL_IDR']); ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <!-- TAB 7: DETAIL OPNAME / STOK -->
-    <div id="tabStok" class="tab-content">
-        <div class="scrollable">
-            <table class="data-table">
-                <thead><tr><th>Plant</th><th>SOP No</th><th>Tanggal</th><th>Item Code</th><th>ITTY</th><th>QTY Fisik</th><th>Harga Cross-Plant</th><th style="text-align:right;">Total IDR</th></tr></thead>
-                <tbody>
-                    <!-- BAGIAN BARANG JADI -->
-                    <tr><td colspan="8" style="background:#DBEAFE; font-weight:bold; text-align:center; color:#1E40AF;">SALDO AWAL BARANG JADI (FG)</td></tr>
-                    <?php foreach($dtStokAwal as $r): ?>
-                    <tr>
-                        <td><span class="badge-<?php echo strtolower($r['PLANT']); ?>"><?php echo $r['PLANT']; ?></span></td>
-                        <td><?php echo $r['SOP_NO']; ?></td><td><?php echo $r['TANGGAL']; ?></td><td><b><?php echo $r['ITEM_CODE']; ?></b></td>
-                        <td><?php echo $r['ITTY_CODE']; ?></td><td><?php echo number_format($r['QTY']); ?></td><td><?php echo fRp($r['HARGA_HPP']); ?></td><td class="val-right"><?php echo fRp($r['TOTAL_IDR']); ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-
-                    <tr><td colspan="8" style="background:#DBEAFE; font-weight:bold; text-align:center; color:#1E40AF;">SALDO AKHIR BARANG JADI (FG)</td></tr>
-                    <?php foreach($dtStokAkhir as $r): ?>
-                    <tr>
-                        <td><span class="badge-<?php echo strtolower($r['PLANT']); ?>"><?php echo $r['PLANT']; ?></span></td>
-                        <td><?php echo $r['SOP_NO']; ?></td><td><?php echo $r['TANGGAL']; ?></td><td><b><?php echo $r['ITEM_CODE']; ?></b></td>
-                        <td><?php echo $r['ITTY_CODE']; ?></td><td><?php echo number_format($r['QTY']); ?></td><td><?php echo fRp($r['HARGA_HPP']); ?></td><td class="val-right"><?php echo fRp($r['TOTAL_IDR']); ?></td>
-                    </tr>
-                    <?php endforeach; ?>
+        <table class="table" style="font-size: 11px;">
+            <thead>
+                <tr>
+                    <th>Plant</th> 
+                    <th>Kode Barang</th>
+                    <th>Nama Barang</th>
+                    <th>Sat.</th>
+                    <th class="text-right">Harga HPP</th>
+                    <th class="text-right" style="background:#FEF9C3;">Saldo Awal<br>(Tag Tgl 1)</th>
+                    <th class="text-right">Masuk</th>
+                    <th class="text-right">Keluar</th>
+                    <th class="text-right" style="background:#F1F5F9;">Saldo Akhir<br>(Hitungan Sistem)</th>
+                    <th class="text-right" style="background:#F0FDF4;">Stok Opname<br>(Tag Bln Depan)</th>
+                    <th class="text-right" style="background:#FEE2E2;">Selisih Qty</th>
+                    <th class="text-right" style="background:#FEF2F2; color:#991B1B;">Loss / Variance (Rp)</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach($matFlowList as $m): 
+                    $statStr = strtoupper(trim($m['STATUS']));
+                    $stClass = "st-sesuai";
+                    if(strpos($statStr, 'TIDAK') !== false) $stClass = "st-tidak";
                     
-                    <!-- BAGIAN MATERIAL -->
-                    <tr><td colspan="8" style="background:#FEF3C7; font-weight:bold; text-align:center; color:#991B1B;">SALDO AWAL MATERIAL (RM)</td></tr>
-                    <?php foreach($dtMatAwal as $r): ?>
-                    <tr>
-                        <td><span class="badge-<?php echo strtolower($r['PLANT']); ?>"><?php echo $r['PLANT']; ?></span></td>
-                        <td><?php echo $r['SOP_NO']; ?></td><td><?php echo $r['TANGGAL']; ?></td><td><b><?php echo $r['ITEM_CODE']; ?></b></td>
-                        <td><?php echo $r['ITTY_CODE']; ?></td><td><?php echo number_format($r['QTY'], 2); ?></td><td><?php echo fRp($r['HARGA_HPP']); ?></td><td class="val-right"><?php echo fRp($r['TOTAL_IDR']); ?></td>
-                    </tr>
-                    <?php endforeach; ?>
+                    // Styling untuk tag Plant
+                    $tagClass = "plant-tag";
+                    if ($m['PLANT'] == "P1 & P2") $tagClass .= " gabungan";
+                    elseif ($m['PLANT'] == "P2") $tagClass .= " plant2";
+                ?>
+                <tr>
+                    <td><span class="<?php echo $tagClass; ?>"><?php echo $m['PLANT']; ?></span></td>
+                    <td><b><?php echo $m['CODE']; ?></b></td>
+                    <td><?php echo $m['NAME']; ?></td>
+                    <td><?php echo $m['SATUAN']; ?></td>
+                    <td class="text-right"><?php echo number_format($m['HPP'], 0, ',', '.'); ?></td>
+                    
+                    <td class="text-right" style="background:#FEF9C3; font-weight:bold;"><?php echo number_format($m['AWAL'], 2); ?></td>
+                    <td class="text-right"><?php echo number_format($m['MASUK'], 2); ?></td>
+                    <td class="text-right"><?php echo number_format($m['KELUAR'], 2); ?></td>
+                    
+                    <td class="text-right" style="background:#F8FAFC; font-weight:bold;">
+                        <?php echo number_format($m['AKHIR'], 2); ?>
+                    </td>
+                    
+                    <td class="text-right" style="background:#F0FDF4; font-weight:bold;">
+                        <?php echo number_format($m['OPNAME'], 2); ?>
+                    </td>
+                    
+                    <td class="text-right text-red" style="background:#FEF2F2; font-weight:bold;">
+                        <?php echo number_format($m['SELISIH'], 2); ?>
+                    </td>
+                    
+                    <td class="text-right" style="font-weight:bold; background:#FEF2F2; color:<?php echo ($m['LOSS_IDR'] > 0) ? '#DC2626' : '#059669'; ?>;">
+                        <?php echo fRp($m['LOSS_IDR']); ?>
+                    </td>
+                    
+                    <td class="<?php echo $stClass; ?>"><?php echo $m['STATUS']; ?></td>
+                </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
 
-                    <tr><td colspan="8" style="background:#FEF3C7; font-weight:bold; text-align:center; color:#991B1B;">SALDO AKHIR MATERIAL (RM)</td></tr>
-                    <?php foreach($dtMatAkhir as $r): ?>
-                    <tr>
-                        <td><span class="badge-<?php echo strtolower($r['PLANT']); ?>"><?php echo $r['PLANT']; ?></span></td>
-                        <td><?php echo $r['SOP_NO']; ?></td><td><?php echo $r['TANGGAL']; ?></td><td><b><?php echo $r['ITEM_CODE']; ?></b></td>
-                        <td><?php echo $r['ITTY_CODE']; ?></td><td><?php echo number_format($r['QTY'], 2); ?></td><td><?php echo fRp($r['HARGA_HPP']); ?></td><td class="val-right"><?php echo fRp($r['TOTAL_IDR']); ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
+    <!-- TAB 4: MAKLON VENDOR -->
+    <div id="tVendor" class="tab-content">
+        <div style="background:#F3E8FF; padding:15px; border-radius:6px; margin-bottom:15px; font-size:14px; border:1px solid #D8B4FE;">
+            <b>Rincian Biaya Jasa Produksi Vendor / Maklon:</b>
         </div>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Plant</th><th>Tgl Receive</th><th>No. Receive</th><th>No. PO Vendor</th>
+                    <th>Kode Barang</th><th>Nama Barang</th>
+                    <th>Qty Diterima</th><th>Harga Jasa / Unit</th>
+                    <th>Mata Uang (Kurs)</th>
+                    <th style="background:#F1F5F9;">Total Biaya (IDR)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach($vendorDetailList as $v): 
+                    $rcvDate = is_object($v['RCV_DATE']) ? $v['RCV_DATE']->format('d/m/Y') : $v['RCV_DATE'];
+                ?>
+                <tr>
+                    <td><span class="plant-tag <?php echo ($v['PLANT']=='P2')?'plant2':''; ?>"><?php echo $v['PLANT']; ?></span></td>
+                    <td><?php echo $rcvDate; ?></td>
+                    <td><?php echo $v['RCV_NO']; ?></td>
+                    <td><?php echo $v['PO_NUM']; ?></td>
+                    <td><?php echo $v['ITEM_CODE']; ?></td>
+                    <td><?php echo $v['ITEM_NAME']; ?></td>
+                    <td><?php echo number_format((float)$v['RCVD_QTY'], 2); ?></td>
+                    <td><?php echo number_format((float)$v['POD_PRICE'], 2); ?></td>
+                    <td><?php echo ($v['PO_CUR'] ?: 'IDR') . " (" . number_format((float)$v['KURS']) . ")"; ?></td>
+                    <td class="text-red" style="font-weight:700; background:#F8FAFC;">
+                        <?php echo fRp($v['TOTAL_IDR']); ?>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                <?php if(empty($vendorDetailList)): ?>
+                <tr>
+                    <td colspan="10" style="text-align:center; padding:20px; color:#64748B;">Tidak ada transaksi Receive (Type 3) dari Vendor pada periode ini.</td>
+                </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
     </div>
 
 </div>
 
 <script>
-function openTab(evt, tabId) {
-    var i, tabcontent, tablinks;
-    tabcontent = document.getElementsByClassName("tab-content");
-    for (i = 0; i < tabcontent.length; i++) { tabcontent[i].classList.remove("active"); }
-    tablinks = document.getElementsByClassName("tab-btn");
-    for (i = 0; i < tablinks.length; i++) { tablinks[i].classList.remove("active"); }
-    document.getElementById(tabId).classList.add("active");
-    evt.currentTarget.classList.add("active");
+function openTab(evt, id) {
+    let contents = document.querySelectorAll('.tab-content');
+    contents.forEach(c => c.classList.remove('active'));
+    let tabs = document.querySelectorAll('.tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    
+    document.getElementById(id).classList.add('active');
+    if(evt && evt.currentTarget) {
+        evt.currentTarget.classList.add('active');
+    }
 }
 </script>
 </body>
 </html>
-<?php
-if ($connP1) sqlsrv_close($connP1);
-if ($connP2) sqlsrv_close($connP2);
+<?php 
+if($connP1) sqlsrv_close($connP1); 
+if($connP2) sqlsrv_close($connP2); 
 ?>
