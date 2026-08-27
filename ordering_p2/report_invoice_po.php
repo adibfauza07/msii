@@ -35,12 +35,14 @@ function fmt_qty($value) {
     return number_format((float)$value, 0, ",", ".");
 }
 
+// Disesuaikan: angka di belakang koma dihilangkan
 function fmt_price($value) {
-    return number_format((float)$value, 5, ",", ".");
+    return number_format((float)$value, 0, ",", ".");
 }
 
+// Disesuaikan: angka di belakang koma dihilangkan
 function fmt_amount($value) {
-    return number_format((float)$value, 2, ",", ".");
+    return number_format((float)$value, 0, ",", ".");
 }
 
 $di_id = isset($_GET["DI_ID"]) ? intval($_GET["DI_ID"]) : 0;
@@ -84,10 +86,14 @@ if (count($rows) == 0) {
 
 $head = $rows[0];
 
+// =========================================================================
+// ALAMAT KHUSUS JIKA PERLU GANTI DI SINI
+// =========================================================================
 $custComp  = isset($head["CUST_COMP"]) ? $head["CUST_COMP"] : "";
 $custAddr1 = isset($head["CUST_ADDR1"]) ? $head["CUST_ADDR1"] : "";
 $custAddr2 = isset($head["CUST_ADDR2"]) ? $head["CUST_ADDR2"] : "";
 $custCity  = isset($head["CUST_CITY"]) ? $head["CUST_CITY"] : "";
+// =========================================================================
 
 $diDate = isset($head["DI_DATE"]) ? $head["DI_DATE"] : "";
 $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
@@ -296,13 +302,15 @@ for ($i = 0; $i < count($rows); $i++) {
             text-align: left;
         }
 
+        /* Disesuaikan: Lebar disamakan dengan file sebelumnya */
         .detail .partno {
-            width: 18%;
+            width: 14%;
             text-align: left;
         }
 
+        /* Disesuaikan: Lebar disamakan dengan file sebelumnya (geser kiri) */
         .detail .partname {
-            width: 30%;
+            width: 34%;
             text-align: left;
         }
 
@@ -503,7 +511,7 @@ for ($i = 0; $i < count($rows); $i++) {
 
         <div class="payment">
             Payment Term : 1 month
-            <div class="currency">Currency :<?php echo h($currency); ?></div>
+            <div class="currency">Currency : <?php echo h($currency); ?></div>
         </div>
     </div>
 
@@ -542,7 +550,6 @@ for ($i = 0; $i < count($rows); $i++) {
                 $partCode = isset($r["PART_CODE"]) ? trim($r["PART_CODE"]) : "";
                 $partNo   = isset($r["PART_NO"]) ? trim($r["PART_NO"]) : "";
                 $partName = isset($r["PART_NAME"]) ? trim($r["PART_NAME"]) : "";
-                $partNum  = isset($r["PART_NUM"]) ? trim($r["PART_NUM"]) : "";
                 $unit     = isset($r["PART_UNIT"]) ? trim($r["PART_UNIT"]) : "";
 
                 $poNo = "";
@@ -561,11 +568,8 @@ for ($i = 0; $i < count($rows); $i++) {
                     $partNoDisplay = $partCode;
                 }
 
+                // Disesuaikan: Hanya menampilkan nama aslinya saja
                 $partNameDisplay = $partName;
-
-                if ($partNum != "" && strpos($partNameDisplay, $partNum) === false) {
-                    $partNameDisplay = trim($partNameDisplay . " " . $partNum);
-                }
                 ?>
                 <tr>
                     <td class="no"><?php echo h($i + 1); ?>.</td>

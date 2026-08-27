@@ -265,7 +265,7 @@ $sql_count = count($details);
                 <td class="col-value">: <?= htmlspecialchars(isset($header['VEHICLE_NO']) ? $header['VEHICLE_NO'] : '') ?></td>
                 
                 <!-- Attendance sejajar di kolom kanan -->
-                <td class="col-label" style="width: 15%;">Attention</td>
+                <td class="col-label" style="width: 15%;">Attendance</td>
                 <td class="col-value" style="width: 35%;">: <?= htmlspecialchars((isset($header['BC_NO']) && trim($header['BC_NO']) !== '' && trim($header['BC_NO']) !== '/') ? $header['BC_NO'] : '') ?></td>
             </tr>
         </table>
@@ -348,7 +348,6 @@ $sql_count = count($details);
         <div class="doc-control">
             FM.CO.01-20(Revisi4:Tgl.1.Mei.12)
         </div>
-
     </div>
 </body>
 </html>

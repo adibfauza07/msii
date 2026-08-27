@@ -88,7 +88,7 @@ if ($start_date == "" || $end_date == "") {
 
 $sql = "
     SET NOCOUNT ON;
-    EXEC dbo.SP_DELIVERY_INSTRUCTION_PO1 ?, ?, ?
+    EXEC dbo.SP_DELIVERY_INSTRUCTION_PO2 ?, ?, ?
 ";
 
 $stmt = sqlsrv_query($conn, $sql, array(
@@ -98,7 +98,7 @@ $stmt = sqlsrv_query($conn, $sql, array(
 ));
 
 if ($stmt === false) {
-    die("<pre>Query SP_DELIVERY_INSTRUCTION_PO1 gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
+    die("<pre>Query SP_DELIVERY_INSTRUCTION_PO2 gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
 }
 
 $rows = array();
@@ -144,7 +144,8 @@ for ($i = 0; $i < count($rows); $i++) {
         "PLAN_QTY"     => isset($r["PLAN_QTY"]) ? $r["PLAN_QTY"] : 0,
         "PO"           => isset($r["PO"]) ? trim((string)$r["PO"]) : "",
         "STD_PACK_BOX" => isset($r["STD_PACK_BOX"]) ? $r["STD_PACK_BOX"] : 0,
-        "STD_BOX"      => isset($r["STD_BOX"]) ? $r["STD_BOX"] : 0
+        "STD_BOX"      => isset($r["STD_BOX"]) ? $r["STD_BOX"] : 0,
+        "PACK_CODE"    => isset($r["PACK_CODE"]) ? trim((string)$r["PACK_CODE"]) : ""
     );
 }
 
@@ -330,6 +331,11 @@ $rowsPerPage = 20;
             text-align: center;
         }
 
+        .left {
+            text-align: left;
+            padding-left: 5px !important;
+        }
+
         .signature {
             width: 100%;
             margin-top: 8px;
@@ -348,56 +354,19 @@ $rowsPerPage = 20;
 
         /*
             Total kolom = 100%
-            Item Code | Item No | Item Name | Lot No | PO.Bal | Del.Plan |
-            pcs | packing | Initial packing | Total | Remark | loading check
         */
-        .col-item-code {
-            width: 9%;
-        }
-
-        .col-item-no {
-            width: 15%;
-        }
-
-        .col-item-name {
-            width: 20%;
-        }
-
-        .col-lot-no {
-            width: 7%;
-        }
-
-        .col-po-bal {
-            width: 7%;
-        }
-
-        .col-plan {
-            width: 7%;
-        }
-
-        .col-pcs {
-            width: 6%;
-        }
-
-        .col-pack {
-            width: 6%;
-        }
-
-        .col-initial {
-            width: 6%;
-        }
-
-        .col-total {
-            width: 7%;
-        }
-
-        .col-remark {
-            width: 7%;
-        }
-
-        .col-check {
-            width: 3%;
-        }
+        .col-item-code { width: 9%; }
+        .col-item-no { width: 15%; }
+        .col-item-name { width: 20%; }
+        .col-lot-no { width: 7%; }
+        .col-po-bal { width: 7%; }
+        .col-plan { width: 7%; }
+        .col-pcs { width: 6%; }
+        .col-pack { width: 6%; }
+        .col-initial { width: 6%; }
+        .col-total { width: 7%; }
+        .col-remark { width: 7%; }
+        .col-check { width: 3%; }
 
         @media print {
             html,
@@ -407,9 +376,7 @@ $rowsPerPage = 20;
                 background: #ffffff;
             }
 
-            .print-bar {
-                display: none;
-            }
+            .print-bar { display: none; }
 
             .page {
                 width: 285mm;
@@ -428,13 +395,8 @@ $rowsPerPage = 20;
                 padding: 2px 3px;
             }
 
-            .report-title {
-                font-size: 21px;
-            }
-
-            .company-title {
-                font-size: 14px;
-            }
+            .report-title { font-size: 21px; }
+            .company-title { font-size: 14px; }
         }
     </style>
 </head>
@@ -504,8 +466,8 @@ $rowsPerPage = 20;
                     <th rowspan="3" class="col-check">loading<br>check</th>
                 </tr>
                 <tr>
-                    <th rowspan="2" class="col-pcs">pcs</th>
-                    <th rowspan="2" class="col-pack">packing</th>
+                    <th rowspan="2" class="col-pcs">actual</th>
+                    <th rowspan="2" class="col-pack">std_box</th>
                     <th class="col-initial">Initial</th>
                     <th rowspan="2" class="col-total">Total</th>
                 </tr>
@@ -523,8 +485,25 @@ $rowsPerPage = 20;
                     </tr>
                 <?php } ?>
 
+                <?php 
+                    $total_po_bal = 0;
+                    $total_plan = 0;
+                    $total_box = 0;
+                ?>
+
                 <?php for ($i = 0; $i < count($detailRows); $i++) { ?>
-                    <?php $r = $detailRows[$i]; ?>
+                    <?php 
+                        $r = $detailRows[$i]; 
+                        
+                        $jml_box = 0;
+                        if (!empty($r["STD_PACK_BOX"]) && $r["STD_PACK_BOX"] > 0) {
+                            $jml_box = ceil($r["PLAN_QTY"] / $r["STD_PACK_BOX"]);
+                        }
+
+                        $total_po_bal += $r["PBQTY"];
+                        $total_plan   += $r["PLAN_QTY"];
+                        $total_box    += $jml_box;
+                    ?>
 
                     <tr>
                         <td class="col-item-code">
@@ -543,18 +522,31 @@ $rowsPerPage = 20;
                             &nbsp;
                         </td>
 
-                        <td class="col-po-bal num">
+                        <td class="col-po-bal center">
                             <?php echo h(fmt_num($r["PBQTY"], 0)); ?>
                         </td>
 
-                        <td class="col-plan num">
+                        <td class="col-plan center">
                             <?php echo h(fmt_num($r["PLAN_QTY"], 0)); ?>
                         </td>
 
                         <td class="col-pcs"></td>
-                        <td class="col-pack"></td>
-                        <td class="col-initial"></td>
-                        <td class="col-total"></td>
+                        
+                        <!-- ISI STD_BOX DIAMBIL DARI DATABASE (STD_PACK_BOX) -->
+                        <td class="col-pack center">
+                            <?php echo h(fmt_num($r["STD_PACK_BOX"], 0)); ?>
+                        </td>
+                        
+                        <!-- HASIL PERHITUNGAN PINDAH KE KOLOM INITIAL PACKING -->
+                        <td class="col-initial center">
+                            <?php echo h($r["PACK_CODE"]); ?>
+                        </td>
+                        
+                        <!-- PACK CODE DITAMPILKAN DI KOLOM TOTAL DENGAN RATA KIRI -->
+                        <td class="col-total center">
+						    <?php echo h(fmt_num($jml_box, 0)); ?>
+         
+                        </td>
 
                         <td class="col-remark">&nbsp;</td>
 
@@ -569,7 +561,8 @@ $rowsPerPage = 20;
                         $usedRows = 1;
                     }
 
-                    $fillCount = $rowsPerPage - $usedRows;
+                    // Kurangi 1 untuk menyediakan ruang bagi baris TOTAL
+                    $fillCount = $rowsPerPage - $usedRows - 1;
 
                     if ($fillCount < 0) {
                         $fillCount = 0;
@@ -592,6 +585,23 @@ $rowsPerPage = 20;
                         <td></td>
                     </tr>
                 <?php } ?>
+                
+                <!-- BARIS TOTAL -->
+                
+				
+				<!-- BARIS TOTAL -->
+                <tr>
+                    <td colspan="4" class="center"><strong>TOTAL</strong></td>
+                    <td class="center"><strong><?php echo h(fmt_num($total_po_bal, 0)); ?></strong></td>
+                    <td class="center"><strong><?php echo h(fmt_num($total_plan, 0)); ?></strong></td>
+                    <td></td> <!-- actual kosong -->
+                    <td></td> <!-- std_box tidak ditotal -->
+                    <td></td> <!-- Initial packing (Pack Code) tidak ditotal -->
+                    <td class="center"><strong><?php echo h(fmt_num($total_box, 0)); ?></strong></td> <!-- total perhitungan box -->
+                    <td></td> <!-- REMARK -->
+                    <td></td> <!-- loading check -->
+                </tr>
+
             </tbody>
         </table>
 

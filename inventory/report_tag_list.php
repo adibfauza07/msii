@@ -176,7 +176,7 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
         }
     </style>
 </head>
-<body onload="window.print()">
+<body>
 
     <div class="no-print">
         <button class="btn" onclick="window.close()">&laquo; Tutup</button>

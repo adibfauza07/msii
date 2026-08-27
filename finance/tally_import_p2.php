@@ -715,6 +715,13 @@ function applySalesModifiedData($rows, $modifiedData) {
             continue;
         }
 
+        // --- FILTER BARIS YANG DIHAPUS ---
+        if (isset($mod['is_deleted']) && $mod['is_deleted'] === true) {
+            unset($rows[$idx]);
+            continue;
+        }
+        // ---------------------------------
+
         if (isset($mod['NO_INVOICE'])) {
             $rows[$idx]['DI_INVNO'] = $mod['NO_INVOICE'];
         }
@@ -728,7 +735,8 @@ function applySalesModifiedData($rows, $modifiedData) {
         }
     }
 
-    return $rows;
+    // Kembalikan array dengan index ulang karena ada yang di-unset
+    return array_values($rows);
 }
 
 function importSalesByCurrency($fromDate, $toDate, $custId, $invNo, $poNo, $modifiedData, $salesCurrency) {
@@ -1079,13 +1087,14 @@ function renderSalesTable($rows, $salesCurrency) {
     <div class="alert alert-info py-2 small mb-2">
         <span class="badge bg-warning text-dark">Kuning</span> = NO_INVOICE / NO_DS editable &nbsp;|&nbsp;
         <span class="badge bg-primary">Biru</span> = Tanggal editable (date picker) &nbsp;|&nbsp;
-        <b>Ubah 1 row = otomatis ubah semua row dalam grup INV+DS yang sama.</b> Perubahan digunakan saat Import Sales <?php echo h($salesCurrency); ?>.
+        <b>Ubah 1 row = otomatis ubah semua row dalam grup INV+DS yang sama.</b> Perubahan digunakan saat Import Sales <?php echo h($salesCurrency); ?>.<br>
+        <span class="badge bg-danger">Merah</span> = Hapus baris agar tidak di-import ke database/Tally.
     </div>
     <div class="table-responsive" style="max-height:600px;">
         <table class="table table-bordered table-striped table-sm" id="salesTable">
             <thead class="table-dark sticky-top">
                 <tr>
-                    <th>#</th>
+                    <th style="width: 50px;" class="text-center">#</th>
                     <th class="bg-warning text-dark">NO_INVOICE ✏️</th>
                     <th class="bg-warning text-dark">NO_DS ✏️</th>
                     <th class="bg-primary">Tanggal ✏️</th>
@@ -1111,7 +1120,14 @@ function renderSalesTable($rows, $salesCurrency) {
                 $tglVal = fmtDateInput(gv($r, 'TRAN_DATE', ''));
             ?>
                 <tr data-group-key="<?php echo h($groupKey); ?>" data-row-idx="<?php echo $rowIdx; ?>">
-                    <td class="text-end"><?php echo $rowIdx + 1; ?></td>
+                    <td class="text-center align-middle">
+                        <?php echo $rowIdx + 1; ?>
+                        <!-- TOMBOL DELETE DITAMBAHKAN DI SINI -->
+                        <br>
+                        <button type="button" class="btn btn-sm btn-danger py-0 px-1 mt-1" onclick="deleteSalesRow(this, <?php echo $rowIdx; ?>)" title="Kecualikan dari Import">
+                            ✖
+                        </button>
+                    </td>
                     <td style="background:#fffde7;">
                         <input type="text"
                                class="form-control form-control-sm sales-editable"
@@ -1585,9 +1601,9 @@ if ($action == 'save_curr') {
             $mods = json_decode($modifiedData, true);
             if (is_array($mods)) $modCount = count($mods);
         }
-        $message = 'Import Sales IDR P2 ke Tally_SALES selesai. Total baris: ' . $count;
+        $message = 'Import Sales IDR P2 ke Tally_SALES selesai. Total baris yang di-import: ' . $count;
         if ($modCount > 0) {
-            $message .= ' | ' . $modCount . ' row diedit (NO_INVOICE/NO_DS/Tanggal).';
+            $message .= ' | Terdapat row yang diedit/dihapus dalam proses.';
         }
         if ($poNo != '') {
             $message .= ' | PO filter: ' . $poNo;
@@ -1618,9 +1634,9 @@ if ($action == 'save_curr') {
             $mods = json_decode($modifiedData, true);
             if (is_array($mods)) $modCount = count($mods);
         }
-        $message = 'Import Sales USD P2 ke Tally_SALES selesai. Total baris: ' . $count;
+        $message = 'Import Sales USD P2 ke Tally_SALES selesai. Total baris yang di-import: ' . $count;
         if ($modCount > 0) {
-            $message .= ' | ' . $modCount . ' row diedit (NO_INVOICE/NO_DS/Tanggal).';
+            $message .= ' | Terdapat row yang diedit/dihapus dalam proses.';
         }
         if ($poNo != '') {
             $message .= ' | PO filter: ' . $poNo;
@@ -2087,11 +2103,41 @@ if ($tab == 'rate') {
 
 <script>
 /* ===========================
-   MODIFIKASI SALES - EDITABLE
+   MODIFIKASI SALES - EDITABLE & DELETE
    Object untuk menyimpan semua perubahan dari user
-   Key = row index, Value = { NO_INVOICE: '...', NO_DS: '...', Tanggal: '...' }
+   Key = row index, Value = { NO_INVOICE: '...', NO_DS: '...', Tanggal: '...', is_deleted: true }
    =========================== */
 var salesModifications = {};
+
+/**
+ * Hapus (kecualikan) baris dari import
+ */
+function deleteSalesRow(btn, rowIdx) {
+    if (!confirm('Kecualikan baris ini dari Import?')) {
+        return;
+    }
+
+    // Catat baris sebagai 'deleted' dalam JSON modifications
+    if (!salesModifications[rowIdx]) {
+        salesModifications[rowIdx] = {};
+    }
+    salesModifications[rowIdx]['is_deleted'] = true;
+
+    // Update hidden field untuk dikirim ke backend
+    document.getElementById('modified_data').value = JSON.stringify(salesModifications);
+
+    // Hapus elemen <tr> secara visual dengan efek transisi
+    var tr = btn.closest('tr');
+    if (tr) {
+        tr.style.transition = "all 0.3s ease";
+        tr.style.opacity = 0;
+        setTimeout(function() {
+            tr.remove();
+        }, 300);
+    }
+
+    showSalesFeedback('🗑️ 1 baris dihapus dan tidak akan di-import.');
+}
 
 /**
  * Dipanggil saat user mengubah nilai di field editable (NO_INVOICE, NO_DS, Tanggal)
@@ -2182,7 +2228,7 @@ function copyFirstToAll() {
  * Reset semua edit kembali ke nilai asli (reload data)
  */
 function resetAllEdits(loadAction) {
-    if (!confirm('Reset semua edit? Data akan di-reload dari database.')) return;
+    if (!confirm('Reset semua edit dan baris yang dihapus? Data akan di-reload dari database.')) return;
     salesModifications = {};
     document.getElementById('modified_data').value = '';
     validateSalesLoad(loadAction);
@@ -2256,7 +2302,7 @@ function validateSalesImport(act) {
 
     var modCount = Object.keys(salesModifications).length;
     var extraMsg = modCount > 0
-        ? '\n\nTerdapat ' + modCount + ' row yang sudah diedit (NO_INVOICE/NO_DS/Tanggal). Perubahan akan digunakan saat import.'
+        ? '\n\nTerdapat baris yang sudah diedit/dihapus. Perubahan akan digunakan saat import.'
         : '';
 
     var targetTable = 'Tally_SALES';

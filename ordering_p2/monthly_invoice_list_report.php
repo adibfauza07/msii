@@ -126,7 +126,21 @@ function fmt_price($value) {
         $value = 0;
     }
 
-    return number_format((float)$value, 4, ".", ",");
+    // 1. Format ke 6 desimal tanpa pemisah ribuan. 
+    // Ini mencegah error "Scientific Notation" (E-notation) pada angka yang sangat kecil.
+    $raw = number_format((float)$value, 6, ".", "");
+    
+    // 2. Pecah string berdasarkan titik desimal
+    $parts = explode(".", $raw);
+    
+    // 3. Format bagian angka bulat dengan separator ribuan (koma)
+    $intPart = number_format((float)$parts[0], 0, ".", ",");
+    
+    // 4. Potong secara harfiah 5 digit pertama dari bagian desimal.
+    // Hal ini menjamin TIDAK ADA pembulatan pada digit ke-5.
+    $decPart = substr($parts[1], 0, 5);
+    
+    return $intPart . "." . $decPart;
 }
 
 function fmt_amount($value) {

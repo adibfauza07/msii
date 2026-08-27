@@ -248,6 +248,10 @@ function h($value) {
                 <div class="report-name">STOK PLAN VS ACTUAL PART COMMON </div>
                 <a class="button" href="part_common.php" target="_blank">OPEN</a>
             </div>
+			<div class="report-item">
+                <div class="report-name">MC RUN </div>
+                <a class="button" href="report_mc_run.php" target="_blank">OPEN</a>
+            </div>
 
 
             

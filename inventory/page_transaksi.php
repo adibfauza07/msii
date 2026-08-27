@@ -476,7 +476,7 @@ while($qT && $r=sqlsrv_fetch_array($qT)) {
                         $clsPart = "disabled"; 
                         $lnkPart = "#";
 
-                        if ($currentID && in_array($trty, ['03', '04', '08', '09'])) {
+                        if ($currentID && in_array($trty, ['03', '04', '08', '09', '96', '97'])) {
                             $clsPart = ""; 
                             $lnkPart = "print_slip_physical.php?id=$currentID";
                         }
@@ -491,7 +491,7 @@ while($qT && $r=sqlsrv_fetch_array($qT)) {
                         
                         <div class="col-12">
                             <a href="<?php echo $lnkPart; ?>" <?php echo $target; ?> class="btn btn-light border w-100 text-start btn-sm <?php echo $clsPart; ?>">
-                                <?php echo ($clsPart=='') ? '<i class="bi bi-printer-fill text-success"></i>' : '<i class="bi bi-lock-fill text-muted"></i>'; ?> PART SLIP (03/04/08/09)
+                                <?php echo ($clsPart=='') ? '<i class="bi bi-printer-fill text-success"></i>' : '<i class="bi bi-lock-fill text-muted"></i>'; ?> PART SLIP (03/04/08/09/96/97)
                             </a>
                         </div>
 

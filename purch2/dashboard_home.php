@@ -170,6 +170,11 @@ function h($value) {
         <div class="report-grid">
 		
 		     <div class="report-item">
+                <div class="report-name">PURCHASE </div>
+                <a class="button" href="purchase1.php" target="_blank">OPEN</a>
+            </div>
+		
+		     <div class="report-item">
                 <div class="report-name">PURCHASE YEAR FINANCE P1 DAN P2</div>
                 <a class="button" href="purchase_finance.php" target="_blank">OPEN</a>
             </div>

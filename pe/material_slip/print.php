@@ -3,6 +3,9 @@ session_start();
 
 require_once __DIR__ . '/../../config/database_ordering.php';
 
+// 1. SET TIMEZONE KE WIB (JAKARTA)
+date_default_timezone_set('Asia/Jakarta');
+
 if (!isset($conn) || $conn === false) {
     die('Koneksi database terputus. <button onclick="window.history.back()">Kembali</button>');
 }
@@ -50,6 +53,11 @@ if (!$header) {
 $details = get_details($header['ID']);
 $sql_count = count($details);
 
+// 2. LOGIC PENENTUAN JUMLAH BARIS DAN HALAMAN
+// Jika jumlah item 1 atau 2, maksimal 5 baris. Jika lebih, maksimal 7 baris per halaman.
+$max_rows_per_page = ($sql_count <= 2) ? 5 : 7;
+$total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
+
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -75,6 +83,7 @@ $sql_count = count($details);
             background: #fff;
             padding: 30px;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
         }
 
         /* Header Perusahaan */
@@ -173,8 +182,9 @@ $sql_count = count($details);
        /* --- SETTING KHUSUS SAAT DIPRINT --- */
         @media print {
             @page {
+                /* PERBAIKAN: Margin atas disesuaikan jadi 10mm agar jaraknya pas, tidak mepet ke atas kertas */
                 /* Format: Atas Kanan Bawah Kiri */
-                margin: 15mm 5mm 5mm 5mm; /* Margin atas diperbesar menjadi 15mm */
+                margin: 10mm 5mm 5mm 5mm; 
             }
             .no-print { display: none !important; }
             
@@ -191,6 +201,11 @@ $sql_count = count($details);
                 width: 100%; 
                 max-width: 100%; 
                 page-break-inside: avoid; /* Mencegah terpotong 2 halaman */
+                page-break-after: always; /* Pemisah per halaman */
+                margin-bottom: 0;
+            }
+            .page-container:last-of-type {
+                page-break-after: auto; /* Hilangkan page-break di halaman terakhir */
             }
             
             /* Merapatkan tabel agar muat 1 lembar */
@@ -209,6 +224,13 @@ $sql_count = count($details);
         <button onclick="window.print()" class="btn" style="padding: 6px 15px; cursor: pointer; margin-left: 10px; font-weight: bold; border: 1px solid #333; background: #f0f0f0; border-radius: 4px;">Cetak Dokumen</button>
     </div>
 
+    <!-- LOOPING UNTUK MULTIPLE PAGES -->
+    <?php for ($page = 0; $page < $total_pages; $page++): 
+        $start_index = $page * $max_rows_per_page;
+        // Inisialisasi sub total khusus halaman terakhir
+        $sub = 0;
+        $sub_box = 0;
+    ?>
     <div class="page-container">
         
         <!-- Bagian Kop Perusahaan -->
@@ -221,20 +243,17 @@ $sql_count = count($details);
                 </p>
             </div>
             <div class="time-info">
-                TIME: 
-                <?php 
-                    if (isset($header['TRANS_TIME']) && is_object($header['TRANS_TIME'])) {
-                        echo $header['TRANS_TIME']->format('H:i:s');
-                    } else {
-                        echo date('H:i:s');
-                    }
-                ?>
+                <!-- MENGGUNAKAN WAKTU CETAK REAL-TIME -->
+                TIME: <?= date('H:i:s') ?>
             </div>
         </div>
 
         <!-- Judul -->
         <div class="doc-title">
             SURAT PENGANTAR BARANG
+            <?php if ($total_pages > 1): ?>
+                <div style="font-size: 10px; margin-top: 3px;">(Halaman <?= $page + 1 ?> dari <?= $total_pages ?>)</div>
+            <?php endif; ?>
         </div>
 
         <!-- Tabel Informasi Dokumen -->
@@ -269,7 +288,7 @@ $sql_count = count($details);
             </tr>
         </table>
 
-        <!-- Tabel Detail Barang -->
+        <!-- Tabel Detail Barang (Kolom Baru) -->
         <table class="items-table">
             <thead>
                 <tr>
@@ -284,14 +303,11 @@ $sql_count = count($details);
             </thead>
             <tbody>
                 <?php 
-                $max_rows = 7; 
-                $row_count = max($sql_count, $max_rows);
-                $sub = 0;
-                $sub_box = 0;
-                
-                for ($i = 0; $i < $row_count; $i++): 
-                    if ($i < $sql_count) {
-                        $key = $details[$i];
+                for ($i = 0; $i < $max_rows_per_page; $i++): 
+                    $data_index = $start_index + $i;
+                    
+                    if ($data_index < $sql_count) {
+                        $key = $details[$data_index];
                         $item_code = htmlspecialchars(isset($key['ITEM_CODE']) ? $key['ITEM_CODE'] : '');
                         $item_name = htmlspecialchars(isset($key['ITEM_NAME']) ? $key['ITEM_NAME'] : '');
                         $item_unit = htmlspecialchars(isset($key['ITEM_UNIT']) ? $key['ITEM_UNIT'] : '');
@@ -301,8 +317,6 @@ $sql_count = count($details);
                         $jumlah_box = ($jumlah_box_raw !== null && $jumlah_box_raw !== '') ? number_format($jumlah_box_raw, 0) : '';
                         
                         $remark    = htmlspecialchars(isset($key['REMARK']) ? $key['REMARK'] : '');
-                        $sub += isset($key['IT_QTY']) ? $key['IT_QTY'] : 0;
-                        $sub_box += (int)$jumlah_box_raw;
                     } else {
                         $item_code = '&nbsp;';
                         $item_name = '&nbsp;';
@@ -313,7 +327,7 @@ $sql_count = count($details);
                     }
                 ?>
                     <tr>
-                        <td class="tengah"><?= ($i + 1) ?></td>
+                        <td class="tengah"><?= ($data_index + 1) ?></td>
                         <td><?= $item_code ?></td>
                         <td><?= $item_name ?></td>
                         <td class="tengah"><?= $item_unit ?></td>
@@ -323,13 +337,25 @@ $sql_count = count($details);
                     </tr>
                 <?php endfor; ?>
                 
+                <?php 
+                // Tampilkan baris Total Keseluruhan hanya pada Halaman Terakhir
+                if ($page == $total_pages - 1): 
+                    // Kalkulasi ulang subtotal untuk seluruh data
+                    $total_qty = 0;
+                    $total_box = 0;
+                    foreach($details as $d) {
+                        $total_qty += isset($d['IT_QTY']) ? $d['IT_QTY'] : 0;
+                        $total_box += (int)(isset($d['JUMLAH_BOX']) ? $d['JUMLAH_BOX'] : 0);
+                    }
+                ?>
                 <!-- Baris Total -->
                 <tr style="font-weight:bold; background-color:#f9f9f9;">
                     <td colspan="4" class="kanan">TOTAL KESELURUHAN</td>
-                    <td class="kanan"><?= number_format($sub, 0) ?></td>
-                    <td class="kanan"><?= $sub_box > 0 ? number_format($sub_box, 0) : '' ?></td>
+                    <td class="kanan"><?= number_format($total_qty, 0) ?></td>
+                    <td class="kanan"><?= $total_box > 0 ? number_format($total_box, 0) : '' ?></td>
                     <td></td>
                 </tr>
+                <?php endif; ?>
             </tbody>
         </table>
 
@@ -368,5 +394,6 @@ $sql_count = count($details);
         </div>
 
     </div>
+    <?php endfor; ?>
 </body>
 </html>

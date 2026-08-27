@@ -133,13 +133,27 @@ $totalPages = count($chunks);
         .btn { padding: 8px 15px; cursor: pointer; border: 1px solid #ccc; background: #fff; font-weight: bold; margin: 0 5px; }
         
         @media print {
-            body { background: #fff; padding: 0; }
+            /* 1. Tambahkan margin: 0 pada html dan body */
+            html, body { background: #fff; padding: 0; margin: 0; }
+            
             .no-print { display: none; }
-            .page-container { width: 100%; padding: 0; margin: 0; box-shadow: none; border: none; }
+            
+            .page-container { 
+                width: 100%; 
+                /* 2. Reset min-height agar tinggi menyesuaikan otomatis dan tidak meluap */
+                min-height: auto; 
+                padding: 0; 
+                margin: 0; 
+                box-shadow: none; 
+                border: none; 
+                /* 3. Mencegah elemen terpotong di tengah halaman */
+                page-break-inside: avoid; 
+            }
+            
             .page-break { page-break-after: always; }
             
-            /* INI KUNCI UTAMANYA: Memaksa printer memotong kertas di ukuran 140mm (Setengah A4) */
-            @page { size: 210mm 140mm; margin: 5mm 8mm; } 
+            /* 4. Kurangi sedikit margin bawaan agar konten 13 baris muat dengan aman */
+            @page { size: 210mm 140mm; margin: 3mm 5mm; } 
         }
     </style>
 </head>
@@ -279,8 +293,8 @@ $totalPages = count($chunks);
         <!-- CATATAN BAWAH -->
         <div class="footer-notes">
             <span style="display:inline-block; width: 200px;">FM.CO.01-35 (Revisi 4 Tgl 10 Des 19)</span>
-            <span style="display:inline-block; width: 160px;">White : WH/Produksi</span>
-            <span>Yellow/Pink : Receiver</span>
+            <span style="display:inline-block; width: 160px;">White/Pink : WH/Produksi</span>
+            <span>Yellow/Green : Receiver</span>
             <?php if ($totalPages > 1): ?>
                 <span style="float: right; font-style: italic;">Page <?php echo ($pageIndex + 1) . " of " . $totalPages; ?></span>
             <?php endif; ?>

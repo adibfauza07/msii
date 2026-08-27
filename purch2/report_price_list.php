@@ -1,256 +1,288 @@
 <?php
-// ============================================================
-// REPORT MATERIAL PRICE LIST
-// PHP 5.4 + SQL Server sqlsrv + Bootstrap 3
-// Stored procedure: dbo.RPT_MATPRICELIST_CTH
-// ============================================================
-set_time_limit(180);
-
-if (session_id() === '') {
-    session_start();
-}
-
+// Include koneksi database Anda
 require_once dirname(__DIR__) . "/config/db_plant2.php";
 
-if (!isset($conn) || $conn === false) {
-    die('<div style="padding:24px;color:#b91c1c;background:#fff;font-family:Arial,sans-serif;">Koneksi database gagal. Silakan login terlebih dahulu.</div>');
+// Tangkap filter supplier dari form
+$sup_code = isset($_GET['sup_code']) ? trim($_GET['sup_code']) : '';
+$sup_name = isset($_GET['sup_name']) ? trim($_GET['sup_name']) : '';
+
+// Susun query dasar
+$params = array();
+$whereClause = " WHERE (dbo.SUP_ITEM_QUO.SUP_CODE IS NOT NULL) ";
+
+// Jika ada filter yang dikirim
+if (!empty($sup_code)) {
+    $whereClause .= " AND dbo.SUP_ITEM_QUO.SUP_CODE = ? ";
+    $params[] = $sup_code;
 }
 
-function h($value) {
-    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
-}
+$sql = "SELECT TOP (100) PERCENT 
+            dbo.SUP_ITEM_QUO.SUP_CODE, 
+            dbo.SUP_ITEM_QUO.SUP_COMP, 
+            dbo.SUP_ITEM_QUO.SUP_ID, 
+            dbo.SUP_ITEM_QUO.ITEM_ID, 
+            dbo.SUP_ITEM_QUO.ITEM_CODE, 
+            dbo.SUP_ITEM_QUO.ITEM_NAME, 
+            dbo.SUP_ITEM_QUO.ITTY_CODE, 
+            dbo.ITTY.ITTY_DESC, 
+            dbo.SUP_ITEM_QUO.CURR_CODE, 
+            dbo.SUP_ITEM_QUO.QUO_ID, 
+            dbo.QUOT_DETAIL.QUOD_PRICE, 
+            dbo.QUOT_DETAIL.QUOD_UNIT, 
+            dbo.QUOT_DETAIL.QUOD_MINQTY, 
+            dbo.QUOTATION.QUO_NO, 
+            dbo.QUOTATION.QUO_DATE, 
+            dbo.QUOTATION.QUO_EFFDATE
+        FROM dbo.SUP_ITEM_QUO 
+        INNER JOIN dbo.ITTY ON dbo.SUP_ITEM_QUO.ITTY_CODE = dbo.ITTY.ITTY_CODE 
+        LEFT OUTER JOIN dbo.QUOT_DETAIL ON dbo.SUP_ITEM_QUO.QUO_ID = dbo.QUOT_DETAIL.QUO_ID AND dbo.SUP_ITEM_QUO.ITEM_ID = dbo.QUOT_DETAIL.ITEM_ID 
+        LEFT OUTER JOIN dbo.QUOTATION ON dbo.SUP_ITEM_QUO.QUO_ID = dbo.QUOTATION.QUO_ID
+        $whereClause
+        ORDER BY dbo.SUP_ITEM_QUO.SUP_CODE, dbo.SUP_ITEM_QUO.ITTY_CODE, dbo.SUP_ITEM_QUO.ITEM_CODE";
 
-function display_date($value) {
-    if ($value === null || $value === '') return '';
-    if ($value instanceof DateTime) return $value->format('d-M-Y');
-    $timestamp = strtotime((string)$value);
-    return $timestamp !== false ? date('d-M-Y', $timestamp) : (string)$value;
-}
+// Eksekusi query
+$stmt = sqlsrv_query($conn, $sql, $params);
 
-function display_number($value, $decimals = 2) {
-    if ($value === null || $value === '') return '';
-    return number_format((float)$value, (int)$decimals, ',', '.');
-}
-
-function sql_error_text() {
-    $errors = sqlsrv_errors(SQLSRV_ERR_ERRORS);
-    if (!is_array($errors) || count($errors) === 0) return 'Kesalahan SQL Server tidak diketahui.';
-    $messages = array();
-    foreach ($errors as $error) {
-        $messages[] = trim('[' . $error['SQLSTATE'] . '] ' . $error['message']);
+// Pindahkan data ke array untuk mempermudah looping di HTML
+$results = array();
+if ($stmt !== false) {
+    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+        $results[] = $row;
     }
-    return implode(' | ', $messages);
+    sqlsrv_free_stmt($stmt);
 }
 
-$itemName = isset($_GET['item_name']) ? trim($_GET['item_name']) : '';
-$isExport = isset($_GET['export']) && $_GET['export'] === 'excel';
-$submitted = isset($_GET['show_report']) || $isExport;
-$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
-$limit = 50; // Jumlah data per halaman
-
-$errorMessage = '';
-$reportRows = array();
-
-/*
-|--------------------------------------------------------------------------
-| Jalankan Report (Stored Procedure)
-|--------------------------------------------------------------------------
-*/
-if ($submitted) {
-    $nameParam = $itemName === '' ? '%' : '%' . $itemName . '%';
-
-    $reportSql = "EXEC dbo.RPT_MATPRICELIST_CTH @NAME = ?";
-    $reportParams = array($nameParam);
-    $reportStmt = @sqlsrv_query($conn, $reportSql, $reportParams);
-
-    if ($reportStmt === false) {
-        $errorMessage = 'Report gagal dijalankan: ' . sql_error_text();
-    } else {
-        while ($row = sqlsrv_fetch_array($reportStmt, SQLSRV_FETCH_ASSOC)) {
-            $reportRows[] = $row;
-        }
-        sqlsrv_free_stmt($reportStmt);
-    }
-}
-
-$totalData = count($reportRows);
-$totalPages = ceil($totalData / $limit);
-$offset = ($page - 1) * $limit;
-$webRows = array_slice($reportRows, $offset, $limit);
-
-/*
-|--------------------------------------------------------------------------
-| Export to Excel (Export SELURUH DATA)
-|--------------------------------------------------------------------------
-*/
-if ($isExport && $errorMessage === '') {
-    $filename = 'Material_PriceList_' . date('Ymd_His') . '.xls';
-    header('Content-Type: application/vnd.ms-excel');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Pragma: no-cache');
-    header('Expires: 0');
-    ?>
-    <table border="1">
-        <thead>
-            <tr><th colspan="13" style="font-size:16px; font-weight:bold; text-align:center;">MATERIAL PRICE LIST</th></tr>
-            <tr>
-                <th>No</th><th>Supplier Code</th><th>Supplier Name</th><th>Item Code</th><th>Item Name</th>
-                <th>Maker</th><th>Customer</th><th>Curr</th><th>Price</th><th>Unit</th><th>Min Qty</th>
-                <th>Quotation No</th><th>Eff Date</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php $no = 1; foreach ($reportRows as $r) { ?>
-            <tr>
-                <td><?php echo $no++; ?></td>
-                <td><?php echo h($r['SUP_CODE']); ?></td><td><?php echo h($r['SUP_COMP']); ?></td>
-                <td><?php echo h($r['ITEM_CODE']); ?></td><td><?php echo h($r['ITEM_NAME']); ?></td>
-                <td><?php echo h($r['MAKER']); ?></td><td><?php echo h($r['CUST_COMP']); ?></td>
-                <td><?php echo h($r['CURR_CODE']); ?></td><td><?php echo h((float)$r['QUOD_PRICE']); ?></td>
-                <td><?php echo h($r['QUOD_UNIT']); ?></td><td><?php echo h((float)$r['QUOD_MINQTY']); ?></td>
-                <td><?php echo h($r['QUO_NO']); ?></td><td><?php echo h(display_date($r['QUO_EFFDATE'])); ?></td>
-            </tr>
-            <?php } ?>
-        </tbody>
-    </table>
-    <?php
-    exit;
-}
+// Variabel untuk melacak perubahan group
+$current_sup = '';
+$current_itty = '';
 ?>
 
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Report Material Price List</title>
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>General Pricelist (All Items)</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- jQuery UI CSS (untuk Autocomplete) -->
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    
     <style>
-        body { padding: 18px 0 30px; background: #eef3f8; }
-        .report-container { width: 98%; margin: 0 auto; }
-        .panel { border-color: #337ab7; }
-        .panel-heading h3 { margin: 0; font-weight: bold; }
-        .table-report { background: #fff; font-size: 11px; white-space: nowrap; }
-        .table-report th { background: #eaf1f8; text-align: center; vertical-align: middle !important; border-bottom: 2px solid #ccc !important; }
-        .text-number { text-align: right; }
-        .filter-summary { margin-bottom: 10px; padding: 8px 10px; border: 1px solid #c4d2df; background: #f8fbfe; font-size: 12px; }
-        .empty-result { padding: 35px; text-align: center; color: #777; background: #fff; border: 1px solid #ddd; }
-        .pagination { margin: 0; }
+        /* Pengaturan Cetak A4 Portrait */
+        @page {
+            size: A4 portrait;
+            margin: 15mm;
+        }
+        body {
+            font-size: 12px;
+            color: #000;
+        }
+        /* Custom Table Styling */
+        .table-report th {
+            border-top: 2px solid #000 !important;
+            border-bottom: 2px solid #000 !important;
+            border-left: none;
+            border-right: none;
+            font-weight: bold;
+        }
+        .table-report td {
+            border: none;
+            padding: 4px 8px;
+            vertical-align: top;
+        }
+        .group-sup {
+            font-weight: bold;
+            font-style: italic;
+            font-size: 14px;
+            padding-top: 20px !important;
+            border-bottom: 1px solid #ddd;
+        }
+        .group-itty {
+            font-weight: bold;
+            padding-top: 10px !important;
+        }
+        /* Memperbaiki tampilan Autocomplete jQuery UI di Bootstrap */
+        .ui-autocomplete {
+            z-index: 1050;
+            max-height: 200px;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
     </style>
 </head>
-<body>
+<body class="bg-light">
 
-<div class="report-container">
-    <div class="panel panel-primary">
-        <div class="panel-heading">
-            <h3 class="panel-title"><span class="glyphicon glyphicon-list-alt"></span> Report Material Price List</h3>
-        </div>
-
-        <div class="panel-body">
-            <?php if ($errorMessage !== '') { ?>
-                <div class="alert alert-danger"><?php echo h($errorMessage); ?></div>
-            <?php } ?>
-
-            <form method="get" action="" autocomplete="off" class="form-inline">
-                <div class="form-group" style="margin-right: 15px;">
-                    <label for="item_name">Item Name : </label>
-                    <input type="text" class="form-control input-sm" id="item_name" name="item_name" value="<?php echo h($itemName); ?>" placeholder="Kosongkan untuk semua">
+<div class="container-fluid bg-white p-4 my-3 shadow-sm" style="max-width: 1200px;">
+    
+    <!-- Area Filter (Sembunyi saat diprint berkat class d-print-none) -->
+    <div class="card mb-4 d-print-none">
+        <div class="card-body bg-light">
+            <form method="GET" class="row gx-3 gy-2 align-items-center">
+                <div class="col-sm-5">
+                    <label class="visually-hidden" for="sup_name">Supplier</label>
+                    <div class="input-group">
+                        <div class="input-group-text">Supplier</div>
+                        <!-- Input visual untuk pencarian -->
+                        <input type="text" class="form-control" id="sup_name" name="sup_name" placeholder="Ketik nama atau kode supplier..." value="<?= htmlspecialchars($sup_name) ?>">
+                        <!-- Input hidden untuk menampung kode aslinya -->
+                        <input type="hidden" id="sup_code" name="sup_code" value="<?= htmlspecialchars($sup_code) ?>">
+                    </div>
                 </div>
-
-                <button type="submit" class="btn btn-primary btn-sm" name="show_report" value="1">
-                    <span class="glyphicon glyphicon-search"></span> Tampilkan
-                </button>
-                <a href="report_price_list.php" class="btn btn-default btn-sm"><span class="glyphicon glyphicon-refresh"></span> Reset</a>
-
-                <?php if ($submitted && $errorMessage === '' && $totalData > 0) { ?>
-                    <!-- Ubah Tombol Cetak untuk membuka Tab Baru -->
-                    <button type="button" class="btn btn-default btn-sm" onclick="window.open('print_price_list.php?item_name=<?php echo urlencode($itemName); ?>', '_blank');">
-                        <span class="glyphicon glyphicon-print"></span> Cetak
-                    </button>
-                    <button type="submit" name="export" value="excel" class="btn btn-success btn-sm">
-                        <span class="glyphicon glyphicon-export"></span> Excel
-                    </button>
-                <?php } ?>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary">Filter Data</button>
+                    <!-- Tombol Reset -->
+                    <a href="matpricelist.php" class="btn btn-outline-secondary">Reset</a>
+                </div>
+                <div class="col-auto ms-auto">
+                    <!-- Tombol Export dan Print -->
+                    <button type="button" class="btn btn-success" onclick="exportExcel()">Export Excel</button>
+                    <button type="button" class="btn btn-dark" onclick="window.print()">Print (A4)</button>
+                </div>
             </form>
         </div>
-
-        <?php if ($submitted && $errorMessage === '') { ?>
-            <div class="panel-body">
-                <div class="filter-summary">
-                    <strong>Pencarian Item:</strong> <?php echo $itemName === '' ? 'Semua Item' : h($itemName); ?>
-                    &nbsp; | &nbsp;
-                    <strong>Total Baris:</strong> <?php echo $totalData; ?>
-                    <span style="float:right; color:#a94442;"><i>* Menampilkan Halaman <?php echo $page; ?> dari <?php echo $totalPages; ?></i></span>
-                </div>
-
-                <?php if ($totalData > 0) { ?>
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-striped table-condensed table-report">
-                            <thead>
-                            <tr>
-                                <th>No.</th><th>Sup. Code</th><th>Supplier Name</th><th>Item Code</th><th>Item Name</th>
-                                <th>Maker</th><th>Customer</th><th>Cur</th><th>Price</th><th>Unit</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            <?php
-                            $no = $offset + 1;
-                            foreach ($webRows as $row) {
-                                ?>
-                                <tr>
-                                    <td class="text-center"><?php echo $no++; ?></td>
-                                    <td class="text-center"><?php echo h(isset($row['SUP_CODE']) ? $row['SUP_CODE'] : ''); ?></td>
-                                    <td><?php echo h(isset($row['SUP_COMP']) ? $row['SUP_COMP'] : ''); ?></td>
-                                    <td><?php echo h(isset($row['ITEM_CODE']) ? $row['ITEM_CODE'] : ''); ?></td>
-                                    <td><?php echo h(isset($row['ITEM_NAME']) ? $row['ITEM_NAME'] : ''); ?></td>
-                                    <td><?php echo h(isset($row['MAKER']) ? $row['MAKER'] : ''); ?></td>
-                                    <td><?php echo h(isset($row['CUST_COMP']) ? $row['CUST_COMP'] : ''); ?></td>
-                                    <td class="text-center"><?php echo h(isset($row['CURR_CODE']) ? $row['CURR_CODE'] : ''); ?></td>
-                                    <td class="text-number" style="font-weight:bold;">
-                                        <?php echo h(display_number(isset($row['QUOD_PRICE']) ? $row['QUOD_PRICE'] : 0, 4)); ?>
-                                    </td>
-                                    <td class="text-center"><?php echo h(isset($row['QUOD_UNIT']) ? $row['QUOD_UNIT'] : ''); ?></td>
-                                </tr>
-                                <?php
-                            }
-                            ?>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <!-- PAGINATION -->
-                    <div class="text-center">
-                        <ul class="pagination pagination-sm">
-                            <?php if ($page > 1) { ?>
-                                <li><a href="?show_report=1&item_name=<?php echo urlencode($itemName); ?>&page=1">&laquo; First</a></li>
-                                <li><a href="?show_report=1&item_name=<?php echo urlencode($itemName); ?>&page=<?php echo $page - 1; ?>">Prev</a></li>
-                            <?php } ?>
-
-                            <?php 
-                            $startPage = max(1, $page - 3);
-                            $endPage = min($totalPages, $page + 3);
-                            for ($i = $startPage; $i <= $endPage; $i++) { 
-                                $active = ($i == $page) ? 'class="active"' : '';
-                            ?>
-                                <li <?php echo $active; ?>><a href="?show_report=1&item_name=<?php echo urlencode($itemName); ?>&page=<?php echo $i; ?>"><?php echo $i; ?></a></li>
-                            <?php } ?>
-
-                            <?php if ($page < $totalPages) { ?>
-                                <li><a href="?show_report=1&item_name=<?php echo urlencode($itemName); ?>&page=<?php echo $page + 1; ?>">Next</a></li>
-                                <li><a href="?show_report=1&item_name=<?php echo urlencode($itemName); ?>&page=<?php echo $totalPages; ?>">Last &raquo;</a></li>
-                            <?php } ?>
-                        </ul>
-                    </div>
-
-                <?php } else { ?>
-                    <div class="empty-result">
-                        <span class="glyphicon glyphicon-info-sign"></span>
-                        Data tidak ditemukan.
-                    </div>
-                <?php } ?>
-            </div>
-        <?php } ?>
     </div>
+
+    <!-- Area Laporan (Header & Tabel) -->
+    <div id="print-area">
+        <div class="row mb-3">
+            <div class="col-12 text-center">
+                <h5 class="mb-1 text-start" style="font-weight: normal;">P.T. IMCTEKNO INDONESIA</h5>
+                <h4 class="mb-0 fw-bold">GENERAL PRICELIST (All Items)</h4>
+            </div>
+            <div class="col-12 text-end text-muted" style="font-size: 11px;">
+                Print Date: <?= date('m/d/Y h:i:s A') ?>
+            </div>
+        </div>
+
+        <table class="table table-report">
+            <thead>
+                <tr>
+                    <th colspan="2">I T E M S</th>
+                    <th class="text-end">Price</th>
+                    <th>Unit</th>
+                    <th>Quot.NO</th>
+                    <th>Quot. Date</th>
+                    <th>Effect. Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (count($results) > 0): ?>
+                    <?php foreach ($results as $row): ?>
+                        
+                        <?php
+                        // --- LOGIKA GROUPING (Persis seperti layout di gambar Anda) ---
+                        
+                        // Cek jika Supplier berubah
+                        if ($current_sup !== $row['SUP_CODE']) {
+                            $current_sup = $row['SUP_CODE'];
+                            $current_itty = ''; // Reset group kategori
+                            
+                            echo '<tr>';
+                            echo '<td colspan="7" class="group-sup">' . htmlspecialchars($row['SUP_CODE']) . ' ' . htmlspecialchars($row['SUP_COMP']) . '</td>';
+                            echo '</tr>';
+                        }
+
+                        // Cek jika Item Type (Kategori) berubah
+                        if ($current_itty !== $row['ITTY_CODE']) {
+                            $current_itty = $row['ITTY_CODE'];
+                            
+                            echo '<tr>';
+                            echo '<td colspan="7" class="group-itty">' . htmlspecialchars($row['ITTY_CODE']) . ' ' . htmlspecialchars($row['ITTY_DESC']) . '</td>';
+                            echo '</tr>';
+                        }
+
+                        // --- FORMATTING DATA ---
+                        $price = is_numeric($row['QUOD_PRICE']) ? number_format($row['QUOD_PRICE'], 5, '.', ',') : '0.00000';
+                        $currency = htmlspecialchars($row['CURR_CODE']);
+                        
+                        // Format Tanggal dengan aman untuk SQL Server (karena biasanya menjadi Object DateTime)
+                        $quo_date = '';
+                        if (!empty($row['QUO_DATE'])) {
+                            $quo_date = is_object($row['QUO_DATE']) ? $row['QUO_DATE']->format('d-M-Y') : date('d-M-Y', strtotime($row['QUO_DATE']));
+                        }
+
+                        $eff_date = '';
+                        if (!empty($row['QUO_EFFDATE'])) {
+                            $eff_date = is_object($row['QUO_EFFDATE']) ? $row['QUO_EFFDATE']->format('d-M-Y') : date('d-M-Y', strtotime($row['QUO_EFFDATE']));
+                        }
+                        ?>
+
+                        <!-- ROW DETAIL BARANG -->
+                        <tr>
+                            <td style="width: 90px;"><?= htmlspecialchars($row['ITEM_CODE']) ?></td>
+                            <td><?= htmlspecialchars($row['ITEM_NAME']) ?></td>
+                            <td class="text-end"><?= $price ?> <?= $currency ?></td>
+                            <td><?= htmlspecialchars($row['QUOD_UNIT']) ?></td>
+                            <td><?= htmlspecialchars($row['QUO_NO']) ?></td>
+                            <td><?= $quo_date ?></td>
+                            <td><?= $eff_date ?></td>
+                        </tr>
+
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted">
+                            <em>Tidak ada data yang ditemukan.</em>
+                        </td>
+                    </tr>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+
 </div>
+
+<!-- jQuery (Wajib untuk jQuery UI dan Autocomplete) -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- jQuery UI -->
+<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+<!-- Bootstrap JS -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    $(document).ready(function() {
+        // Inisialisasi Autocomplete
+        $("#sup_name").autocomplete({
+            source: function(request, response) {
+                // Panggil file search_sup.php Anda
+                $.post("search_sup.php", { q: request.term }, function(data) {
+                    response($.map(data, function(item) {
+                        return { 
+                            // Teks yang akan tampil di dropdown dan setelah dipilih
+                            label: item.SUP_CODE + ' - ' + item.SUP_COMP, 
+                            // Nilai tersembunyi yang akan disimpan
+                            value: item.SUP_CODE 
+                        };
+                    }));
+                });
+            },
+            minLength: 2, // Mulai mencari setelah ketik 2 huruf
+            select: function(event, ui) {
+                // Saat dipilih, set value dari input text (visual)
+                event.preventDefault();
+                $("#sup_name").val(ui.item.label);
+                
+                // Set value dari input hidden untuk difilter oleh PHP
+                $("#sup_code").val(ui.item.value);
+            },
+            // Perbaikan jika user mengetik bebas tanpa memilih dari list
+            change: function(event, ui) {
+                if (!ui.item) {
+                    $("#sup_code").val(""); 
+                }
+            }
+        });
+    });
+
+    // Fungsi untuk Export Excel (mengambil parameter URL saat ini)
+    function exportExcel() {
+        var params = window.location.search;
+        window.location.href = "export_pricelist.php" + params;
+    }
+</script>
 
 </body>
 </html>

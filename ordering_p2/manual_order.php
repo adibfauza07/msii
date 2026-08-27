@@ -457,6 +457,8 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
                 <button type="button" id="btnReport">REPORT MENU</button>
                 <div id="reportMenuPopup" class="report-menu-popup">
                     <div class="report-menu-item" data-report="INVOICE_PO">INVOICE PO</div>
+					<div class="report-menu-item" data-report="INVOICE_PPN">INVOICE PPN</div>
+					<div class="report-menu-item" data-report="INVOICE_STANLEY">INVOICE PPN STANLEY</div>
                     <div class="report-menu-item" data-report="DELIVERY_SHEET">DELIVERY SHEET</div>
                     <div class="report-menu-item" data-report="DELIVERY_SHEET_PO">DELIVERY SHEET PO</div>
                     <div class="report-menu-item" data-report="DELIVERY_SHEET_CABININDO">DELIVERY SHEET CABININDO</div>
@@ -1943,6 +1945,16 @@ function openReportMenuItem(reportType) {
 
     if (reportType == "INVOICE_PO") {
         window.open("report_invoice_po.php?DI_ID=" + enc(diId), "_blank");
+        return;
+    }
+	
+	if (reportType == "INVOICE_PPN") {
+        window.open("invoice_po_ppn.php?DI_ID=" + enc(diId), "_blank");
+        return;
+    }
+	
+	if (reportType == "INVOICE_STANLEY") {
+        window.open("invoice_po_stanley.php?DI_ID=" + enc(diId), "_blank");
         return;
     }
 

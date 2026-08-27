@@ -168,7 +168,11 @@ function h($value) {
         <div class="report-title">Report</div>
 
         <div class="report-grid">
-
+		
+            <div class="report-item">
+                <div class="report-name">MATERIAL PRICE LIST</div>
+                <a class="button" href="report_price_list.php" target="_blank">OPEN</a>
+            </div>
           
             
 

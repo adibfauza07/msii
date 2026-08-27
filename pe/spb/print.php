@@ -348,7 +348,6 @@ $sql_count = count($details);
         <div class="doc-control">
             FM.CO.01-20(Revisi4:Tgl.1.Mei.12)
         </div>
-
     </div>
 </body>
 </html>
