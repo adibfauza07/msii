@@ -172,10 +172,17 @@ function h($value) {
 
         <div class="menu-section">Main</div>
         <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Dashboard / Report</a>
+          
+		<div class="menu-section">MACHINE CAPACITY BY SCHEDULE </div>
+		<a class="menu-link" href="report_kapasitas_mesin.php" target="mainFrame">MACHINE CAPACITY BY SCHEDULE</a> 	  
+		<div class="menu-section">PROD SCH </div>
+		<a class="menu-link" href="prod_sch.php" target="mainFrame">PRODUCTION SCHEDULE</a> 
+		<div class="menu-section">MAT USE </div>
+		<a class="menu-link" href="mat_use.php" target="mainFrame">MATERIAL USE</a> 
+		<div class="menu-section">MRP </div>
+		<a class="menu-link" href="mrp_use.php" target="mainFrame">MATERIAL REQUEST PLANNING</a> 
 
-        <div class="menu-section">PPIC Entry</div>
-        <a class="menu-link" href="" target="mainFrame">BELUM ADA MENU</a>
-        
+
 
         <div class="menu-section">Master</div>
         <a class="menu-link" href="master_item_prod.php" target="mainFrame">BOM MASTER</a>

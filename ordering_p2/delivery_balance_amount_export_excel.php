@@ -66,21 +66,21 @@ function usd_factor($currCode, $currRate, $usdRate) {
 }
 
 // ════════════════ PARAMETERS ════════════════
- $start_input = date_input_value(get_param("START_DATE", ""), "");
- $end_input   = date_input_value(get_param("END_DATE", ""), "");
- $cust_code   = get_param("CUST_CODE", "%");
+$start_input = date_input_value(get_param("START_DATE", ""), "");
+$end_input   = date_input_value(get_param("END_DATE", ""), "");
+$cust_code   = get_param("CUST_CODE", "%");
 
 if ($cust_code === "") $cust_code = "%";
 
- $start_ymd = ymd_param($start_input);
- $end_ymd   = ymd_param($end_input);
+$start_ymd = ymd_param($start_input);
+$end_ymd   = ymd_param($end_input);
 
 if ($start_ymd === "" || $end_ymd === "") {
     die("Tanggal tidak valid.");
 }
 
 // ════════════════ QUERY ════════════════
- $sql = "
+$sql = "
     SET NOCOUNT ON;
 
     SELECT
@@ -152,7 +152,7 @@ if ($start_ymd === "" || $end_ymd === "") {
         X.PART_NUM
 ";
 
- $params = array(
+$params = array(
     $start_ymd,
     $end_ymd,
     $start_ymd,
@@ -160,14 +160,14 @@ if ($start_ymd === "" || $end_ymd === "") {
     $cust_code
 );
 
- $stmt = sqlsrv_query($conn, $sql, $params);
+$stmt = sqlsrv_query($conn, $sql, $params);
 
 if ($stmt === false) {
     die("<pre>Query gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
 }
 
 // ════════════════ FETCH DATA ════════════════
- $rows = array();
+$rows = array();
 
 while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $schedule  = isset($r["SSQTY"])   ? (float)$r["SSQTY"]   : 0;
@@ -178,33 +178,36 @@ while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $currCode = safe_trim($r["CURR_CODE"]);
     $factor   = usd_factor($currCode, $r["CURR_VRATE"], $r["USDRATE"]);
 
+    // Konversi harga satuan ke USD
+    $price_usd = $price * $factor;
+
     $rows[] = array(
-        "CUST_CODE"   => safe_trim($r["CUST_CODE"]),
-        "CUST_COMP"   => safe_trim($r["CUST_COMP"]),
-        "PART_NUM"    => safe_trim($r["PART_NUM"]),
-        "PART_NO"     => safe_trim($r["PART_NO"]),
-        "PART_NAME"   => safe_trim($r["PART_NAME"]),
-        "PRICE"       => $price,
-        "CURR_CODE"   => $currCode,
-        "SCH_QTY"     => $schedule,
-        "SCH_AMOUNT"  => $schedule * $price * $factor,
-        "DEL_QTY"     => $delivered,
-        "DEL_AMOUNT"  => $delivered * $price * $factor,
-        "BAL_QTY"     => $balance,
-        "BAL_AMOUNT"  => $balance * $price * $factor
+        "CUST_CODE"  => safe_trim($r["CUST_CODE"]),
+        "CUST_COMP"  => safe_trim($r["CUST_COMP"]),
+        "PART_NUM"   => safe_trim($r["PART_NUM"]),
+        "PART_NO"    => safe_trim($r["PART_NO"]),
+        "PART_NAME"  => safe_trim($r["PART_NAME"]),
+        "PRICE"      => $price_usd,
+        "CURR_CODE"  => "USD",
+        "SCH_QTY"    => $schedule,
+        "SCH_AMOUNT" => $schedule * $price_usd,
+        "DEL_QTY"    => $delivered,
+        "DEL_AMOUNT" => $delivered * $price_usd,
+        "BAL_QTY"    => $balance,
+        "BAL_AMOUNT" => $balance * $price_usd
     );
 }
 
 // ════════════════ BUILD GROUPED ROWS ════════════════
- $printRows = array();
+$printRows = array();
 
- $lastCust       = "";
- $subSchAmount   = 0;
- $subDelAmount   = 0;
- $subBalAmount   = 0;
- $grandSchAmount = 0;
- $grandDelAmount = 0;
- $grandBalAmount = 0;
+$lastCust       = "";
+$subSchAmount   = 0;
+$subDelAmount   = 0;
+$subBalAmount   = 0;
+$grandSchAmount = 0;
+$grandDelAmount = 0;
+$grandBalAmount = 0;
 
 for ($i = 0; $i < count($rows); $i++) {
     $r = $rows[$i];
@@ -287,7 +290,7 @@ function xl_amt($val) {
 }
 
 // ════════════════ OUTPUT EXCEL ════════════════
- $filename = "Delivery_Balance_Amount_" . $start_ymd . "_" . $end_ymd . ".xls";
+$filename = "Delivery_Balance_Amount_" . $start_ymd . "_" . $end_ymd . ".xls";
 
 header("Content-Type: application/vnd.ms-excel");
 header("Content-Disposition: attachment; filename=\"" . $filename . "\"");
@@ -424,7 +427,7 @@ header("Pragma: public");
     <td rowspan="2" class="hdr-bg">CODE</td>
     <td rowspan="2" class="hdr-bg">PART NO</td>
     <td rowspan="2" class="hdr-bg">PART NAME</td>
-    <td rowspan="2" class="hdr-bg">PRICE</td>
+    <td rowspan="2" class="hdr-bg">PRICE (USD)</td>
     <td colspan="2" class="hdr-bg">SCHEDULE</td>
     <td colspan="2" class="hdr-bg">DELIVERY</td>
     <td colspan="2" class="hdr-bg">BALANCE</td>

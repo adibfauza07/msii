@@ -21,7 +21,6 @@ if (isset($_POST['btnHapusTransaksi'])) {
             sqlsrv_query($conn, "DELETE FROM INV_TRAN WHERE TRAN_ID = ?", array($idToDelete));
             
             if ($isPlant1) {
-                // PERBAIKAN: Menggunakan NO_TRANS sesuai struktur tabel BC_TRANS
                 sqlsrv_query($conn, "DELETE FROM $TABEL_BC WHERE NO_TRANS = (SELECT TRAN_DOC FROM TRANS WHERE TRAN_ID = ?)", array($idToDelete));
             }
             
@@ -79,7 +78,6 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
                     $stmtHead = sqlsrv_query($conn, $sqlHead, $paramsHead);
                     if ($stmtHead === false) throw new Exception("Gagal Update Header (P1):\n" . print_r(sqlsrv_errors(), true));
                     
-                    // PERBAIKAN: Menggunakan NO_TRANS
                     sqlsrv_query($conn, "DELETE FROM $TABEL_BC WHERE NO_TRANS=?", array($tranDoc));
                     $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (NO_TRANS, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($tranDoc, $jenisBC, $nomorBC));
                     if ($stmtBC === false) throw new Exception("Gagal Update Tabel BC:\n" . print_r(sqlsrv_errors(), true));
@@ -95,7 +93,6 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
                     $rowID = sqlsrv_fetch_array($stmtHead);
                     $targetID = $rowID['ID'];
 
-                    // PERBAIKAN: Menggunakan NO_TRANS
                     $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (NO_TRANS, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($tranDoc, $jenisBC, $nomorBC));
                     if ($stmtBC === false) throw new Exception("Gagal Insert Tabel BC:\n" . print_r(sqlsrv_errors(), true));
                 }
@@ -170,7 +167,8 @@ $dataHeader = [
 $dataDetail = [];
 
 if ($mode == 'new') {
-    $dataHeader['TRAN_DOC'] = ""; 
+    // PERBAIKAN: Membuat dokumen AUTO khusus untuk data baru
+    $dataHeader['TRAN_DOC'] = "TR-" . date('ymd-His'); 
 } else {
     if (!$currentID) {
         $qLast = sqlsrv_query($conn, "SELECT TOP 1 TRAN_ID FROM TRANS ORDER BY TRAN_ID DESC");
@@ -179,7 +177,6 @@ if ($mode == 'new') {
 
     if ($currentID) {
         if ($isPlant1) {
-            // PERBAIKAN: Melakukan JOIN menggunakan T.TRAN_DOC = B.NO_TRANS
             $sqlHead = "SELECT T.*, B.JENIS_BC, B.NOMOR_BC 
                         FROM TRANS T 
                         LEFT JOIN $TABEL_BC B ON T.TRAN_DOC = B.NO_TRANS 

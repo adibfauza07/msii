@@ -111,28 +111,28 @@ function usd_factor($currCode, $currRate, $usdRate) {
     return $currRate / $usdRate;
 }
 
- $is_filter = get_param("RUN", "") == "1";
+$is_filter = get_param("RUN", "") == "1";
 
- $defaultStart = date("Y-m-01");
- $defaultEnd   = date("Y-m-d");
+$defaultStart = date("Y-m-01");
+$defaultEnd   = date("Y-m-d");
 
- $start_input = date_input_value(get_param("START_DATE", ""), $defaultStart);
- $end_input   = date_input_value(get_param("END_DATE", ""), $defaultEnd);
- $cust_code   = get_param("CUST_CODE", "");
+$start_input = date_input_value(get_param("START_DATE", ""), $defaultStart);
+$end_input   = date_input_value(get_param("END_DATE", ""), $defaultEnd);
+$cust_code   = get_param("CUST_CODE", "");
 
 if ($is_filter && $cust_code == "") {
     $cust_code = "%";
 }
 
- $start_ymd = ymd_param($start_input);
- $end_ymd   = ymd_param($end_input);
+$start_ymd = ymd_param($start_input);
+$end_ymd   = ymd_param($end_input);
 
- $rows = array();
- $printRows = array();
- $pages = array();
+$rows = array();
+$printRows = array();
+$pages = array();
 
- $totalPages = 0;
- $rowsPerPage = 52;
+$totalPages = 0;
+$rowsPerPage = 52;
 
 if ($is_filter) {
     if ($start_ymd == "" || $end_ymd == "") {
@@ -238,20 +238,23 @@ if ($is_filter) {
         $currCode = safe_trim($r["CURR_CODE"]);
         $factor = usd_factor($currCode, $r["CURR_VRATE"], $r["USDRATE"]);
 
+        // Konversi harga satuan ke USD
+        $price_usd = $price * $factor;
+
         $rows[] = array(
-            "CUST_CODE"   => safe_trim($r["CUST_CODE"]),
-            "CUST_COMP"   => safe_trim($r["CUST_COMP"]),
-            "PART_NUM"    => safe_trim($r["PART_NUM"]),
-            "PART_NO"     => safe_trim($r["PART_NO"]),
-            "PART_NAME"   => safe_trim($r["PART_NAME"]),
-            "PRICE"       => $price,
-            "CURR_CODE"   => $currCode,
-            "SCH_QTY"     => $schedule,
-            "SCH_AMOUNT"  => $schedule * $price * $factor,
-            "DEL_QTY"     => $delivered,
-            "DEL_AMOUNT"  => $delivered * $price * $factor,
-            "BAL_QTY"     => $balance,
-            "BAL_AMOUNT"  => $balance * $price * $factor
+            "CUST_CODE"  => safe_trim($r["CUST_CODE"]),
+            "CUST_COMP"  => safe_trim($r["CUST_COMP"]),
+            "PART_NUM"   => safe_trim($r["PART_NUM"]),
+            "PART_NO"    => safe_trim($r["PART_NO"]),
+            "PART_NAME"  => safe_trim($r["PART_NAME"]),
+            "PRICE"      => $price_usd,
+            "CURR_CODE"  => "USD",
+            "SCH_QTY"    => $schedule,
+            "SCH_AMOUNT" => $schedule * $price_usd,
+            "DEL_QTY"    => $delivered,
+            "DEL_AMOUNT" => $delivered * $price_usd,
+            "BAL_QTY"    => $balance,
+            "BAL_AMOUNT" => $balance * $price_usd
         );
     }
 
@@ -345,7 +348,7 @@ if ($is_filter) {
     }
 }
 
- $selfFile = basename($_SERVER["PHP_SELF"]);
+$selfFile = basename($_SERVER["PHP_SELF"]);
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -847,7 +850,7 @@ if ($is_filter) {
                     <th rowspan="2" class="col-code">Code</th>
                     <th rowspan="2" class="col-no">Part No</th>
                     <th rowspan="2" class="col-name">Part Name</th>
-                    <th rowspan="2" class="col-price">Price</th>
+                    <th rowspan="2" class="col-price">Price (USD)</th>
                     <th colspan="2">Schedule</th>
                     <th colspan="2">Delivery</th>
                     <th colspan="2">Balance</th>

@@ -1,4 +1,5 @@
 <?php
+// Menggunakan konfigurasi koneksi ganda yang sudah tersedia
 require_once 'config.php';
 
 // Fungsi sanitasi standar PHP 5.4
@@ -6,7 +7,7 @@ function h($string) {
     return htmlspecialchars((string)$string, ENT_QUOTES, 'UTF-8');
 }
 
-// Tangkap Parameter Nomor PR
+// Tangkap Parameter Nomor PR (REQ_NO)
 $pr_no = isset($_GET['pr_no']) ? trim($_GET['pr_no']) : '';
 
 if (empty($pr_no)) {
@@ -78,11 +79,21 @@ if ($stmt_detail !== false) {
         /* Reset & Base Styles */
         body { font-family: "Times New Roman", Times, serif; font-size: 11px; color: #000; background: #e0e0e0; margin: 0; padding: 20px; }
         
-        /* Ukuran Kertas A5 Landscape (210mm x 148.5mm) */
-        .page { width: 210mm; min-height: 148.5mm; padding: 5mm 10mm; margin: 0 auto; background: #fff; box-shadow: 0 0 5px rgba(0,0,0,0.2); box-sizing: border-box; }
+        /* Ukuran Kertas A5 Landscape - Dikunci agar tidak tumpah ke halaman 2 */
+        .page { 
+            width: 210mm; 
+            height: 148mm; /* Diubah dari min-height menjadi height pas untuk A5 */
+            padding: 5mm 10mm; 
+            margin: 0 auto; 
+            background: #fff; 
+            box-shadow: 0 0 5px rgba(0,0,0,0.2); 
+            box-sizing: border-box; 
+            overflow: hidden; /* Mencegah elemen berlebih tumpah ke halaman baru */
+            position: relative;
+        }
 
         /* Typography & Layout */
-        h2 { text-align: center; font-size: 16px; margin: 0; padding-top: 10px; }
+        h2 { text-align: center; font-size: 16px; margin: 0; padding-top: 5px; }
         .company-name { font-size: 13px; font-weight: bold; margin: 0; }
         .company-sub { font-size: 10px; margin: 0 0 5px 0; }
 
@@ -108,17 +119,34 @@ if ($stmt_detail !== false) {
         .note-content { margin-top: 2px; line-height: 1.3; }
         .sign-box { width: 16.66%; text-align: center; vertical-align: bottom; height: 60px; }
         .sign-title { text-align: center; border-bottom: 1px solid #000; padding: 2px; font-size: 10px;}
-        .footer-text { font-size: 9px; font-style: italic; margin-top: 3px; line-height: 1.2; }
+        .footer-text { font-size: 9px; font-style: italic; margin-top: 3px; line-height: 1.2; position: absolute; bottom: 5mm; left: 10mm;}
 
-        /* Pengaturan Khusus Printer (Wajib untuk A5 Landscape) */
+        /* ========================================================= */
+        /* PENGATURAN KHUSUS PRINTER (MEMBUNUH HALAMAN KEDUA)        */
+        /* ========================================================= */
         @media print {
-            @page { size: A5 landscape; margin: 5mm; }
-            body { background: #fff; padding: 0; margin: 0; }
-            .page { margin: 0; box-shadow: none; border: none; }
-            .btn-print { display: none; }
+            @page { 
+                size: A5 landscape; 
+                margin: 0mm; /* Buang margin bawaan printer agar tidak double */
+            }
+            html, body { 
+                background: #fff; 
+                margin: 0 !important; 
+                padding: 0 !important; 
+                width: 210mm;
+                height: 148mm;
+            }
+            .page { 
+                margin: 0; 
+                box-shadow: none; 
+                border: none; 
+                page-break-after: avoid; 
+                page-break-before: avoid;
+            }
+            .btn-print { display: none !important; }
         }
         
-        .btn-print { display: block; width: 210mm; margin: 0 auto 20px auto; padding: 10px; background: #0056b3; color: #fff; text-align: center; cursor: pointer; border: none; font-weight: bold;}
+        .btn-print { display: block; width: 210mm; margin: 0 auto 10px auto; padding: 10px; background: #0056b3; color: #fff; text-align: center; cursor: pointer; border: none; font-weight: bold;}
     </style>
 </head>
 <body>
@@ -165,11 +193,10 @@ if ($stmt_detail !== false) {
             <thead>
                 <tr>
                     <th width="4%">No.</th>
-                    <th width="32%">Description</th>
+                    <th width="36%">Description</th> 
                     <th width="15%">Spesification</th>
                     <th width="8%">Quantity</th>
                     <th width="6%">Unit</th>
-                    <th width="4%">L</th>
                     <th width="12%">Price</th>
                     <th width="9%">ETA IMC</th>
                     <th width="10%">Remark</th>
@@ -177,7 +204,6 @@ if ($stmt_detail !== false) {
             </thead>
             <tbody>
                 <?php 
-                // [PENTING] Karena kertas A5 sangat pendek, batas maksimal baris diturunkan menjadi 7
                 $max_rows = 7; 
                 $total_items = count($details);
                 
@@ -189,24 +215,23 @@ if ($stmt_detail !== false) {
                         echo "<tr>";
                         echo "<td class='text-center'>" . ($i + 1) . "</td>";
                         echo "<td>" . h($row['item_name']) . "</td>";
-                        echo "<td></td>";
+                        echo "<td></td>"; // Spesification
                         echo "<td class='text-center'>" . rtrim(rtrim(number_format($row['qty_request'], 2, ',', '.'), '0'), ',') . "</td>";
                         echo "<td class='text-center'>" . h($row['uom']) . "</td>";
-                        echo "<td></td>"; 
                         echo "<td class='text-right'>" . number_format($row['unit_price'], 0, ',', '.') . "</td>";
-                        echo "<td></td>"; 
+                        echo "<td></td>"; // ETA IMC
                         echo "<td class='text-center font-weight-bold'>{$has_remark}</td>"; 
                         echo "</tr>";
                     } else {
                         // Baris filler kosong
-                        echo "<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>";
+                        echo "<tr><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>";
                     }
                 }
                 ?>
             </tbody>
         </table>
 
-        <!-- BAGIAN CATATAN (REMARK PANJANG) & TANDA TANGAN -->
+        <!-- BAGIAN CATATAN & TANDA TANGAN -->
         <table style="margin-top: -1px;">
             <tr>
                 <td class="note-box" rowspan="2">

@@ -71,7 +71,7 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
             font-size: 12px;
             color: #000;
             margin: 0;
-            padding: 20px;
+            padding: 15px;
             background-color: #f9f9f9;
         }
 
@@ -112,7 +112,7 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
             text-align: center;
             font-size: 16px;
             font-weight: bold;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
 
         /* Tabel Informasi */
@@ -212,7 +212,7 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
             .info-table td, .items-table th, .items-table td {
                 padding: 3px 5px;
             }
-            .signature-space { margin-top: 35px; } /* Jarak tanda tangan dikurangi saat print */
+            .signature-space { margin-top: 30px; } /* Jarak tanda tangan dikurangi saat print */
         }
     </style>
 </head>

@@ -174,7 +174,7 @@ function print_percent_tr($label, $percentRow) {
 function print_prod_tr_shortage($label, $dataRow, $cssClass, $shortageDay) {
     echo '<tr class="' . h($cssClass) . '">';
     echo '<td class="row-label">' . h($label) . '</td>';
-   echo '<td style="
+    echo '<td style="
     background:#ffff00;
     color:#000000;
     font-weight:bold;
@@ -372,7 +372,10 @@ if ($is_filter) {
             SUM(ISNULL(D.D31, 0)) AS D31
         FROM dbo.RPT_PPIC P
         INNER JOIN dbo.RPT_PPIC_DTL D ON P.ID_NO = D.ID_NO
-        INNER JOIN dbo.CUST C ON P.CUST = C.CUST_ID
+        
+        /* 🔥 SOLUSI: Meng-CAST C.CUST_ID ke VARCHAR agar tidak crash saat membaca data P.CUST yang kotor 🔥 */
+        INNER JOIN dbo.CUST C ON P.CUST = CAST(C.CUST_ID AS VARCHAR(50))
+        
         WHERE P.PERIODE = ?
           AND (? = '%' OR C.CUST_CODE = ?)
           AND LTRIM(RTRIM(D.DESC_PROD)) IN (
@@ -639,7 +642,7 @@ if ($is_filter) {
 
         $stockPlan   = empty_day_row();
         $stockActual = empty_day_row();
-		$percentStock = empty_day_row();
+        $percentStock = empty_day_row();
 
         $runningPlan   = isset($stockAwalMap[$key]) ? (float)$stockAwalMap[$key] : 0;
         $runningActual = isset($stockAwalMap[$key]) ? (float)$stockAwalMap[$key] : 0;
@@ -683,10 +686,6 @@ if ($delPlanTotal > 0 && $runningPlan > 0) {
                 ? (float)$hrow[$delActualCol]
                 : 0;
 
-            
-			
-			
-
             $prodInActual = $prodOk + $prodHold;
 
             if ($prodInActual == 0) {
@@ -702,7 +701,7 @@ if ($delPlanTotal > 0 && $runningPlan > 0) {
 
         $prodMap[$key]["Est Stock Plan"]   = $stockPlan;
         $prodMap[$key]["Est Stock Actual"] = $stockActual;
-		$prodMap[$key]["Percent Stock"] = $percentStock;
+        $prodMap[$key]["Percent Stock"] = $percentStock;
     }
 
     if (count($rows) == 0) {
@@ -967,7 +966,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                 overflow: hidden;
             }
         }
-		.forecast-title{
+        .forecast-title{
     color:#006100;
     font-weight:bold;
     font-family:Arial,sans-serif;

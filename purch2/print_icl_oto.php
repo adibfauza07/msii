@@ -33,17 +33,13 @@ function fmt_date_icl($value) {
     return $ts === false ? "" : date("d-F-Y", $ts);
 }
 
-function num($v, $dec = 2) {
-    return number_format(floatval($v), $dec, ".", "");
-}
-
 $rcvId = intval(getv("id", "0"));
 
 if ($rcvId <= 0) {
     die("Data Receive belum dipilih atau ID tidak valid.");
 }
 
-// Mengambil Data Header dan Detail Receive
+// Mengambil Data Header dan Detail Receive (Kembali ke Query Asli ICL OTO)
 $sql = "
     SELECT
         R.RCV_ID,
@@ -62,7 +58,7 @@ $sql = "
     INNER JOIN dbo.ITEMS I ON RD.ITEM_ID = I.ITEM_ID
     INNER JOIN dbo.SUPPLIER S ON R.SUP_ID = S.SUP_ID
     WHERE R.RCV_ID = ?
-    ORDER BY I.ITEM_CODE
+    ORDER BY I.ITEM_CODE ASC
 ";
 
 $stmt = sqlsrv_query($conn, $sql, array($rcvId));
@@ -73,21 +69,18 @@ if ($stmt === false) {
 
 $rows = array();
 $head = null;
+$totalQty = 0;
 
 while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     if ($head === null) {
         $head = $r;
     }
+    $totalQty += floatval($r["RCVD_QTY"]);
     $rows[] = $r;
 }
 
 if ($head === null) {
-    die("Data Receive tidak ditemukan atau tidak memiliki detail item.");
-}
-
-$totalQty = 0;
-foreach ($rows as $r) {
-    $totalQty += floatval($r["RCVD_QTY"]);
+    die("Error: Data transaksi tidak ditemukan.");
 }
 
 // Batasi maksimal 13 baris per halaman
@@ -101,88 +94,82 @@ $totalPages = count($pages);
     <meta charset="utf-8">
     <title>INCOMING CHECK LIST - <?php echo h($head["RCV_NO"]); ?></title>
     <style>
-        /* Kunci semua elemen agar menggunakan font Arial secara mutlak */
+        /* Menggunakan font Arial secara mutlak */
         * { font-family: Arial, Helvetica, sans-serif; }
         
-        @page { size: A4 portrait; margin: 10mm; }
-        html, body { 
-            margin: 0; padding: 0; 
-            background: #e0e0e0; 
-            font-size: 13px; color: #000; 
+        body { 
+            font-size: 11px; color: #000; padding: 20px; background: #f0f0f0; margin: 0;
         }
         
-        .toolbar { position: fixed; top: 10px; left: 10px; z-index: 999; }
-        .btn { font-size: 12px; border: 1px solid #777; background: #eee; padding: 6px 15px; cursor: pointer; }
-        
-        .page { 
-            width: 210mm; min-height: 297mm; 
-            margin: 10mm auto; background: #fff; 
-            padding: 10mm; box-sizing: border-box; 
-            position: relative; page-break-after: always; 
-            display: flex; flex-direction: column;
+        .page-container {
+            background: #fff; width: 210mm; min-height: 140mm; 
+            margin: 0 auto 20px auto; padding: 15px 20px; box-sizing: border-box;
+            position: relative; overflow: hidden;
         }
-        
-        /* HEADER SECTION */
-        .header-container { display: flex; justify-content: space-between; margin-bottom: 5px; }
-        .header-left { width: 70%; }
-        .header-right { width: 30%; display: flex; justify-content: flex-end; align-items: flex-start; }
-        
-        .company-name { font-size: 16px; font-weight: bold; text-decoration: underline; margin-bottom: 2px; }
-        .doc-title { font-size: 18px; font-weight: bold; margin-bottom: 2px; }
-        .address { font-size: 13px; line-height: 1.3; }
-        
-        .sign-box { border-collapse: collapse; width: 150px; text-align: center; }
-        .sign-box td, .sign-box th { border: 1px solid #000; padding: 3px; font-size: 11px; font-weight: bold; }
+
+        .header-container { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px; }
+        .company-name { font-size: 14px; font-weight: bold; text-decoration: underline; margin-bottom: 2px; line-height: 1.1;}
+        .doc-title { font-size: 14px; font-weight: bold; margin-bottom: 2px; line-height: 1.1;}
+        .company-addr { font-size: 10px; line-height: 1; color: #000;}
+        .page-info { font-size: 10px; font-weight: bold; text-align: right; margin-bottom: 2px; line-height: 1;}
+
+        .sign-box { border-collapse: collapse; font-size: 9px; text-align: center; }
+        .sign-box th, .sign-box td { border: 1px solid #000; padding: 2px; width: 70px; }
         .sign-box td { height: 35px; }
 
-        /* INFO SECTION */
-        .info-table { width: 100%; border-collapse: collapse; margin-bottom: 5px; font-size: 13px; font-weight: bold; }
-        .info-table td { padding: 2px 0; vertical-align: top; }
-        
-        /* DATA TABLE */
-        .data-table { width: 100%; border-collapse: collapse; margin-bottom: 5px; }
-        .data-table th, .data-table td { border: 1px solid #000; padding: 4px 5px; font-size: 13px; }
-        .data-table th { font-weight: bold; text-align: center; vertical-align: middle; }
-        
-        .center { text-align: center; }
-        .right { text-align: right; }
-        .bold { font-weight: bold; }
+        .meta-table { width: 100%; font-size: 11px; font-weight: bold; margin-bottom: 5px; border-collapse: collapse; }
+        .meta-table td { padding: 0; line-height: 1.1; vertical-align: top;}
 
-        /* FOOTER LEGEND */
-        .footer-wrapper { margin-top: 15px; } /* Footer akan otomatis naik mengikuti batas tabel */
-        .legend-container { display: flex; font-size: 12px; margin-top: 10px; justify-content: space-between;}
-        .legend-col { line-height: 1.4; }
-        .legend-col span { display: inline-block; width: 50px; }
+        .icl-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 5px; }
+        .icl-table th, .icl-table td { border: 1px solid #000; padding: 2px 4px; }
+        .icl-table th { font-weight: bold; text-align: center; vertical-align: middle; font-size: 10px; background-color: #f8f9fa; }
         
-        .doc-version { font-size: 12px; margin-top: 10px; }
+        .legend-table { width: 100%; font-size: 10px; border-collapse: collapse; line-height: 1.2; margin-top: 5px; }
+        .legend-table td { padding: 1px 0; vertical-align: top; }
+        .footer-no { margin-top: 15px; font-size: 11px; }
 
-        @media print { 
-            html, body { background: #fff; } 
-            .toolbar { display: none; } 
-            .page { margin: 0; padding: 5mm; border: none; width: 100%; height: auto; page-break-after: always; } 
+        .no-print { text-align: center; margin-bottom: 20px; }
+        .btn { padding: 8px 15px; cursor: pointer; border: 1px solid #ccc; background: #fff; font-weight: bold; margin: 0 5px; }
+        
+        @media print {
+            /* Kunci ke ukuran Kertas Continuous 1/2 A4 */
+            @page { 
+                size: 210mm 140mm; 
+                margin: 5mm 8mm; 
+            }
+            body { background: #fff; padding: 0; margin: 0; }
+            .no-print { display: none; }
+            
+            .page-container { 
+                width: 100%; height: 130mm; min-height: 130mm; 
+                padding: 0; margin: 0; border: none; box-shadow: none; 
+            }
+            
+            .page-break { page-break-after: always; }
         }
     </style>
 </head>
 <body>
 
-<div class="toolbar">
-    <button class="btn" onclick="window.print()">PRINT</button>
-    <button class="btn" onclick="window.close()">CLOSE</button>
-</div>
+    <div class="no-print">
+        <button class="btn" onclick="window.close()">&laquo; Tutup</button>
+        <button class="btn" onclick="window.print()">Print ICL</button>
+    </div>
 
-<?php for ($p = 0; $p < $totalPages; $p++) { ?>
-    <?php
-        $pageRows = $pages[$p];
-        $isLastPage = ($p == $totalPages - 1);
+    <?php 
+    // LOOPING UNTUK SETIAP HALAMAN
+    foreach ($pages as $pageIndex => $pageRows): 
+        $pageNumber = $pageIndex + 1;
+        $isLastPage = ($pageNumber == $totalPages);
     ?>
-    <div class="page">
+
+    <div class="page-container <?php echo !$isLastPage ? 'page-break' : ''; ?>">
         
-        <!-- HEADER -->
         <div class="header-container">
             <div class="header-left">
-                <div class="company-name">PT.IMC TEKNO INDONESIA PLANT 2</div>
+                <div class="company-name">PT. IMC TEKNO INDONESIA PLANT 2</div>
                 <div class="doc-title">INCOMING CHECK LIST</div>
-                <div class="address">
+                <div class="company-addr">
                     Kawasan Industri Kota Bukit Indah<br>
                     Blok A-III No.15E Dangdeur Bungursari<br>
                     Kab. Purwakarta, Jawa Barat 41181<br>
@@ -190,119 +177,129 @@ $totalPages = count($pages);
                 </div>
             </div>
             <div class="header-right">
-                <table class="sign-box">
-                    <tr>
-                        <th style="width:50%">CHECKER</th>
-                        <th style="width:50%">RECEIVER</th>
-                    </tr>
-                    <tr><td></td><td></td></tr>
-                    <tr><td style="height:15px;"></td><td style="height:15px;"></td></tr>
-                </table>
+                <div>
+                    <div class="page-info">Page <?php echo $pageNumber; ?> of <?php echo $totalPages; ?></div>
+                    <table class="sign-box">
+                        <tr><th>CHECKER</th><th>RECEIVER</th></tr>
+                        <tr><td></td><td></td></tr>
+                    </table>
+                </div>
             </div>
         </div>
 
-        <!-- INFO -->
-        <table class="info-table">
+        <table class="meta-table">
             <tr>
-                <td style="width: 10%;">Date</td>
+                <td style="width: 8%;">Date</td>
                 <td style="width: 2%;">:</td>
-                <td style="width: 48%;"><?php echo h(fmt_date_icl($head["RCV_DATE"])); ?></td>
-                <td style="width: 13%;"></td>
-                <td style="width: 2%;"></td>
-                <td style="width: 25%;"></td>
+                <td style="width: 45%; font-weight: normal;"><?php echo h(fmt_date_icl($head["RCV_DATE"])); ?></td>
+                <td style="width: 12%;">ICL Number</td>
+                <td style="width: 2%;">:</td>
+                <td style="width: 31%; font-weight: normal;"><?php echo h($head["RCV_NO"]); ?></td>
             </tr>
             <tr>
                 <td>Supplier</td>
                 <td>:</td>
-                <td><?php echo h($head["SUP_COMP"]); ?></td>
-                <td>ICL Number</td>
+                <td style="font-weight: normal;"><?php echo h($head["SUP_COMP"]); ?></td>
+                <td>DO Number</td>
                 <td>:</td>
-                <td><?php echo h($head["RCV_NO"]); ?></td>
+                <td style="font-weight: normal;"><?php echo h($head["RCV_DONO"]); ?></td>
             </tr>
             <tr>
                 <td>Dept</td>
                 <td>:</td>
-                <td><?php echo h($head["RCV_PIC"]); ?></td>
-                <td>DO Number</td>
-                <td>:</td>
-                <td><?php echo h($head["RCV_DONO"]); ?></td>
+                <td style="font-weight: normal;"><?php echo h($head["RCV_PIC"]); ?></td>
+                <td></td>
+                <td></td>
+                <td></td>
             </tr>
         </table>
 
-        <!-- DATA TABLE -->
-        <table class="data-table">
+        <table class="icl-table">
             <thead>
                 <tr>
-                    <th rowspan="2" style="width: 14%;">CODE</th>
-                    <th rowspan="2" style="width: 32%;">NAME</th>
-                    <th rowspan="2" style="width: 6%;">UNIT</th>
-                    <th rowspan="2" style="width: 12%;">Incoming<br>QTY</th>
+                    <th rowspan="2" style="width: 12%;">CODE</th>
+                    <th rowspan="2" style="width: 35%;">NAME</th>
+                    <th rowspan="2" style="width: 5%;">UNIT</th>
+                    <th rowspan="2" style="width: 10%;">Incoming<br>QTY</th>
                     <th colspan="2" style="width: 10%;">JUDGEMENT</th>
-                    <th rowspan="2" style="width: 13%;">PROBLEM</th>
-                    <th rowspan="2" style="width: 13%;">RECOMENDATION</th>
+                    <th rowspan="2" style="width: 14%;">PROBLEM</th>
+                    <th rowspan="2" style="width: 14%;">RECOMENDATION</th>
                 </tr>
                 <tr>
-                    <th style="width: 5%; font-size:11px;">OK</th>
-                    <th style="width: 5%; font-size:11px;">HOLD</th>
+                    <th style="width: 5%;">OK</th>
+                    <th style="width: 5%;">HOLD</th>
                 </tr>
             </thead>
             <tbody>
-                <?php
-                    foreach ($pageRows as $r) {
-                        $qty = floatval($r["RCVD_QTY"]);
+                <?php 
+                // CETAK ISI BARANG DI HALAMAN INI
+                foreach ($pageRows as $r) {
+                    $qty = number_format(floatval($r["RCVD_QTY"]), 2, ".", ",");
+                    echo "<tr>
+                            <td>" . h($r["ITEM_CODE"]) . "</td>
+                            <td>" . h($r["ITEM_NAME"]) . "</td>
+                            <td style='text-align: center; text-transform: capitalize;'>" . h($r["ITEM_UNIT"]) . "</td>
+                            <td style='text-align: right;'>" . $qty . "</td>
+                            <td></td> <td></td> <td></td> <td></td> 
+                          </tr>";
+                }
                 ?>
-                    <tr>
-                        <td><?php echo h($r["ITEM_CODE"]); ?></td>
-                        <td><?php echo h($r["ITEM_NAME"]); ?></td>
-                        <td class="center"><?php echo h($r["ITEM_UNIT"]); ?></td>
-                        <td class="center"><?php echo h(num($qty, 2)); ?></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                    </tr>
-                <?php } ?>
-                
-                <?php if ($isLastPage) { ?>
-                    <tr>
-                        <td colspan="3" class="center bold">TOTAL :</td>
-                        <td class="center"><?php echo h(num($totalQty, 2)); ?></td>
-                        <td colspan="4"></td>
-                    </tr>
-                <?php } ?>
             </tbody>
+            
+            <tfoot>
+                <?php if ($isLastPage): ?>
+                    <tr>
+                        <td colspan="3" style="text-align: right; font-weight: bold; border: 1px solid #000; padding: 2px 4px;">TOTAL :</td>
+                        <td style="text-align: right; border: 1px solid #000; padding: 2px 4px;"><?php echo number_format($totalQty, 2, ".", ","); ?></td>
+                        <td colspan="4" style="border: 1px solid #000;"></td>
+                    </tr>
+                <?php else: ?>
+                    <tr>
+                        <td colspan="8" style="text-align: right; font-style: italic; border: 1px solid #000; padding: 2px 4px;">
+                            Bersambung ke halaman berikutnya...
+                        </td>
+                    </tr>
+                <?php endif; ?>
+            </tfoot>
         </table>
 
         <!-- FOOTER WRAPPER -->
         <div class="footer-wrapper">
-            <!-- LEGEND (Muncul di setiap halaman) -->
-            <div class="legend-container">
-                <div class="legend-col">
-                    <span>White</span>: Acc + Finnace<br>
-                    <span>Yellow</span>: Purchasing
-                </div>
-                <div class="legend-col">
-                    <span style="width:40px;">Green</span>: Checker<br>
-                    <span style="width:40px;">Pink</span>: Receiver
-                </div>
-                <div class="legend-col">
-                    R : Raw Material<br>
-                    V : Vendor<br>
-                    P : Packing
-                </div>
-                <div class="legend-col">
-                    M : Machine<br>
-                    A : ATK<br>
-                    O : Other
-                </div>
-            </div>
-            
-            <div class="doc-version">
-                FM.CO.01-41 (Revisi 5 : Tgl. 1 Mar 23)
+            <table class="legend-table">
+                <tr>
+                    <td style="width: 6%;">White</td>
+                    <td style="width: 16%;">: Acc + Finnace</td>
+                    <td style="width: 6%;">Green</td>
+                    <td style="width: 16%;">: Checker</td>
+                    <td style="width: 16%;">R : Raw Material</td>
+                    <td style="width: 16%;">M : Machine</td>
+                </tr>
+                <tr>
+                    <td>Yellow</td>
+                    <td>: Purchasing</td>
+                    <td>Pink</td>
+                    <td>: Receiver</td>
+                    <td>V : Vendor</td>
+                    <td>A : ATK</td>
+                </tr>
+                <tr>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td>P : Packing</td>
+                    <td>O : Other</td>
+                </tr>
+            </table>
+
+            <div class="footer-no">
+                FM.CO.01-41 (Revisi 5 : Tgl.1 Mar 26)
             </div>
         </div>
 
     </div>
-<?php } ?>
+
+    <?php endforeach; ?>
+
 </body>
 </html>

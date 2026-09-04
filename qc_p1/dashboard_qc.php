@@ -1,159 +1,32 @@
 <?php
-/* ============================================================
-   ng_prod.php — Dashboard NG Production (Plant 1)
-   Simpan di: qc_p1/ng_prod.php
-   ============================================================ */
+// FILE: msii/qc_p1/dashboard_qc.php
 
-error_reporting(E_ALL);
-ini_set('display_errors', 1);
+// 1. START SESSION
+if (session_status() == PHP_SESSION_NONE) { session_start(); }
 
-// ── Koneksi Database ─────────────────────────────────────────
-require_once '../config/Database_p1.php';
-
-// Deteksi nama variabel koneksi secara otomatis
- $dbConn = null;
-foreach (array('conn','db','koneksi','connection','dbConn','link') as $v) {
-    if (isset($$v) && (is_resource($$v) || is_object($$v))) {
-        $dbConn = $$v;
-        break;
-    }
+// 2. CEK LOGIN
+if (!isset($_SESSION['db_user'])) {
+    // Arahkan ke halaman login sentral
+    header("Location: /msii/qc_login/login.php");
+    exit();
 }
 
-if (!$dbConn) {
-    echo '<div style="background:#1a1a2e;color:#f87171;padding:20px;font-family:monospace;font-size:14px;border:2px solid #ef4444;border-radius:8px;margin:10px;">';
-    echo '<p style="margin:0 0 6px;"><b style="color:#fbbf24;">ERROR:</b> Variabel koneksi tidak ditemukan di Database_p1.php</p>';
-    echo '<p style="margin:0;color:#9ca3af;">Variabel yang tersedia:</p><pre style="margin:6px 0 0;color:#34d399;background:#0b0d11;padding:12px;border-radius:6px;overflow-x:auto;font-size:12px;">';
-    foreach (get_defined_vars() as $k => $val) {
-        if ($k === 'dbConn') continue;
-        echo $k . ' = ' . gettype($val) . "\n";
-    }
-    echo '</pre></div>';
-    return;
+// 3. SET IDENTITAS PLANT SECARA HARDCODE
+$active_plant = 'p1';
+$plant_name = "PLANT 1";
+$theme_color = "primary"; 
+
+// 4. PANGGIL KONEKSI DATABASE DINAMIS (yang kita buat sebelumnya)
+// Konfigurasi ini otomatis mengatur koneksi ke 192.168.0.4 karena berada di folder qc_p1
+$db_path = __DIR__ . '/../config/database_qc.php';
+
+if(file_exists($db_path)) {
+    require_once $db_path; 
+} else {
+    $db_error = "File database tidak ditemukan: $db_path";
 }
 
-// ── Parameter Tanggal ────────────────────────────────────────
- $start_date = isset($_POST['start_date']) ? $_POST['start_date'] : date('Y-m-01');
- $end_date   = isset($_POST['end_date'])   ? $_POST['end_date']   : date('Y-m-d');
- $cust_id    = 275;
-
-// ── Query Utama ──────────────────────────────────────────────
- $sqlMain = "
-    SELECT 
-        SUM(dbo.PRODUCTION.PD_QTY) AS PD_QTY, 
-        SUM(dbo.PRODUCTION.PD_NG) AS NG, 
-        dbo.ITEM_CUSTINFO_VIEW.CUST_ID, 
-        dbo.ITEM_CUSTINFO_VIEW.CUST_CODE, 
-        dbo.ITEM_CUSTINFO_VIEW.CUST_COMP, 
-        dbo.NG_PROD.NGP_QTY, 
-        dbo.NG_TYPE.NGT_CODE, 
-        dbo.NG_TYPE.NGT_DESC, 
-        dbo.ITEM_CUSTINFO_VIEW.PART_NO, 
-        dbo.ITEM_CUSTINFO_VIEW.PART_NAME
-    FROM dbo.PRODUCTION 
-        INNER JOIN dbo.WO ON dbo.PRODUCTION.WO_ID = dbo.WO.WO_ID 
-        INNER JOIN dbo.ITEM_CUSTINFO_VIEW ON dbo.WO.ITEM_ID = dbo.ITEM_CUSTINFO_VIEW.ITEM_ID 
-        INNER JOIN dbo.NG_PROD ON dbo.PRODUCTION.PD_ID = dbo.NG_PROD.PD_ID 
-        INNER JOIN dbo.NG_TYPE ON dbo.NG_PROD.NGT_ID = dbo.NG_TYPE.NGT_ID
-    WHERE dbo.PRODUCTION.PD_DATE BETWEEN ? AND ?
-        AND dbo.ITEM_CUSTINFO_VIEW.CUST_ID = ?
-    GROUP BY dbo.ITEM_CUSTINFO_VIEW.CUST_ID, dbo.ITEM_CUSTINFO_VIEW.CUST_CODE, 
-             dbo.ITEM_CUSTINFO_VIEW.CUST_COMP, dbo.NG_PROD.NGP_QTY, dbo.NG_TYPE.NGT_CODE, 
-             dbo.NG_TYPE.NGT_DESC, dbo.ITEM_CUSTINFO_VIEW.PART_NO, dbo.ITEM_CUSTINFO_VIEW.PART_NAME
-    ORDER BY dbo.ITEM_CUSTINFO_VIEW.PART_NO
-";
- $stmtMain = sqlsrv_query($dbConn, $sqlMain, array($start_date, $end_date, $cust_id));
-
-if ($stmtMain === false) {
-    $err = sqlsrv_errors();
-    echo '<div style="background:#1a1a2e;color:#f87171;padding:20px;font-family:monospace;font-size:13px;border:2px solid #ef4444;border-radius:8px;margin:10px;">';
-    echo '<b style="color:#fbbf24;">QUERY ERROR:</b><br>';
-    echo 'SQLSTATE: ' . htmlspecialchars($err[0]['SQLSTATE']) . '<br>';
-    echo 'Kode: ' . htmlspecialchars($err[0]['code']) . '<br>';
-    echo 'Pesan: ' . htmlspecialchars($err[0]['message']);
-    echo '</div>';
-    return;
-}
-
-// ── Agregasi data ────────────────────────────────────────────
- $partData = array();
- $allRows  = array();
- $totalPD = $totalNG = $totalNGP = 0;
- $custInfo = array("code" => "", "comp" => "");
-
-while ($row = sqlsrv_fetch_array($stmtMain, SQLSRV_FETCH_ASSOC)) {
-    $allRows[] = $row;
-    $pn = $row['PART_NO'];
-    $totalPD  += (float)$row['PD_QTY'];
-    $totalNG  += (float)$row['NG'];
-    $totalNGP += (float)$row['NGP_QTY'];
-    $custInfo["code"] = $row['CUST_CODE'];
-    $custInfo["comp"] = $row['CUST_COMP'];
-
-    if (!isset($partData[$pn])) {
-        $partData[$pn] = array("part_name"=>$row['PART_NAME'],"total_ngp"=>0,"total_pd"=>0,"total_ng"=>0,"ng_types"=>array());
-    }
-    $partData[$pn]["total_ngp"] += (float)$row['NGP_QTY'];
-    $partData[$pn]["total_pd"]  += (float)$row['PD_QTY'];
-    $partData[$pn]["total_ng"]  += (float)$row['NG'];
-
-    $ngtKey = $row['NGT_CODE'] . ' - ' . $row['NGT_DESC'];
-    if (!isset($partData[$pn]["ng_types"][$ngtKey])) $partData[$pn]["ng_types"][$ngtKey] = 0;
-    $partData[$pn]["ng_types"][$ngtKey] += (float)$row['NGP_QTY'];
-}
-
-uasort($partData, function($a,$b){ return $b['total_ngp'] - $a['total_ngp']; });
- $topPartNo   = !empty($partData) ? key($partData) : '';
- $topPartName = isset($partData[$topPartNo]) ? $partData[$topPartNo]['part_name'] : '-';
-
-// ── Query Trend ──────────────────────────────────────────────
- $trendLabels = $trendValues = array();
-if ($topPartNo) {
-    $sqlTrend = "
-        SELECT CONVERT(VARCHAR(10), dbo.PRODUCTION.PD_DATE, 23) AS TANGGAL,
-               SUM(dbo.NG_PROD.NGP_QTY) AS NGP_QTY
-        FROM dbo.PRODUCTION 
-            INNER JOIN dbo.WO ON dbo.PRODUCTION.WO_ID = dbo.WO.WO_ID 
-            INNER JOIN dbo.ITEM_CUSTINFO_VIEW ON dbo.WO.ITEM_ID = dbo.ITEM_CUSTINFO_VIEW.ITEM_ID 
-            INNER JOIN dbo.NG_PROD ON dbo.PRODUCTION.PD_ID = dbo.NG_PROD.PD_ID 
-        WHERE dbo.PRODUCTION.PD_DATE BETWEEN ? AND ?
-            AND dbo.ITEM_CUSTINFO_VIEW.CUST_ID = ?
-            AND dbo.ITEM_CUSTINFO_VIEW.PART_NO = ?
-        GROUP BY CONVERT(VARCHAR(10), dbo.PRODUCTION.PD_DATE, 23)
-        ORDER BY CONVERT(VARCHAR(10), dbo.PRODUCTION.PD_DATE, 23)
-    ";
-    $stmtT = sqlsrv_query($dbConn, $sqlTrend, array($start_date, $end_date, $cust_id, $topPartNo));
-    if ($stmtT) {
-        while ($tr = sqlsrv_fetch_array($stmtT, SQLSRV_FETCH_ASSOC)) {
-            $trendLabels[] = $tr['TANGGAL'];
-            $trendValues[] = (float)$tr['NGP_QTY'];
-        }
-    }
-}
-
-// ── Siapkan data Chart ───────────────────────────────────────
- $pieLabels = $barLabels = $pieValues = $barValues = $barColors = array();
- $pal = array('#f59e0b','#ef4444','#10b981','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#f97316','#06b6d4','#84cc16','#e11d48','#6366f1','#22d3ee','#a3e635','#fb923c','#c084fc','#fbbf24','#34d399','#60a5fa','#f472b6');
- $j = 0;
-foreach ($partData as $pn => $info) {
-    $pieLabels[] = strlen($pn) > 18 ? substr($pn,0,18).'…' : $pn;
-    $pieValues[] = $info['total_ngp'];
-    $barLabels[] = $pn;
-    $barValues[] = $info['total_ngp'];
-    $barColors[] = $pal[$j++ % count($pal)];
-}
- $ngRate    = $totalPD > 0 ? round(($totalNG/$totalPD)*100, 2) : 0;
- $partCount = count($partData);
-
- $ngTypeData = array();
-foreach ($partData as $pn => $info) {
-    foreach ($info['ng_types'] as $name => $qty) {
-        if (!isset($ngTypeData[$name])) $ngTypeData[$name] = 0;
-        $ngTypeData[$name] += $qty;
-    }
-}
-arsort($ngTypeData);
- $ngTypeLabels = array_keys($ngTypeData);
- $ngTypeValues = array_values($ngTypeData);
+$page = isset($_GET['page']) ? $_GET['page'] : 'home';
 ?>
 
 <!-- ========== NG PROD DASHBOARD START ========== -->

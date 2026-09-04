@@ -103,7 +103,7 @@ $sql_count = count($details);
             text-align: center;
             font-size: 16px;
             font-weight: bold;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
 
         /* Tabel Informasi */
@@ -174,7 +174,7 @@ $sql_count = count($details);
         @media print {
             @page {
                 /* Format: Atas Kanan Bawah Kiri */
-                margin: 15mm 5mm 5mm 5mm; /* Margin atas diperbesar menjadi 15mm */
+                margin: 10mm 5mm 5mm 5mm; /* Margin atas diperbesar menjadi 15mm */
             }
             .no-print { display: none !important; }
             
@@ -197,7 +197,7 @@ $sql_count = count($details);
             .info-table td, .items-table th, .items-table td {
                 padding: 3px 5px;
             }
-            .signature-space { margin-top: 35px; } /* Jarak tanda tangan dikurangi saat print */
+            .signature-space { margin-top: 30px; } /* Jarak tanda tangan dikurangi saat print */
         }
     </style>
 </head>

@@ -101,12 +101,18 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
             <a href="?page=usulan_perubahan_p1&plant=p1" class="nav-link <?php echo (($page=='usulan_perubahan_p1' || $page=='input_usulan' || $page=='edit_usulan'))?'active':''; ?>">
                 <i class="bi bi-file-earmark-text text-primary"></i> Usulan Perubahan Plant 1
             </a>
+            <a href="?page=kalibrasi" class="nav-link <?php echo ($page=='kalibrasi' )?'active':''; ?>">
+                <i class="bi bi-file-earmark-text text-primary"></i> Kalibrasi Plant 1
+            </a>
         <?php else: ?>
             <a href="?page=kakotora&plant=p2" class="nav-link <?php echo ($page=='kakotora')?'active':''; ?>">
                 <i class="bi bi-building-fill text-warning"></i> Data Claim (Plant 2)
             </a>
             <a href="?page=usulan_perubahan&plant=p2" class="nav-link <?php echo (($page=='usulan_perubahan' || $page=='input_usulan' || $page=='edit_usulan'))?'active':''; ?>">
                 <i class="bi bi-file-earmark-text-fill text-warning"></i> Usulan Perubahan Plant 2
+            </a>
+            <a href="?page=kalibrasi" class="nav-link <?php echo ($page=='kalibrasi')?'active':''; ?>">
+                <i class="bi bi-file-earmark-text-fill text-warning"></i> Kalibrasi Plant 2
             </a>
         <?php endif; ?>
 
@@ -139,9 +145,6 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
     }
 
     // 1. DASHBOARD HOME
-// 1. DASHBOARD HOME
-
-
     if ($page == 'home') {
         echo "<h3>Dashboard Overview ($plant_name)</h3><hr>";
         echo "<div class='row'>";
@@ -181,8 +184,6 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
             echo "<div class='alert alert-danger'>File <b>input_usulan.php</b> tidak ditemukan!</div>";
         }
     }
-// ... (kode sebelumnya) ...
-
     // 5. FORM EDIT USULAN (GEMBOK SUDAH DIBUKA)
     elseif ($page == 'edit_usulan') {
         if (file_exists('edit_usulan.php')) { 
@@ -200,6 +201,15 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
             include "ng_prod.php";
         } else {
             echo "<div class='alert alert-danger'>File <b>ng_prod.php</b> tidak ditemukan!</div>";
+        }
+    }
+
+    // --- HALAMAN KALIBRASI ---
+    elseif ($page == 'kalibrasi') {
+        if (file_exists('kalibrasi.php')) {
+            include "kalibrasi.php";
+        } else {
+            echo "<div class='alert alert-danger'>File <b>kalibrasi.php</b> tidak ditemukan!</div>";
         }
     }
 
