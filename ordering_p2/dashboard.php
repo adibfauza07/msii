@@ -169,6 +169,7 @@ function h($value) {
         <a class="menu-link" href="input_order.php" target="mainFrame">Input Order</a>
         <a class="menu-link" href="forecast.php" target="mainFrame">Forecast</a>
         <a class="menu-link" href="schedule.php" target="mainFrame">Schedule</a>
+		<a class="menu-link" href="schedule1.php" target="mainFrame">Schedule matrix</a>
         <a class="menu-link" href="order_edit.php" target="mainFrame">Edit Order</a>
         <a class="menu-link" href="depresiasi.php" target="mainFrame">DEPRESIASI</a>
         <a class="menu-link" href="quotation.php" target="mainFrame">LIST QUOTATION</a>

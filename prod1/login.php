@@ -115,7 +115,7 @@ if (isset($_POST['btnMasuk'])) {
 
 <div class="login-box">
     <div class="brand-logo">
-        ORDERING <span>SYSTEM</span>
+        PRODUCTION  <span>SYSTEM</span>
         <div style="font-size:12px; font-weight:400; color:#158806;">
             PT IMC TEKNO INDONESIA
         </div>

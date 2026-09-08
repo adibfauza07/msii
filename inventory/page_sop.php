@@ -2,10 +2,30 @@
 require_once __DIR__ . '/../config/database_p1.php';
 
 // ==================================================================================
+// FITUR BARU: HAPUS TAG SATUAN VIA AJAX (Menggantikan Hapus Massal)
+// ==================================================================================
+if (isset($_POST['ajax_delete_tag'])) {
+    header('Content-Type: application/json');
+    $delSopId = (int)$_POST['sop_id'];
+    $delTagNo = $_POST['tag_no'];
+    
+    $sqlDel = "DELETE FROM TAGS WHERE SOP_ID = ? AND TAG_NO = ?";
+    $stmtDel = sqlsrv_query($conn, $sqlDel, array($delSopId, $delTagNo));
+    
+    if ($stmtDel) {
+        echo json_encode(['success' => true]);
+    } else {
+        $err = sqlsrv_errors();
+        echo json_encode(['success' => false, 'message' => $err[0]['message']]);
+    }
+    exit;
+}
+
+// ==================================================================================
 // BAGIAN 1: PROSES DATA (POST)
 // ==================================================================================
 
-// A. HAPUS SOP
+// A. HAPUS SOP DOKUMEN KESELURUHAN
 if (isset($_POST['btnHapusSOP'])) {
     $idToDelete = $_POST['hapus_id'];
     if ($idToDelete) {
@@ -27,7 +47,7 @@ if (isset($_POST['btnHapusSOP'])) {
     }
 }
 
-// B. SIMPAN / UPDATE SOP
+// B. SIMPAN / UPDATE SOP (MESIN UPSERT AMAN ANTI HILANG)
 if (isset($_POST['btnSimpanSOP']) || isset($_POST['btnUpdateSOP'])) {
     $isUpdate = isset($_POST['btnUpdateSOP']);
     $currentID = $_POST['hapus_id'];
@@ -51,11 +71,10 @@ if (isset($_POST['btnSimpanSOP']) || isset($_POST['btnUpdateSOP'])) {
             $targetID = 0;
 
             if ($isUpdate) {
+                // HANYA UPDATE HEADER, TIDAK ADA LAGI DELETE TAGS MASSAL DI SINI
                 $sqlHead = "UPDATE SOP SET SOP_REF=?, SOP_SDATE=?, SOP_REM=?, SOP_FINISHED=?, SOP_BY=? WHERE SOP_ID=?";
                 $paramsHead = array($sopRef, $sopDate, $sopRem, $sopFinished, $sopBy, $currentID);
                 if (!sqlsrv_query($conn, $sqlHead, $paramsHead)) throw new Exception("Gagal Update Header SOP");
-                
-                if (!sqlsrv_query($conn, "DELETE FROM TAGS WHERE SOP_ID=?", array($currentID))) throw new Exception("Gagal Reset Tags");
                 $targetID = $currentID;
             } else {
                 $sqlHead = "INSERT INTO SOP (SOP_REF, SOP_SDATE, SOP_REM, SOP_FINISHED, SOP_BY) 
@@ -67,14 +86,8 @@ if (isset($_POST['btnSimpanSOP']) || isset($_POST['btnUpdateSOP'])) {
                 $targetID = $rowID['SOP_ID'];
             }
 
-// UPDATE: Hapus ITEM_NAME & ITEM_UNIT dari INSERT agar kompatibel dengan Plant 2
-            $sqlDet = "INSERT INTO TAGS (SOP_ID, TAG_NO, LOC_ID, ITEM_ID, ITEM_CODE, TAG_QTY, TAG_BY, TAG_SDATE, LOC_CODE) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            
+            // LOOPING UPSERT (Cek, lalu Update atau Insert)
             foreach ($tagNos as $index => $tagNo) {
-
-            
-
                 $locId = $locIds[$index];
                 $code  = $itemCodes[$index];
                 $qty   = $tagQtys[$index];
@@ -89,21 +102,38 @@ if (isset($_POST['btnSimpanSOP']) || isset($_POST['btnUpdateSOP'])) {
                 $rLoc = sqlsrv_fetch_array($qLoc);
                 $locCode = $rLoc ? $rLoc['LOC_CODE'] : '-';
 
-                // ... (kodingan variable tetap sama) ...
+                if ($itemId === 0) throw new Exception("Item Code {$code} tidak ada di Master Database.");
+
+                $safeTagNo = substr($tagNo, 0, 7);
+
+                // Cek apakah Tag ini sudah ada di Database
+                $qCek = sqlsrv_query($conn, "SELECT TAG_NO FROM TAGS WHERE SOP_ID=? AND TAG_NO=?", array($targetID, $safeTagNo));
                 
-                // UPDATE: Hapus $itemName & $itemUnit dari array parameter
-                $paramsDet = array($targetID, $tagNo, $locId, $itemId, $code, $qty, $sopBy, $sopDate, $locCode);
+                if (sqlsrv_has_rows($qCek)) {
+                    // Jika ada, cukup Update nilainya
+                    $sqlUpd = "UPDATE TAGS SET LOC_ID=?, ITEM_ID=?, ITEM_CODE=?, TAG_QTY=?, TAG_BY=?, LOC_CODE=? WHERE SOP_ID=? AND TAG_NO=?";
+                    $paramsUpd = array($locId, $itemId, substr($code, 0, 8), $qty, substr($sopBy, 0, 15), substr($locCode, 0, 5), $targetID, $safeTagNo);
+                    $stmtDet = sqlsrv_query($conn, $sqlUpd, $paramsUpd);
+                } else {
+                    // Jika belum ada, Insert sebagai Tag Baru (tanpa error TAG_SDATE)
+                    $sqlIns = "INSERT INTO TAGS (SOP_ID, TAG_NO, LOC_ID, ITEM_ID, ITEM_CODE, TAG_QTY, TAG_BY, LOC_CODE) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+                    $paramsIns = array($targetID, $safeTagNo, $locId, $itemId, substr($code, 0, 8), $qty, substr($sopBy, 0, 15), substr($locCode, 0, 5));
+                    $stmtDet = sqlsrv_query($conn, $sqlIns, $paramsIns);
+                }
                 
-                if (!sqlsrv_query($conn, $sqlDet, $paramsDet)) throw new Exception("Gagal Simpan Tag: $tagNo");
+                if ($stmtDet === false) {
+                    $err = sqlsrv_errors();
+                    throw new Exception("Gagal Menyimpan Tag: $safeTagNo \n" . $err[0]['message']);
+                }
             }
 
             sqlsrv_commit($conn);
-            echo "<script>alert('Data Tersimpan!'); window.location.href='?page=sop&id=$targetID';</script>";
+            echo "<script>alert('Data Tersimpan Sempurna!'); window.location.href='?page=sop&id=$targetID';</script>";
             exit;
 
         } catch (Exception $e) {
             sqlsrv_rollback($conn);
-            echo "<div class='alert alert-danger'>Error: " . $e->getMessage() . "</div>";
+            echo "<div class='container mt-3'><div class='alert alert-danger shadow'><h4 class='text-danger fw-bold'>🚨 ERROR DATABASE</h4><hr><textarea class='form-control bg-white text-dark' rows='4' readonly>" . htmlspecialchars($e->getMessage()) . "</textarea></div></div>";
         }
     }
 }
@@ -122,6 +152,12 @@ $startRow = ($pageNo - 1) * $limit + 1;
 $endRow   = $pageNo * $limit;
 $totalRow = 0;
 $totalPage= 1;
+
+// MESIN ANTI HILANG: Matikan Paginasi khusus di mode EDIT agar semua data termuat
+if ($mode == 'edit') {
+    $startRow = 1;
+    $endRow   = 99999999; 
+}
 
 $dataHeader = [
     'SOP_ID'=>'', 'SOP_REF'=>'', 'SOP_SDATE'=>date('Y-m-d'), 'SOP_REM'=>'', 'SOP_FINISHED'=>'F', 'SOP_BY'=>''
@@ -320,7 +356,8 @@ while($r=sqlsrv_fetch_array($qL)) {
                             if(!empty($dataDetail)) {
                                 foreach($dataDetail as $row) {
                                     if($isEntry) {
-                                        echo "<tr class='row-item'>
+                                        // PERBAIKAN: Sisipkan identitas Tag untuk AJAX Delete
+                                        echo "<tr class='row-item' data-sop-id='{$currentID}' data-tag-no='{$row['TAG_NO']}'>
                                             <td><input type='hidden' name='loc_id[]' value='{$row['LOC_ID']}'>{$row['LOC_NAME_DISPLAY']}</td>
                                             <td class='cell-edit'><input type='hidden' name='tag_no[]' class='val-real' value='{$row['TAG_NO']}'><span class='val-txt'>{$row['TAG_NO']}</span><input type='text' class='form-control form-control-sm val-input d-none' value='{$row['TAG_NO']}'></td>
                                             <td><input type='hidden' name='item_code[]' value='{$row['ITEM_CODE']}'>{$row['ITEM_CODE']}</td>
@@ -351,7 +388,7 @@ while($r=sqlsrv_fetch_array($qL)) {
                     </table>
                 </div>
 
-                <?php if ($totalPage > 1 && $mode != 'new'): ?>
+                <?php if ($totalPage > 1 && $mode != 'new' && $mode != 'edit'): ?>
                 <div class="card-footer bg-white py-2">
                     <div class="d-flex justify-content-between align-items-center flex-wrap">
                         <small class="text-muted mb-2 mb-md-0">
@@ -556,7 +593,7 @@ $(document).ready(function() {
 
         if(!code || !tagNo) { alert('Mohon isi Tag No dan Barang!'); return; }
 
-        var html = `<tr class='row-item'>
+        var html = `<tr class='row-item' data-sop-id='' data-tag-no=''>
             <td><input type='hidden' name='loc_id[]' value='${locId}'>${locName}</td>
             <td class='cell-edit'><input type='hidden' name='tag_no[]' class='val-real' value='${tagNo}'><span class='val-txt'>${tagNo}</span><input type='text' class='form-control form-control-sm val-input d-none' value='${tagNo}'></td>
             <td><input type='hidden' name='item_code[]' value='${code}'>${code}</td>
@@ -573,7 +610,34 @@ $(document).ready(function() {
         $('#inputTagNo').val(''); $('#inputBarang').val(null).trigger('change'); $('#inputQty').val(0); $('#inputTagNo').focus();
     });
 
-    $(document).on('click', '.btn-hapus', function() { $(this).closest('tr').remove(); });
+    // PERBAIKAN: HAPUS SATUAN VIA AJAX
+    $(document).on('click', '.btn-hapus', function() { 
+        var $row = $(this).closest('tr');
+        var sopId = $row.attr('data-sop-id');
+        var tagNo = $row.attr('data-tag-no');
+
+        if (confirm('Yakin ingin menghapus Tag ini secara permanen?')) {
+            if (sopId && tagNo) {
+                $.ajax({
+                    url: '?page=sop',
+                    type: 'POST',
+                    dataType: 'json',
+                    data: { ajax_delete_tag: 1, sop_id: sopId, tag_no: tagNo },
+                    success: function(res) {
+                        if (res.success) {
+                            $row.remove();
+                        } else {
+                            alert('Gagal menghapus Tag: ' + res.message);
+                        }
+                    },
+                    error: function() { alert('Terjadi kesalahan jaringan.'); }
+                });
+            } else {
+                $row.remove();
+            }
+        }
+    });
+
     $(document).on('dblclick', '.cell-edit', function() {
         var $td = $(this); $td.find('.val-txt').addClass('d-none'); $td.find('.val-input').removeClass('d-none').focus().select(); $td.closest('tr').find('.btn-save-row').removeClass('d-none');
     });

@@ -172,6 +172,10 @@ function h($value) {
 
         <div class="menu-section">Main</div>
         <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Dashboard / Report</a>
+		
+		
+		<div class="menu-section">PRODUCTION SCHEDULE</div>
+        <a class="menu-link" href="report_kapasitas_mesin.PHP" target="mainFrame">PRODUCTION SCHEDULE</a>
 
         <div class="menu-section">PRODUCTION Entry</div>
         <a class="menu-link" href="label_material_input.php" target="mainFrame">CETAK LABEL MATERIAL</a>

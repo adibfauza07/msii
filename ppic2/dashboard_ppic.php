@@ -172,6 +172,9 @@ function h($value) {
 
         <div class="menu-section">Main</div>
         <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Dashboard / Report</a>
+		
+		<div class="menu-section">SCHEDULE OVH MOULDING </div>
+		<a class="menu-link" href="view_matrix_ovh.php" target="mainFrame">TOTAL SHOOT </a> 
 
         <div class="menu-section">MACHINE CAPACITY BY SCHEDULE </div>
 		<a class="menu-link" href="report_kapasitas_mesin.php" target="mainFrame">MACHINE CAPACITY BY SCHEDULE</a> 	 

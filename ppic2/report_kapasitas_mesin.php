@@ -38,16 +38,20 @@ $filterMonth = $isSubmitted ? (int)$_GET['bulan'] : $currentMonth;
 $periode = sprintf('%04d%02d', $filterYear, $filterMonth);
 
 $daysInMonth = date('t', mktime(0, 0, 0, $filterMonth, 1, $filterYear));
-$machinesData = array();
+
+// Array Utama untuk menyimpan data yang sudah di-group
+$groupedData = array();
 
 // =====================================================================
-// QUERY: AGREGASI KAPASITAS MESIN (PLAN vs ACTUAL)
+// QUERY: AGREGASI KAPASITAS MESIN (PLAN vs ACTUAL) BERDASARKAN ITEM
 // =====================================================================
 if ($isSubmitted) {
+    // T-SQL Menggunakan Group By MC_NO dan ITEM_CODE
     $sql = "WITH Rekap_Transaksi AS (
                 SELECT 
                     P.MC_NO,
-                    COUNT(DISTINCT P.ITEM_CODE) AS TotalItems,
+                    P.ITEM_CODE,
+                    MAX(P.PART_NAME) AS PART_NAME,
                     
                     -- DATA PLAN (Prod Plan R0)
                     SUM(CASE WHEN D.DESC_PROD IN ('Prod Plan R0') THEN ISNULL(D.D1,0) ELSE 0 END) AS p1,
@@ -121,12 +125,13 @@ if ($isSubmitted) {
                   AND P.MC_NO IS NOT NULL
                   AND P.MC_NO <> ''
                   AND D.DESC_PROD IN ('Prod Plan R0', 'Prod OK', 'Prod NG', 'Prod HOLD')
-                GROUP BY P.MC_NO
+                GROUP BY P.MC_NO, P.ITEM_CODE
             )
             SELECT 
                 ISNULL(G.MAG_STATION, 'TANPA GROUP') AS MAG_STATION, 
                 R.MC_NO AS MAC_CODE,
-                R.TotalItems,
+                R.ITEM_CODE,
+                ISNULL(R.PART_NAME, '') AS PART_NAME,
                 R.p1, R.p2, R.p3, R.p4, R.p5, R.p6, R.p7, R.p8, R.p9, R.p10, 
                 R.p11, R.p12, R.p13, R.p14, R.p15, R.p16, R.p17, R.p18, R.p19, R.p20, 
                 R.p21, R.p22, R.p23, R.p24, R.p25, R.p26, R.p27, R.p28, R.p29, R.p30, R.p31,
@@ -136,51 +141,82 @@ if ($isSubmitted) {
             FROM Rekap_Transaksi R
             LEFT JOIN dbo.MAC M ON LTRIM(RTRIM(R.MC_NO)) = LTRIM(RTRIM(M.MAC_CODE))
             LEFT JOIN dbo.MAG G ON M.MAG_ID = G.MAG_ID
-            ORDER BY G.MAG_STATION ASC, R.MC_NO ASC";
+            ORDER BY G.MAG_STATION ASC, R.MC_NO ASC, R.ITEM_CODE ASC";
 
     $stmt = sqlsrv_query($conn, $sql, array($periode));
     
     if ($stmt) {
         while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-            $planEmpty = array();
-            $actEmpty = array();
-            $planActiveDays = 0;
+            $grp = trim($row['MAG_STATION']);
+            $mac = trim($row['MAC_CODE']);
+            $itemCode = trim($row['ITEM_CODE']);
+            $itemName = trim($row['PART_NAME']);
 
+            $itemPlanDays = 0;
+            $itemActDays = 0;
+            $pData = array();
+            $aData = array();
+
+            // Hitung terlebih dahulu data per hari untuk 1 item ini
             for ($i = 1; $i <= $daysInMonth; $i++) {
-                // Kalkulasi Plan (Berdasarkan Prod Plan R0)
-                if ((float)$row["p$i"] > 0) {
-                    $planActiveDays++;
-                } else {
-                    $planEmpty[] = $i;
-                }
-                
-                // Kalkulasi Actual (Berdasarkan Prod OK + Prod NG + Prod HOLD)
-                if ((float)$row["a$i"] <= 0) {
-                    $actEmpty[] = $i; // Kosong / tidak running jika bernilai 0
-                }
+                $p = (float)$row["p$i"];
+                $a = (float)$row["a$i"];
+
+                $pData[$i] = $p;
+                $aData[$i] = $a;
+
+                // Hitung total days per item
+                if ($p > 0) $itemPlanDays++;
+                if ($a > 0) $itemActDays++;
             }
 
-            $capacityPct = ($planActiveDays / $daysInMonth) * 100;
+            // FILTER: Hanya proses dan tambahkan ke array jika ada PLAN (Schedule)
+            if ($itemPlanDays > 0) {
+                
+                // Baru inisialisasi group dan mesin jika ada isinya
+                if (!isset($groupedData[$grp])) {
+                    $groupedData[$grp] = array();
+                }
+                if (!isset($groupedData[$grp][$mac])) {
+                    $groupedData[$grp][$mac] = array(
+                        'items'      => array(),
+                        'daily_plan' => array_fill(1, $daysInMonth, 0),
+                        'daily_act'  => array_fill(1, $daysInMonth, 0)
+                    );
+                }
 
-            $machinesData[] = array(
-                'group' => trim($row['MAG_STATION']),
-                'mac' => trim($row['MAC_CODE']),
-                'items_count' => (int)$row['TotalItems'],
-                'capacity_pct' => $capacityPct,
-                'plan_empty_arr' => $planEmpty,
-                'act_empty_arr' => $actEmpty
-            );
+                // Akumulasi array harian ke level mesin
+                for ($i = 1; $i <= $daysInMonth; $i++) {
+                    $groupedData[$grp][$mac]['daily_plan'][$i] += $pData[$i];
+                    $groupedData[$grp][$mac]['daily_act'][$i] += $aData[$i];
+                }
+
+                $groupedData[$grp][$mac]['items'][] = array(
+                    'item_code'  => $itemCode,
+                    'item_name'  => $itemName,
+                    'p'          => $pData,
+                    'a'          => $aData,
+                    'plan_days'  => $itemPlanDays,
+                    'act_days'   => $itemActDays
+                );
+            }
         }
         sqlsrv_free_stmt($stmt);
-    }
-    
-    // CUSTOM SORT: Mengurutkan by Group terlebih dahulu, lalu Machine Code
-    usort($machinesData, function($a, $b) {
-        if ($a['group'] != $b['group']) {
-            return strcmp($a['group'], $b['group']);
+        
+        // Kalkulasi Total Days per Mesin setelah semua item terkumpul
+        foreach ($groupedData as $grp => $macs) {
+            foreach ($macs as $mac => $macData) {
+                $macPlanDays = 0;
+                $macActDays = 0;
+                for ($i = 1; $i <= $daysInMonth; $i++) {
+                    if ($macData['daily_plan'][$i] > 0) $macPlanDays++;
+                    if ($macData['daily_act'][$i] > 0) $macActDays++;
+                }
+                $groupedData[$grp][$mac]['machine_plan_days'] = $macPlanDays;
+                $groupedData[$grp][$mac]['machine_act_days']  = $macActDays;
+            }
         }
-        return strcmp($a['mac'], $b['mac']);
-    });
+    }
 }
 
 sqlsrv_close($conn);
@@ -202,7 +238,7 @@ sqlsrv_close($conn);
         button { background-color: #0056b3; color: #fff; border: none; padding: 5px 15px; height: 26px; font-weight: bold; cursor: pointer; border-radius: 3px; }
         button:hover { background-color: #004494; }
 
-        table.report-table { width: 100%; border-collapse: collapse; background-color: #fff; border: 1px solid #bbb; margin-top: 10px; min-width: 1000px; }
+        table.report-table { width: 100%; border-collapse: collapse; background-color: #fff; border: 1px solid #bbb; margin-top: 10px; min-width: 1200px; }
         table.report-table th, table.report-table td { padding: 4px 6px; border: 1px solid #ddd; text-align: left; }
         table.report-table th { background-color: #eaeaea; font-weight: bold; text-align: center; position: sticky; top: 0; z-index: 10; }
         table.report-table td.center { text-align: center; }
@@ -214,10 +250,10 @@ sqlsrv_close($conn);
         .row-subtotal td { background-color: #f1f5f9 !important; font-weight: bold; color: #334155; }
         .row-grandtotal td { background-color: #cbd5e1 !important; font-weight: bold; color: #0f172a; font-size: 13px; border-top: 2px solid #64748b; }
         
-        /* Cell Matrix (Tampilan Web) */
+        /* Cell Matrix */
         .cell-empty { background-color: #dc3545; color: white; text-align: center; font-size: 10px; }
         .cell-filled { background-color: #28a745; color: white; text-align: center; font-size: 10px; }
-        .cell-actual { background-color: #0d6efd; color: white; text-align: center; font-size: 10px; } /* Warna biru untuk aktual */
+        .cell-actual { background-color: #0d6efd; color: white; text-align: center; font-size: 10px; } 
         
         .legend { font-size: 11px; margin-top: 10px; }
         .legend-box { display: inline-block; width: 12px; height: 12px; margin-right: 5px; vertical-align: middle; }
@@ -225,18 +261,42 @@ sqlsrv_close($conn);
         .bg-filled { background-color: #28a745; }
         .bg-actual { background-color: #0d6efd; }
 
-        /* KHUSUS UNTUK TAMPILAN SAAT PRINT (CTRL+P) */
         @media print {
-            body { padding: 0; background-color: #fff; }
-            .panel { border: none; box-shadow: none; padding: 0; }
+            /* PENYESUAIAN A4 LANDSCAPE FIT */
+            @page { size: A4 landscape; margin: 5mm; }
+            body { padding: 0; background-color: #fff; -webkit-print-color-adjust: exact; zoom: 85%; }
+            .panel { border: none; box-shadow: none; padding: 0; margin: 0; overflow-x: visible; }
             form, .no-print { display: none; }
             
-            .cell-empty { background-color: #dc3545 !important; -webkit-print-color-adjust: exact; }
-            .cell-filled { background-color: transparent !important; color: #000 !important; font-size: 13px; font-weight: bold; }
-            .cell-actual { background-color: transparent !important; color: #0d6efd !important; font-size: 13px; font-weight: bold; }
+            table.report-table { 
+                min-width: 100% !important; 
+                width: 100% !important; 
+                table-layout: fixed; 
+                font-size: 8px !important; 
+                border-collapse: collapse !important;
+            }
             
-            .group-header td, .row-subtotal td, .row-grandtotal td { -webkit-print-color-adjust: exact; }
-            .group-header td { color: #000 !important; }
+            table.report-table th, table.report-table td { 
+                padding: 2px !important; 
+                font-size: 8px !important; 
+                border: 1px solid #000 !important; /* Memastikan garis border ikut tercetak hitam */
+                word-wrap: break-word;
+            }
+            
+            /* Penyesuaian Lebar Kolom saat Print */
+            table.report-table th:nth-child(1) { width: 70px !important; }
+            table.report-table th:nth-child(2) { width: 130px !important; }
+            table.report-table th:nth-child(3) { width: 35px !important; }
+            table.report-table th:nth-child(4) { width: 35px !important; }
+            table.report-table th:nth-child(n+5) { width: auto !important; } /* Kolom Tgl otomatis menyesuaikan */
+
+            /* Background di-transparent-kan, warna teks diubah hitam agar jelas */
+            .cell-empty { background-color: transparent !important; }
+            .cell-filled { background-color: transparent !important; color: #000 !important; font-size: 9px !important; font-weight: bold; }
+            .cell-actual { background-color: transparent !important; color: #000 !important; font-size: 9px !important; font-weight: bold; }
+            
+            .group-header td { background-color: #f8f9fa !important; color: #000 !important; font-size: 10px !important; }
+            .row-subtotal td, .row-grandtotal td { background-color: #f1f5f9 !important; color: #000 !important; }
         }
     </style>
 </head>
@@ -270,7 +330,7 @@ sqlsrv_close($conn);
 
     <div class="panel">
         <div class="panel-title">
-            <span>Matrix Utilisasi Mesin <?= $isSubmitted ? "- Periode $periode" : "" ?></span>
+            <span>Matrix Detail Utilisasi Mesin <?= $isSubmitted ? "- Periode $periode" : "" ?></span>
         </div>
         
         <div class="legend no-print">
@@ -283,9 +343,10 @@ sqlsrv_close($conn);
         <table class="report-table">
             <thead>
                 <tr>
-                    <th style="width: 150px; text-align: left; padding-left: 10px;">Machine Code</th>
+                    <th style="width: 120px; text-align: left; padding-left: 10px;">Machine Code</th>
+                    <th style="width: 180px; text-align: left;">Item Details</th>
                     <th style="width: 50px;">Kategori</th>
-                    <!-- Render kolom tanggal (1 sampai hari terakhir dalam bulan tersebut) -->
+                    <th style="width: 60px;">Total Days</th>
                     <?php 
                         $cols = $isSubmitted ? $daysInMonth : date('t');
                         for ($i = 1; $i <= $cols; $i++): 
@@ -297,127 +358,140 @@ sqlsrv_close($conn);
             <tbody>
                 <?php if (!$isSubmitted): ?>
                     <tr>
-                        <td colspan="<?= $cols + 2 ?>" class="center" style="padding: 40px; color: #555; font-size: 14px;">
+                        <td colspan="<?= $cols + 4 ?>" class="center" style="padding: 40px; color: #555; font-size: 14px;">
                             Silakan pilih <b>Tahun</b> dan <b>Bulan</b> pada filter di atas, lalu klik tombol <b>"Tampilkan Matrix"</b>.
                         </td>
                     </tr>
-                <?php elseif (empty($machinesData)): ?>
+                <?php elseif (empty($groupedData)): ?>
                     <tr>
-                        <td colspan="<?= $cols + 2 ?>" class="center" style="padding: 20px;">
+                        <td colspan="<?= $cols + 4 ?>" class="center" style="padding: 20px;">
                             Data mesin tidak ditemukan pada periode ini.
                         </td>
                     </tr>
                 <?php else: ?>
                     <?php 
-                        $currentGroup = ""; 
-                        
-                        $subTotalPlan = array_fill(1, $daysInMonth, 0);
-                        $subTotalAct  = array_fill(1, $daysInMonth, 0);
-                        
                         $grandTotalMachinePlan = array_fill(1, $daysInMonth, 0);
                         $grandTotalAssemblingPlan = array_fill(1, $daysInMonth, 0);
-                        $isFirstGroup = true;
 
-                        foreach ($machinesData as $md): 
-                            
-                            $isAssembling = (strpos(strtoupper($md['group']), 'ASS') !== false || strtoupper(substr(trim($md['mac']), 0, 1)) === 'A');
+                        foreach ($groupedData as $grp => $macs): 
+                            $isAssembling = (strpos(strtoupper($grp), 'ASS') !== false);
+                            $subTotalPlan = array_fill(1, $daysInMonth, 0);
+                            $subTotalAct  = array_fill(1, $daysInMonth, 0);
+                    ?>
+                        <!-- Header Group -->
+                        <tr class='group-header'>
+                            <td colspan='<?= $daysInMonth + 4 ?>'><i class='fa fa-cubes'></i> Mach Group : <?= htmlspecialchars($grp) ?></td>
+                        </tr>
 
-                            // 1. Cek Grup Baru
-                            if ($md['group'] !== $currentGroup) {
+                        <?php 
+                            foreach ($macs as $mac => $macData): 
+                                $itemsCount = count($macData['items']);
+                                $rowspanMachine = $itemsCount * 2; // Tiap item butuh 2 baris (Plan & Act)
                                 
-                                if (!$isFirstGroup) {
-                                    // Tampilkan Sub Total Plan
-                                    echo "<tr class='row-subtotal'>";
-                                    echo "<td colspan='2' style='text-align: right; padding-right: 15px;'>Sub Total Running (Plan):</td>";
-                                    for ($i = 1; $i <= $daysInMonth; $i++) {
-                                        echo "<td class='center'>" . ($subTotalPlan[$i] > 0 ? $subTotalPlan[$i] : "-") . "</td>";
+                                // Kalkulasi subtotal harian per grup
+                                $isAssItem = (strpos(strtoupper($grp), 'ASS') !== false || strtoupper(substr(trim($mac), 0, 1)) === 'A');
+                                for ($i = 1; $i <= $daysInMonth; $i++) {
+                                    if ($macData['daily_plan'][$i] > 0) {
+                                        $subTotalPlan[$i]++;
+                                        if ($isAssItem) $grandTotalAssemblingPlan[$i]++; else $grandTotalMachinePlan[$i]++;
                                     }
-                                    echo "</tr>";
-                                    // Tampilkan Sub Total Actual
-                                    echo "<tr class='row-subtotal' style='background-color:#e2e8f0 !important;'>";
-                                    echo "<td colspan='2' style='text-align: right; padding-right: 15px;'>Sub Total Running (Act):</td>";
-                                    for ($i = 1; $i <= $daysInMonth; $i++) {
-                                        echo "<td class='center'>" . ($subTotalAct[$i] > 0 ? $subTotalAct[$i] : "-") . "</td>";
+                                    if ($macData['daily_act'][$i] > 0) {
+                                        $subTotalAct[$i]++;
                                     }
-                                    echo "</tr>";
-                                    
-                                    // Reset Sub Total
-                                    $subTotalPlan = array_fill(1, $daysInMonth, 0);
-                                    $subTotalAct = array_fill(1, $daysInMonth, 0);
                                 }
                                 
-                                $currentGroup = $md['group'];
-                                $isFirstGroup = false;
+                                // Kalkulasi Persentase Level Mesin
+                                $macPlanPct = ($daysInMonth > 0) ? round(($macData['machine_plan_days'] / $daysInMonth) * 100, 1) : 0;
+                                $macActPct  = ($daysInMonth > 0) ? round(($macData['machine_act_days'] / $daysInMonth) * 100, 1) : 0;
+
+                                foreach ($macData['items'] as $index => $item):
                                 
-                                echo "<tr class='group-header'>";
-                                echo "<td colspan='" . ($daysInMonth + 2) . "'><i class='fa fa-cubes'></i> Mach Group : " . htmlspecialchars($currentGroup) . "</td>";
-                                echo "</tr>";
-                            }
-                    ?>
-                        <!-- 2A. Baris Plan -->
-                        <tr>
-                            <td rowspan="2" style="background:#fff; vertical-align: middle;">
-                                <b><?= htmlspecialchars($md['mac']) ?></b> 
-                                <br>
-                                <span style="font-size: 10px; color: #555;"><?= $md['items_count'] ?> items | Plan <?= round($md['capacity_pct']) ?>%</span>
-                            </td>
-                            <td style="font-size:10px; font-weight:bold; background:#f8f9fa; text-align:center;">Plan</td>
-                            <?php for ($i = 1; $i <= $daysInMonth; $i++): ?>
-                                <?php if (in_array($i, $md['plan_empty_arr'])): ?>
-                                    <td class="cell-empty" title="Tgl <?= $i ?> Plan: Kosong"></td>
-                                <?php else: ?>
-                                    <?php 
-                                        $subTotalPlan[$i]++;
-                                        if ($isAssembling) $grandTotalAssemblingPlan[$i]++; else $grandTotalMachinePlan[$i]++;
-                                    ?>
-                                    <td class="cell-filled" title="Tgl <?= $i ?> Plan: Terisi">&#10003;</td>
-                                <?php endif; ?>
-                            <?php endfor; ?>
-                        </tr>
-                        
-                        <!-- 2B. Baris Actual -->
-                        <tr>
-                            <td style="font-size:10px; font-weight:bold; background:#e9ecef; text-align:center;">Act</td>
-                            <?php for ($i = 1; $i <= $daysInMonth; $i++): ?>
-                                <?php if (in_array($i, $md['act_empty_arr'])): ?>
-                                    <td class="cell-empty" title="Tgl <?= $i ?> Act: Kosong"></td>
-                                <?php else: ?>
-                                    <?php $subTotalAct[$i]++; ?>
-                                    <td class="cell-actual" title="Tgl <?= $i ?> Act: Terlaksana">&#10003;</td>
-                                <?php endif; ?>
-                            <?php endfor; ?>
-                        </tr>
-                    <?php endforeach; ?>
-                    
-                    <?php if (!$isFirstGroup): ?>
+                                // Kalkulasi Persentase Level Item
+                                $itemPlanPct = ($daysInMonth > 0) ? round(($item['plan_days'] / $daysInMonth) * 100, 1) : 0;
+                                $itemActPct  = ($daysInMonth > 0) ? round(($item['act_days'] / $daysInMonth) * 100, 1) : 0;
+                        ?>
+                                <!-- Baris Plan (Item) -->
+                                <tr>
+                                    <?php if ($index === 0): ?>
+                                        <td rowspan="<?= $rowspanMachine ?>" style="background:#fff; vertical-align: top; padding-top: 10px;">
+                                            <b style="font-size: 13px; color: #0056b3;"><?= htmlspecialchars($mac) ?></b><br>
+                                            <span style="font-size: 10px; color: #555;">
+                                                Items: <?= $itemsCount ?><br>
+                                                Running Plan: <?= $macData['machine_plan_days'] ?> days <strong style="color:#28a745;">(<?= $macPlanPct ?>%)</strong><br>
+                                                Running Act: <?= $macData['machine_act_days'] ?> days <strong style="color:#0d6efd;">(<?= $macActPct ?>%)</strong>
+                                            </span>
+                                        </td>
+                                    <?php endif; ?>
+                                    
+                                    <td rowspan="2" style="background:#fff; font-size:10px; vertical-align:middle; border-left: 2px solid #ccc;">
+                                        <strong style="color:#d32f2f;"><?= htmlspecialchars($item['item_code']) ?></strong><br>
+                                        <span style="color:#666;"><?= htmlspecialchars($item['item_name']) ?></span>
+                                    </td>
+                                    
+                                    <td style="font-size:10px; font-weight:bold; background:#d4edda; color:#155724; text-align:center;">PLAN</td>
+                                    <td class="center" style="font-weight:bold; background:#e6f2ff; color:#0056b3;">
+                                        <?= $item['plan_days'] ?><br>
+                                        <span style="font-size:9px; color:#155724;"><?= $itemPlanPct ?>%</span>
+                                    </td>
+                                    
+                                    <?php for ($i = 1; $i <= $daysInMonth; $i++): ?>
+                                        <?php if ($item['p'][$i] > 0): ?>
+                                            <td class="cell-filled" title="Tgl <?= $i ?> Plan: Terisi">&#10003;</td>
+                                        <?php else: ?>
+                                            <td class="cell-empty" title="Tgl <?= $i ?> Plan: Kosong"></td>
+                                        <?php endif; ?>
+                                    <?php endfor; ?>
+                                </tr>
+                                
+                                <!-- Baris Act (Item) -->
+                                <tr>
+                                    <td style="font-size:10px; font-weight:bold; background:#e9ecef; text-align:center;">ACT</td>
+                                    <td class="center" style="font-weight:bold; background:#f8f9fa; color:#333;">
+                                        <?= $item['act_days'] ?><br>
+                                        <span style="font-size:9px; color:#0d6efd;"><?= $itemActPct ?>%</span>
+                                    </td>
+                                    
+                                    <?php for ($i = 1; $i <= $daysInMonth; $i++): ?>
+                                        <?php if ($item['a'][$i] > 0): ?>
+                                            <td class="cell-actual" title="Tgl <?= $i ?> Act: Terlaksana">&#10003;</td>
+                                        <?php else: ?>
+                                            <td class="cell-empty" title="Tgl <?= $i ?> Act: Kosong"></td>
+                                        <?php endif; ?>
+                                    <?php endfor; ?>
+                                </tr>
+
+                                <?php endforeach; // End Loop Item ?>
+                            <?php endforeach; // End Loop Mesin ?>
+
                         <!-- Sub Total Grup Terakhir -->
                         <tr class="row-subtotal">
-                            <td colspan="2" style="text-align: right; padding-right: 15px;">Sub Total Running (Plan):</td>
+                            <td colspan="4" style="text-align: right; padding-right: 15px;">Sub Total Running (Plan):</td>
                             <?php for ($i = 1; $i <= $daysInMonth; $i++): ?>
                                 <td class="center"><?= ($subTotalPlan[$i] > 0 ? $subTotalPlan[$i] : "-") ?></td>
                             <?php endfor; ?>
                         </tr>
                         <tr class="row-subtotal" style="background-color:#e2e8f0 !important;">
-                            <td colspan="2" style="text-align: right; padding-right: 15px;">Sub Total Running (Act):</td>
+                            <td colspan="4" style="text-align: right; padding-right: 15px;">Sub Total Running (Act):</td>
                             <?php for ($i = 1; $i <= $daysInMonth; $i++): ?>
                                 <td class="center"><?= ($subTotalAct[$i] > 0 ? $subTotalAct[$i] : "-") ?></td>
                             <?php endfor; ?>
                         </tr>
-                        
-                        <!-- Grand Total (Tetap fokus pada Plan sebagai baseline) -->
-                        <tr class="row-grandtotal">
-                            <td colspan="2" style="text-align: right; padding-right: 15px; text-transform: uppercase;">Grand Total Machine (Plan):</td>
-                            <?php for ($i = 1; $i <= $daysInMonth; $i++): ?>
-                                <td class="center"><?= ($grandTotalMachinePlan[$i] > 0 ? $grandTotalMachinePlan[$i] : "-") ?></td>
-                            <?php endfor; ?>
-                        </tr>
-                        <tr class="row-grandtotal" style="border-top: none;">
-                            <td colspan="2" style="text-align: right; padding-right: 15px; text-transform: uppercase;">Grand Total Assembling (Plan):</td>
-                            <?php for ($i = 1; $i <= $daysInMonth; $i++): ?>
-                                <td class="center"><?= ($grandTotalAssemblingPlan[$i] > 0 ? $grandTotalAssemblingPlan[$i] : "-") ?></td>
-                            <?php endfor; ?>
-                        </tr>
-                    <?php endif; ?>
+
+                    <?php endforeach; // End Loop Group ?>
+                    
+                    <!-- Grand Total -->
+                    <tr class="row-grandtotal">
+                        <td colspan="4" style="text-align: right; padding-right: 15px; text-transform: uppercase;">Grand Total Machine (Plan):</td>
+                        <?php for ($i = 1; $i <= $daysInMonth; $i++): ?>
+                            <td class="center"><?= ($grandTotalMachinePlan[$i] > 0 ? $grandTotalMachinePlan[$i] : "-") ?></td>
+                        <?php endfor; ?>
+                    </tr>
+                    <tr class="row-grandtotal" style="border-top: none;">
+                        <td colspan="4" style="text-align: right; padding-right: 15px; text-transform: uppercase;">Grand Total Assembling (Plan):</td>
+                        <?php for ($i = 1; $i <= $daysInMonth; $i++): ?>
+                            <td class="center"><?= ($grandTotalAssemblingPlan[$i] > 0 ? $grandTotalAssemblingPlan[$i] : "-") ?></td>
+                        <?php endfor; ?>
+                    </tr>
 
                 <?php endif; ?>
             </tbody>

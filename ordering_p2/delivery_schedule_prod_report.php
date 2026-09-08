@@ -666,21 +666,21 @@ if ($is_filter) {
                 : 0;
 
             $prodOk1 = isset($prodMap[$key]["Prod OK1"][$dcol])
-    ? (float)$prodMap[$key]["Prod OK1"][$dcol]
-    : 0;
-$delPlan = isset($hrow[$delPlanCol])
-    ? (float)$hrow[$delPlanCol]
-    : 0;
+                ? (float)$prodMap[$key]["Prod OK1"][$dcol]
+                : 0;
+            $delPlan = isset($hrow[$delPlanCol])
+                ? (float)$hrow[$delPlanCol]
+                : 0;
 
-$runningPlan = $runningPlan + $prodPlan - $delPlan;
+            $runningPlan = $runningPlan + $prodPlan - $delPlan;
             $stockPlan[$dcol] = $runningPlan;
-$delPlanTotal = sum_hrow_days($hrow, "SCH");
+            $delPlanTotal = sum_hrow_days($hrow, "SCH");
 
-if ($delPlanTotal > 0 && $runningPlan > 0) {
-    $percentStock[$dcol] = ($runningPlan / $delPlanTotal) * 100;
-} else {
-    $percentStock[$dcol] = 0;
-}
+            if ($delPlanTotal > 0 && $runningPlan > 0) {
+                $percentStock[$dcol] = ($runningPlan / $delPlanTotal) * 100;
+            } else {
+                $percentStock[$dcol] = 0;
+            }
 
             $delActual = isset($hrow[$delActualCol])
                 ? (float)$hrow[$delActualCol]
@@ -915,12 +915,12 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
         }
 
         .day-col { width: 3.1%; }
-.shortage-col {
-    width: 55px;
-    background: #ffff00;
-    color: #000000;
-    font-weight: bold;
-}
+        .shortage-col {
+            width: 55px;
+            background: #ffff00;
+            color: #000000;
+            font-weight: bold;
+        }
 
         .negative-balance {
             color: red !important;
@@ -966,12 +966,13 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                 overflow: hidden;
             }
         }
-        .forecast-title{
-    color:#006100;
-    font-weight:bold;
-    font-family:Arial,sans-serif;
-    font-size:11px;
-}
+        
+        .forecast-title {
+            color: #006100;
+            font-weight: bold;
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+        }
     </style>
 </head>
 
@@ -1064,33 +1065,43 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                 <div class="no-data"><?php echo h($hrow["MESSAGE"]); ?></div>
             <?php } else { ?>
                 <?php
-$pcust = safe_trim($hrow["CUST_CODE"]);
-$pitem = safe_trim($hrow["ITEM_CODE"]);
+                $pcust = safe_trim($hrow["CUST_CODE"]);
+                $pitem = safe_trim($hrow["ITEM_CODE"]);
 
-$f1 = get_forecast_qty($forecastMap, $pcust, $pitem, 1);
-$f2 = get_forecast_qty($forecastMap, $pcust, $pitem, 2);
-$f3 = get_forecast_qty($forecastMap, $pcust, $pitem, 3);
+                $f1 = get_forecast_qty($forecastMap, $pcust, $pitem, 1);
+                $f2 = get_forecast_qty($forecastMap, $pcust, $pitem, 2);
+                $f3 = get_forecast_qty($forecastMap, $pcust, $pitem, 3);
 
-$forecastText =
-    "Forecast " . $forecastLabel1 . ": " . fmt_num_cell($f1) .
-    " | " .
-    "Forecast " . $forecastLabel2 . ": " . fmt_num_cell($f2) .
-    " | " .
-    "Forecast " . $forecastLabel3 . ": " . fmt_num_cell($f3);
-?>
+                // Mengambil nilai Beginning Stock (PHP 5.4 compatible)
+                $beginningStock = isset($stockAwalMap[$pcust . "|" . $pitem]) ? $stockAwalMap[$pcust . "|" . $pitem] : 0;
 
-<div class="item-title">
-    <?php echo h(safe_trim($hrow["CUST_CODE"])); ?> -
-    <?php echo h(safe_trim($hrow["CUST_COMP"])); ?><br>
-    <?php echo h(safe_trim($hrow["ITEM_CODE"])); ?> -
-    <?php echo h(safe_trim($hrow["ITEM_NAME"])); ?><br>
-    <span class="forecast-title"><?php echo h($forecastText); ?></span>
-</div>
+                $forecastText =
+                    "Forecast " . $forecastLabel1 . ": " . fmt_num_cell($f1) .
+                    " | " .
+                    "Forecast " . $forecastLabel2 . ": " . fmt_num_cell($f2) .
+                    " | " .
+                    "Forecast " . $forecastLabel3 . ": " . fmt_num_cell($f3);
+
+                $stockAwalText = "Beginning Stock: " . fmt_num_cell($beginningStock);
+                ?>
+
+                <div class="item-title">
+                    <?php echo h(safe_trim($hrow["CUST_CODE"])); ?> -
+                    <?php echo h(safe_trim($hrow["CUST_COMP"])); ?><br>
+                    <?php echo h(safe_trim($hrow["ITEM_CODE"])); ?> -
+                    <?php echo h(safe_trim($hrow["ITEM_NAME"])); ?><br>
+                    
+                    <div style="margin-top:2px;">
+                        <span class="forecast-title"><?php echo h($forecastText); ?></span>
+                        
+                        <!-- margin-left: 25px digunakan untuk memberi jarak dari teks forecast. Silakan ubah nilainya jika ingin lebih dekat/jauh -->
+                        <span style="display:inline-block; margin-left:25px; color:#b22222; font-weight:bold; font-family:Arial,sans-serif; font-size:11px;">
+                            | <?php echo h($stockAwalText); ?>
+                        </span>
+                    </div>
+                </div>
 
                 <?php
-                    $pcust = safe_trim($hrow["CUST_CODE"]);
-                    $pitem = safe_trim($hrow["ITEM_CODE"]);
-
                     $stockPlanRow   = get_prod_row($prodMap, $pcust, $pitem, "Est Stock Plan");
                     $stockActualRow = get_prod_row($prodMap, $pcust, $pitem, "Est Stock Actual");
                     $percentRow     = get_prod_row($prodMap, $pcust, $pitem, "Percent Stock");
@@ -1114,8 +1125,6 @@ $forecastText =
                     </thead>
 
                     <tbody>
-                        
-
                         <tr>
                             <td class="row-label">Del Plan</td>
                             <td>-</td>
@@ -1138,14 +1147,9 @@ $forecastText =
 
                         <tr>
                             <td class="row-label">Del Balance</td>
-                           <td style="
-    background:#ffff00;
-    color:#000000;
-    font-weight:bold;
-    text-align:center;
-">
-    <?php echo h($minusDelBalDay); ?>
-</td>
+                            <td style="background:#ffff00; color:#000000; font-weight:bold; text-align:center;">
+                                <?php echo h($minusDelBalDay); ?>
+                            </td>
                             <td></td>
                             <?php for ($i = 1; $i <= 31; $i++) { ?>
                                 <?php

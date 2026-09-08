@@ -129,15 +129,15 @@ function h($value) {
         }
 
         .item-table .col-code {
-            width: 110px;
+            width: 95px;
         }
 
         .item-table .col-prcd {
-            width: 120px;
+            width: 110px;
         }
 
         .item-table .col-no {
-            width: 150px;
+            width: 140px;
         }
 
         .item-table .col-name {
@@ -150,7 +150,7 @@ function h($value) {
         }
 
         .item-table .col-bal {
-            width: 85px;
+            width: 75px;
             text-align: right;
         }
 
@@ -163,21 +163,11 @@ function h($value) {
         }
 
         .schedule-table .col-date {
-            width: 115px;
+            width: 140px;
         }
 
         .schedule-table .col-qty {
-            width: 85px;
-            text-align: right;
-        }
-
-        .schedule-table .col-c1 {
-            width: 55px;
-            text-align: right;
-        }
-
-        .schedule-table .col-c2 {
-            width: 55px;
+            width: 115px;
             text-align: right;
         }
 
@@ -283,7 +273,7 @@ function h($value) {
 
             <div class="toolbar">
                 <button type="button" id="btnRefreshItem">REFRESH ITEM</button>
-                <button type="button" id="btnClose">CLOSE</button>
+              
             </div>
 
             <label>CARI ITEM CODE / NAME</label>
@@ -313,31 +303,30 @@ function h($value) {
             </table>
         </div>
 
-        <div class="right-panel">
+       <div class="right-panel">
             <div class="small-info" id="selectedPartInfo">Belum pilih part.</div>
 
-            <table class="schedule-table">
-                <thead>
-                    <tr>
-                        <th class="col-date">DELS_DATE</th>
-                        <th class="col-qty">DELS_QTY</th>
-                        <th class="col-c1">C1</th>
-                        <th class="col-c2">C2</th>
-                    </tr>
-                </thead>
-                <tbody id="scheduleBody">
-                    <tr>
-                        <td colspan="4">Belum ada data.</td>
-                    </tr>
-                </tbody>
-            </table>
-
+            <!-- Pindahkan toolbar ke sini, di atas tabel -->
             <div class="toolbar">
                 <button type="button" id="btnAddSchedule">+</button>
                 <button type="button" id="btnDeleteSchedule">-</button>
                 <button type="button" id="btnSaveSchedule">SIMPAN</button>
                 <button type="button" id="btnReloadSchedule">REFRESH</button>
             </div>
+
+            <table class="schedule-table">
+                <thead>
+                    <tr>
+                        <th class="col-date">DELS_DATE</th>
+                        <th class="col-qty">DELS_QTY</th>
+                    </tr>
+                </thead>
+                <tbody id="scheduleBody">
+                    <tr>
+                        <td colspan="2">Belum ada data.</td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -445,7 +434,7 @@ function chooseCust(index) {
     document.getElementById("PRICE_ID").value = "";
     document.getElementById("ITEM_SEARCH").value = "";
     document.getElementById("selectedPartInfo").innerHTML = "Belum pilih part.";
-    document.getElementById("scheduleBody").innerHTML = '<tr><td colspan="4">Belum ada data.</td></tr>';
+    document.getElementById("scheduleBody").innerHTML = '<tr><td colspan="2">Belum ada data.</td></tr>';
 
     hideCustSuggest();
     loadItems();
@@ -716,7 +705,8 @@ function renderItems(rows) {
     setStatus("Item loaded: " + itemRowsAll.length);
 }
 
-function renderItemGrid(rows) {
+// Parameter preventFocus ditambahkan di sini
+function renderItemGrid(rows, preventFocus) {
     var body = document.getElementById("itemBody");
 
     body.innerHTML = "";
@@ -724,7 +714,7 @@ function renderItemGrid(rows) {
 
     document.getElementById("PRICE_ID").value = "";
     document.getElementById("selectedPartInfo").innerHTML = "Belum pilih part.";
-    document.getElementById("scheduleBody").innerHTML = '<tr><td colspan="4">Belum ada data.</td></tr>';
+    document.getElementById("scheduleBody").innerHTML = '<tr><td colspan="2">Belum ada data.</td></tr>';
 
     if (!rows || rows.length == 0) {
         body.innerHTML = '<tr><td colspan="6">Item tidak ditemukan.</td></tr>';
@@ -771,9 +761,13 @@ function renderItemGrid(rows) {
     var firstRow = body.getElementsByTagName("tr")[0];
 
     if (firstRow) {
-        selectItemRow(firstRow);
-        loadSchedule();
-        firstRow.focus();
+        // --- BAGIAN INI SANGAT PENTING ---
+        // Jika preventFocus tidak aktif (false), barulah baris pertama otomatis dipilih dan memanggil loadSchedule()
+        if (!preventFocus) {
+            selectItemRow(firstRow);
+            loadSchedule();
+            firstRow.focus();
+        }
     }
 }
 
@@ -922,7 +916,9 @@ function searchItemLocal() {
         hideItemSearchSuggest();
 
         itemRowsCache = itemRowsAll;
-        renderItemGrid(itemRowsAll);
+        
+        // Panggil renderItemGrid dengan status preventFocus = true
+        renderItemGrid(itemRowsAll, true);
 
         setStatus("Item loaded: " + itemRowsAll.length);
         return;
@@ -949,7 +945,8 @@ function searchItemLocal() {
 
     itemRowsCache = result;
 
-    renderItemGrid(result);
+    // Panggil renderItemGrid dengan status preventFocus = true
+    renderItemGrid(result, true);
     showItemSearchSuggest(result);
 
     setStatus("Hasil pencarian item: " + result.length + " dari " + itemRowsAll.length);
@@ -1137,7 +1134,8 @@ function moveScheduleSelection(direction, fieldName) {
     var rows = getScheduleRows();
 
     if (!rows || rows.length == 0) {
-        return;
+        addScheduleRow();
+        rows = getScheduleRows();
     }
 
     var index = getSelectedScheduleIndex();
@@ -1146,6 +1144,15 @@ function moveScheduleSelection(direction, fieldName) {
         index = 0;
     } else {
         index = index + direction;
+    }
+
+    // Ubah logika penambahan baris: Tambah baris saat panah ke ATAS ditekan dari baris teratas (index 0)
+    if (direction < 0 && index < 0) {
+        addScheduleRow();
+        rows = getScheduleRows();
+        index = 0; // Baris baru ada di paling atas
+    } else if (index >= rows.length) {
+        index = rows.length - 1; // Jangan tambah baris jika panah ke bawah ditekan di baris paling bawah
     }
 
     if (index < 0) {
@@ -1163,6 +1170,10 @@ function moveScheduleSelection(direction, fieldName) {
     if (input) {
         input.focus();
         input.select();
+    }
+
+    if (rows[index].scrollIntoView) {
+        rows[index].scrollIntoView({ block: "nearest" });
     }
 }
 
@@ -1188,36 +1199,23 @@ function addScheduleRow(data) {
         qtyValue = data.DELS_QTY;
     }
 
-    var c1Value = "";
-    if (data.hasOwnProperty("DELS_C1")) {
-        c1Value = data.DELS_C1;
-    }
-
-    var c2Value = "";
-    if (data.hasOwnProperty("DELS_C2")) {
-        c2Value = data.DELS_C2;
-    }
-
     tr.innerHTML =
         '<td class="col-date">' +
             '<input type="date" data-name="DELS_DATE" value="' + htmlEncode(dateValue) + '">' +
         '</td>' +
         '<td class="col-qty">' +
             '<input type="number" class="num" data-name="DELS_QTY" value="' + htmlEncode(qtyValue) + '">' +
-        '</td>' +
-        '<td class="col-c1">' +
-            '<input type="number" class="num" data-name="DELS_C1" value="' + htmlEncode(c1Value) + '">' +
-        '</td>' +
-        '<td class="col-c2">' +
-            '<input type="number" class="num" data-name="DELS_C2" value="' + htmlEncode(c2Value) + '">' +
         '</td>';
 
-    body.appendChild(tr);
+    // PERUBAHAN 1: Gunakan insertBefore agar baris baru ditambahkan di paling atas
+    if (body.firstChild) {
+        body.insertBefore(tr, body.firstChild);
+    } else {
+        body.appendChild(tr);
+    }
 
     var dateInput = getScheduleInput(tr, "DELS_DATE");
     var qtyInput = getScheduleInput(tr, "DELS_QTY");
-    var c1Input = getScheduleInput(tr, "DELS_C1");
-    var c2Input = getScheduleInput(tr, "DELS_C2");
 
     dateInput.onfocus = function () {
         selectScheduleRow(tr);
@@ -1227,16 +1225,9 @@ function addScheduleRow(data) {
         selectScheduleRow(tr);
     };
 
-    c1Input.onfocus = function () {
-        selectScheduleRow(tr);
-    };
-
-    c2Input.onfocus = function () {
-        selectScheduleRow(tr);
-    };
-
     dateInput.onkeydown = function (e) {
         e = e || window.event;
+
         var key = e.keyCode || e.which;
 
         if (key == 13 || key == 9) {
@@ -1263,12 +1254,26 @@ function addScheduleRow(data) {
 
     qtyInput.onkeydown = function (e) {
         e = e || window.event;
+
         var key = e.keyCode || e.which;
 
         if (key == 13 || key == 9) {
             e.preventDefault ? e.preventDefault() : e.returnValue = false;
-            c1Input.focus();
-            c1Input.select();
+
+            saveSchedule(function (ok) {
+                if (ok) {
+                    addScheduleRow();
+
+                    var rows = document.getElementById("scheduleBody").getElementsByTagName("tr");
+                    
+                    // PERUBAHAN 2: Fokuskan kursor ke baris paling atas (index 0) setelah baris baru dibuat
+                    var firstRow = rows[0];
+
+                    selectScheduleRow(firstRow);
+                    getScheduleInput(firstRow, "DELS_DATE").focus();
+                }
+            });
+
             return false;
         }
 
@@ -1287,45 +1292,6 @@ function addScheduleRow(data) {
         return true;
     };
 
-    c1Input.onkeydown = function (e) {
-        e = e || window.event;
-        var key = e.keyCode || e.which;
-
-        if (key == 13 || key == 9) {
-            e.preventDefault ? e.preventDefault() : e.returnValue = false;
-            c2Input.focus();
-            c2Input.select();
-            return false;
-        }
-
-        return true;
-    };
-
-    c2Input.onkeydown = function (e) {
-        e = e || window.event;
-        var key = e.keyCode || e.which;
-
-        if (key == 13) {
-            e.preventDefault ? e.preventDefault() : e.returnValue = false;
-
-            saveSchedule(function (ok) {
-                if (ok) {
-                    addScheduleRow();
-
-                    var rows = document.getElementById("scheduleBody").getElementsByTagName("tr");
-                    var lastRow = rows[rows.length - 1];
-
-                    selectScheduleRow(lastRow);
-                    getScheduleInput(lastRow, "DELS_DATE").focus();
-                }
-            });
-
-            return false;
-        }
-
-        return true;
-    };
-
     selectScheduleRow(tr);
 }
 
@@ -1338,8 +1304,6 @@ function collectScheduleRows() {
     for (var i = 0; i < trs.length; i++) {
         var dateInput = getScheduleInput(trs[i], "DELS_DATE");
         var qtyInput = getScheduleInput(trs[i], "DELS_QTY");
-        var c1Input = getScheduleInput(trs[i], "DELS_C1");
-        var c2Input = getScheduleInput(trs[i], "DELS_C2");
 
         if (!dateInput || !qtyInput) {
             continue;
@@ -1357,24 +1321,10 @@ function collectScheduleRows() {
         }
 
         var qty = parseInt(qtyText, 10);
-        var c1 = parseInt(c1Input.value || "0", 10);
-        var c2 = parseInt(c2Input.value || "0", 10);
 
         if (isNaN(qty) || qty < 0) {
             alert("DELS_QTY tidak valid pada date " + dateValue);
             qtyInput.focus();
-            return false;
-        }
-
-        if (isNaN(c1) || c1 < 0) {
-            alert("DELS_C1 tidak valid pada date " + dateValue);
-            c1Input.focus();
-            return false;
-        }
-
-        if (isNaN(c2) || c2 < 0) {
-            alert("DELS_C2 tidak valid pada date " + dateValue);
-            c2Input.focus();
             return false;
         }
 
@@ -1389,8 +1339,8 @@ function collectScheduleRows() {
         rows.push({
             DELS_DATE: dateValue,
             DELS_QTY: qty,
-            DELS_C1: c1,
-            DELS_C2: c2
+            DELS_C1: 0,
+            DELS_C2: 0
         });
     }
 
@@ -1402,9 +1352,11 @@ function saveSchedule(callback) {
 
     if (priceId == "") {
         alert("Pilih item dulu.");
+
         if (callback) {
             callback(false);
         }
+
         return;
     }
 
@@ -1414,14 +1366,17 @@ function saveSchedule(callback) {
         if (callback) {
             callback(false);
         }
+
         return;
     }
 
     if (rows.length == 0) {
         alert("Schedule kosong.");
+
         if (callback) {
             callback(false);
         }
+
         return;
     }
 
@@ -1431,9 +1386,11 @@ function saveSchedule(callback) {
         function (status, responseText) {
             if (status != 200) {
                 alert("HTTP Error: " + status);
+
                 if (callback) {
                     callback(false);
                 }
+
                 return;
             }
 
@@ -1443,17 +1400,21 @@ function saveSchedule(callback) {
                 result = JSON.parse(responseText);
             } catch (e) {
                 alert("Response bukan JSON:\n\n" + responseText);
+
                 if (callback) {
                     callback(false);
                 }
+
                 return;
             }
 
             if (!result.success) {
                 alert(result.message);
+
                 if (callback) {
                     callback(false);
                 }
+
                 return;
             }
 
@@ -1475,9 +1436,18 @@ function deleteScheduleRow() {
     var priceId = document.getElementById("PRICE_ID").value;
     var dateInput = getScheduleInput(selectedScheduleRow, "DELS_DATE");
 
+    /*
+        Kalau baris baru belum ada tanggal, hapus dari layar saja.
+        Setelah hapus, kalau kosong otomatis tambah 1 baris kosong lagi.
+    */
     if (!dateInput || dateInput.value == "") {
         selectedScheduleRow.parentNode.removeChild(selectedScheduleRow);
         selectedScheduleRow = null;
+
+        if (document.getElementById("scheduleBody").getElementsByTagName("tr").length == 0) {
+            addScheduleRow();
+        }
+
         return;
     }
 
@@ -1525,12 +1495,15 @@ function deleteScheduleRow() {
     );
 }
 
+
+
 document.getElementById("CUST_CODE").onkeydown = function (e) {
     return custKeyDown(e);
 };
 
 document.getElementById("CUST_CODE").onkeyup = function (e) {
     e = e || window.event;
+
     var key = e.keyCode || e.which;
 
     if (key == 13 || key == 38 || key == 40) {
@@ -1556,6 +1529,7 @@ document.getElementById("ITEM_SEARCH").onkeydown = function (e) {
 
 document.getElementById("ITEM_SEARCH").onkeyup = function (e) {
     e = e || window.event;
+
     var key = e.keyCode || e.which;
 
     if (key == 13 || key == 38 || key == 40) {
@@ -1566,7 +1540,7 @@ document.getElementById("ITEM_SEARCH").onkeyup = function (e) {
 
     itemSearchTimer = setTimeout(function () {
         searchItemLocal();
-    }, 150);
+    }, 800);
 };
 
 document.getElementById("ITEM_SEARCH").onblur = function () {
@@ -1595,9 +1569,13 @@ document.getElementById("btnReloadSchedule").onclick = function () {
     loadSchedule();
 };
 
-document.getElementById("btnClose").onclick = function () {
-    window.close();
-};
+var btnClose = document.getElementById("btnClose");
+
+if (btnClose) {
+    btnClose.onclick = function () {
+        window.close();
+    };
+}
 
 document.getElementById("CUST_CODE").focus();
 </script>

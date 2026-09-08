@@ -597,6 +597,32 @@ if ($export == "excel") {
                 line-height: 10px;
             }
         }
+
+
+        /* --- Tambahan CSS untuk Kotak Tanda Tangan --- */
+        .sign-wrapper {
+            margin-top: 30px;
+            width: 100%;
+            display: flex;
+            justify-content: flex-end; /* Memposisikan kotak ke sebelah kanan */
+            page-break-inside: avoid; /* Mencegah kotak terpotong halaman saat di-print */
+        }
+        
+        .sign-box {
+            border-collapse: collapse;
+            font-size: 11px;
+            text-align: center;
+        }
+        
+        .sign-box th, .sign-box td {
+            border: 1px solid #000000;
+            padding: 4px;
+            width: 90px;
+        }
+        
+        .sign-box td {
+            height: 50px; /* Mengatur tinggi ruang untuk tanda tangan */
+        }
     </style>
 </head>
 <body>
@@ -738,12 +764,35 @@ if ($export == "excel") {
                             <td class="num"><?php echo h(n0($mat["SUM_PP3"])); ?></td>
                             <td class="num"><?php echo h(n2($mat["SUM_USE3"])); ?></td>
                         </tr>
+                        
                     <?php } ?>
                 <?php } ?>
             </tbody>
         </table>
     <?php } ?>
-</div>
+
+
+    <!-- Mulai: Kotak Tanda Tangan -->
+    <div class="sign-wrapper">
+        <table class="sign-box">
+            <tr>
+                <th>Prepared</th>
+                <th>Checked</th>
+                <th>Approved</th>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+        </table>
+    </div>
+    <!-- Selesai: Kotak Tanda Tangan -->
+
+</div> <!-- Penutup <div class="page"> -->
 
 </body>
 </html>
+
+
+

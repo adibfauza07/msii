@@ -15,6 +15,7 @@ $tahun = isset($_POST['tahun']) ? (int)$_POST['tahun'] : 0;
 $bulan = isset($_POST['bulan']) ? (int)$_POST['bulan'] : 0;
 $mc_no = isset($_POST['mc_no']) ? trim($_POST['mc_no']) : '';
 $item_code = isset($_POST['item_code']) ? trim($_POST['item_code']) : '';
+$no_urut_input = isset($_POST['no_urut']) ? trim($_POST['no_urut']) : ''; 
 
 if (empty($tahun) || empty($bulan) || empty($mc_no) || empty($item_code)) {
     echo json_encode(array('status' => 'error', 'message' => 'Data tidak lengkap.'));
@@ -35,16 +36,12 @@ if ($nextMonth > 12) {
 }
 $nextMonthDate = sprintf('%04d-%02d-01 00:00:00.000', $nextYear, $nextMonth);
 
-/* =====================================================================
-   CEK DUPLIKASI: PASTIKAN ITEM BELUM ADA DI MESIN & PERIODE INI
-===================================================================== */
 $sqlCheck = "SELECT COUNT(*) AS is_exist FROM RPT_PPIC WHERE periode = ? AND MC_NO = ? AND ITEM_CODE = ?";
 $stmtCheck = sqlsrv_query($conn, $sqlCheck, array($periode, $mc_no, $item_code));
 
 if ($stmtCheck !== false) {
     $rowCheck = sqlsrv_fetch_array($stmtCheck, SQLSRV_FETCH_ASSOC);
     if ((int)$rowCheck['is_exist'] > 0) {
-        // Jika hasil perhitungan lebih dari 0, berarti data sudah ada
         echo json_encode(array(
             'status' => 'error', 
             'message' => 'Item ' . $item_code . ' sudah ada di jadwal mesin ' . $mc_no . ' untuk periode ini.'
@@ -54,27 +51,24 @@ if ($stmtCheck !== false) {
     sqlsrv_free_stmt($stmtCheck);
 }
 
-// Mulai Transaksi
 sqlsrv_begin_transaction($conn);
 
-/* =====================================================================
-   STEP 1: CARI NOMOR URUT TERAKHIR DI MESIN & PERIODE TERSEBUT
-===================================================================== */
-$sqlMax = "SELECT ISNULL(MAX(CAST(no_urut AS INT)), 0) AS max_urut 
-           FROM RPT_PPIC 
-           WHERE periode = ? AND MC_NO = ? AND ISNUMERIC(no_urut) = 1";
-$stmtMax = sqlsrv_query($conn, $sqlMax, array($periode, $mc_no));
+if ($no_urut_input !== '') {
+    $next_urut = (int)$no_urut_input;
+} else {
+    $sqlMax = "SELECT ISNULL(MAX(CAST(no_urut AS INT)), 0) AS max_urut 
+               FROM RPT_PPIC 
+               WHERE periode = ? AND MC_NO = ? AND ISNUMERIC(no_urut) = 1";
+    $stmtMax = sqlsrv_query($conn, $sqlMax, array($periode, $mc_no));
 
-$next_urut = 1; // Default jika mesin tersebut masih kosong
-if ($stmtMax !== false) {
-    $rowMax = sqlsrv_fetch_array($stmtMax, SQLSRV_FETCH_ASSOC);
-    $next_urut = (int)$rowMax['max_urut'] + 1;
-    sqlsrv_free_stmt($stmtMax);
+    $next_urut = 1; 
+    if ($stmtMax !== false) {
+        $rowMax = sqlsrv_fetch_array($stmtMax, SQLSRV_FETCH_ASSOC);
+        $next_urut = (int)$rowMax['max_urut'] + 1;
+        sqlsrv_free_stmt($stmtMax);
+    }
 }
 
-/* =====================================================================
-   STEP 2: INSERT KE RPT_PPIC (DENGAN NOMOR URUT BARU)
-===================================================================== */
 $sqlInsert = "
     INSERT INTO RPT_PPIC (
         periode, MC_NO, ITEM_CODE, PART_NAME, PART_NO, CUST, 
@@ -90,8 +84,6 @@ $sqlInsert = "
         ISNULL(IP.CAPD, 0),
         ?
     FROM ITEM_CUSTINFO_VIEW V
-
-    -- JOIN ESTIMASI ORDER
     LEFT JOIN (
         SELECT ITEMS.ITEM_CODE, SUM(EST_ORD.OE_QTY) AS ESTIMASI_ORDER
         FROM EST_ORD 
@@ -99,8 +91,6 @@ $sqlInsert = "
         WHERE EST_ORD.OE_MMYY >= ? AND EST_ORD.OE_MMYY < ?
         GROUP BY ITEMS.ITEM_CODE
     ) EO ON V.PART_CODE = EO.ITEM_CODE
-
-    -- JOIN PROD PLAN / FORECAST
     LEFT JOIN (
         SELECT ITEMS.ITEM_CODE, SUM(FORECAST.FORE_QTY) AS FORE_QTY
         FROM FORECAST 
@@ -109,8 +99,6 @@ $sqlInsert = "
         WHERE FORECAST.FORE_MONTH = ?
         GROUP BY ITEMS.ITEM_CODE
     ) F ON V.PART_CODE = F.ITEM_CODE
-
-    -- JOIN CYCLE TIME, CAVITY & HITUNG CAP DAYS
     LEFT JOIN (
         SELECT 
             ITEMS.ITEM_CODE, 
@@ -122,21 +110,10 @@ $sqlInsert = "
         LEFT JOIN MAG M ON IP.MAG_ID = M.MAG_ID
         LEFT JOIN PROCESS PR ON M.PROC_ID = PR.PROC_ID
     ) IP ON V.PART_CODE = IP.ITEM_CODE
-
     WHERE LTRIM(RTRIM(V.PART_CODE)) = ?
 ";
 
-// Parameter disesuaikan dengan penambahan $next_urut
-$params = array(
-    $periode, 
-    $mc_no,
-    $next_urut, 
-    $curMonthStart, 
-    $nextMonthDate, 
-    $nextMonthDate, 
-    $item_code
-);
-
+$params = array($periode, $mc_no, $next_urut, $curMonthStart, $nextMonthDate, $nextMonthDate, $item_code);
 $stmtInsert = sqlsrv_query($conn, $sqlInsert, $params);
 
 if ($stmtInsert === false) {
@@ -151,12 +128,13 @@ $new_id_no = $rowId['ID_NO'];
 sqlsrv_free_stmt($stmtInsert);
 
 /* =====================================================================
-   STEP 3: INSERT TEMPLATE BARIS KE RPT_PPIC_DTL
+   STEP 3: INSERT TEMPLATE BARIS (DIPERBARUI)
 ===================================================================== */
 $descRows = array(
     'Del Plan', 'Del Actual', 'Del Balance', 
-    'Prod Plan R0', 'Prod Plan R1', 'Prod NG', 'Prod OK', 
+    'Prod Plan R0', 'Prod NG', 'Prod OK', 
     'Prod HOLD', 'Prod Balance', 'NG Rework', 
+    'Limbah Out', 'Repl To Customer', 'Retur From Cust', 'Retur To Cust2', 'Replace From Cust2',
     'Est Stock Plan', 'Est Stock Actual'
 );
 

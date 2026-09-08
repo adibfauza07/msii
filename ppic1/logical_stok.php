@@ -538,9 +538,19 @@ if ($is_filter) {
         die("<pre>Query Production / Stock gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
     }
 
+    // [PERBAIKAN] Blok While di bawah ini mengkalkulasi ulang G_TOTAL secara dinamis dari D1 s/d D31
     while ($pr = sqlsrv_fetch_array($stmtProd, SQLSRV_FETCH_ASSOC)) {
         $key = safe_trim($pr["CUST_CODE"]) . "|" . safe_trim($pr["ITEM_CODE"]);
         $rowName = safe_trim($pr["ROW_NAME"]);
+
+        // Hitung ulang G_TOTAL murni berdasarkan kolom harian
+        if (in_array($rowName, array("Prod Plan R0", "Prod OK1", "Prod OK", "Prod HOLD", "Prod NG", "NG Rework"))) {
+            $sumTotal = 0;
+            for ($i = 1; $i <= 31; $i++) {
+                $sumTotal += (float)$pr["D" . $i];
+            }
+            $pr["G_TOTAL"] = $sumTotal;
+        }
 
         if (!isset($prodMap[$key])) {
             $prodMap[$key] = array();
