@@ -6,5 +6,5 @@ session_unset();
 session_destroy();
 
 // Kembali ke login page
-header("Location: ../inventory/login.php");
+header("Location: ../warehouse1/login.php");
 exit;

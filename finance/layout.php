@@ -186,6 +186,11 @@ $plantLabel = isset($_SESSION['active_plant']) ? strtoupper($_SESSION['active_pl
         </a>
     <?php } ?>
 
+       
+     <a href="inv_coretax_epson.php">
+        <i class="bi bi-file-earmark-excel me-2"></i> Invoice Coretax Epson
+    </a>  
+
     <a href="inv_coretax.php">
         <i class="bi bi-file-earmark-excel me-2"></i> Invoice Coretax
     </a>

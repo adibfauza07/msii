@@ -269,7 +269,7 @@
       </div>
 
       <div class="col">
-        <a href="warehouse/login.php" class="card-division">
+        <a href="warehouse1/login.php" class="card-division">
           <div class="icon-box bg-warehouse"><i class="bi bi-truck"></i></div>
           <span class="division-name">Warehouse</span>
         </a>

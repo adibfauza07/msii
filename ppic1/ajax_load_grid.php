@@ -25,8 +25,9 @@ $tahun = isset($_GET['tahun']) ? trim($_GET['tahun']) : '';
 $bulan = isset($_GET['bulan']) ? trim($_GET['bulan']) : '';
 $mc_no = isset($_GET['mc_no']) ? trim($_GET['mc_no']) : ''; 
 
-if ($tahun === '' || $bulan === '' || $mc_no === '') {
-    echo json_encode(array('status' => 'error', 'message' => 'Parameter pencarian tidak lengkap.'));
+// [PERUBAHAN 1]: Validasi mc_no dilepas agar "ALL" bisa masuk
+if ($tahun === '' || $bulan === '') {
+    echo json_encode(array('status' => 'error', 'message' => 'Parameter pencarian (Tahun & Bulan) tidak lengkap.'));
     exit;
 }
 
@@ -41,7 +42,7 @@ if ($prevMonth < 1) {
     $prevYear--;
 }
 $prevPeriode = sprintf('%04d%02d', $prevYear, $prevMonth); 
-$prevStartDateStr = sprintf('%04d%02d01', $prevYear, $prevMonth); // Ditambahkan untuk mencari Beg. Stock bulan lalu
+$prevStartDateStr = sprintf('%04d%02d01', $prevYear, $prevMonth);
 
 // Menghitung Periode Sekarang dan Selanjutnya
 $nextMonth = $curMonth + 1;
@@ -74,10 +75,9 @@ $sqlHdr = "SELECT
             ISNULL(P.no_urut, 0) AS NO_URUT,
             ISNULL(SOP_DATA.BEG_BALANCE, 0) AS BEG_BALANCE,
             
-            -- [PERBAIKAN FINAL] KALKULASI MATEMATIS EST STOCK ACTUAL DARI BULAN SEBELUMNYA
+            -- KALKULASI MATEMATIS EST STOCK ACTUAL DARI BULAN SEBELUMNYA
             ISNULL((
                 SELECT 
-                    -- 1. Ambil Beginning Stock Bulan Lalu
                     ISNULL((
                         SELECT SUM(T.TAG_QTY)
                         FROM TAGS T
@@ -86,9 +86,7 @@ $sqlHdr = "SELECT
                         WHERE S.SOP_SDATE = ?
                           AND LTRIM(RTRIM(I.ITEM_CODE)) = LTRIM(RTRIM(P.ITEM_CODE))
                     ), 0)
-                    -- 2. Tambah Pemasukan Stock (Prod OK, Prod HOLD, dll)
                     + ISNULL(SUM(CASE WHEN D.DESC_PROD IN ('Prod OK', 'Prod HOLD', 'Retur From Cust', 'Replace From Cust2') THEN D.G_TOTAL ELSE 0 END), 0)
-                    -- 3. Kurangi Pengeluaran Stock (Del Actual, Limbah, dll)
                     - ISNULL(SUM(CASE WHEN D.DESC_PROD IN ('Del Actual', 'Limbah Out', 'Repl To Customer', 'Retur To Cust2', 'NG Rework') THEN D.G_TOTAL ELSE 0 END), 0)
                 FROM RPT_PPIC H_PREV
                 INNER JOIN RPT_PPIC_DTL D ON H_PREV.ID_NO = D.ID_NO
@@ -108,11 +106,19 @@ $sqlHdr = "SELECT
                GROUP BY ITEMS.ITEM_CODE
            ) SOP_DATA ON LTRIM(RTRIM(P.ITEM_CODE)) = LTRIM(RTRIM(SOP_DATA.ITEM_CODE))
            
-           WHERE P.periode = ? AND P.MC_NO = ? 
-           ORDER BY CASE WHEN ISNUMERIC(P.no_urut) = 1 THEN CAST(P.no_urut AS INT) ELSE 99999 END ASC";
+           WHERE P.periode = ? ";
 
-// BINDING PARAMETER (Ada 5 parameter sekarang)
-$stmtHdr = sqlsrv_query($conn, $sqlHdr, array($prevStartDateStr, $prevPeriode, $startDateStr, $periode, $mc_no));
+// [PERUBAHAN 2]: Filter mesin dinamis, berjalan jika bukan ALL
+$paramsHdr = array($prevStartDateStr, $prevPeriode, $startDateStr, $periode);
+
+if ($mc_no !== '' && $mc_no !== 'ALL') {
+    $sqlHdr .= " AND P.MC_NO = ? ";
+    $paramsHdr[] = $mc_no;
+}
+
+$sqlHdr .= " ORDER BY P.MC_NO ASC, CASE WHEN ISNUMERIC(P.no_urut) = 1 THEN CAST(P.no_urut AS INT) ELSE 99999 END ASC";
+
+$stmtHdr = sqlsrv_query($conn, $sqlHdr, $paramsHdr);
 
 if ($stmtHdr === false) {
     $errors = sqlsrv_errors();
@@ -139,8 +145,10 @@ if (empty($headerRows)) {
 }
 
 /* =================================================================================
-   2. UPDATE RPT_PPIC_DTL: DEL PLAN, DEL ACTUAL & ALL TRANS TRTY (SYNC DATABASE)
+   2. UPDATE RPT_PPIC_DTL: SINKRONISASI DATABASE TRANSAKSI, DELIVERY, & PRODUKSI
 ==================================================================================== */
+
+// A. PULL DELIVERY SCHEDULE
 $sqlSP = "EXEC sp_PivotDeliverySchedule_ByCustomer @start_date = ?, @end_date = ?";
 $stmtSP = sqlsrv_query($conn, $sqlSP, array($startDateStr, $spEndDateStr));
 
@@ -152,6 +160,7 @@ if ($stmtSP !== false) {
     sqlsrv_free_stmt($stmtSP);
 }
 
+// B. PULL MUTASI (REWORK, RETUR, LIMBAH)
 $sqlTrans = "
     SELECT 
         ITEMS.ITEM_CODE, 
@@ -193,12 +202,51 @@ if ($stmtTrans !== false) {
     }
     sqlsrv_free_stmt($stmtTrans);
 }
-
 $trackedDescs = array_values($trtyToDesc);
 
+// C. PULL PRODUKSI (OK, NG, HOLD) DARI TABEL PRODUCTION DAN WO
+$sqlProd = "
+    SELECT 
+        LTRIM(RTRIM(ITEMS.ITEM_CODE)) AS ITEM_CODE,
+        DAY(PRODUCTION.PD_DATE) AS TANGGAL,
+        SUM(ISNULL(PRODUCTION.PD_OK, 0)) AS PD_OK,
+        SUM(ISNULL(PRODUCTION.PD_NG, 0)) AS PD_NG,
+        SUM(ISNULL(PRODUCTION.PD_HO, 0)) AS PD_HO
+    FROM PRODUCTION
+    INNER JOIN WO ON PRODUCTION.WO_ID = WO.WO_ID
+    INNER JOIN ITEMS ON WO.ITEM_ID = ITEMS.ITEM_ID
+    WHERE PRODUCTION.PD_DATE >= ? AND PRODUCTION.PD_DATE < ?
+    GROUP BY ITEMS.ITEM_CODE, DAY(PRODUCTION.PD_DATE)
+";
+$stmtProd = sqlsrv_query($conn, $sqlProd, array($startDateStr, $endDateStr));
+
+$prodLookup = array();
+if ($stmtProd !== false) {
+    while ($rowP = sqlsrv_fetch_array($stmtProd, SQLSRV_FETCH_ASSOC)) {
+        $ic = trim($rowP['ITEM_CODE']);
+        $tgl = (int)$rowP['TANGGAL'];
+        
+        if (!isset($prodLookup[$ic])) {
+            $prodLookup[$ic] = array(
+                'Prod OK' => array(), 
+                'Prod NG' => array(), 
+                'Prod HOLD' => array()
+            );
+        }
+        
+        $prodLookup[$ic]['Prod OK'][$tgl] = (float)$rowP['PD_OK'];
+        $prodLookup[$ic]['Prod NG'][$tgl] = (float)$rowP['PD_NG'];
+        $prodLookup[$ic]['Prod HOLD'][$tgl] = (float)$rowP['PD_HO'];
+    }
+    sqlsrv_free_stmt($stmtProd);
+}
+
+
+// MEMULAI TRANSAKSI UPDATE
 sqlsrv_begin_transaction($conn);
 $isUpdateSuccess = true;
 
+// [PERUBAHAN 3]: MEMASTIKAN TEMPLATE BARIS LENGKAP - FILTER DINAMIS
 $sqlFixTemplate = "
     INSERT INTO RPT_PPIC_DTL (ID_NO, DESC_PROD)
     SELECT h.ID_NO, d.DESC_PROD
@@ -209,14 +257,24 @@ $sqlFixTemplate = "
         SELECT 'Repl To Customer' UNION ALL
         SELECT 'Retur From Cust' UNION ALL
         SELECT 'Retur To Cust2' UNION ALL
-        SELECT 'Replace From Cust2'
+        SELECT 'Replace From Cust2' UNION ALL
+        SELECT 'Prod OK' UNION ALL
+        SELECT 'Prod NG' UNION ALL
+        SELECT 'Prod HOLD'
     ) d
-    WHERE h.periode = ? AND h.MC_NO = ?
-      AND NOT EXISTS (
+    WHERE h.periode = ? ";
+
+$fixParams = array($periode);
+if ($mc_no !== '' && $mc_no !== 'ALL') {
+    $sqlFixTemplate .= " AND h.MC_NO = ? ";
+    $fixParams[] = $mc_no;
+}
+
+$sqlFixTemplate .= " AND NOT EXISTS (
           SELECT 1 FROM RPT_PPIC_DTL x WHERE x.ID_NO = h.ID_NO AND x.DESC_PROD = d.DESC_PROD
-      )
-";
-$stmtFix = sqlsrv_query($conn, $sqlFixTemplate, array($periode, $mc_no));
+      )";
+
+$stmtFix = sqlsrv_query($conn, $sqlFixTemplate, $fixParams);
 if($stmtFix === false) { $isUpdateSuccess = false; } else { sqlsrv_free_stmt($stmtFix); }
 
 if ($isUpdateSuccess) {
@@ -242,27 +300,40 @@ if ($isUpdateSuccess) {
         $updIdNo = $hdr['ID_NO'];
         $item_code = trim($hdr['ITEM_CODE']);
 
+        // EXECUTE DELIVERY
         if (isset($spLookup[$item_code])) {
             $spData = $spLookup[$item_code];
             
-            // EXECUTE: Del Plan
             $updDesc = 'Del Plan';
             for ($i=1; $i<=31; $i++) { ${"updD".$i} = isset($spData[$i.'_SCH']) ? (float)$spData[$i.'_SCH'] : 0; }
             $updGTotal = isset($spData['TOTAL_SCH']) ? (float)$spData['TOTAL_SCH'] : 0;
             if (sqlsrv_execute($stmtUpd) === false) { $isUpdateSuccess = false; break; }
             
-            // EXECUTE: Del Actual
             $updDesc = 'Del Actual';
             for ($i=1; $i<=31; $i++) { ${"updD".$i} = isset($spData[$i.'_DEL']) ? (float)$spData[$i.'_DEL'] : 0; }
             $updGTotal = isset($spData['TOTAL_DEL']) ? (float)$spData['TOTAL_DEL'] : 0;
             if (sqlsrv_execute($stmtUpd) === false) { $isUpdateSuccess = false; break; }
         }
 
+        // EXECUTE MUTASI
         foreach ($trackedDescs as $desc) {
             $updDesc = $desc;
             $updGTotal = 0;
             for ($i=1; $i<=31; $i++) { 
                 $valT = isset($transLookup[$item_code][$desc][$i]) ? $transLookup[$item_code][$desc][$i] : 0;
+                ${"updD".$i} = $valT;
+                $updGTotal += $valT;
+            }
+            if (sqlsrv_execute($stmtUpd) === false) { $isUpdateSuccess = false; break 2; }
+        }
+
+        // EXECUTE PRODUKSI (OK, NG, HOLD)
+        $prodDescs = array('Prod OK', 'Prod NG', 'Prod HOLD');
+        foreach ($prodDescs as $desc) {
+            $updDesc = $desc;
+            $updGTotal = 0;
+            for ($i=1; $i<=31; $i++) { 
+                $valT = isset($prodLookup[$item_code][$desc][$i]) ? $prodLookup[$item_code][$desc][$i] : 0;
                 ${"updD".$i} = $valT;
                 $updGTotal += $valT;
             }

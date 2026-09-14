@@ -13,31 +13,24 @@ function get_param($name, $default = "") {
     if (isset($_GET[$name])) {
         return trim($_GET[$name]);
     }
-
     if (isset($_POST[$name])) {
         return trim($_POST[$name]);
     }
-
     return $default;
 }
 
 function to_yyyymmdd($value) {
     $value = trim($value);
-
     if ($value == "") {
         return "";
     }
-
     if (preg_match('/^\d{8}$/', $value)) {
         return $value;
     }
-
     $ts = strtotime($value);
-
     if ($ts === false) {
         return "";
     }
-
     return date("Ymd", $ts);
 }
 
@@ -45,13 +38,10 @@ function fmt_date_id($yyyymmdd) {
     if ($yyyymmdd == "") {
         return "";
     }
-
     $ts = strtotime($yyyymmdd);
-
     if ($ts === false) {
         return $yyyymmdd;
     }
-
     return strtoupper(date("d M Y", $ts));
 }
 
@@ -63,95 +53,103 @@ function fmt_num($value, $decimal = 0) {
     if ($value === null || $value === "") {
         $value = 0;
     }
-
     return number_format((float)$value, $decimal, ".", ",");
 }
 
-$cust_code = get_param("CUST_CODE", "");
-$start_raw = get_param("START_DATE", "");
-$end_raw   = get_param("END_DATE", "");
+// Ambil parameter Customer
+ $cust_code = get_param("CUST_CODE", "");
+ $start_raw = get_param("START_DATE", "");
+ $end_raw   = get_param("END_DATE", "");
 
 if ($cust_code == "") {
     $cust_code = get_param("CUSTOMER", "");
 }
 
-$start_date = to_yyyymmdd($start_raw);
-$end_date   = to_yyyymmdd($end_raw);
-
+// PERUBAAN: Jika CUST_CODE kosong, set ke '%' untuk menampilkan SEMUA
 if ($cust_code == "") {
-    die("CUST_CODE belum diisi.");
+    $cust_code = "%";
 }
 
+ $start_date = to_yyyymmdd($start_raw);
+ $end_date   = to_yyyymmdd($end_raw);
+
+// Validasi Tanggal tetap diperlukan
 if ($start_date == "" || $end_date == "") {
     die("START_DATE / END_DATE tidak valid.");
 }
 
-$sql = "
-    SET NOCOUNT ON;
-    EXEC dbo.SP_DELIVERY_INSTRUCTION_PO2 ?, ?, ?
+// PERBAIKAN 1: Join langsung ke dbo.ITEMS (P) agar data muncul meskipun item inactive
+// PERBAIKAN 2: Menggunakan LIKE agar '%' berfungsi menampilkan semua customer
+ $sql = "
+    SELECT 
+        DP.DI_ID, DP.DIPA_LINO, DP.PART_CODE, DP.PART_ID, DP.SPR_CODE, DP.DIPA_QTY, DP.PACK_ID, 
+        DP.DIPA_PACK, DP.DIPA_PQTY, DP.DIPA_POSTED, DP.PRICE_ID, DP.DIPA_CLOSE, DP.LOCATION, 
+        DP.IS_MANUAL, DP.MANUAL_ORDR_ID, DP.MANUAL_ORDP_LINO, DP.BDQTY, DP.BC_NO, 
+        DT.DI_NO, DT.DI_START_DATE, DT.DI_DATE, DT.DI_INVNO, DT.DI_DSNO, 
+        C.CUST_CODE, C.CUST_COMP,
+        P.ITEM_NO AS PART_NO, P.ITEM_NAME AS PART_NAME
+    FROM dbo.DI_PART_TEMP DP
+    INNER JOIN dbo.DI_TEMP DT ON DP.DI_ID = DT.DI_ID
+    INNER JOIN dbo.CUST C ON DT.CUST_ID = C.CUST_ID
+    LEFT JOIN dbo.ITEMS P ON DP.PART_ID = P.ITEM_ID
+    WHERE C.CUST_CODE LIKE ? 
+      AND DT.DI_START_DATE = ? 
+      AND DT.DI_DATE = ?
+    ORDER BY DP.DI_ID ASC, DP.DIPA_LINO ASC
 ";
 
-$stmt = sqlsrv_query($conn, $sql, array(
+ $stmt = sqlsrv_query($conn, $sql, array(
     $cust_code,
-    $start_date,
-    $end_date
+    $start_raw, 
+    $end_raw
 ));
 
 if ($stmt === false) {
-    die("<pre>Query SP_DELIVERY_INSTRUCTION_PO2 gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
+    die("<pre>Query Gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
 }
 
-$rows = array();
-
+ $rows = array();
 while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $rows[] = $r;
 }
 
-if (count($rows) > 0) {
-    $displayStart = isset($rows[0]["START_DATE_DISPLAY"]) ? trim($rows[0]["START_DATE_DISPLAY"]) : fmt_date_id($start_date);
-    $displayEnd   = isset($rows[0]["END_DATE_DISPLAY"]) ? trim($rows[0]["END_DATE_DISPLAY"]) : fmt_date_id($end_date);
-} else {
-    $displayStart = fmt_date_id($start_date);
-    $displayEnd   = fmt_date_id($end_date);
-}
+ $displayStart = fmt_date_id($start_date);
+ $displayEnd   = fmt_date_id($end_date);
 
-/*
-    1 customer = 1 halaman.
-*/
-$customerPages = array();
+ $documentPages = array();
 
 for ($i = 0; $i < count($rows); $i++) {
     $r = $rows[$i];
 
-    $custCode = isset($r["CUST_CODE"]) ? trim((string)$r["CUST_CODE"]) : "";
-    $custComp = isset($r["CUST_COMP"]) ? trim((string)$r["CUST_COMP"]) : "";
+    $di_id = $r["DI_ID"]; 
+    $key = $di_id;
 
-    $key = $custCode . "|" . $custComp;
-
-    if (!isset($customerPages[$key])) {
-        $customerPages[$key] = array(
-            "CUST_CODE" => $custCode,
-            "CUST_COMP" => $custComp,
+    if (!isset($documentPages[$key])) {
+        $documentPages[$key] = array(
+            "CUST_CODE" => isset($r["CUST_CODE"]) ? trim((string)$r["CUST_CODE"]) : "",
+            "CUST_COMP" => isset($r["CUST_COMP"]) ? trim((string)$r["CUST_COMP"]) : "",
+            "DI_NO"     => isset($r["DI_NO"]) ? trim((string)$r["DI_NO"]) : "",
+            "DI_DSNO"   => isset($r["DI_DSNO"]) ? trim((string)$r["DI_DSNO"]) : "",
+            "DI_INVNO"  => isset($r["DI_INVNO"]) ? trim((string)$r["DI_INVNO"]) : "",
+            "LOCATION"  => isset($r["LOCATION"]) ? trim((string)$r["LOCATION"]) : "",
             "ROWS"      => array()
         );
     }
 
-    $customerPages[$key]["ROWS"][] = array(
-        "ITEM_CODE"    => isset($r["PART_NUM"]) ? trim((string)$r["PART_NUM"]) : "",
+    $documentPages[$key]["ROWS"][] = array(
+        "ITEM_CODE"    => isset($r["PART_CODE"]) ? trim((string)$r["PART_CODE"]) : "",
         "ITEM_NO"      => isset($r["PART_NO"]) ? trim((string)$r["PART_NO"]) : "",
         "ITEM_NAME"    => isset($r["PART_NAME"]) ? trim((string)$r["PART_NAME"]) : "",
-        "PBQTY"        => isset($r["PBQTY"]) ? $r["PBQTY"] : 0,
-        "PLAN_QTY"     => isset($r["PLAN_QTY"]) ? $r["PLAN_QTY"] : 0,
-        "PO"           => isset($r["PO"]) ? trim((string)$r["PO"]) : "",
-        "STD_PACK_BOX" => isset($r["STD_PACK_BOX"]) ? $r["STD_PACK_BOX"] : 0,
-        "STD_BOX"      => isset($r["STD_BOX"]) ? $r["STD_BOX"] : 0,
-        "PACK_CODE"    => isset($r["PACK_CODE"]) ? trim((string)$r["PACK_CODE"]) : ""
+        "PBQTY"        => isset($r["BDQTY"]) ? $r["BDQTY"] : 0, 
+        "PLAN_QTY"     => isset($r["DIPA_QTY"]) ? $r["DIPA_QTY"] : 0, 
+        "PO"           => "", 
+        "STD_PACK_BOX" => isset($r["DIPA_PQTY"]) ? $r["DIPA_PQTY"] : 0,
+        "PACK_CODE"    => isset($r["DIPA_PACK"]) ? trim((string)$r["DIPA_PACK"]) : ""
     );
 }
 
-$pages = array();
-
-foreach ($customerPages as $page) {
+ $pages = array();
+foreach ($documentPages as $page) {
     $pages[] = $page;
 }
 
@@ -159,17 +157,16 @@ if (count($pages) == 0) {
     $pages[] = array(
         "CUST_CODE" => "",
         "CUST_COMP" => "",
+        "DI_NO"     => "",
+        "DI_DSNO"   => "",
+        "DI_INVNO"  => "",
+        "LOCATION"  => "",
         "ROWS"      => array()
     );
 }
 
-$totalPages = count($pages);
-
-/*
-    Karena tulisan PART sudah dihapus dari dalam tabel,
-    jumlah baris detail bisa lebih banyak.
-*/
-$rowsPerPage = 20;
+ $totalPages = count($pages);
+ $rowsPerPage = 20;
 ?>
 <!DOCTYPE html>
 <html>
@@ -241,6 +238,14 @@ $rowsPerPage = 20;
         .company-title {
             font-size: 14px;
             font-weight: normal;
+        }
+        
+        .header-doc-info {
+            margin-top: 12px;
+            font-family: "Courier New", monospace;
+            font-size: 11px;
+            line-height: 14px;
+            font-weight: bold;
         }
 
         .title-area {
@@ -352,9 +357,6 @@ $rowsPerPage = 20;
             font-style: italic;
         }
 
-        /*
-            Total kolom = 100%
-        */
         .col-item-code { width: 9%; }
         .col-item-no { width: 15%; }
         .col-item-name { width: 20%; }
@@ -369,15 +371,12 @@ $rowsPerPage = 20;
         .col-check { width: 3%; }
 
         @media print {
-            html,
-            body {
+            html, body {
                 width: 297mm;
                 height: 210mm;
                 background: #ffffff;
             }
-
             .print-bar { display: none; }
-
             .page {
                 width: 285mm;
                 min-height: 198mm;
@@ -386,7 +385,6 @@ $rowsPerPage = 20;
                 padding: 0;
                 overflow: hidden;
             }
-
             .di-table th,
             .di-table td {
                 height: 20px;
@@ -394,7 +392,6 @@ $rowsPerPage = 20;
                 font-size: 10px;
                 padding: 2px 3px;
             }
-
             .report-title { font-size: 21px; }
             .company-title { font-size: 14px; }
         }
@@ -414,6 +411,10 @@ $rowsPerPage = 20;
         $pageData   = $pages[$p];
         $custCode   = $pageData["CUST_CODE"];
         $custComp   = $pageData["CUST_COMP"];
+        $diNo       = $pageData["DI_NO"];
+        $diDsno     = $pageData["DI_DSNO"];
+        $diInvno    = $pageData["DI_INVNO"];
+        $location   = $pageData["LOCATION"];
         $detailRows = $pageData["ROWS"];
     ?>
 
@@ -424,6 +425,15 @@ $rowsPerPage = 20;
                 <td class="company">
                     <div class="company-title">P.T. IMC TEKNO INDONESIA</div>
                     PPIC Department
+                    
+                    <div class="header-doc-info">
+                        DI NO &nbsp;: <?php echo h($diNo); ?><br>
+                        DS NO &nbsp;: <?php echo h($diDsno); ?><br>
+                        INV NO : <?php echo h($diInvno); ?>
+                        <?php if ($location != "") { ?>
+                        <br>LOC &nbsp;&nbsp;&nbsp;: <?php echo h($location); ?>
+                        <?php } ?>
+                    </div>
                 </td>
 
                 <td class="title-area">
@@ -518,9 +528,7 @@ $rowsPerPage = 20;
                             <?php echo h($r["ITEM_NAME"]); ?>
                         </td>
 
-                        <td class="col-lot-no">
-                            &nbsp;
-                        </td>
+                        <td class="col-lot-no">&nbsp;</td>
 
                         <td class="col-po-bal center">
                             <?php echo h(fmt_num($r["PBQTY"], 0)); ?>
@@ -532,20 +540,16 @@ $rowsPerPage = 20;
 
                         <td class="col-pcs"></td>
                         
-                        <!-- ISI STD_BOX DIAMBIL DARI DATABASE (STD_PACK_BOX) -->
                         <td class="col-pack center">
                             <?php echo h(fmt_num($r["STD_PACK_BOX"], 0)); ?>
                         </td>
                         
-                        <!-- HASIL PERHITUNGAN PINDAH KE KOLOM INITIAL PACKING -->
                         <td class="col-initial center">
                             <?php echo h($r["PACK_CODE"]); ?>
                         </td>
                         
-                        <!-- PACK CODE DITAMPILKAN DI KOLOM TOTAL DENGAN RATA KIRI -->
                         <td class="col-total center">
-						    <?php echo h(fmt_num($jml_box, 0)); ?>
-         
+                            <?php echo h(fmt_num($jml_box, 0)); ?>
                         </td>
 
                         <td class="col-remark">&nbsp;</td>
@@ -561,7 +565,6 @@ $rowsPerPage = 20;
                         $usedRows = 1;
                     }
 
-                    // Kurangi 1 untuk menyediakan ruang bagi baris TOTAL
                     $fillCount = $rowsPerPage - $usedRows - 1;
 
                     if ($fillCount < 0) {
@@ -586,20 +589,16 @@ $rowsPerPage = 20;
                     </tr>
                 <?php } ?>
                 
-                <!-- BARIS TOTAL -->
-                
-				
-				<!-- BARIS TOTAL -->
                 <tr>
                     <td colspan="4" class="center"><strong>TOTAL</strong></td>
                     <td class="center"><strong><?php echo h(fmt_num($total_po_bal, 0)); ?></strong></td>
                     <td class="center"><strong><?php echo h(fmt_num($total_plan, 0)); ?></strong></td>
-                    <td></td> <!-- actual kosong -->
-                    <td></td> <!-- std_box tidak ditotal -->
-                    <td></td> <!-- Initial packing (Pack Code) tidak ditotal -->
-                    <td class="center"><strong><?php echo h(fmt_num($total_box, 0)); ?></strong></td> <!-- total perhitungan box -->
-                    <td></td> <!-- REMARK -->
-                    <td></td> <!-- loading check -->
+                    <td></td> 
+                    <td></td> 
+                    <td></td> 
+                    <td class="center"><strong><?php echo h(fmt_num($total_box, 0)); ?></strong></td>
+                    <td></td> 
+                    <td></td> 
                 </tr>
 
             </tbody>

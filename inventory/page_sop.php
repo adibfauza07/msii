@@ -569,9 +569,53 @@ while($r=sqlsrv_fetch_array($qL)) {
                 window.open('print_stock_analysis.php?item_id=' + item_id + '&start_date=' + start_date + '&period=' + period, '_blank');
             }
             </script>
+
+<div class="card mt-3 shadow-sm border-info">
+    <div class="card-header bg-info text-dark text-center fw-bold py-2">
+        <i class="bi bi-tags"></i> REPORT TAG BY TYPE
+    </div>
+    <div class="card-body p-3 bg-light">
+        <div class="mb-2">
+            <label class="small fw-bold text-dark mb-1">Pilih Dokumen SOP:</label>
+            <select id="tag_by_type_sop_id" class="form-select form-select-sm select2" style="width: 100%;">
+                <option value="">-- Pilih Dokumen Stock Opname --</option>
+                <?php 
+                // Mengambil daftar dokumen SOP untuk dropdown
+                $qSopList = sqlsrv_query($conn, "SELECT SOP_ID, SOP_REF, SOP_SDATE FROM SOP ORDER BY CONVERT(date, SOP_SDATE) DESC, SOP_ID DESC");
+                if ($qSopList) {
+                    while($rSop = sqlsrv_fetch_array($qSopList)) { 
+                        $tglSop = ($rSop['SOP_SDATE'] instanceof DateTime) ? $rSop['SOP_SDATE']->format('d-M-Y') : $rSop['SOP_SDATE'];
+                        echo "<option value='{$rSop['SOP_ID']}'>{$rSop['SOP_REF']} ({$tglSop})</option>"; 
+                    }
+                }
+                ?>
+            </select>
+        </div>
+        <button type="button" onclick="cetakTagByType()" class="btn btn-dark btn-sm w-100 fw-bold shadow-sm">
+            <i class="bi bi-printer-fill"></i> PRINT TAG BY TYPE
+        </button>
+    </div>
+</div>
+
+<script>
+function cetakTagByType() {
+    var sop_id = document.getElementById('tag_by_type_sop_id').value;
+
+    if (!sop_id || sop_id == "") {
+        alert('Silakan pilih Dokumen SOP terlebih dahulu!');
+        return;
+    }
+
+    // Membuka laporan Tag By Type di tab baru
+    window.open('print_tag_by_type.php?sop_id=' + sop_id, '_blank');
+}
+</script>
+
+
                 </div>
             </div>
             </div>
+
 </form>
 
 <?php if ($isEntry): ?>

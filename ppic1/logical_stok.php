@@ -657,6 +657,12 @@ if ($is_filter) {
         $runningPlan   = isset($stockAwalMap[$key]) ? (float)$stockAwalMap[$key] : 0;
         $runningActual = isset($stockAwalMap[$key]) ? (float)$stockAwalMap[$key] : 0;
 
+        // [PERBAIKAN LOGIKA]: Cek TOTAL sebulan, bukan harian.
+        // Jika total Prod OK dan Prod HOLD selama sebulan penuh adalah 0, baru gunakan Prod OK1
+        $monthlyProdOk   = isset($prodMap[$key]["Prod OK"]["G_TOTAL"]) ? (float)$prodMap[$key]["Prod OK"]["G_TOTAL"] : 0;
+        $monthlyProdHold = isset($prodMap[$key]["Prod HOLD"]["G_TOTAL"]) ? (float)$prodMap[$key]["Prod HOLD"]["G_TOTAL"] : 0;
+        $useProdOk1 = (($monthlyProdOk + $monthlyProdHold) == 0);
+
         for ($i = 1; $i <= 31; $i++) {
             $dcol = "D" . $i;
 
@@ -696,10 +702,11 @@ if ($is_filter) {
                 ? (float)$hrow[$delActualCol]
                 : 0;
 
-            $prodInActual = $prodOk + $prodHold;
-
-            if ($prodInActual == 0) {
+            // [PERBAIKAN LOGIKA] Penentuan Sumber Prod In Actual
+            if ($useProdOk1) {
                 $prodInActual = $prodOk1;
+            } else {
+                $prodInActual = $prodOk + $prodHold;
             }
 
             $runningActual = $runningActual + $prodInActual - $delActual;

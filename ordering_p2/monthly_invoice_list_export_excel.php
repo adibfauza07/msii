@@ -87,22 +87,15 @@ function excel_num($value, $decimal = 0) {
     return number_format((float)$value, $decimal, ".", "");
 }
 
-// Fungsi baru untuk Excel: 5 digit di belakang koma, tanpa pembulatan (truncation)
 function excel_price_no_round($value) {
     if ($value === null || $value === "") {
         $value = 0;
     }
 
-    // Ambil 6 desimal untuk menghindari e-notation dan pembulatan prematur
     $raw = number_format((float)$value, 6, ".", "");
-    
-    // Pecah berdasarkan titik
     $parts = explode(".", $raw);
-    
-    // Potong paksa desimal menjadi tepat 5 digit
     $decPart = substr($parts[1], 0, 5);
     
-    // Gabungkan kembali angka bulat dan desimal (tanpa koma ribuan untuk excel)
     return $parts[0] . "." . $decPart;
 }
 
@@ -270,7 +263,6 @@ header("Expires: 0");
         }
 
         .price {
-            /* Diubah menjadi 5 digit presisi desimal tanpa pembulatan */
             mso-number-format: "0.00000"; 
             text-align: left;
         }
@@ -285,10 +277,9 @@ header("Expires: 0");
             font-weight: bold;
         }
 
-        .invoice-total-row {
-            background: #ffffff;
+        .customer-total-row {
+            background: #f9f9f9;
             font-weight: bold;
-            font-style: italic;
         }
 
         .grand-total-row {
@@ -302,35 +293,32 @@ header("Expires: 0");
 
 <table>
     <tr>
-        <td colspan="15" class="title">MONTHLY INVOICE LIST</td>
+        <td colspan="12" class="title">MONTHLY INVOICE LIST</td>
     </tr>
 
     <tr>
-        <td colspan="15">P.T. IMC TEKNO INDONESIA - PPIC Department</td>
+        <td colspan="12">P.T. IMC TEKNO INDONESIA - PPIC Department</td>
     </tr>
 
     <tr>
-        <td colspan="15">As per: <?php echo h($asper_month); ?></td>
+        <td colspan="12">As per: <?php echo h($asper_month); ?></td>
     </tr>
 
     <tr>
-        <td colspan="15">
-            Customer:
-            <?php echo h($cust_code == "%" ? "ALL CUSTOMER" : $cust_code); ?>
+        <td colspan="12">
+            Customer: <?php echo h($cust_code == "%" ? "ALL CUSTOMER" : $cust_code); ?>
         </td>
     </tr>
 
     <tr>
-        <td colspan="15">Export Date: <?php echo h(fmt_print_datetime()); ?></td>
+        <td colspan="12">Export Date: <?php echo h(fmt_print_datetime()); ?></td>
     </tr>
 
     <tr>
-        <td colspan="15">&nbsp;</td>
+        <td colspan="12">&nbsp;</td>
     </tr>
 
     <tr>
-        <th>Customer Code</th>
-        <th>Customer Name</th>
         <th>INV#</th>
         <th>Date</th>
         <th>Part Code</th>
@@ -347,20 +335,15 @@ header("Expires: 0");
 
     <?php if (count($rows) == 0) { ?>
         <tr>
-            <td colspan="14">Data monthly invoice list tidak ditemukan.</td>
+            <td colspan="12">Data monthly invoice list tidak ditemukan.</td>
         </tr>
     <?php } ?>
 
     <?php
     $lastCust = "";
-    $lastInv = "";
 
     $custQty = 0;
     $custAmount = 0;
-
-    $invQty = 0;
-    $invAmount = 0;
-    $invNo = "";
 
     $grandQty = 0;
     $grandAmount = 0;
@@ -369,28 +352,12 @@ header("Expires: 0");
         $r = $rows[$i];
 
         $custKey = $r["CUST_COMP"];
-        $invKey  = $r["CUST_COMP"] . "|" . $r["DI_INVNO"];
 
         if ($custKey != $lastCust) {
-            if ($lastInv != "") {
-                ?>
-                <tr class="invoice-total-row">
-                    <td colspan="9" style="text-align:right;">
-                        TOTAL INVOICE <?php echo h($invNo); ?>
-                    </td>
-                    <td class="num"><?php echo h(excel_num($invQty, 0)); ?></td>
-                    <td></td>
-                    <td></td>
-                    <td class="money"><?php echo h(excel_num($invAmount, 2)); ?></td>
-                    <td></td>
-                </tr>
-                <?php
-            }
-
             if ($lastCust != "") {
                 ?>
                 <tr class="customer-total-row">
-                    <td colspan="9" style="text-align:right;">TOTAL CUSTOMER</td>
+                    <td colspan="7" style="text-align:right;">TOTAL CUSTOMER</td>
                     <td class="num"><?php echo h(excel_num($custQty, 0)); ?></td>
                     <td></td>
                     <td></td>
@@ -402,47 +369,14 @@ header("Expires: 0");
 
             ?>
             <tr class="customer-row">
-                <td class="text"><?php echo h($r["CUST_CODE"]); ?></td>
-                <td colspan="13"><?php echo h($r["CUST_COMP"]); ?></td>
+                <td colspan="12"><?php echo h($r["CUST_CODE"] . " - " . $r["CUST_COMP"]); ?></td>
             </tr>
             <?php
 
             $lastCust = $custKey;
-            $lastInv = "";
-
             $custQty = 0;
             $custAmount = 0;
-
-            $invQty = 0;
-            $invAmount = 0;
-            $invNo = "";
         }
-
-        if ($invKey != $lastInv) {
-            if ($lastInv != "") {
-                ?>
-                <tr class="invoice-total-row">
-                    <td colspan="9" style="text-align:right;">
-                        TOTAL INVOICE <?php echo h($invNo); ?>
-                    </td>
-                    <td class="num"><?php echo h(excel_num($invQty, 0)); ?></td>
-                    <td></td>
-                    <td></td>
-                    <td class="money"><?php echo h(excel_num($invAmount, 2)); ?></td>
-                    <td></td>
-                </tr>
-                <?php
-            }
-
-            $lastInv = $invKey;
-            $invNo = $r["DI_INVNO"];
-
-            $invQty = 0;
-            $invAmount = 0;
-        }
-
-        $invQty += $r["QTY"];
-        $invAmount += $r["AMOUNT"];
 
         $custQty += $r["QTY"];
         $custAmount += $r["AMOUNT"];
@@ -452,8 +386,6 @@ header("Expires: 0");
         ?>
 
         <tr>
-            <td class="text"><?php echo h($r["CUST_CODE"]); ?></td>
-            <td class="text"><?php echo h($r["CUST_COMP"]); ?></td>
             <td class="text"><?php echo h($r["DI_INVNO"]); ?></td>
             <td class="text"><?php echo h(fmt_date($r["DI_DATE"])); ?></td>
             <td class="text"><?php echo h($r["PART_CODE"]); ?></td>
@@ -462,32 +394,17 @@ header("Expires: 0");
             <td class="text"><?php echo h($r["PRICE_CODE"]); ?></td>
             <td class="text"><?php echo h($r["ORDR_PO"]); ?></td>
             <td class="num"><?php echo h(excel_num($r["QTY"], 0)); ?></td>
-            <!-- Menggunakan fungsi excel_price_no_round untuk Price -->
             <td class="price"><?php echo h(excel_price_no_round($r["PRICE"])); ?></td>
             <td class="text"><?php echo h($r["CURR_CODE"]); ?></td>
             <td class="money"><?php echo h(excel_num($r["AMOUNT"], 2)); ?></td>
-            <!-- Menggunakan fungsi excel_price_no_round untuk PO Price -->
             <td class="price"><?php echo h(excel_price_no_round($r["PO_PRICE"])); ?></td>
         </tr>
 
     <?php } ?>
 
-    <?php if ($lastInv != "") { ?>
-        <tr class="invoice-total-row">
-            <td colspan="9" style="text-align:right;">
-                TOTAL INVOICE <?php echo h($invNo); ?>
-            </td>
-            <td class="num"><?php echo h(excel_num($invQty, 0)); ?></td>
-            <td></td>
-            <td></td>
-            <td class="money"><?php echo h(excel_num($invAmount, 2)); ?></td>
-            <td></td>
-        </tr>
-    <?php } ?>
-
     <?php if ($lastCust != "") { ?>
         <tr class="customer-total-row">
-            <td colspan="9" style="text-align:right;">TOTAL CUSTOMER</td>
+            <td colspan="7" style="text-align:right;">TOTAL CUSTOMER</td>
             <td class="num"><?php echo h(excel_num($custQty, 0)); ?></td>
             <td></td>
             <td></td>
@@ -496,7 +413,7 @@ header("Expires: 0");
         </tr>
 
         <tr class="grand-total-row">
-            <td colspan="9" style="text-align:right;">GRAND TOTAL</td>
+            <td colspan="7" style="text-align:right;">GRAND TOTAL</td>
             <td class="num"><?php echo h(excel_num($grandQty, 0)); ?></td>
             <td></td>
             <td></td>

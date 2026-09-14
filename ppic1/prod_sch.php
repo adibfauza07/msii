@@ -190,9 +190,12 @@ if ($connCombo) {
                         <option value="">-- Pilih Mesin --</option>
                     </select>
                 </div>
-                <div class="form-group">
+                
+				<div class="form-group">
                     <button id="btnLoad" class="btn-primary"><i class="fa fa-search"></i> Load Schedule</button>
+                    <button type="button" id="btnLoadAll" class="btn-secondary" style="background-color: #17a2b8; border-color: #117a8b; margin-left: 5px;"><i class="fa fa-globe"></i> Load All Mesin</button>
                 </div>
+				
             </div>
 
             <div style="border-left: 2px solid #ccc; padding-left: 20px;">
@@ -609,11 +612,63 @@ if ($connCombo) {
             $('#saveStatus_' + idx).removeClass('warn').addClass('ok').text('Kalkulasi ulang berhasil.').show().delay(2000).fadeOut();
         });
 
-        $('#workspaceContainer').on('click', '.btn-load-assembly-del', function() {
-            var idx = $(this).data('idx');
-            var cbAssembly = $('#workspace_' + idx).find('.cb-assembly').val();
-            if(!cbAssembly) { alert('Pilih Part BOM terlebih dahulu.'); return; }
-            alert('Fitur Pull Delivery siap dieksekusi untuk part: ' + cbAssembly);
+       $('#workspaceContainer').on('click', '.btn-load-assembly-del', function() {
+            var btn = $(this);
+            var idx = btn.data('idx');
+            var workspace = $('#workspace_' + idx);
+            var cbAssembly = workspace.find('.cb-assembly').val();
+            
+            // Ambil ID_NO dari atribut tombol save terdekat di workspace yang sama
+            var idNoRecord = workspace.find('.btn-action-save').data('idno'); 
+
+            var tahun = $('#cbTahun').val();
+            var bulan = $('#cbBulan').val();
+
+            if(!cbAssembly) { 
+                alert('Pilih Part BOM (Assembly Part) terlebih dahulu.'); 
+                return; 
+            }
+            if(!idNoRecord || idNoRecord == 0) {
+                alert('ID_NO tidak ditemukan. Silakan load ulang jadwal.');
+                return;
+            }
+
+            var originalHtml = btn.html();
+            btn.html('<i class="fa fa-spinner fa-spin"></i> Pulling...').prop('disabled', true);
+
+            $.ajax({
+                url: 'ajax_pull_delivery.php', 
+                type: 'POST', // Menggunakan POST karena kita melakukan perubahan database
+                data: {
+                    assembly_code: cbAssembly,
+                    tahun: tahun,
+                    bulan: bulan,
+                    id_no: idNoRecord // Parameter baru yang dikirim
+                },
+                dataType: 'json',
+                success: function(res) {
+                    if (res.status === 'success') {
+                        // Update angka di Grid DOM (Layar)
+                        for (var d = 1; d <= 31; d++) {
+                            var planVal = res.data.plan['D' + d] || 0;
+                            var actVal  = res.data.actual['D' + d] || 0;
+
+                            workspace.find('.cell-dp.day-' + d).text(planVal);
+                            workspace.find('.cell-da.day-' + d).text(actVal);
+                        }
+
+                        // Rekalkulasi total agar balance bergeser
+                        recalcMatrix(idx);
+
+                        $('#saveStatus_' + idx).removeClass('warn').addClass('ok')
+                            .text('Delivery ditarik & tersimpan!').show().delay(3000).fadeOut();
+                    } else {
+                        alert('Gagal Pull Delivery: ' + res.message);
+                    }
+                },
+                error: function() { alert('Error koneksi saat mengeksekusi Pull Delivery.'); },
+                complete: function() { btn.html(originalHtml).prop('disabled', false); }
+            });
         });
 
         $('#workspaceContainer').on('click', '.btn-action-delete', function() {
@@ -752,17 +807,19 @@ if ($connCombo) {
             });
         });
 
-        $('#btnLoad').click(function() {
-            var tahun = $('#cbTahun').val();
-            var bulan = $('#cbBulan').val();
-            var machGroup = $('#cbMachGroup').val();
-            var mcNo  = $('#cbMachCode').val(); 
+        
+		var isProcessingAll = false;
+
+        function loadScheduleData(tahun, bulan, machGroup, mcNo) {
+            if (isProcessingAll) {
+                alert("Harap tunggu, sistem sedang memproses dan menyimpan data...");
+                return;
+            }
             
-            if ($.trim(mcNo) === '') { alert('Peringatan: Silakan pilih Machine Code terlebih dahulu.'); $('#cbMachCode').focus(); return; }
-            
+            isProcessingAll = true;
             $('#minusAlert').hide();
             $('#emptyDatesAlert').hide(); 
-            $('#workspaceContainer').html('<div class="panel" style="text-align:center; padding:50px;"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br>Memuat jadwal...</div>');
+            $('#workspaceContainer').html('<div class="panel" style="text-align:center; padding:50px;"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br><span id="loadingText">Memuat jadwal dari server...</span></div>');
 
             $.ajax({
                 url: urlLoadGrid, type: 'GET',
@@ -772,15 +829,15 @@ if ($connCombo) {
                     if (res.status === 'success') {
                         var allHtml = '';
                         $.each(res.items, function(index, item) {
-                            // Meneruskan parameter tahun dan bulan agar hyperlink stok terangkai
                             allHtml += buildWorkspaceHtml(index, item, tahun, bulan);
                         });
                         $('#workspaceContainer').html(allHtml);
                         
+                        var workspacesToSave = []; 
+                        
                         $.each(res.items, function(index, item) { 
                             recalcMatrix(index); 
                             
-                            // MERENDER DATA BOM (MENGHAPUS AJAX N+1)
                             var cbAssembly = $('#workspace_' + index).find('.cb-assembly');
                             cbAssembly.empty();
                             if(item.bom && item.bom.length > 0) {
@@ -790,17 +847,106 @@ if ($connCombo) {
                             } else {
                                 cbAssembly.append('<option value="">-- Tidak ada BOM --</option>');
                             }
+
+                            var workspaceEl = $('#workspace_' + index);
+                            var idno = workspaceEl.find('.btn-action-save').data('idno');
+                            if (idno && idno != 0) {
+                                workspacesToSave.push({ idx: index, idno: idno });
+                            }
                         });
+                        
                         updateEmptyDatesSummary();
+
+                        if (workspacesToSave.length > 0) {
+                            $('#workspaceContainer').prepend('<div id="progressOverlay" class="panel" style="background-color:#d1ecf1; border-color:#bee5eb; color:#0c5460; text-align:center; font-weight:bold; position:sticky; top:0; z-index:9999; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"><i class="fa fa-spinner fa-spin"></i> Sinkronisasi ke Database: <span id="saveProgress">0</span> dari ' + workspacesToSave.length + ' Item diselesaikan...</div>');
+                            
+                            processAutoSaveSequence(workspacesToSave, 0, function() {
+                                $('#progressOverlay').removeClass('fa-spinner fa-spin').css({'background-color':'#d4edda', 'color':'#155724', 'border-color':'#c3e6cb'})
+                                    .html('<i class="fa fa-check-circle"></i> Selesai! Semua data telah tersimpan dan siap dilihat pada Report Kapasitas Mesin. <button onclick="$(\'#progressOverlay\').slideUp()" style="margin-left:15px; padding:3px 10px; font-size:11px; cursor:pointer;" class="btn-success">Tutup</button>');
+                                isProcessingAll = false;
+                            });
+                        } else {
+                            isProcessingAll = false;
+                        }
+
                     } else {
                         $('#workspaceContainer').html('<div class="panel" style="text-align:center; color:#d9534f; padding:20px;"><b>Pemberitahuan:</b> ' + escapeHtml(res.message) + '</div>');
+                        isProcessingAll = false;
                     }
                 },
                 error: function(xhr) {
                     $('#workspaceContainer').html('<div class="panel" style="background-color:#ffebee; padding:20px; text-align:center;"><strong style="color:#c62828;">GAGAL MEMUAT DATA</strong><br>Pastikan koneksi jaringan stabil.</div>');
+                    isProcessingAll = false;
                 }
             });
+        }
+
+        function processAutoSaveSequence(items, currentIndex, onComplete) {
+            if (currentIndex >= items.length) {
+                if (typeof onComplete === 'function') onComplete();
+                return;
+            }
+
+            var currentItem = items[currentIndex];
+            var workspace = $('#workspace_' + currentItem.idx);
+            var r0Data = {};
+            
+            for (var i = 1; i <= 31; i++) {
+                r0Data['d'+i] = parseFloat(workspace.find('.input-r0.day-'+i).val()) || 0;
+            }
+
+            var statusSpan = $('#saveStatus_' + currentItem.idx);
+            statusSpan.removeClass('ok warn').text('Auto-Saving...').show();
+
+            $.ajax({
+                url: 'ajax_save_all_r0.php', 
+                type: 'POST',
+                data: { id_no: currentItem.idno, r0: r0Data },
+                dataType: 'json',
+                success: function(res) {
+                    if (res.status === 'success') {
+                        statusSpan.removeClass('warn').addClass('ok').text('Tersimpan!');
+                    } else {
+                        statusSpan.removeClass('ok').addClass('warn').text('Gagal');
+                    }
+                },
+                error: function() { 
+                    statusSpan.removeClass('ok').addClass('warn').text('Error'); 
+                },
+                complete: function() {
+                    setTimeout(function(){ statusSpan.fadeOut(function(){ $(this).text('').show(); }); }, 2000);
+                    $('#saveProgress').text(currentIndex + 1);
+                    processAutoSaveSequence(items, currentIndex + 1, onComplete);
+                }
+            });
+        }
+
+        $('#btnLoad').click(function() {
+            var tahun = $('#cbTahun').val();
+            var bulan = $('#cbBulan').val();
+            var machGroup = $('#cbMachGroup').val();
+            var mcNo  = $('#cbMachCode').val(); 
+            
+            if ($.trim(mcNo) === '') { 
+                alert('Peringatan: Silakan pilih Machine Code terlebih dahulu.'); 
+                $('#cbMachCode').focus(); 
+                return; 
+            }
+            
+            loadScheduleData(tahun, bulan, machGroup, mcNo);
         });
+
+        $('#btnLoadAll').click(function() {
+            var tahun = $('#cbTahun').val();
+            var bulan = $('#cbBulan').val();
+            
+            if (!confirm('Peringatan: Memuat seluruh mesin sekaligus akan memakan waktu proses karena sistem akan menyinkronisasi seluruh data ke database. Lanjutkan?')) {
+                return;
+            }
+            
+            loadScheduleData(tahun, bulan, 'ALL', 'ALL');
+        });
+		
 
         $('#workspaceContainer').on('input change', '.input-r0', function() {
             var workspaceIdx = $(this).closest('.workspace').attr('id').split('_')[1];

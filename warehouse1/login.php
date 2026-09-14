@@ -16,7 +16,7 @@ if (isset($_SESSION['db_user']) && isset($_SESSION['active_plant'])) {
 
 $error = "";
 
-// --- PROSES LOGIN ---masuk1996
+// --- PROSES LOGIN ---
 if (isset($_POST['btnMasuk'])) {
     $temp_username = trim($_POST['username']);
     $temp_password = $_POST['password'];
@@ -52,7 +52,6 @@ if (isset($_POST['btnMasuk'])) {
         exit();
     } else {
         // --- LOGIN GAGAL ---
-        // Ambil pesan error detail (opsional untuk debugging)
         $errors = sqlsrv_errors();
         $msg = "Koneksi Gagal / User Salah.";
         if($errors != null) {
@@ -73,7 +72,7 @@ if (isset($_POST['btnMasuk'])) {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <style>
         body { background-color: #f0f2f5; height: 100vh; display: flex; align-items: center; justify-content: center; }
-        .card-login { width: 100%; max-width: 400px; border: none; shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .card-login { width: 100%; max-width: 400px; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         .card-header { background: #0d6efd; color: white; text-align: center; padding: 20px; }
     </style>
 </head>
@@ -118,11 +117,19 @@ if (isset($_POST['btnMasuk'])) {
                 </div>
             </div>
 
-            <div class="d-grid gap-2">
+            <div class="d-grid gap-2 mb-2">
                 <button type="submit" name="btnMasuk" class="btn btn-primary fw-bold shadow-sm">
                     MASUK SISTEM <i class="bi bi-box-arrow-in-right"></i>
                 </button>
             </div>
+
+            <!-- Tombol Kembali ke Menu Utama -->
+            <div class="d-grid gap-2">
+                <a href="http://192.168.0.9:81/msii/index.php" class="btn btn-outline-secondary fw-bold shadow-sm">
+                    <i class="bi bi-arrow-left-circle"></i> KEMBALI KE MENU UTAMA
+                </a>
+            </div>
+
         </form>
     </div>
     <div class="card-footer bg-light text-center small text-muted py-3">

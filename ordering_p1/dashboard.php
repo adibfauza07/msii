@@ -127,6 +127,7 @@ function h($value) {
         </div>
 
         <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Report</a>
+		<a class="menu-link" href="generate.php" target="mainFrame">GENERATE DI_NO</a>
 		<a class="menu-link" href="master.php" target="mainFrame">MASTER CUST, PRICE, CURR</a>
 		<a class="menu-link" href="sync_part_price_customer.php" target="mainFrame">PRICE SYNCRONISATION</a>
         <a class="menu-link" href="manual_order.php" target="mainFrame">Manual Delivery Instruction</a>
