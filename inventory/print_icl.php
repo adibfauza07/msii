@@ -35,16 +35,40 @@ if ($qDet === false) {
     die("<div style='background:#ffcccc; padding:20px; border:2px solid red;'><b>Error Detail:</b><br>" . print_r(sqlsrv_errors(), true) . "</div>");
 }
 
-$dataDetail = [];
+$groupedData = [];
 $totalQty = 0; 
+
+// PERBAIKAN: Logika Pengelompokan Data (Grouping) dan Penjumlahan Qty
 while ($row = sqlsrv_fetch_array($qDet, SQLSRV_FETCH_ASSOC)) {
-    $row['ITEM_CODE'] = !empty($row['MASTER_CODE']) ? $row['MASTER_CODE'] : (!empty($row['TRAN_CODE']) ? $row['TRAN_CODE'] : '???');
-    $row['ITEM_NAME'] = !empty($row['MASTER_NAME']) ? $row['MASTER_NAME'] : (!empty($row['TRAN_REMARK']) ? $row['TRAN_REMARK'] : '');
-    $row['ITEM_UNIT'] = !empty($row['MASTER_UNIT']) ? $row['MASTER_UNIT'] : '';
+    $rawCode = !empty($row['MASTER_CODE']) ? $row['MASTER_CODE'] : (!empty($row['TRAN_CODE']) ? $row['TRAN_CODE'] : '???');
+    $itemName = !empty($row['MASTER_NAME']) ? $row['MASTER_NAME'] : (!empty($row['TRAN_REMARK']) ? $row['TRAN_REMARK'] : '');
+    $itemUnit = !empty($row['MASTER_UNIT']) ? $row['MASTER_UNIT'] : '';
+    $qty = (float)$row['IT_QTY'];
     
-    $totalQty += (float)$row['IT_QTY']; 
-    $dataDetail[] = $row;
+    // Ambil Kode Dasar (Membuang varian -0, -1, dst)
+    $codeParts = explode('-', $rawCode);
+    $baseCode = trim($codeParts[0]); 
+    
+    // Kunci grup unik berdasarkan Kode Dasar & Nama Barang
+    $groupKey = $baseCode . '|' . $itemName;
+
+    if (!isset($groupedData[$groupKey])) {
+        // Jika barang belum ada di array, daftarkan sebagai baris baru
+        $groupedData[$groupKey] = [
+            'ITEM_CODE' => $baseCode, // Menampilkan kode utama tanpa strip varian
+            'ITEM_NAME' => $itemName,
+            'ITEM_UNIT' => $itemUnit,
+            'IT_QTY'    => 0
+        ];
+    }
+    
+    // Tambahkan jumlah Qty ke baris yang sudah ada
+    $groupedData[$groupKey]['IT_QTY'] += $qty;
+    $totalQty += $qty; 
 }
+
+// Konversi kembali array grup menjadi array berurutan untuk paginasi
+$dataDetail = array_values($groupedData);
 
 // =========================================================================
 // LOGIKA PEMBAGIAN HALAMAN (PAGINATION)
@@ -197,10 +221,10 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
                 foreach ($chunk as $row) {
                     $qty = number_format($row['IT_QTY'], 2, '.', ',');
                     echo "<tr>
-                            <td>{$row['ITEM_CODE']}</td>
+                            <td style='font-weight: bold;'>{$row['ITEM_CODE']}</td>
                             <td>{$row['ITEM_NAME']}</td>
                             <td style='text-align: center; text-transform: capitalize;'>{$row['ITEM_UNIT']}</td>
-                            <td style='text-align: right;'>{$qty}</td>
+                            <td style='text-align: right; font-weight: bold;'>{$qty}</td>
                             <td></td> <td></td> <td></td> <td></td> 
                           </tr>";
                 }
@@ -220,7 +244,7 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
                 <?php if ($isLastPage): ?>
                     <tr>
                         <td colspan="3" style="text-align: right; font-weight: bold; border: 1px solid #000; padding: 2px 4px;">TOTAL :</td>
-                        <td style="text-align: right; border: 1px solid #000; padding: 2px 4px;"><?php echo number_format($totalQty, 2, '.', ','); ?></td>
+                        <td style="text-align: right; border: 1px solid #000; padding: 2px 4px; font-weight: bold;"><?php echo number_format($totalQty, 2, '.', ','); ?></td>
                         <td colspan="4" style="border: 1px solid #000;"></td>
                     </tr>
                 <?php else: ?>

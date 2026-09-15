@@ -65,7 +65,7 @@ if ($cust_code == "") {
     $cust_code = get_param("CUSTOMER", "");
 }
 
-// PERUBAAN: Jika CUST_CODE kosong, set ke '%' untuk menampilkan SEMUA
+// Jika CUST_CODE kosong, set ke '%' untuk menampilkan SEMUA
 if ($cust_code == "") {
     $cust_code = "%";
 }
@@ -73,13 +73,11 @@ if ($cust_code == "") {
  $start_date = to_yyyymmdd($start_raw);
  $end_date   = to_yyyymmdd($end_raw);
 
-// Validasi Tanggal tetap diperlukan
+// Validasi Tanggal
 if ($start_date == "" || $end_date == "") {
     die("START_DATE / END_DATE tidak valid.");
 }
 
-// PERBAIKAN 1: Join langsung ke dbo.ITEMS (P) agar data muncul meskipun item inactive
-// PERBAIKAN 2: Menggunakan LIKE agar '%' berfungsi menampilkan semua customer
  $sql = "
     SELECT 
         DP.DI_ID, DP.DIPA_LINO, DP.PART_CODE, DP.PART_ID, DP.SPR_CODE, DP.DIPA_QTY, DP.PACK_ID, 
@@ -281,6 +279,19 @@ if (count($pages) == 0) {
             margin-top: 4px;
         }
 
+        /* --- STYLE BARU UNTUK QR CODE --- */
+        .qr-box {
+            margin-top: 4px;
+            text-align: right;
+        }
+        .qr-box img {
+            width: 50px;
+            height: 50px;
+            border: 1px solid #ccc;
+            padding: 2px;
+        }
+        /* --------------------------------- */
+
         .print-date {
             text-align: right;
             font-size: 11px;
@@ -394,6 +405,9 @@ if (count($pages) == 0) {
             }
             .report-title { font-size: 21px; }
             .company-title { font-size: 14px; }
+            .qr-box img {
+                border: none; /* Hilangkan border abu-abu saat diprint */
+            }
         }
     </style>
 </head>
@@ -448,6 +462,13 @@ if (count($pages) == 0) {
                 <td class="right-info">
                     <div class="form-no">FM.CO.00-06</div>
                     <div class="page-no">Page <?php echo h($pageNo); ?> of <?php echo h($totalPages); ?></div>
+                    
+                    <!-- AREA QR CODE DITAMBAHKAN DI SINI -->
+                    <div class="qr-box">
+                        <?php if ($diNo != "") { ?>
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=<?php echo urlencode($diNo); ?>" alt="QR Code">
+                        <?php } ?>
+                    </div>
                 </td>
             </tr>
         </table>
