@@ -2,7 +2,7 @@
 /**
  * Modul: CRUD Master Alat Ukur Lengkap & Forecasting Kalibrasi
  * Kompatibilitas: PHP 5.4 & SQL Server 2008 (sqlsrv)
- * Fitur: Hybrid Dropdown Grup, Filter Expired, Input Histori Aktual, Keamanan Anti-Injection
+ * Fitur: Hybrid Dropdown Grup, Filter Expired, Input Histori Aktual, Edit Aktual, Keamanan Anti-Injection
  */
 
 require_once __DIR__ . '/../config/database.php';
@@ -17,10 +17,9 @@ $filter    = isset($_GET['filter']) ? htmlspecialchars($_GET['filter'], ENT_QUOT
 
 // =========================================================================
 // 1. LOGIKA CRUD (SIMPAN AKTUAL, SIMPAN MASTER, EDIT)
-// Catatan: Fungsi DELETE ditiadakan untuk menjaga integritas data histori ERP.
 // =========================================================================
 
-// A. Logika SIMPAN AKTUAL KALIBRASI (RIWAYAT BARU)
+// A. Logika SIMPAN AKTUAL KALIBRASI (RIWAYAT BARU DARI TOMBOL KALENDER)
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['form_aktual_submitted'])) {
     $alatID_aktual = (int)$_POST['AlatID'];
     $tglAktual     = trim($_POST['TglAktual']);
@@ -42,10 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['form_aktual_submitted'
 // B. Logika SIMPAN MASTER ALAT (INSERT / UPDATE)
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['form_submitted'])) {
     $alatID       = !empty($_POST['AlatID']) ? (int)$_POST['AlatID'] : 0;
-    
     $noUrut       = trim($_POST['NoUrut']);
     
-    // Logika Hybrid Grup Alat
     $grupSelect   = isset($_POST['GrupAlatSelect']) ? trim($_POST['GrupAlatSelect']) : '';
     $grupBaru     = isset($_POST['GrupAlatBaru']) ? trim($_POST['GrupAlatBaru']) : '';
     $grupAlat     = ($grupSelect === 'BARU') ? $grupBaru : $grupSelect;
@@ -66,28 +63,51 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['form_submitted'])) {
     $statusAlat   = trim($_POST['StatusAlat']);
     $remark       = trim($_POST['Remark']);
     
-    // Input Tanggal Aktual Kalibrasi (Hanya untuk Master Baru)
+    // Variabel Tanggal Aktual Kalibrasi (Dipakai untuk Insert & Update)
     $tglAktual_baru = !empty($_POST['TglAktual']) ? trim($_POST['TglAktual']) : null;
     $noSert_baru    = isset($_POST['NoSertifikat']) ? trim($_POST['NoSertifikat']) : '';
     $tahunHist_baru = !empty($tglAktual_baru) ? date('Y', strtotime($tglAktual_baru)) : date('Y');
+    $riwayatID      = !empty($_POST['RiwayatID']) ? (int)$_POST['RiwayatID'] : 0;
 
     if ($alatID > 0) {
-        // UPDATE EKSISTING
+        // UPDATE EKSISTING DENGAN TRANSACTION
+        if (sqlsrv_begin_transaction($conn) === false) {
+             die(print_r(sqlsrv_errors(), true));
+        }
+
         $sqlUpdate = "UPDATE MasterAlatUkur 
                       SET NoUrut=?, GrupAlat=?, NamaAlat=?, SeriNo=?, SeriNoIMC=?, Model=?, RangeUkur=?, Resolution=?, Satuan=?, Brand=?, Supplier=?, TipeKalibrasi=?, PeriodeBulan=?, Lokasi=?, Factory=?, StatusAlat=?, Remark=? 
                       WHERE AlatID=?";
-        
         $paramsUpdate = array($noUrut, $grupAlat, $namaAlat, $seriNo, $seriIMC, $model, $rangeUkur, $resolution, $satuan, $brand, $supplier, $tipeKalib, $periode, $lokasi, $factory, $statusAlat, $remark, $alatID);
         $stmtUpdate = sqlsrv_query($conn, $sqlUpdate, $paramsUpdate);
 
-        if ($stmtUpdate) {
-            $pesan = "<div class='alert alert-success'>Data Master Alat Ukur berhasil diperbarui!</div>";
+        $riwayatSuccess = true;
+        if ($tglAktual_baru) {
+            if ($riwayatID > 0) {
+                // Update histori terakhir jika sudah ada
+                $sqlRiwayat = "UPDATE RiwayatKalibrasi SET TglActual=?, NoSertifikat=?, Tahun=? WHERE RiwayatID=?";
+                $paramsRiwayat = array($tglAktual_baru, $noSert_baru, $tahunHist_baru, $riwayatID);
+            } else {
+                // Insert histori baru jika alat belum punya histori sama sekali
+                $sqlRiwayat = "INSERT INTO RiwayatKalibrasi (AlatID, Tahun, TglActual, NoSertifikat) VALUES (?, ?, ?, ?)";
+                $paramsRiwayat = array($alatID, $tahunHist_baru, $tglAktual_baru, $noSert_baru);
+            }
+            $stmtRiwayat = sqlsrv_query($conn, $sqlRiwayat, $paramsRiwayat);
+            if (!$stmtRiwayat) {
+                $riwayatSuccess = false;
+            }
+        }
+
+        if ($stmtUpdate && $riwayatSuccess) {
+            sqlsrv_commit($conn);
+            $pesan = "<div class='alert alert-success'>Data Master dan Kalibrasi berhasil diperbarui!</div>";
         } else {
+            sqlsrv_rollback($conn);
             $pesan = "<div class='alert alert-danger'>Gagal update: " . print_r(sqlsrv_errors(), true) . "</div>";
         }
 
     } else {
-        // INSERT BARU (Gunakan Transaction karena 2 tabel)
+        // INSERT BARU DENGAN TRANSACTION
         if (sqlsrv_begin_transaction($conn) === false) {
              die(print_r(sqlsrv_errors(), true));
         }
@@ -95,7 +115,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['form_submitted'])) {
         $sqlInsert = "INSERT INTO MasterAlatUkur (NoUrut, GrupAlat, NamaAlat, SeriNo, SeriNoIMC, Model, RangeUkur, Resolution, Satuan, Brand, Supplier, TipeKalibrasi, PeriodeBulan, Lokasi, Factory, StatusAlat, Remark) 
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                       SELECT SCOPE_IDENTITY() AS NewID;";
-        
         $paramsInsert = array($noUrut, $grupAlat, $namaAlat, $seriNo, $seriIMC, $model, $rangeUkur, $resolution, $satuan, $brand, $supplier, $tipeKalib, $periode, $lokasi, $factory, $statusAlat, $remark);
         $stmtInsert = sqlsrv_query($conn, $sqlInsert, $paramsInsert);
 
@@ -104,7 +123,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['form_submitted'])) {
             sqlsrv_fetch($stmtInsert);
             $newAlatID = sqlsrv_get_field($stmtInsert, 0);
 
-            // Simpan Histori
             if ($tglAktual_baru) {
                 $sqlRiwayat = "INSERT INTO RiwayatKalibrasi (AlatID, Tahun, TglActual, NoSertifikat) VALUES (?, ?, ?, ?)";
                 $paramsRiwayat = array($newAlatID, $tahunHist_baru, $tglAktual_baru, $noSert_baru);
@@ -124,13 +142,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['form_submitted'])) {
     }
 }
 
-// C. AMBIL DATA UNTUK FORM EDIT (MASTER)
+// C. AMBIL DATA UNTUK FORM EDIT (MASTER + AKTUAL TERAKHIR)
 $editData = null;
 if (isset($_GET['action']) && $_GET['action'] == 'edit' && !empty($_GET['id'])) {
-    $sqlEdit = "SELECT * FROM MasterAlatUkur WHERE AlatID = ?";
+    $sqlEdit = "
+        SELECT m.*, h.RiwayatID, h.TglActual, h.NoSertifikat 
+        FROM MasterAlatUkur m
+        LEFT JOIN (
+            SELECT AlatID, RiwayatID, TglActual, NoSertifikat,
+                   ROW_NUMBER() OVER (PARTITION BY AlatID ORDER BY TglActual DESC) as rn
+            FROM RiwayatKalibrasi
+            WHERE TglActual IS NOT NULL
+        ) h ON m.AlatID = h.AlatID AND h.rn = 1
+        WHERE m.AlatID = ?
+    ";
     $stmtEdit = sqlsrv_query($conn, $sqlEdit, array((int)$_GET['id']));
     if ($stmtEdit) {
         $editData = sqlsrv_fetch_array($stmtEdit, SQLSRV_FETCH_ASSOC);
+        // Format object DateTime ke string Y-m-d untuk input type="date"
+        $editData['TglActualFmt'] = ($editData['TglActual'] instanceof DateTime) ? $editData['TglActual']->format('Y-m-d') : '';
     }
 }
 
@@ -149,7 +179,6 @@ if (isset($_GET['action']) && $_GET['action'] == 'input_aktual' && !empty($_GET[
 $sqlGrup = "SELECT DISTINCT GrupAlat FROM MasterAlatUkur WHERE GrupAlat IS NOT NULL AND LTRIM(RTRIM(GrupAlat)) <> '' ORDER BY GrupAlat ASC";
 $stmtGrup = sqlsrv_query($conn, $sqlGrup);
 $listGrup = array();
-
 if ($stmtGrup) {
     while ($r = sqlsrv_fetch_array($stmtGrup, SQLSRV_FETCH_ASSOC)) {
         $listGrup[] = $r['GrupAlat'];
@@ -180,9 +209,7 @@ ORDER BY ISNULL(m.GrupAlat, 'Z_Lainnya') ASC, LEN(m.NoUrut) ASC, m.NoUrut ASC
 ";
 
 $stmt = sqlsrv_query($conn, $tsql);
-if ($stmt === false) {
-    die("Error Query Database: " . print_r(sqlsrv_errors(), true));
-}
+if ($stmt === false) die("Error Query Database: " . print_r(sqlsrv_errors(), true));
 
 $dataAlat = array();
 $countWarning = 0;
@@ -190,8 +217,6 @@ $countOverdue = 0;
 
 while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $sisaHari = $row['SisaHari'];
-    
-    // Klasifikasi Status
     if ($row['StatusAlat'] != 'Dipakai') {
         $statusPlan = array('label' => 'Non-Aktif/Rusak', 'class' => 'label-default');
     } elseif ($sisaHari === null) {
@@ -208,17 +233,11 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
 
     $row['StatusPlan'] = $statusPlan;
     
-    // LOGIKA FILTERING TAMPILAN TABEL
     $tampilData = true;
-    if ($filter === 'overdue') {
-        if (!($row['StatusAlat'] == 'Dipakai' && $sisaHari !== null && $sisaHari < 0)) $tampilData = false;
-    } elseif ($filter === 'warning') {
-        if (!($row['StatusAlat'] == 'Dipakai' && $sisaHari !== null && $sisaHari >= 0 && $sisaHari <= 30)) $tampilData = false;
-    }
+    if ($filter === 'overdue' && !($row['StatusAlat'] == 'Dipakai' && $sisaHari !== null && $sisaHari < 0)) $tampilData = false;
+    elseif ($filter === 'warning' && !($row['StatusAlat'] == 'Dipakai' && $sisaHari !== null && $sisaHari >= 0 && $sisaHari <= 30)) $tampilData = false;
 
-    if ($tampilData) {
-        $dataAlat[] = $row;
-    }
+    if ($tampilData) $dataAlat[] = $row;
 }
 ?>
 
@@ -226,34 +245,26 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
 <style>
     .kalibrasi-wrapper { font-family: Arial, sans-serif; font-size: 13px; color: #333; background: #fff; padding: 20px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.05); }
     .kalibrasi-wrapper h2 { color: #2c3e50; border-bottom: 2px solid #ecf0f1; padding-bottom: 10px; margin-top:0; }
-    
     .kalibrasi-wrapper .alert { padding: 12px; margin-bottom: 15px; border-radius: 4px; font-weight: bold; border: 1px solid transparent; }
     .kalibrasi-wrapper .alert-success { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
     .kalibrasi-wrapper .alert-danger { background-color: #f8d7da; color: #721c24; border-color: #f5c6cb; }
     .kalibrasi-wrapper .alert-warning { background-color: #fff3cd; color: #856404; border-color: #ffeeba; }
-
-    /* Form Styles */
     .kalibrasi-wrapper .form-panel { background-color: #fdfdfd; border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
     .kalibrasi-wrapper .form-group { display: inline-block; width: 31%; margin-bottom: 12px; margin-right: 2%; vertical-align: top; }
     .kalibrasi-wrapper .form-group label { display: block; font-weight: bold; margin-bottom: 5px; color: #555; font-size: 12px; }
     .kalibrasi-wrapper .form-group input, .kalibrasi-wrapper .form-group select, .kalibrasi-wrapper .form-group textarea { width: 100%; padding: 7px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box; }
-    
-    /* Table Styles */
     .kalibrasi-wrapper .table-erp { width: 100%; border-collapse: collapse; margin-top: 15px; }
     .kalibrasi-wrapper .table-erp th { background-color: #2c3e50; color: #fff; padding: 10px; border: 1px solid #bdc3c7; text-align: center; }
     .kalibrasi-wrapper .table-erp td { padding: 8px; border: 1px solid #bdc3c7; text-align: center; vertical-align: middle; }
     .kalibrasi-wrapper .table-erp tr:hover { background-color: #f1f8ff; }
-    
     .kalibrasi-wrapper .group-header { background-color: #d1d8e0 !important; color: #2c3e50; font-weight: bold; font-size: 14px; text-align: left !important; padding-left: 15px !important; }
     .kalibrasi-wrapper .row-danger { background-color: #ffeaea !important; }
     .kalibrasi-wrapper .row-warning { background-color: #fffcf0 !important; }
-    
     .kalibrasi-wrapper .label { padding: 5px 8px; border-radius: 3px; font-size: 11px; color: #fff; font-weight: bold; display: inline-block; }
     .kalibrasi-wrapper .label-success { background-color: #27ae60; }
     .kalibrasi-wrapper .label-warning { background-color: #f39c12; }
     .kalibrasi-wrapper .label-danger  { background-color: #c0392b; }
     .kalibrasi-wrapper .label-default { background-color: #95a5a6; }
-    
     .kalibrasi-wrapper .btn-erp { padding: 6px 10px; background: #3498db; color: #fff; text-decoration: none; border-radius: 3px; border: none; cursor: pointer; font-size: 12px; display: inline-block;}
     .kalibrasi-wrapper .btn-add { background: #27ae60; margin-bottom: 10px; font-size: 14px; font-weight: bold;}
     .kalibrasi-wrapper .btn-edit { background: #f39c12; }
@@ -265,7 +276,6 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     
     <?php echo $pesan; ?>
 
-    <!-- ALERT OVERDUE & TOMBOL FILTER -->
     <?php if ($countOverdue > 0): ?>
         <div class="alert alert-danger" style="display: flex; justify-content: space-between; align-items: center;">
             <span>⚠️ PERHATIAN: Terdapat <?php echo $countOverdue; ?> Alat Ukur yang TELAH MELEWATI JADWAL KALIBRASI!</span>
@@ -277,7 +287,6 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         </div>
     <?php endif; ?>
 
-    <!-- ALERT WARNING (MENDEKATI EXPIRED) & TOMBOL FILTER -->
     <?php if ($countWarning > 0): ?>
         <div class="alert alert-warning" style="display: flex; justify-content: space-between; align-items: center;">
             <span>🔔 PENGINGAT: Terdapat <?php echo $countWarning; ?> Alat Ukur yang mendekati jadwal kalibrasi (Sisa <= 30 Hari).</span>
@@ -293,11 +302,10 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         <button class="btn-erp btn-add" id="btnToggleForm">+ Input Master Alat Baru</button>
     </div>
 
-    <!-- ================= FORM INPUT AKTUAL KALIBRASI (Ditampilkan Jika Tombol 📅 Diklik) ================= -->
+    <!-- ================= FORM INPUT AKTUAL KALIBRASI (Dari Tombol Kalender) ================= -->
     <?php if ($dataAktual): ?>
     <div class="form-panel" id="formAktual" style="display: block; border-left: 4px solid #27ae60;">
         <h3 style="margin-top:0; color:#27ae60;">📅 Input Hasil Kalibrasi: <?php echo htmlspecialchars($dataAktual['NamaAlat'], ENT_QUOTES, 'UTF-8'); ?> (<?php echo htmlspecialchars($dataAktual['SeriNoIMC'], ENT_QUOTES, 'UTF-8'); ?>)</h3>
-        
         <form action="?page=<?php echo $pageRoute; ?>" method="POST">
             <input type="hidden" name="form_aktual_submitted" value="1">
             <input type="hidden" name="AlatID" value="<?php echo $dataAktual['AlatID']; ?>">
@@ -320,7 +328,7 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     </div>
     <?php endif; ?>
 
-    <!-- ================= FORM CRUD MASTER ALAT (LENGKAP SEMUA KOLOM) ================= -->
+    <!-- ================= FORM CRUD MASTER ALAT ================= -->
     <div class="form-panel" id="formPanel" style="display: <?php echo $editData ? 'block' : 'none'; ?>;">
         <h3 style="margin-top:0; color:#2980b9;"><?php echo $editData ? 'Edit Data Master Alat' : 'Input Data Alat Ukur Baru'; ?></h3>
         
@@ -333,7 +341,6 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
                 <input type="text" name="NoUrut" required value="<?php echo $editData ? htmlspecialchars($editData['NoUrut'], ENT_QUOTES, 'UTF-8') : ''; ?>">
             </div>
             
-            <!-- Hybrid Dropdown Grup Alat -->
             <div class="form-group">
                 <label>Grup Alat</label>
                 <select name="GrupAlatSelect" id="GrupAlatSelect" required>
@@ -354,7 +361,6 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
                     <?php $isBaru = ($editData && !$isGrupExist && !empty($editData['GrupAlat'])) ? true : false; ?>
                     <option value="BARU" <?php echo $isBaru ? 'selected' : ''; ?>>+ Input Grup Baru...</option>
                 </select>
-                <!-- Input text untuk grup baru (tersembunyi secara default) -->
                 <input type="text" name="GrupAlatBaru" id="GrupAlatBaru" placeholder="Ketik nama grup baru..." 
                        value="<?php echo $isBaru ? htmlspecialchars($editData['GrupAlat'], ENT_QUOTES, 'UTF-8') : ''; ?>" 
                        style="display: none; margin-top: 5px;">
@@ -425,20 +431,20 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
                 <input type="text" name="Remark" value="<?php echo $editData ? htmlspecialchars($editData['Remark'], ENT_QUOTES, 'UTF-8') : ''; ?>">
             </div>
 
-            <?php if (!$editData): ?>
-            <!-- Input Tanggal Aktual Kalibrasi (Hanya muncul saat insert Data Baru) -->
+            <!-- Input / Edit Tanggal Aktual Kalibrasi selalu ditampilkan -->
             <div style="border-top: 1px dashed #ccc; padding-top: 10px; margin-top: 10px; width: 100%; display: inline-block;">
-                <h4 style="margin-top:0; color:#e67e22;">Input Tanggal Aktual Kalibrasi Terakhir (Opsional)</h4>
+                <h4 style="margin-top:0; color:#e67e22;">Input / Edit Tanggal Aktual Kalibrasi Terakhir</h4>
+                <!-- Hidden Input untuk membawa ID Histori jika sedang mengedit -->
+                <input type="hidden" name="RiwayatID" value="<?php echo $editData && isset($editData['RiwayatID']) ? $editData['RiwayatID'] : ''; ?>">
                 <div class="form-group" style="width: 48%;">
                     <label>Tanggal Aktual Kalibrasi (YYYY-MM-DD)</label>
-                    <input type="date" name="TglAktual">
+                    <input type="date" name="TglAktual" value="<?php echo $editData ? $editData['TglActualFmt'] : ''; ?>">
                 </div>
                 <div class="form-group" style="width: 48%;">
                     <label>No. Sertifikat</label>
-                    <input type="text" name="NoSertifikat">
+                    <input type="text" name="NoSertifikat" value="<?php echo $editData ? htmlspecialchars($editData['NoSertifikat'], ENT_QUOTES, 'UTF-8') : ''; ?>">
                 </div>
             </div>
-            <?php endif; ?>
 
             <div style="margin-top: 15px; text-align: right; width: 100%; display: inline-block;">
                 <?php if ($editData): ?>
@@ -470,7 +476,6 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         <tbody>
             <?php 
             $currentGroup = null; 
-            
             foreach ($dataAlat as $alat): 
                 $alatID      = $alat['AlatID'];
                 $noUrut      = htmlspecialchars($alat['NoUrut'] ?: '-', ENT_QUOTES, 'UTF-8');
@@ -506,7 +511,6 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
                 <td style="font-weight: bold;"><?php echo $tglNextPlan; ?></td>
                 <td><span class="label <?php echo $alat['StatusPlan']['class']; ?>"><?php echo $alat['StatusPlan']['label']; ?></span></td>
                 
-                <!-- KOLOM AKSI (Hanya Input Aktual & Edit Master) -->
                 <td style="white-space: nowrap;">
                     <a href="?page=<?php echo $pageRoute; ?>&action=input_aktual&id=<?php echo $alatID; ?>#formAktual" class="btn-erp" style="background-color: #27ae60;" title="Input Tanggal Aktual Kalibrasi Baru">📅</a>
                     <a href="?page=<?php echo $pageRoute; ?>&action=edit&id=<?php echo $alatID; ?>#formPanel" class="btn-erp btn-edit" title="Edit Data Master">✏️</a>
@@ -523,11 +527,9 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     </table>
 </div>
 
-<!-- Menggunakan jQuery versi standar 1.x untuk kompatibilitas browser lama pada ERP Legacy -->
 <script src="https://code.jquery.com/jquery-1.11.3.min.js"></script>
 <script>
     $(document).ready(function(){
-        // 1. Toggle Panel Form Master
         $('#btnToggleForm').click(function(){
             $('#formPanel').slideToggle();
             if(window.location.search.indexOf('action=edit') > -1) {
@@ -535,12 +537,10 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
             }
         });
 
-        // 2. Batal Input Baru
         $('#btnBatal').click(function(){
             $('#formPanel').slideUp();
         });
 
-        // 3. Highlight baris tabel saat diklik
         $('.table-erp tbody tr').click(function(){
             if (!$(this).find('td').hasClass('group-header')) {
                 $('.table-erp tbody tr:not(.row-danger):not(.row-warning)').css('background-color', '');
@@ -548,12 +548,10 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
             }
         });
 
-        // 4. Autoclose Alert Success
         setTimeout(function() {
             $('.alert-success').fadeOut('slow');
         }, 3500);
 
-        // 5. Logika Hybrid Dropdown Grup Alat
         function checkGrupAlat() {
             if ($('#GrupAlatSelect').val() === 'BARU') {
                 $('#GrupAlatBaru').slideDown().attr('required', true);
@@ -562,7 +560,7 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
             }
         }
         
-        checkGrupAlat(); // Inisialisasi saat load
+        checkGrupAlat();
         
         $('#GrupAlatSelect').change(function(){
             checkGrupAlat();
@@ -571,6 +569,5 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
 </script>
 
 <?php 
-// Bebaskan resource memori query
 if (isset($stmt) && $stmt) sqlsrv_free_stmt($stmt);
 ?>

@@ -23,7 +23,8 @@ function sqlTime($dt){
 
 // Jika tombol Tampilkan ditekan
 $data = [];
-if ($from && $to && $mac > 0 && $plant > 0) {
+// Menggunakan >= 0 agar input nilai 0 tetap memicu eksekusi query
+if ($from && $to && $mac >= 0 && $plant >= 0) {
 
     $params = [
         $from, 

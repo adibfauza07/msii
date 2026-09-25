@@ -1,6 +1,6 @@
 <?php
 // Include koneksi database Anda
-require_once dirname(__DIR__) . "/config/global.php";
+require_once dirname(__DIR__) . "/config/db_plant1.php";
 
 // Tangkap filter dari URL (dikirim dari matpricelist.php)
 $sup_code = isset($_GET['sup_code']) ? trim($_GET['sup_code']) : '';

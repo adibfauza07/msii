@@ -143,12 +143,7 @@ while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $groups[$groupKey]["SUM_MCD1"] += $mcd1;
     $groups[$groupKey]["SUM_MCD2"] += $mcd2;
     $groups[$groupKey]["SUM_MCD3"] += $mcd3;
-    /*
-        Crystal memakai nilai QTY dan MMDAY dari group ST.
-        Jangan overwrite setiap baris, karena kalau ada join/view dobel,
-        nilai bisa berubah dan hasil summary jadi beda.
-        Ambil nilai pertama yang valid saja.
-    */
+    
     if ($groups[$groupKey]["MAC_AVAIL"] <= 0 && isset($r["QTY"]) && floatval($r["QTY"]) > 0) {
         $groups[$groupKey]["MAC_AVAIL"] = floatval($r["QTY"]);
     }
@@ -305,14 +300,6 @@ if ($export == "excel") {
                 $mmday2 = floatval($g["MMDAY2"]);
                 $mmday3 = floatval($g["MMDAY3"]);
 
-                /*
-                    Rumus Crystal Report:
-                    MREQ  = Sum(MCD, ST) / MMDAY
-                    MAV   = QTY * MMDAY
-                    MBAL  = QTY - MREQ
-                    MBALM = MAV - Sum(MCD, ST)
-                    PCT   = Sum(MCD, ST) / MAV * 100
-                */
                 $req1 = ($mmday1 > 0) ? ($sumMcd1 / $mmday1) : 0;
                 $req2 = ($mmday2 > 0) ? ($sumMcd2 / $mmday2) : 0;
                 $req3 = ($mmday3 > 0) ? ($sumMcd3 / $mmday3) : 0;
@@ -392,24 +379,24 @@ if ($export == "excel") {
     <title>Master Production Schedule</title>
 
     <style>
-        html, body {
-            margin: 0;
-            padding: 0;
-            background: #9c9c9c;
-            color: #000000;
-            font-family: "Courier New", Courier, monospace;
-            font-size: 8px;
-        }
+       html, body {
+    margin: 0;
+    padding: 0;
+    background: #9c9c9c;
+    color: #000000;
+    font-family: Calibri, Arial, sans-serif;
+    font-size: 10px; /* Ukuran font di file MPS/MOR/MRP Anda */
+    zoom: 100%; /* <--- TAMBAHKAN BARIS INI UNTUK ZOOM 125% DI LAYAR */
+}
 
         .filter {
             width: calc(100% - 24px);
-            max-width: 1120px;
             margin: 8px auto;
             background: #d4d0c8;
             border: 1px solid #777777;
             padding: 8px;
             box-sizing: border-box;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: Calibri, Arial, sans-serif;
             font-size: 12px;
         }
 
@@ -417,7 +404,7 @@ if ($export == "excel") {
             height: 24px;
             border: 1px solid #777777;
             padding: 2px 5px;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: Calibri, Arial, sans-serif;
             font-size: 12px;
             box-sizing: border-box;
         }
@@ -428,7 +415,7 @@ if ($export == "excel") {
             border: 1px solid #777777;
             background: #eeeeee;
             cursor: pointer;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: Calibri, Arial, sans-serif;
             font-size: 12px;
             color: #000000;
             text-decoration: none;
@@ -437,21 +424,19 @@ if ($export == "excel") {
 
         .toolbar {
             width: calc(100% - 24px);
-            max-width: 1120px;
             margin: 0 auto 6px auto;
             text-align: right;
         }
 
         .page {
             width: calc(100% - 24px);
-            max-width: 1120px;
             min-height: 760px;
             margin: 0 auto 20px auto;
             background: #ffffff;
             padding: 14px;
             border: 1px solid #000000;
             box-sizing: border-box;
-            overflow: hidden;
+            overflow-x: auto; /* Mengizinkan scroll horizontal jika melebih layar */
         }
 
         .header {
@@ -464,14 +449,14 @@ if ($export == "excel") {
             position: absolute;
             left: 0;
             top: 0;
-            font-size: 10px;
+            font-size: 12px;
         }
 
         .dept {
             position: absolute;
             left: 0;
-            top: 14px;
-            font-size: 8px;
+            top: 16px;
+            font-size: 10px;
         }
 
         .report-no {
@@ -479,7 +464,7 @@ if ($export == "excel") {
             right: 0;
             top: 0;
             text-align: right;
-            font-size: 8px;
+            font-size: 10px;
         }
 
         .print-date {
@@ -487,32 +472,33 @@ if ($export == "excel") {
             right: 0;
             top: 36px;
             text-align: right;
-            font-size: 8px;
+            font-size: 10px;
         }
 
         .title {
             text-align: center;
-            font-size: 16px;
-            line-height: 18px;
+            font-size: 18px;
+            line-height: 20px;
             padding-top: 10px;
         }
 
         .subtitle {
             text-align: center;
-            font-size: 9px;
+            font-size: 11px;
         }
 
         .process-title {
             margin-top: 8px;
-            font-size: 9px;
+            font-size: 11px;
             font-weight: bold;
             letter-spacing: 2px;
         }
 
         table.mps {
             width: 100%;
+            min-width: 1050px; /* Menjaga agar tidak menyusut paksa */
             border-collapse: collapse;
-            table-layout: fixed;
+            table-layout: fixed; /* Memaksa browser mengikuti instruksi kolom */
             margin-top: 3px;
             page-break-inside: auto;
         }
@@ -520,11 +506,12 @@ if ($export == "excel") {
         table.mps th,
         table.mps td {
             border-bottom: 1px dotted #000000;
-            padding: 1px 2px;
+            padding: 2px 3px;
             vertical-align: top;
-            font-size: 7px;
-            line-height: 9px;
+            font-size: 8.5px; 
+            line-height: 11px;
             overflow: hidden;
+            word-wrap: break-word; /* Mencegah kolom melebar karena teks panjang */
         }
 
         table.mps th {
@@ -550,13 +537,13 @@ if ($export == "excel") {
             border-top: 1px solid #000000;
             border-bottom: 1px solid #000000;
             background: #f3f3f3;
-            font-size: 8px;
+            font-size: 9.5px; 
         }
 
         .summary-row td {
             border-bottom: none;
-            font-size: 7px;
-            line-height: 9px;
+            font-size: 8.5px; 
+            line-height: 11px;
         }
 
         .summary-label {
@@ -576,8 +563,8 @@ if ($export == "excel") {
         .no-data {
             padding: 60px 0;
             text-align: center;
-            font-family: Tahoma, Arial, sans-serif;
-            font-size: 13px;
+            font-family: Calibri, Arial, sans-serif;
+            font-size: 14px;
         }
 
         @page {
@@ -607,9 +594,9 @@ if ($export == "excel") {
 
             table.mps th,
             table.mps td {
-                font-size: 6.5px;
-                line-height: 8px;
-                padding: 1px;
+                font-size: 8px; 
+                line-height: 10px;
+                padding: 2px;
             }
         }
     </style>
@@ -663,65 +650,70 @@ if ($export == "excel") {
             </div>
 
             <table class="mps">
+                <!-- Konfigurasi Paksa Lebar 100% -->
                 <colgroup>
-                    <col style="width:5.5%;">
-                    <col style="width:20.5%;">
-                    <col style="width:3.5%;">
-                    <col style="width:3%;">
-                    <col style="width:3%;">
+                    <col style="width:5%;">    <!-- PART -->
+                    <col style="width:20%;">   <!-- PART NAME -->
+                    <col style="width:4%;">    <!-- CUST -->
+                    <col style="width:3%;">    <!-- CAVT -->
+                    <col style="width:3%;">    <!-- CYTM -->
+                    <col style="width:3%;">    <!-- CAP -->
+                    <col style="width:3%;">    <!-- SAFE -->
+                    <col style="width:4%;">    <!-- B.STOCK -->
+                    <!-- M1 -->
                     <col style="width:4%;">
                     <col style="width:4%;">
                     <col style="width:4%;">
                     <col style="width:4%;">
+                    <!-- M2 -->
                     <col style="width:4%;">
                     <col style="width:4%;">
                     <col style="width:4%;">
                     <col style="width:4%;">
+                    <!-- M3 -->
                     <col style="width:4%;">
                     <col style="width:4%;">
                     <col style="width:4%;">
                     <col style="width:4%;">
-                    <col style="width:4%;">
-                    <col style="width:4%;">
-                    <col style="width:4%;">
-                    <col style="width:4%;">
-                    <col style="width:5%;">
+                    <!-- REMARKS -->
+                    <col style="width:7%;">
                 </colgroup>
 
                 <thead>
                     <tr>
-                        <th rowspan="2">PART</th>
-                        <th rowspan="2">PART NAME</th>
-                        <th rowspan="2">CUST</th>
-                        <th rowspan="2">CAVT</th>
-                        <th rowspan="2">CYTM</th>
-                        <th rowspan="2">CAP/</th>
-                        <th rowspan="2">SAFE.</th>
-                        <th rowspan="2">B.STOCK</th>
-                        <th colspan="4"><?php echo h($m1); ?></th>
-                        <th colspan="4"><?php echo h($m2); ?></th>
-                        <th colspan="4"><?php echo h($m3); ?></th>
-                        <th rowspan="2">REMARKS</th>
+                        <!-- Penegasan width pada <th> -->
+                        <th rowspan="2" style="width:5%;">PART</th>
+                        <th rowspan="2" style="width:20%;">PART NAME</th>
+                        <th rowspan="2" style="width:4%;">CUST</th>
+                        <th rowspan="2" style="width:3%;">CAVT</th>
+                        <th rowspan="2" style="width:3%;">CYTM</th>
+                        <th rowspan="2" style="width:3%;">CAP/</th>
+                        <th rowspan="2" style="width:3%;">SAFE.</th>
+                        <th rowspan="2" style="width:4%;">B.STOCK</th>
+                        <th colspan="4" style="width:16%;"><?php echo h($m1); ?></th>
+                        <th colspan="4" style="width:16%;"><?php echo h($m2); ?></th>
+                        <th colspan="4" style="width:16%;"><?php echo h($m3); ?></th>
+                        <th rowspan="2" style="width:7%;">REMARKS</th>
                     </tr>
                     <tr>
-                        <th>EST.<br>ORDER</th>
-                        <th>PROD<br>PLAN</th>
-                        <th>MC</th>
-                        <th>END.ST</th>
-                        <th>EST.<br>ORDER</th>
-                        <th>PROD<br>PLAN</th>
-                        <th>MC</th>
-                        <th>END.ST</th>
-                        <th>EST.<br>ORDER</th>
-                        <th>PROD<br>PLAN</th>
-                        <th>MC</th>
-                        <th>END.ST</th>
+                        <th style="width:4%;">EST.<br>ORDER</th>
+                        <th style="width:4%;">PROD<br>PLAN</th>
+                        <th style="width:4%;">MC</th>
+                        <th style="width:4%;">END.ST</th>
+                        <th style="width:4%;">EST.<br>ORDER</th>
+                        <th style="width:4%;">PROD<br>PLAN</th>
+                        <th style="width:4%;">MC</th>
+                        <th style="width:4%;">END.ST</th>
+                        <th style="width:4%;">EST.<br>ORDER</th>
+                        <th style="width:4%;">PROD<br>PLAN</th>
+                        <th style="width:4%;">MC</th>
+                        <th style="width:4%;">END.ST</th>
                     </tr>
                 </thead>
 
                 <tbody>
                     <tr class="station-row">
-                        <td colspan="22"><?php echo h($g["ST"]); ?></td>
+                        <td colspan="21"><?php echo h($g["ST"]); ?></td>
                     </tr>
 
                     <?php for ($i = 0; $i < count($g["ROWS"]); $i++) { ?>
@@ -729,7 +721,7 @@ if ($export == "excel") {
                         <tr>
                             <td><?php echo h($r["ITEM_CODE"]); ?></td>
                             <td><?php echo h($r["ITEM_NAME"]); ?></td>
-                            <td><?php echo h($r["CUST_ABBR"]); ?></td>
+                            <td class="center"><?php echo h($r["CUST_ABBR"]); ?></td>
                             <td class="num"><?php echo h(n0($r["ITEM_CAVT"])); ?></td>
                             <td class="num"><?php echo h(n2($r["ITEM_CYTM"])); ?></td>
                             <td class="num"><?php echo h(n0($r["CAPD"])); ?></td>
@@ -757,41 +749,33 @@ if ($export == "excel") {
 
                     <?php
                     $avail = floatval($g["MAC_AVAIL"]);
-                $sumMcd1 = floatval($g["SUM_MCD1"]);
-                $sumMcd2 = floatval($g["SUM_MCD2"]);
-                $sumMcd3 = floatval($g["SUM_MCD3"]);
+                    $sumMcd1 = floatval($g["SUM_MCD1"]);
+                    $sumMcd2 = floatval($g["SUM_MCD2"]);
+                    $sumMcd3 = floatval($g["SUM_MCD3"]);
 
-                $mmday1 = floatval($g["MMDAY1"]);
-                $mmday2 = floatval($g["MMDAY2"]);
-                $mmday3 = floatval($g["MMDAY3"]);
+                    $mmday1 = floatval($g["MMDAY1"]);
+                    $mmday2 = floatval($g["MMDAY2"]);
+                    $mmday3 = floatval($g["MMDAY3"]);
 
-                /*
-                    Rumus Crystal Report:
-                    MREQ  = Sum(MCD, ST) / MMDAY
-                    MAV   = QTY * MMDAY
-                    MBAL  = QTY - MREQ
-                    MBALM = MAV - Sum(MCD, ST)
-                    PCT   = Sum(MCD, ST) / MAV * 100
-                */
-                $req1 = ($mmday1 > 0) ? ($sumMcd1 / $mmday1) : 0;
-                $req2 = ($mmday2 > 0) ? ($sumMcd2 / $mmday2) : 0;
-                $req3 = ($mmday3 > 0) ? ($sumMcd3 / $mmday3) : 0;
+                    $req1 = ($mmday1 > 0) ? ($sumMcd1 / $mmday1) : 0;
+                    $req2 = ($mmday2 > 0) ? ($sumMcd2 / $mmday2) : 0;
+                    $req3 = ($mmday3 > 0) ? ($sumMcd3 / $mmday3) : 0;
 
-                $mav1 = $avail * $mmday1;
-                $mav2 = $avail * $mmday2;
-                $mav3 = $avail * $mmday3;
+                    $mav1 = $avail * $mmday1;
+                    $mav2 = $avail * $mmday2;
+                    $mav3 = $avail * $mmday3;
 
-                $bal1 = $avail - $req1;
-                $bal2 = $avail - $req2;
-                $bal3 = $avail - $req3;
+                    $bal1 = $avail - $req1;
+                    $bal2 = $avail - $req2;
+                    $bal3 = $avail - $req3;
 
-                $balm1 = $mav1 - $sumMcd1;
-                $balm2 = $mav2 - $sumMcd2;
-                $balm3 = $mav3 - $sumMcd3;
+                    $balm1 = $mav1 - $sumMcd1;
+                    $balm2 = $mav2 - $sumMcd2;
+                    $balm3 = $mav3 - $sumMcd3;
 
-                $per1 = ($mav1 > 0) ? ($sumMcd1 / $mav1 * 100) : 0;
-                $per2 = ($mav2 > 0) ? ($sumMcd2 / $mav2 * 100) : 0;
-                $per3 = ($mav3 > 0) ? ($sumMcd3 / $mav3 * 100) : 0;
+                    $per1 = ($mav1 > 0) ? ($sumMcd1 / $mav1 * 100) : 0;
+                    $per2 = ($mav2 > 0) ? ($sumMcd2 / $mav2 * 100) : 0;
+                    $per3 = ($mav3 > 0) ? ($sumMcd3 / $mav3 * 100) : 0;
                     ?>
 
                     <tr class="summary-row summary-line">
@@ -853,7 +837,7 @@ if ($export == "excel") {
                         <td></td>
                     </tr>
                     <tr class="space-row">
-                        <td colspan="22"></td>
+                        <td colspan="21"></td>
                     </tr>
                 </tbody>
             </table>

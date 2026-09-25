@@ -52,9 +52,9 @@ function fmt_print_datetime() {
 }
 
 function fmt_num_cell($value) {
-    if ($value === null || $value === "") return "-";
+    if ($value === null || $value === "") return ""; // Tanda "-" dihilangkan
     $n = (float)$value;
-    if ($n == 0) return "-";
+    if ($n == 0) return ""; // Tanda "-" dihilangkan jika nilainya 0
     return number_format($n, 0, ".", ",");
 }
 
@@ -193,28 +193,29 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
         body {
             margin: 0;
             background: #9a9a9a;
-            font-family: "Courier New", monospace;
-            font-size: 9px;
+            font-family: "Calibri", sans-serif;
+            font-weight: bold;
+            font-size: 10px;
             color: #000000;
         }
 
         .filter-bar {
             width: 98%; margin: 8px auto; background: #d4d0c8;
             border: 1px solid #666666; padding: 6px; box-sizing: border-box;
-            font-family: Tahoma, Arial, sans-serif; font-size: 12px;
+            font-family: "Calibri", sans-serif; font-size: 12px;
         }
-        .filter-bar input { height: 24px; border: 1px solid #777777; font-size: 12px; padding: 2px 4px; box-sizing: border-box; }
+        .filter-bar input { height: 24px; border: 1px solid #777777; font-size: 12px; padding: 2px 4px; box-sizing: border-box; font-weight: bold; font-family: "Calibri", sans-serif; }
         .filter-date { width: 130px; }
         .filter-cust { width: 160px; }
-        .filter-bar button { height: 26px; font-size: 12px; cursor: pointer; margin-left: 4px; }
+        .filter-bar button { height: 26px; font-size: 12px; cursor: pointer; margin-left: 4px; font-weight: bold; font-family: "Calibri", sans-serif; }
 
         .autocomplete-wrap { position: relative; display: inline-block; }
         .autocomplete-list { position: absolute; top: 24px; left: 0; width: 430px; max-height: 230px; overflow-y: auto; background: #ffffff; border: 1px solid #444444; z-index: 9999; display: none; box-shadow: 2px 2px 5px rgba(0,0,0,0.25); }
-        .autocomplete-item { padding: 5px 7px; border-bottom: 1px solid #dddddd; cursor: pointer; line-height: 16px; font-family: Tahoma, Arial, sans-serif; font-size: 12px; }
+        .autocomplete-item { padding: 5px 7px; border-bottom: 1px solid #dddddd; cursor: pointer; line-height: 16px; font-family: "Calibri", sans-serif; font-size: 12px; font-weight: bold; }
         .autocomplete-item:hover, .autocomplete-item.active { background: #2f70c9; color: #ffffff; }
 
         .print-bar { width: 98%; margin: 8px auto; text-align: right; }
-        .print-bar button { padding: 6px 14px; font-size: 11px; cursor: pointer; font-family: Arial, sans-serif; }
+        .print-bar button { padding: 6px 14px; font-size: 11px; cursor: pointer; font-family: "Calibri", sans-serif; font-weight: bold; }
 
         .page {
             width: 98%; min-height: 198mm; margin: 10px auto;
@@ -225,22 +226,22 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
 
         .header { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
         .header td { border: none; vertical-align: top; }
-        .company { width: 30%; font-family: Arial, sans-serif; font-size: 11px; line-height: 14px; }
-        .company-title { font-size: 15px; font-weight: normal; }
-        .title-area { width: 40%; text-align: center; font-family: Arial, sans-serif; }
-        .report-title { font-size: 22px; font-weight: normal; margin-top: 8px; line-height: 24px; }
-        .right-info { width: 30%; text-align: right; font-family: Arial, sans-serif; font-size: 11px; line-height: 17px; }
-        .print-date { text-align: right; font-family: Arial, sans-serif; font-size: 11px; margin-bottom: 6px; }
+        .company { width: 30%; font-family: "Calibri", sans-serif; font-size: 12px; line-height: 14px; font-weight: bold; }
+        .company-title { font-size: 16px; font-weight: bold; }
+        .title-area { width: 40%; text-align: center; font-family: "Calibri", sans-serif; font-weight: bold; }
+        .report-title { font-size: 24px; font-weight: bold; margin-top: 8px; line-height: 24px; }
+        .right-info { width: 30%; text-align: right; font-family: "Calibri", sans-serif; font-size: 12px; line-height: 17px; font-weight: bold; }
+        .print-date { text-align: right; font-family: "Calibri", sans-serif; font-size: 12px; margin-bottom: 6px; font-weight: bold; }
 
-        .item-title { font-weight: bold; font-size: 11px; margin-top: 8px; margin-bottom: 4px; line-height: 15px; }
+        .item-title { font-weight: bold; font-size: 12px; margin-top: 8px; margin-bottom: 4px; line-height: 16px; }
 
         .schedule-table {
             width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 12px;
         }
         .schedule-table th, .schedule-table td {
-            border: 1px solid #000000; padding: 2px 2px; height: 18px; line-height: 12px;
+            border: 1px solid #000000; padding: 2px 2px; height: 20px; line-height: 14px;
             box-sizing: border-box; vertical-align: middle; white-space: nowrap;
-            overflow: hidden; font-size: 8px; text-align: center;
+            overflow: hidden; font-size: 10px; text-align: center; font-weight: bold;
         }
 
         .row-label { width: 26px; font-weight: bold; text-align: left !important; }
@@ -248,14 +249,13 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
         .day-col { width: 2.9%; }
         
         .dash { border-top: 1px dashed #777777; margin: 8px 0 12px 0; }
-        .no-data { font-family: Arial, sans-serif; font-size: 14px; text-align: center; margin-top: 70px; line-height: 24px; }
+        .no-data { font-family: "Calibri", sans-serif; font-weight: bold; font-size: 15px; text-align: center; margin-top: 70px; line-height: 24px; }
         
         .negative-balance { color: red; font-weight: bold; }
         .col-total-val { font-weight: bold; background-color: #fcfcfc; }
         
-        /* CSS Khusus Untuk Tabel Total Agar Menonjol Saat Diprint */
         .summary-table td { font-weight: bold; }
-        .summary-title { margin-top: 10px; font-size: 11px; font-weight: bold; }
+        .summary-title { margin-top: 10px; font-size: 12px; font-weight: bold; }
 
         @media print {
             html, body { width: 297mm; min-height: 210mm; background: #ffffff; }
@@ -315,7 +315,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                 <td class="company"><div class="company-title">P.T. IMC TEKNO INDONESIA</div>PPIC Department</td>
                 <td class="title-area">
                     <div class="report-title">DELIVERY SCHEDULE</div>
-                    <div style="font-size:11px;margin-top:4px;">
+                    <div style="font-size:12px;margin-top:4px;">
                         <?php echo h($start_input); ?> s/d <?php echo h($end_input); ?>
                     </div>
                 </td>

@@ -14,7 +14,6 @@
   <style>
     :root {
       --primary-dark: #1e293b;
-      --accent-color: #3b82f6;
       --bg-gradient: radial-gradient(circle at top right, #f1f5f9, #e2e8f0);
     }
 
@@ -34,7 +33,7 @@
       position: absolute;
       top: -10%; right: -10%;
       width: 400px; height: 400px;
-      background: rgba(59, 130, 246, 0.05);
+      background: rgba(59, 130, 246, 0.08);
       filter: blur(80px);
       border-radius: 50%;
       z-index: -1;
@@ -69,77 +68,28 @@
       text-transform: uppercase;
     }
 
-    /* Modern Card Styling */
-    .card-division {
-      background: rgba(255, 255, 255, 0.7);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.5);
-      border-radius: 28px;
-      padding: 2.5rem 1.5rem;
-      height: 100%;
-      text-align: center;
-      transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
-      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      text-decoration: none !important;
-    }
-
-    .card-division:hover {
-      transform: translateY(-12px) scale(1.02);
-      background: #ffffff;
-      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.12);
-      border-color: var(--accent-color);
-    }
-
-    /* Icon Box with Glow */
-    .icon-box {
-      width: 75px;
-      height: 75px;
-      border-radius: 22px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 2.2rem;
-      margin-bottom: 1.5rem;
-      color: white;
-      transition: all 0.5s ease;
-      position: relative;
-    }
-
-    .card-division:hover .icon-box {
-      transform: rotate(-5deg) scale(1.1);
-    }
-	.bg-it {
-  background: linear-gradient(135deg, #2563eb, #60a5fa);
-  box-shadow: 0 15px 30px -10px rgba(37, 99, 235, 0.5);
-}
-
-    .division-name {
-      font-weight: 700;
-      font-size: 0.85rem;
-      color: #334155;
-      text-transform: uppercase;
+    /* Customizing Standard Button */
+    .menu-btn {
+      font-weight: 600;
       letter-spacing: 0.5px;
+      border: none;
+      transition: all 0.2s ease-in-out;
+      display: flex;
+      align-items: center;
+    }
+    
+    .menu-btn:hover {
+      transform: translateY(-3px) scale(1.02);
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.15);
+      filter: brightness(1.1);
     }
 
-    /* Individual Color Palettes */
-    .bg-admin { background: linear-gradient(135deg, #1e293b, #475569); box-shadow: 0 15px 30px -10px rgba(30, 41, 59, 0.5); }
-    .bg-finance { background: linear-gradient(135deg, #0ea5e9, #38bdf8); box-shadow: 0 15px 30px -10px rgba(14, 165, 233, 0.5); }
-    .bg-marketing { background: linear-gradient(135deg, #6366f1, #818cf8); box-shadow: 0 15px 30px -10px rgba(99, 102, 241, 0.5); }
-    .bg-sales { background: linear-gradient(135deg, #10b981, #34d399); box-shadow: 0 15px 30px -10px rgba(16, 185, 129, 0.5); }
-    .bg-ppic { background: linear-gradient(135deg, #8b5cf6, #a78bfa); box-shadow: 0 15px 30px -10px rgba(139, 92, 246, 0.5); }
-    .bg-inventory { background: linear-gradient(135deg, #f59e0b, #fbbf24); box-shadow: 0 15px 30px -10px rgba(245, 158, 11, 0.5); }
-    .bg-purchasing { background: linear-gradient(135deg, #64748b, #94a3b8); box-shadow: 0 15px 30px -10px rgba(100, 116, 139, 0.5); }
-    .bg-production { background: linear-gradient(135deg, #ef4444, #f87171); box-shadow: 0 15px 30px -10px rgba(239, 68, 68, 0.5); }
-    .bg-pe { background: linear-gradient(135deg, #ec4899, #f472b6); box-shadow: 0 15px 30px -10px rgba(236, 72, 153, 0.5); }
-    .bg-qc { background: linear-gradient(135deg, #06b6d4, #22d3ee); box-shadow: 0 15px 30px -10px rgba(6, 182, 212, 0.5); }
-    .bg-mtn { background: linear-gradient(135deg, #f97316, #fb923c); box-shadow: 0 15px 30px -10px rgba(249, 115, 22, 0.5); }
-.bg-warehouse { background: linear-gradient(135deg, #334155, #475569); box-shadow: 0 15px 30px -10px rgba(51, 65, 85, 0.5); }
+    .menu-icon {
+      font-size: 1.25rem;
+      width: 35px;
+      display: inline-block;
+      text-align: center;
+    }
 
     footer {
       margin-top: auto;
@@ -152,152 +102,107 @@
 </head>
 <body>
 
-  <div class="container main-content text-center">
-    <header class="header-section">
+  <div class="container-fluid main-content px-4 mb-5">
+    <header class="header-section text-center">
       <img src="logo_imc.jpg" alt="Logo" class="logo-img">
-      <h1 class="dashboard-title">ERP SYSTEM PORTAL</h1>
-      <p class="sub-title">Integrated Management System</p>
+      <h1 class="dashboard-title">ERP SYSTEM PORTAL PT.IMC TEKNO INDONESIA</h1>
+      <p class="sub-title">Enterprise Resource Planning</p>
     </header>
 
-    <div class="row g-4 row-cols-2 row-cols-md-3 row-cols-lg-4 row-cols-xl-6 justify-content-center pb-5">
+    <!-- 4 Panels Container -->
+    <div class="row g-4 text-start justify-content-center">
       
-      <div class="col">
-  <a href="/msii/bea/login.php" class="card-division">
-    <div class="icon-box bg-it">
-      <i class="bi bi-boxes"></i>
-    </div>
-    <span class="division-name">IT INVENTORY PLANT 1</span>
-  </a>
-</div>
-
-      <div class="col">
-        <a href="exim/dashboard_exim.php" class="card-division">
-          <div class="icon-box bg-production"><i class="bi bi-airplane"></i></div>
-          <span class="division-name">Exim</span>
-        </a>
+      <!-- PANEL 1: PLANNING -->
+      <div class="col-12 col-md-6 col-lg-3">
+        <div class="card shadow-sm border-0 bg-white p-3 rounded-4 h-100">
+          <h5 class="text-muted fw-bold mb-3 text-center" style="font-size: 0.9rem; letter-spacing: 1px;">PLANNING</h5>
+          
+          <a href="ppic2/login.php" class="btn btn-primary p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-calendar3 menu-icon"></i> PPIC
+          </a>
+          <a href="inventory/login.php" class="btn btn-info text-white p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-box-seam menu-icon"></i> Inventory
+          </a>
+          <a href="warehouse1/login.php" class="btn btn-secondary p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-truck menu-icon"></i> Warehouse
+          </a>
+          <a href="/msii/bea/login.php" class="btn btn-dark p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-boxes menu-icon"></i> IT Inventory Plant 1
+          </a>
+          <a href="pe/login.php" class="btn btn-primary p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-lightbulb menu-icon"></i> PE
+          </a>
+        </div>
       </div>
 
-      <div class="col">
-        <a href="finance/dashboard.php" class="card-division">
-          <div class="icon-box bg-finance"><i class="bi bi-wallet2"></i></div>
-          <span class="division-name">Finance</span>
-        </a>
+      <!-- PANEL 2: ORDERING -->
+      <div class="col-12 col-md-6 col-lg-3">
+        <div class="card shadow-sm border-0 bg-white p-3 rounded-4 h-100">
+          <h5 class="text-muted fw-bold mb-3 text-center" style="font-size: 0.9rem; letter-spacing: 1px;">ORDERING</h5>
+
+          <a href="ordering_p2/login.php" class="btn btn-success p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-bag-check menu-icon"></i> Ordering
+          </a>
+          <a href="purch2/login.php" class="btn btn-success p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-cart3 menu-icon"></i> Purchasing
+          </a>
+          <a href="marketing/login.php" class="btn btn-warning text-dark p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-megaphone menu-icon"></i> Marketing
+          </a>
+          <a href="exim/dashboard_exim.php" class="btn btn-danger p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-airplane menu-icon"></i> Exim
+          </a>
+          <a href="vendor/login.php" class="btn btn-secondary p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-buildings menu-icon"></i> Vendor Control
+          </a>
+        </div>
       </div>
 
-            <div class="col">
-        <a href="inventory/login.php" class="card-division">
-          <div class="icon-box bg-inventory"><i class="bi bi-box-seam"></i></div>
-          <span class="division-name">Inventory</span>
-        </a>
+      <!-- PANEL 3: PROSES -->
+      <div class="col-12 col-md-6 col-lg-3">
+        <div class="card shadow-sm border-0 bg-white p-3 rounded-4 h-100">
+          <h5 class="text-muted fw-bold mb-3 text-center" style="font-size: 0.9rem; letter-spacing: 1px;">PROSES</h5>
+
+          <a href="prod2/login.php" class="btn btn-danger p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-cpu menu-icon"></i> Production
+          </a>
+          <a href="qc/dashboard_qc.php" class="btn btn-info text-white p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-shield-check menu-icon"></i> QC
+          </a>
+          <a href="mold/login.php" class="btn btn-dark p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-wrench menu-icon"></i> Moldshop
+          </a>
+          <a href="mtn/login.php" class="btn btn-secondary p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-wrench-adjustable menu-icon"></i> Maintenance
+          </a>
+          <a href="pica/login.php" class="btn btn-primary p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-asterisk menu-icon"></i> PICA
+          </a>
+          <a href="4m/login.php" class="btn btn-warning text-dark p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-gear-fill menu-icon"></i> 4M Change
+          </a>
+        </div>
       </div>
 
-      <div class="col">
-        <a href="mtn/login.php" class="card-division">
-          <div class="icon-box bg-mtn"><i class="bi bi-wrench-adjustable"></i></div>
-          <span class="division-name">Maintenance</span>
-        </a>
+      <!-- PANEL 4: ACCOUNTING -->
+      <div class="col-12 col-md-6 col-lg-3">
+        <div class="card shadow-sm border-0 bg-white p-3 rounded-4 h-100">
+          <h5 class="text-muted fw-bold mb-3 text-center" style="font-size: 0.9rem; letter-spacing: 1px;">ACCOUNTING</h5>
+
+          <a href="finance/dashboard.php" class="btn btn-success p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-wallet2 menu-icon"></i> Finance
+          </a>
+          <a href="it/login.php" class="btn btn-info text-white p-2 w-100 text-start menu-btn">
+            <i class="bi bi-laptop menu-icon"></i> Budgeting
+          </a>
+        </div>
       </div>
-
-      <div class="col">
-        <a href="marketing/login.php" class="card-division">
-          <div class="icon-box bg-marketing"><i class="bi bi-megaphone"></i></div>
-          <span class="division-name">Marketing</span>
-        </a>
-      </div>
-
-      <div class="col">
-        <a href="mold/login.php" class="card-division">
-          <div class="icon-box bg-marketing"><i class="bi bi-wrench"></i></div>
-          <span class="division-name">Moldshop</span>
-        </a>
-      </div>
-
-      <div class="col">
-    <a href="ordering_p2/login.php" class="card-division">
-        <div class="icon-box bg-production"><i class="bi bi-bag-check"></i></div>
-        <span class="division-name">Ordering</span>
-    </a>
-</div>
-
-<div class="col">
-        <a href="pica/login.php" class="card-division">
-          <div class="icon-box bg-marketing"><i class="bi bi-asterisk"></i></div>
-          <span class="division-name">PICA</span>
-        </a>
-      </div>
-
-      <div class="col">
-        <a href="ppic2/login.php" class="card-division">
-          <div class="icon-box bg-ppic"><i class="bi bi-calendar3"></i></div>
-          <span class="division-name">PPIC</span>
-        </a>
-      </div>
-
-      <div class="col">
-        <a href="purch2/login.php" class="card-division">
-          <div class="icon-box bg-purchasing"><i class="bi bi-bag-check"></i></div>
-          <span class="division-name">Purchasing</span>
-        </a>
-      </div>
-
-      <div class="col">
-        <a href="prod2/login.php" class="card-division">
-          <div class="icon-box bg-production"><i class="bi bi-cpu"></i></div>
-          <span class="division-name">Production</span>
-        </a>
-      </div>
-
-      <div class="col">
-        <a href="pe/login.php" class="card-division">
-          <div class="icon-box bg-pe"><i class="bi bi-lightbulb"></i></div>
-          <span class="division-name">PE</span>
-        </a>
-      </div>
-
-      <div class="col">
-        <a href="sales/dashboard_sales.php" class="card-division">
-          <div class="icon-box bg-sales"><i class="bi bi-cart-check"></i></div>
-          <span class="division-name">Sales</span>
-        </a>
-      </div>
-
-      <div class="col">
-        <a href="qc/dashboard_qc.php" class="card-division">
-          <div class="icon-box bg-qc"><i class="bi bi-shield-check"></i></div>
-          <span class="division-name">QC</span>
-        </a>
-      </div>
-
-      <div class="col">
-        <a href="warehouse1/login.php" class="card-division">
-          <div class="icon-box bg-warehouse"><i class="bi bi-truck"></i></div>
-          <span class="division-name">Warehouse</span>
-        </a>
-      </div>
-
-      <div class="col">
-        <a href="4m/login.php" class="card-division">
-          <div class="icon-box bg-warehouse"><i class="bi bi-gear-fill"></i></div>
-          <span class="division-name">4M Change</span>
-        </a>
-      </div>
-	  
-	 <div class="col">
-  <a href="it/login.php" class="card-division">
-    
-    <div class="icon-box bg-it">
-      <i class="bi bi-laptop"></i>
-    </div>
-
-    <span class="division-name">BUDGETING</span>
-  </a>
-</div>
 
     </div>
   </div>
 
-  <footer>
-    <div class="container text-center">
+  <footer class="text-center">
+    <div class="container">
       <p class="mb-0">&copy; 2026 <strong>PT. IMC Tekno Indonesia</strong>. All Rights Reserved.</p>
     </div>
   </footer>

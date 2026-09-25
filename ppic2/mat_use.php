@@ -69,6 +69,9 @@ $currentMonth = (int)date('n');
         .pref-table td.label-cell { background-color: #f2f2f2; font-weight: bold; width: 90px; text-align: right; }
         .pref-table input[type="text"] { width: 100%; border: 1px solid #bbb; background: #fafafa; text-align: left; padding: 4px; box-sizing: border-box; color: #0056b3; font-weight: bold;}
 
+        /* Warna Pink untuk Sabtu & Minggu (Mendukung Print) */
+        .weekend-pink { background-color: #ffc0cb !important; color: #000 !important; }
+
         /* ========================================= */
         /* CSS Print Mode - A4 Landscape (Identik Layar) */
         /* ========================================= */
@@ -198,9 +201,6 @@ $currentMonth = (int)date('n');
     <script>
         $(document).ready(function() {
             
-            // =====================================================================
-            // TINDAKAN PROTEKTIF UI: Mencegah inkonsistensi data layar vs memori
-            // =====================================================================
             $('#cbTahun, #cbBulan').change(function() {
                 $('#txtMatCode').val('');
                 $('#txtMatName').val('');
@@ -215,9 +215,7 @@ $currentMonth = (int)date('n');
                 });
             }
 
-            // =====================================================================
-            // 1. AUTOCOMPLETE: Material Code
-            // =====================================================================
+            // AUTOCOMPLETE MAT & FG
             $('#txtMatCode').autocomplete({
                 minLength: 2,
                 source: function(request, response) {
@@ -225,11 +223,7 @@ $currentMonth = (int)date('n');
                         url: 'ajax_autocomplete_mat.php',
                         type: 'GET',
                         dataType: 'json',
-                        data: {
-                            term: request.term,
-                            tahun: $('#cbTahun').val(),
-                            bulan: $('#cbBulan').val()
-                        },
+                        data: { term: request.term, tahun: $('#cbTahun').val(), bulan: $('#cbBulan').val() },
                         success: function(data) { response(data); },
                         error: function() { response([]); }
                     });
@@ -246,9 +240,6 @@ $currentMonth = (int)date('n');
                     .appendTo(ul);
             };
 
-            // =====================================================================
-            // 2. AUTOCOMPLETE: FG Target (Pencarian Global Independen)
-            // =====================================================================
             $('#txtSearchFg').autocomplete({
                 minLength: 2,
                 source: function(request, response) {
@@ -256,11 +247,7 @@ $currentMonth = (int)date('n');
                         url: 'ajax_autocomplete_fg.php',
                         type: 'GET',
                         dataType: 'json',
-                        data: {
-                            term: request.term,
-                            tahun: $('#cbTahun').val(),
-                            bulan: $('#cbBulan').val()
-                        },
+                        data: { term: request.term, tahun: $('#cbTahun').val(), bulan: $('#cbBulan').val() },
                         success: function(data) { response(data); },
                         error: function() { response([]); }
                     });
@@ -275,14 +262,9 @@ $currentMonth = (int)date('n');
                     });
 
                     if (targetWorkspace.length > 0) {
-                        $('html, body').animate({
-                            scrollTop: targetWorkspace.offset().top - 15
-                        }, 500);
-                        
+                        $('html, body').animate({ scrollTop: targetWorkspace.offset().top - 15 }, 500);
                         targetWorkspace.css({'box-shadow': '0 0 12px 3px #ff9800', 'transition': 'box-shadow 0.5s ease'});
-                        setTimeout(function() { 
-                            targetWorkspace.css('box-shadow', 'none'); 
-                        }, 3000);
+                        setTimeout(function() { targetWorkspace.css('box-shadow', 'none'); }, 3000);
                     } else {
                         if(requiredMaterials) {
                             $('#txtMatCode').val(requiredMaterials);
@@ -292,7 +274,6 @@ $currentMonth = (int)date('n');
                             alert("Material Code tidak ditemukan untuk FG " + selectedFgCode);
                         }
                     }
-                    
                     return false;
                 }
             }).autocomplete("instance")._renderItem = function(ul, item) {
@@ -301,46 +282,85 @@ $currentMonth = (int)date('n');
                     .appendTo(ul);
             };
 
-            // =====================================================================
-            // FUNGSI UTAMA: Pembangun Matrix HTML
-            // =====================================================================
+            // FUNGSI BUILD GRID HTML (SUDAH DIPERBARUI DENGAN WARNA PINK SABTU & MINGGU)
             function buildGridHtml(dataRows) {
+                // Ambil tahun dan bulan dari dropdown saat ini (dikurangi 1 karena index bulan di JS dimulai dari 0)
+                var selectedTahun = parseInt($('#cbTahun').val());
+                var selectedBulan = parseInt($('#cbBulan').val()) - 1; 
+
                 var html = '<div class="table-container"><table class="grid-table"><thead><tr>';
                 html += '<th class="desc-col">Description</th><th class="gtotal-col">Grand Total</th>';
-                for(var i=1; i<=31; i++) { html += '<th class="day-col">' + i + '</th>'; }
+                
+                // Header Tabel (1-31)
+                for(var i=1; i<=31; i++) { 
+                    var dObj = new Date(selectedTahun, selectedBulan, i);
+                    // Cek jika bulannya cocok (mencegah overflow hari) DAN harinya 0 (Minggu) atau 6 (Sabtu)
+                    var isWeekend = (dObj.getMonth() === selectedBulan && (dObj.getDay() === 0 || dObj.getDay() === 6));
+                    var weekendClass = isWeekend ? ' weekend-pink' : '';
+                    
+                    html += '<th class="day-col' + weekendClass + '">' + i + '</th>'; 
+                }
                 html += '</tr></thead><tbody>';
 
+                // Isi Tabel (Data Rows)
                 $.each(dataRows, function(idx, row) {
                     html += '<tr>';
                     html += '<td class="desc-col">' + escapeHtml(row.DESC_PROD) + '</td>';
-                    html += '<td class="gtotal-col">' + parseFloat(row.G_TOTAL || 0).toLocaleString() + '</td>';
+                    
+                    html += '<td class="gtotal-col">' + parseFloat(row.G_TOTAL || 0).toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:2}) + '</td>';
                     
                     for(var d=1; d<=31; d++) {
+                        // Cek ulang weekend untuk cell data
+                        var dObj = new Date(selectedTahun, selectedBulan, d);
+                        var isWeekend = (dObj.getMonth() === selectedBulan && (dObj.getDay() === 0 || dObj.getDay() === 6));
+                        var weekendClass = isWeekend ? ' weekend-pink' : '';
+
                         var val = parseFloat(row['D'+d] || 0);
-                        html += '<td class="day-col">' + (val !== 0 ? val.toLocaleString() : '0') + '</td>';
+                        html += '<td class="day-col' + weekendClass + '">' + (val !== 0 ? val.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:2}) : '0') + '</td>';
                     }
                     html += '</tr>';
                 });
-                
                 html += '</tbody></table></div>';
                 return html;
             }
 
-            // =====================================================================
-            // 3. EVENT ACTION: Generate by WO
-            // =====================================================================
+            // =========================================================================
+            // MANAJEMEN SUMMARY AKUMULASI GLOBAL
+            // =========================================================================
+            var globalTotal = [];
+            function resetGlobalTotal() {
+                globalTotal = [
+                    { DESC_PROD: 'Used Plan', G_TOTAL: 0 },
+                    { DESC_PROD: 'Used Act', G_TOTAL: 0 },
+                    { DESC_PROD: 'Supply Act', G_TOTAL: 0 }
+                ];
+                for(var i=0; i<3; i++) {
+                    for(var d=1; d<=31; d++) globalTotal[i]['D'+d] = 0;
+                }
+            }
+
+            function accumulateGlobalTotal(newTotalData) {
+                $.each(newTotalData, function(idx, newRow) {
+                    var targetRow = globalTotal.find(function(r) { return r.DESC_PROD === newRow.DESC_PROD; });
+                    if (targetRow) {
+                        targetRow.G_TOTAL += parseFloat(newRow.G_TOTAL) || 0;
+                        for(var d=1; d<=31; d++) {
+                            targetRow['D'+d] += parseFloat(newRow['D'+d]) || 0;
+                        }
+                    }
+                });
+            }
+
+            // =========================================================================
+            // ACTION: Generate by WO
+            // =========================================================================
             $('#btnGenerate').click(function() {
                 var tahun = $('#cbTahun').val();
                 var bulan = $('#cbBulan').val();
                 var matCode = $.trim($('#txtMatCode').val());
+                var msg = matCode ? "Material Code: " + matCode : "SEMUA MATERIAL";
 
-                if (!matCode) { 
-                    alert("Tindakan Protektif: Silakan pastikan Material Code terisi sebelum melakukan generate data."); 
-                    $('#txtMatCode').focus();
-                    return; 
-                }
-
-                if (!confirm("Konfirmasi Eksekusi:\nTindakan ini akan meng-generate kerangka data Material Usage berdasarkan Work Order (WO) untuk periode " + bulan + "-" + tahun + ".\n\nCatatan: Sistem secara otomatis mengunci dan melindungi data historis yang sudah ada agar tidak tertimpa. Lanjutkan?")) {
+                if (!confirm("Konfirmasi Eksekusi:\nTindakan ini akan meng-generate data untuk " + msg + " berdasarkan Work Order (WO) periode " + bulan + "-" + tahun + ".\n\nLanjutkan?")) {
                     return;
                 }
 
@@ -357,57 +377,50 @@ $currentMonth = (int)date('n');
                             alert(res.message);
                             $('#btnLoad').trigger('click'); 
                         } else {
-                            alert('Proses Ditolak Server: ' + res.message);
+                            alert('Gagal: ' + res.message);
                         }
                     },
-                    error: function(xhr) { 
-                        var dbg = xhr.responseText ? xhr.responseText.substring(0,200) : '';
-                        alert("Koneksi server terputus/Timeout.\n\nDetail Kesalahan: " + dbg); 
-                    },
-                    complete: function() {
-                        btn.html('<i class="fa fa-cogs"></i> Generate by WO').prop('disabled', false);
-                    }
+                    error: function(xhr) { alert("Koneksi server terputus/Timeout."); },
+                    complete: function() { btn.html('<i class="fa fa-cogs"></i> Generate by WO').prop('disabled', false); }
                 });
             });
 
-            // =====================================================================
-            // 4. EVENT ACTION: Load Usage Data
-            // =====================================================================
-            $('#btnLoad').click(function() {
-                var tahun = $('#cbTahun').val();
-                var bulan = $('#cbBulan').val();
-                var matCode = $.trim($('#txtMatCode').val());
-
-                if (!matCode) { 
-                    alert("Tindakan Protektif: Silakan ketik Material Code terlebih dahulu."); 
-                    $('#txtMatCode').focus();
-                    return; 
+            // =========================================================================
+            // ACTION: SEQUENTIAL LOAD (BERJENJANG)
+            // =========================================================================
+            function loadSequentialItem(index, itemList, tahun, bulan, btn) {
+                if (index >= itemList.length) {
+                    btn.html('<i class="fa fa-refresh"></i> Load Usage').prop('disabled', false);
+                    $('#txtMatName').val('SELESAI DIMUAT (' + itemList.length + ' Material)');
+                    return;
                 }
 
-                var btn = $(this);
-                btn.html('<i class="fa fa-spinner fa-spin"></i> Loading...').prop('disabled', true);
-                $('#mainContainer').hide();
-                $('#txtSearchFg').val(''); 
+                var currentMatCode = itemList[index];
+                btn.html('<i class="fa fa-spinner fa-spin"></i> Loading ' + (index + 1) + ' dari ' + itemList.length + '...');
+                $('#txtMatName').val('Memuat... (' + currentMatCode + ')');
 
                 $.ajax({
                     url: 'ajax_load_mat_use.php',
                     type: 'GET',
-                    data: { tahun: tahun, bulan: bulan, mat_code: matCode },
                     dataType: 'json',
+                    data: { tahun: tahun, bulan: bulan, mat_code: currentMatCode },
                     success: function(res) {
                         if (res.status === 'success') {
-                            $('#txtMatName').val(res.mat_name);
-                            $('#gridTotal').html(buildGridHtml(res.data_total)); 
                             
+                            // 1. Akumulasi Total Header
+                            accumulateGlobalTotal(res.data_total);
+                            $('#gridTotal').html(buildGridHtml(globalTotal)); 
+                            
+                            // 2. Susun HTML Workspace Detail
                             var detailHtml = '';
                             $.each(res.data_detail, function(idx, fg) {
                                 detailHtml += '<div class="workspace">';
                                 detailHtml += '  <div class="workspace-top">';
                                 
-                                // Panel Kiri: Informasi FG Target
                                 detailHtml += '    <div class="left-pane"><div class="panel" style="margin-bottom:0; padding:10px;">';
                                 detailHtml += '      <div class="panel-title" style="color:#0056b3;"><i class="fa fa-cube"></i> FG Target</div>';
                                 detailHtml += '      <table class="pref-table">';
+                                detailHtml += '        <tr><td class="label-cell">Mat. Code</td><td><input type="text" value="' + escapeHtml(fg.MAT_CODE) + '" readonly style="background:#e3f2fd; color:#0d47a1; font-weight:bold;"></td></tr>';
                                 detailHtml += '        <tr><td class="label-cell">Item No</td><td><input type="text" value="' + escapeHtml(fg.FG_ITEM_NO) + '" readonly style="color:#333;"></td></tr>';
                                 detailHtml += '        <tr><td class="label-cell">Item Code</td><td><input type="text" value="' + escapeHtml(fg.FG_CODE) + '" readonly></td></tr>';
                                 detailHtml += '        <tr><td class="label-cell">Item Name</td><td><input type="text" value="' + escapeHtml(fg.FG_NAME) + '" readonly style="font-size:10px;"></td></tr>';
@@ -415,12 +428,10 @@ $currentMonth = (int)date('n');
                                 detailHtml += '        <tr><td class="label-cell">WO Qty</td><td><input type="text" value="' + parseFloat(fg.WO_QTY || 0).toLocaleString() + '" readonly style="background:#e8f5e9; color:#1b5e20;"></td></tr>';
                                 detailHtml += '        <tr><td class="label-cell">Net Weight</td><td><input type="text" value="' + escapeHtml(fg.NET_WEIGHT) + '" readonly style="background:#fff3cd; color:#856404;"></td></tr>';
                                 detailHtml += '      </table>';
-                                // Action Button
                                 detailHtml += '      <button class="btn-primary" style="margin-top:10px; width:100%;"><i class="fa fa-refresh"></i> Re-Calc FG</button>';
                                 detailHtml += '      <button class="btn-secondary btn-print-mat" style="margin-top:5px; width:100%;"><i class="fa fa-print"></i> Print Data Ini</button>';
                                 detailHtml += '    </div></div>';
                                 
-                                // Panel Kanan: Matrix Detail
                                 detailHtml += '    <div class="right-pane"><div class="panel" style="margin-bottom:0; padding:0; border:none; box-shadow:none;">';
                                 detailHtml += buildGridHtml(fg.rows);
                                 detailHtml += '    </div></div>';
@@ -428,59 +439,145 @@ $currentMonth = (int)date('n');
                                 detailHtml += '  </div></div>';
                             });
                             
-                            $('#gridDetailContainer').html(detailHtml);
-                            $('#mainContainer').fadeIn();
-
-                            // --- AUTO SCROLL INJECTION ---
-                            if (typeof window.autoScrollFg !== 'undefined' && window.autoScrollFg !== null) {
-                                $('#txtSearchFg').val(window.autoScrollFg);
-
-                                setTimeout(function() {
-                                    var newTarget = $('.workspace').filter(function() {
-                                        return $(this).find('input[value="' + escapeHtml(window.autoScrollFg) + '"]').length > 0;
-                                    });
-
-                                    if (newTarget.length > 0) {
-                                        $('html, body').animate({ scrollTop: newTarget.offset().top - 15 }, 500);
-                                        newTarget.css({'box-shadow': '0 0 12px 3px #ff9800', 'transition': 'box-shadow 0.5s ease'});
-                                        setTimeout(function() { newTarget.css('box-shadow', 'none'); }, 3000);
-                                    }
-                                    
-                                    window.autoScrollFg = null; 
-                                }, 150); 
-                            }
-                            // -----------------------------
-
-                        } else {
-                            alert('Sistem Gagal Memuat Data: ' + res.message);
+                            $('#gridDetailContainer').append(detailHtml);
                         }
+                        
+                        // Lanjutkan Tarik Material Berikutnya
+                        loadSequentialItem(index + 1, itemList, tahun, bulan, btn);
                     },
                     error: function(xhr) { 
-                        var dbg = xhr.responseText ? xhr.responseText.substring(0,200) : '';
-                        alert("Koneksi server terputus.\n\nDetail: " + dbg); 
-                    },
-                    complete: function() {
-                        btn.html('<i class="fa fa-refresh"></i> Load Usage').prop('disabled', false);
+                        // Jika gagal timeout di satu item, abaikan dan lanjut ke item berikutnya
+                        console.log('Gagal menarik material: ' + currentMatCode);
+                        loadSequentialItem(index + 1, itemList, tahun, bulan, btn); 
                     }
                 });
+            }
+
+            $('#btnLoad').click(function() {
+                var btn = $(this);
+                var tahun = $('#cbTahun').val();
+                var bulan = $('#cbBulan').val();
+                var matCode = $.trim($('#txtMatCode').val());
+
+                btn.prop('disabled', true);
+                $('#mainContainer').hide();
+                $('#gridDetailContainer').empty();
+                $('#txtSearchFg').val(''); 
+
+                // 1. JIKA INPUT KOSONG (TARIK SEMUA BERJENJANG)
+                if (matCode === '') {
+                    if (!confirm("Konfirmasi: Material Code kosong.\nSistem akan menarik SEMUA Data Usage secara bertahap.\n\nLanjutkan?")) {
+                        btn.prop('disabled', false);
+                        return;
+                    }
+
+                    btn.html('<i class="fa fa-spinner fa-spin"></i> Menyiapkan Antrean...');
+                    
+                    $.ajax({
+                        url: 'ajax_load_mat_use.php',
+                        type: 'GET',
+                        dataType: 'json',
+                        data: { action: 'get_item_list', tahun: tahun, bulan: bulan },
+                        success: function(res) {
+                            if (res.status === 'success') {
+                                var itemList = res.data;
+                                if (itemList.length === 0) {
+                                    $('#gridDetailContainer').html('<div class="panel" style="color:#cc0000; font-weight:600;"><i class="fa fa-exclamation-triangle"></i> Tidak ada data Material Usage ditemukan.</div>');
+                                    $('#mainContainer').fadeIn();
+                                    btn.html('<i class="fa fa-refresh"></i> Load Usage').prop('disabled', false);
+                                    return;
+                                }
+
+                                resetGlobalTotal(); // Reset summary banner atas ke angka 0
+                                $('#mainContainer').show();
+                                
+                                // Mulai antrean pemanggilan dari Index ke-0
+                                loadSequentialItem(0, itemList, tahun, bulan, btn);
+                            } else {
+                                alert("Gagal menyusun antrean material.");
+                                btn.html('<i class="fa fa-refresh"></i> Load Usage').prop('disabled', false);
+                            }
+                        },
+                        error: function() {
+                            alert("Terjadi kesalahan jaringan.");
+                            btn.html('<i class="fa fa-refresh"></i> Load Usage').prop('disabled', false);
+                        }
+                    });
+
+                // 2. JIKA INPUT DIISI (TARIK 1 MATERIAL SEPERTI BIASA)
+                } else {
+                    btn.html('<i class="fa fa-spinner fa-spin"></i> Loading...');
+                    resetGlobalTotal();
+
+                    $.ajax({
+                        url: 'ajax_load_mat_use.php',
+                        type: 'GET',
+                        data: { tahun: tahun, bulan: bulan, mat_code: matCode },
+                        dataType: 'json',
+                        success: function(res) {
+                            if (res.status === 'success') {
+                                $('#txtMatName').val(res.mat_name);
+                                
+                                accumulateGlobalTotal(res.data_total);
+                                $('#gridTotal').html(buildGridHtml(globalTotal)); 
+                                
+                                var detailHtml = '';
+                                $.each(res.data_detail, function(idx, fg) {
+                                    detailHtml += '<div class="workspace">';
+                                    detailHtml += '  <div class="workspace-top">';
+                                    detailHtml += '    <div class="left-pane"><div class="panel" style="margin-bottom:0; padding:10px;">';
+                                    detailHtml += '      <div class="panel-title" style="color:#0056b3;"><i class="fa fa-cube"></i> FG Target</div>';
+                                    detailHtml += '      <table class="pref-table">';
+                                    detailHtml += '        <tr><td class="label-cell">Mat. Code</td><td><input type="text" value="' + escapeHtml(fg.MAT_CODE) + '" readonly style="background:#e3f2fd; color:#0d47a1; font-weight:bold;"></td></tr>';
+                                    detailHtml += '        <tr><td class="label-cell">Item No</td><td><input type="text" value="' + escapeHtml(fg.FG_ITEM_NO) + '" readonly style="color:#333;"></td></tr>';
+                                    detailHtml += '        <tr><td class="label-cell">Item Code</td><td><input type="text" value="' + escapeHtml(fg.FG_CODE) + '" readonly></td></tr>';
+                                    detailHtml += '        <tr><td class="label-cell">Item Name</td><td><input type="text" value="' + escapeHtml(fg.FG_NAME) + '" readonly style="font-size:10px;"></td></tr>';
+                                    detailHtml += '        <tr><td class="label-cell">WO No</td><td><input type="text" value="' + escapeHtml(fg.WO_NUMBER) + '" readonly style="background:#e8f5e9; color:#1b5e20;"></td></tr>';
+                                    detailHtml += '        <tr><td class="label-cell">WO Qty</td><td><input type="text" value="' + parseFloat(fg.WO_QTY || 0).toLocaleString() + '" readonly style="background:#e8f5e9; color:#1b5e20;"></td></tr>';
+                                    detailHtml += '        <tr><td class="label-cell">Net Weight</td><td><input type="text" value="' + escapeHtml(fg.NET_WEIGHT) + '" readonly style="background:#fff3cd; color:#856404;"></td></tr>';
+                                    detailHtml += '      </table>';
+                                    detailHtml += '      <button class="btn-primary" style="margin-top:10px; width:100%;"><i class="fa fa-refresh"></i> Re-Calc FG</button>';
+                                    detailHtml += '      <button class="btn-secondary btn-print-mat" style="margin-top:5px; width:100%;"><i class="fa fa-print"></i> Print Data Ini</button>';
+                                    detailHtml += '    </div></div>';
+                                    detailHtml += '    <div class="right-pane"><div class="panel" style="margin-bottom:0; padding:0; border:none; box-shadow:none;">';
+                                    detailHtml += buildGridHtml(fg.rows);
+                                    detailHtml += '    </div></div>';
+                                    detailHtml += '  </div></div>';
+                                });
+                                
+                                $('#gridDetailContainer').html(detailHtml);
+                                $('#mainContainer').fadeIn();
+
+                                if (typeof window.autoScrollFg !== 'undefined' && window.autoScrollFg !== null) {
+                                    $('#txtSearchFg').val(window.autoScrollFg);
+                                    setTimeout(function() {
+                                        var newTarget = $('.workspace').filter(function() {
+                                            return $(this).find('input[value="' + escapeHtml(window.autoScrollFg) + '"]').length > 0;
+                                        });
+
+                                        if (newTarget.length > 0) {
+                                            $('html, body').animate({ scrollTop: newTarget.offset().top - 15 }, 500);
+                                            newTarget.css({'box-shadow': '0 0 12px 3px #ff9800', 'transition': 'box-shadow 0.5s ease'});
+                                            setTimeout(function() { newTarget.css('box-shadow', 'none'); }, 3000);
+                                        }
+                                        window.autoScrollFg = null; 
+                                    }, 150); 
+                                }
+                            } else {
+                                alert('Sistem Gagal Memuat Data: ' + res.message);
+                            }
+                        },
+                        error: function(xhr) { alert("Koneksi server terputus."); },
+                        complete: function() { btn.html('<i class="fa fa-refresh"></i> Load Usage').prop('disabled', false); }
+                    });
+                }
             });
 
-            // =====================================================================
-            // EVENT ACTION: Print Workspace (Isolasi Item Khusus Print)
-            // =====================================================================
             $('#gridDetailContainer').on('click', '.btn-print-mat', function() {
                 var currentWorkspace = $(this).closest('.workspace');
-                
-                // Tambahkan kelas no-print ke SEMUA workspace (menyembunyikannya di mode Print)
                 $('.workspace').addClass('no-print');
-                
-                // Hapus kelas no-print HANYA pada workspace tempat tombol dipencet
                 currentWorkspace.removeClass('no-print');
-                
-                // Buka dialog print bawaan browser
                 window.print();
-                
-                // Reset kelas no-print agar kembali seperti semula saat selesai nge-print
                 $('.workspace').removeClass('no-print');
             });
 

@@ -3,7 +3,7 @@ if (session_id() == "") {
     session_start();
 }
 
-require_once __DIR__ . "/../config/global.php";
+require_once __DIR__ . "/../config/db_plant1.php";
 
 if ($conn === false) {
     header("Location: login.php?error=session_expired");
@@ -21,7 +21,7 @@ function h($value) {
 <html>
 <head>
     <meta charset="utf-8">
-    <title>PURCHASING System - Plant 1</title>
+    <title>PURCHASING System - Plant 2</title>
 
     <style>
         html, body {
@@ -177,7 +177,8 @@ function h($value) {
         <a class="menu-link" href="requisition.php" target="mainFrame">PURCHASE REQUESTION</a>
         <a class="menu-link" href="quotation.php" target="mainFrame">QUOTATION</a>
         <a class="menu-link" href="po.php" target="mainFrame">PURCHASE ORDER</a>
-		 <a class="menu-link" href="label_plant2.php" target="mainFrame">RECEIVE</a>
+		 <!-- <a class="menu-link" href="label_plant2.php" target="mainFrame">RECEIVE</a> -->
+         <a class="menu-link" href="receive.php" target="mainFrame">RECEIVE</a>
         
         <div class="menu-section">Master</div>
         <a class="menu-link" href="master_supplier.php" target="mainFrame">MASTER SUPPLIER </a>
@@ -185,7 +186,7 @@ function h($value) {
 
        
 
-         <a class="menu-link logout" href="logout.php" target="_top">Logout</a>
+        <a class="menu-link logout" href="logout.php" target="_top">Logout</a>
     </div>
 
     <div class="main">

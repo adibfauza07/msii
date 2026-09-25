@@ -10,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// 1. Ekstrak & Sanitasi Parameter[cite: 3]
+// 1. Ekstrak & Sanitasi Parameter
 $tranid   = isset($_POST['tranid']) ? (int)$_POST['tranid'] : 0;
 $itemid   = isset($_POST['itemid']) ? (int)$_POST['itemid'] : 0;
 $poid     = isset($_POST['poid']) && $_POST['poid'] !== '' ? (int)$_POST['poid'] : null;
@@ -31,22 +31,30 @@ if ($conn === false) {
 sqlsrv_begin_transaction($conn);
 
 try {
-    // 2. Cek Duplikasi Scan QR (Mencegah Double Input) dengan Table Lock[cite: 3]
+    // 2. VERIFIKASI EKSISTENSI: Pastikan QR Code ada di database sebelum dikeluarkan
+    $sqlExist = "SELECT TOP 1 QRCODE_ID FROM INV_TRAN WITH (NOLOCK) WHERE QRCODE_ID = ?";
+    $stmtExist = sqlsrv_query($conn, $sqlExist, array($qrcodeid));
+    if ($stmtExist === false || !sqlsrv_has_rows($stmtExist)) {
+        throw new Exception("QR Code [$qrcodeid] tidak terdaftar di sistem. Barang belum pernah masuk!");
+    }
+    if ($stmtExist !== false) sqlsrv_free_stmt($stmtExist);
+
+    // 3. Cek Duplikasi Scan QR (Mencegah Double Input) dengan Table Lock
     $sqlCheck = "SELECT TOP 1 QRCODE_ID FROM INV_TRAN WITH (UPDLOCK, HOLDLOCK) WHERE QRCODE_ID = ? AND SCAN_TYPE = 1";
     $stmtCheck = sqlsrv_query($conn, $sqlCheck, array($qrcodeid));
     if ($stmtCheck !== false && sqlsrv_has_rows($stmtCheck)) {
-        throw new Exception("QR Code [$qrcodeid] sudah pernah di-scan sebelumnya.");
+        throw new Exception("QR Code [$qrcodeid] sudah pernah di-scan untuk pengeluaran sebelumnya.");
     }
     if ($stmtCheck !== false) sqlsrv_free_stmt($stmtCheck);
 
-    // 3. Ambil nomor urut baris (IT_LINENO) berikutnya secara aman[cite: 3]
+    // 4. Ambil nomor urut baris (IT_LINENO) berikutnya secara aman
     $sqlLine = "SELECT ISNULL(MAX(IT_LINENO), 0) + 1 AS next_line FROM INV_TRAN WITH (UPDLOCK, HOLDLOCK) WHERE TRAN_ID = ?";
     $stmtLine = sqlsrv_query($conn, $sqlLine, array($tranid));
     $rowLine = sqlsrv_fetch_array($stmtLine, SQLSRV_FETCH_ASSOC);
     $lineno = $rowLine['next_line'];
     sqlsrv_free_stmt($stmtLine);
 
-    // 4. Insert Detail ke tabel INV_TRAN[cite: 3]
+    // 5. Insert Detail ke tabel INV_TRAN
     $stcode = '';
     $type   = 1;
 

@@ -66,6 +66,8 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     <div class="no-print">
         <button class="btn" onclick="window.close()">Tutup</button> 
         <button class="btn" onclick="window.print()">Print Laporan (Landscape)</button>
+        <!-- Tombol Export Excel Baru -->
+        <a href="export_tag_by_type.php?sop_id=<?php echo $sopId; ?>" class="btn" style="text-decoration: none; color: black;">Export Excel</a>
     </div>
     
     <div class="page-container">

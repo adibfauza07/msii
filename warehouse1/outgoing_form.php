@@ -448,7 +448,7 @@ $(document).ready(function() {
     function processQRCode(str) {
         if (str.trim() === '') return;
 
-        // Kosongkan form seketika dan kunci pakai 'readonly' (bukan 'disabled' agar fokus tidak hilang)
+        // Kosongkan form seketika dan kunci pakai 'readonly'
         $qr.val('').prop('readonly', true);
 
         var parts = str.split('|');
@@ -479,57 +479,36 @@ $(document).ready(function() {
 
         var tranid = $('#tranid').val();
 
-        // Cek duplikasi QR
+        // Eksekusi Simpan Detail secara Langsung! Pengecekan duplikat dihilangkan di frontend karena sudah ditangani di server.
         $.ajax({
             type: 'POST',
-            url: baseUrl + 'out_check_qr.php',
-            data: { qrcodeid: qrId, tranid: tranid },
-            success: function(msg) {
-                if (msg.trim() === 'false') {
-                    playSound('error');
-                    showAlert('danger', 'QR Code sudah ada di transaksi lain!');
-                    setInputFeedback('error'); 
-                    $qr.prop('readonly', false).focus();
+            url: baseUrl + 'out_simpan_detail.php',
+            data: {
+                tranid: tranid,
+                itemid: itemId,
+                poid: poId,
+                rcvdqty: qty,
+                qrcodeid: qrId
+            },
+            dataType: 'json',
+            success: function(res) {
+                if (res.status === 'success') {
+                    playSound('success');
+                    setInputFeedback('success'); 
+                    loadDetailList();
                 } else {
-                    // Eksekusi Simpan Detail
-                    $.ajax({
-                        type: 'POST',
-                        url: baseUrl + 'out_simpan_detail.php',
-                        data: {
-                            tranid: tranid,
-                            itemid: itemId,
-                            poid: poId,
-                            rcvdqty: qty,
-                            qrcodeid: qrId
-                        },
-                        dataType: 'json',
-                        success: function(res) {
-                            if (res.status === 'success') {
-                                playSound('success');
-                                setInputFeedback('success'); // Tampil tulisan Hijau 'Sukses!'
-                                loadDetailList();
-                            } else {
-                                playSound('error');
-                                showAlert('danger', res.message || 'Gagal menyimpan item detail.');
-                                setInputFeedback('error'); // Tampil tulisan Merah 'Gagal!'
-                            }
-                        },
-                        error: function() {
-                            playSound('error');
-                            showAlert('danger', 'Gagal menghubungi server penyimpanan.');
-                            setInputFeedback('error');
-                        },
-                        complete: function() {
-                            // Lepas readonly dan kembalikan fokus
-                            $qr.prop('readonly', false).focus();
-                        }
-                    });
+                    playSound('error');
+                    showAlert('danger', res.message || 'Gagal menyimpan item detail.');
+                    setInputFeedback('error'); 
                 }
             },
             error: function() {
                 playSound('error');
-                showAlert('danger', 'Koneksi ke server terputus.');
+                showAlert('danger', 'Gagal menghubungi server penyimpanan.');
                 setInputFeedback('error');
+            },
+            complete: function() {
+                // Lepas readonly dan kembalikan fokus
                 $qr.prop('readonly', false).focus();
             }
         });
@@ -541,11 +520,11 @@ $(document).ready(function() {
             e.preventDefault();
             var str = $(this).val();
             clearTimeout(scanTimer); // Batalkan timer cadangan
-            processQRCode(str);      // Langsung eksekusi tanpa jeda milidetik!
+            processQRCode(str);      // Langsung eksekusi tanpa jeda
         }
     });
 
-    // Pemicu Cadangan (Jika Scanner tidak mengirim Enter, walau jarang terjadi)
+    // Pemicu Cadangan
     $qr.on('input', function() {
         if ($(this).hasClass('scan-success') || $(this).hasClass('scan-error')) {
             $(this).removeClass('scan-success scan-error').attr('placeholder', 'Arahkan scanner ke sini...');
@@ -555,17 +534,15 @@ $(document).ready(function() {
         var str = $(this).val();
         clearTimeout(scanTimer);
         
-        // PERBAIKAN: Waktu jeda diperpanjang jadi 800ms untuk antisipasi scanner lambat/lag
+        // Timer dipercepat menjadi 200ms
         scanTimer = setTimeout(function() {
             if ($qr.val().trim() !== '') {
-                // PERBAIKAN: Cek apakah QR sudah lengkap. 
-                // Syarat lengkap adalah minimal ada 4 buah tanda pipa (|) atau panjang array >= 5
                 var parts = str.split('|');
                 if (parts.length >= 5) {
                     processQRCode(str);
                 }
             }
-        }, 800); 
+        }, 200); 
     });
 
     $(document).on('click', '.removedetail', function() {

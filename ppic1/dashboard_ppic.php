@@ -193,6 +193,8 @@ function h($value) {
         <a class="menu-link" href="master_machine.php" target="mainFrame">MASTER MACHINE</a>
         <a class="menu-link" href="master_process.php" target="mainFrame">MASTER PROSES</a>
 
+        <a class="menu-link" href="std_cust.php" target="mainFrame">NO STD CUSTOMER</a>
+
        
 
        <a class="menu-link logout" href="logout.php" target="_top">Logout</a>

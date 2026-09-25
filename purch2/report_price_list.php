@@ -32,11 +32,13 @@ $sql = "SELECT TOP (100) PERCENT
             dbo.QUOT_DETAIL.QUOD_MINQTY, 
             dbo.QUOTATION.QUO_NO, 
             dbo.QUOTATION.QUO_DATE, 
-            dbo.QUOTATION.QUO_EFFDATE
+            dbo.QUOTATION.QUO_EFFDATE,
+            dbo.Mat_Maker.MAKER
         FROM dbo.SUP_ITEM_QUO 
         INNER JOIN dbo.ITTY ON dbo.SUP_ITEM_QUO.ITTY_CODE = dbo.ITTY.ITTY_CODE 
         LEFT OUTER JOIN dbo.QUOT_DETAIL ON dbo.SUP_ITEM_QUO.QUO_ID = dbo.QUOT_DETAIL.QUO_ID AND dbo.SUP_ITEM_QUO.ITEM_ID = dbo.QUOT_DETAIL.ITEM_ID 
         LEFT OUTER JOIN dbo.QUOTATION ON dbo.SUP_ITEM_QUO.QUO_ID = dbo.QUOTATION.QUO_ID
+        LEFT OUTER JOIN dbo.Mat_Maker ON dbo.SUP_ITEM_QUO.ITEM_CODE = dbo.Mat_Maker.MAT_CODE
         $whereClause
         ORDER BY dbo.SUP_ITEM_QUO.SUP_CODE, dbo.SUP_ITEM_QUO.ITTY_CODE, dbo.SUP_ITEM_QUO.ITEM_CODE";
 
@@ -161,6 +163,7 @@ $current_itty = '';
             <thead>
                 <tr>
                     <th colspan="2">I T E M S</th>
+                    <th>Maker</th>
                     <th class="text-end">Price</th>
                     <th>Unit</th>
                     <th>Quot.NO</th>
@@ -173,7 +176,7 @@ $current_itty = '';
                     <?php foreach ($results as $row): ?>
                         
                         <?php
-                        // --- LOGIKA GROUPING (Persis seperti layout di gambar Anda) ---
+                        // --- LOGIKA GROUPING ---
                         
                         // Cek jika Supplier berubah
                         if ($current_sup !== $row['SUP_CODE']) {
@@ -181,7 +184,7 @@ $current_itty = '';
                             $current_itty = ''; // Reset group kategori
                             
                             echo '<tr>';
-                            echo '<td colspan="7" class="group-sup">' . htmlspecialchars($row['SUP_CODE']) . ' ' . htmlspecialchars($row['SUP_COMP']) . '</td>';
+                            echo '<td colspan="8" class="group-sup">' . htmlspecialchars($row['SUP_CODE']) . ' ' . htmlspecialchars($row['SUP_COMP']) . '</td>';
                             echo '</tr>';
                         }
 
@@ -190,7 +193,7 @@ $current_itty = '';
                             $current_itty = $row['ITTY_CODE'];
                             
                             echo '<tr>';
-                            echo '<td colspan="7" class="group-itty">' . htmlspecialchars($row['ITTY_CODE']) . ' ' . htmlspecialchars($row['ITTY_DESC']) . '</td>';
+                            echo '<td colspan="8" class="group-itty">' . htmlspecialchars($row['ITTY_CODE']) . ' ' . htmlspecialchars($row['ITTY_DESC']) . '</td>';
                             echo '</tr>';
                         }
 
@@ -214,6 +217,7 @@ $current_itty = '';
                         <tr>
                             <td style="width: 90px;"><?= htmlspecialchars($row['ITEM_CODE']) ?></td>
                             <td><?= htmlspecialchars($row['ITEM_NAME']) ?></td>
+                         <td><?= htmlspecialchars(isset($row['MAKER']) ? $row['MAKER'] : '') ?></td>
                             <td class="text-end"><?= $price ?> <?= $currency ?></td>
                             <td><?= htmlspecialchars($row['QUOD_UNIT']) ?></td>
                             <td><?= htmlspecialchars($row['QUO_NO']) ?></td>
@@ -224,7 +228,7 @@ $current_itty = '';
                     <?php endforeach; ?>
                 <?php else: ?>
                     <tr>
-                        <td colspan="7" class="text-center py-5 text-muted">
+                        <td colspan="8" class="text-center py-5 text-muted">
                             <em>Tidak ada data yang ditemukan.</em>
                         </td>
                     </tr>

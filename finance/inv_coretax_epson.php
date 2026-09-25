@@ -59,7 +59,7 @@ function getCoretaxRows($invNo) {
     $cols = array();
     $rows = array();
 
-    // PERUBAHAN: Memanggil SP yang baru
+    // Memanggil SP yang baru
     $stmt = q("EXEC dbo.SP_INVOICE_CORETAX_EPSON ?", array($invNo));
 
     $meta = sqlsrv_field_metadata($stmt);
@@ -72,6 +72,23 @@ function getCoretaxRows($invNo) {
     $idx = 0;
     while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         $r['_RowIndex'] = $idx++;
+        
+        // --- AWAL PERUBAHAN: Format Nama Barang/Jasa ---
+        if (isset($r['Nama Barang/Jasa'])) {
+            $nama = trim((string)$r['Nama Barang/Jasa']);
+            
+            // 1. Pindah angka ke kiri (jika string belum diawali oleh angka part)
+            if (!preg_match('/^\d{5,}/', $nama)) {
+                $nama = preg_replace('/^(.*?)\s+\b(\d{5,})\b(.*)$/', '$2 $1$3', $nama);
+            }
+            
+            // 2. Buang angka (minimal 5 digit s/d 9 digit) yang berada di paling kanan/akhir string
+            $nama = preg_replace('/\s+\d{5,}$/', '', $nama);
+            
+            $r['Nama Barang/Jasa'] = trim($nama);
+        }
+        // --- AKHIR PERUBAHAN ---
+
         $rows[] = $r;
     }
 
@@ -608,7 +625,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btn_load'])) {
                         <?php } ?>
 
                         <a href="inv_coretax_epson.php?action=clear_session" class="btn btn-outline-danger">
-                            Clear
+                            <i class="bi bi-trash"></i> Clear
                         </a>
                     </div>
 

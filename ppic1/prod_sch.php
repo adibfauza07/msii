@@ -23,7 +23,6 @@ if ($uid !== "") {
 
 $connCombo = @sqlsrv_connect($serverName, $connectionOptions);
 if ($connCombo) {
-    // Parameterized Query tidak diperlukan di sini karena tidak ada input user, namun eksekusi tetap aman
     $stmtMag = @sqlsrv_query($connCombo, "SELECT DISTINCT MAG_STATION FROM dbo.MAG WHERE MAG_STATION IS NOT NULL ORDER BY MAG_STATION");
     if ($stmtMag) {
         while ($row = sqlsrv_fetch_array($stmtMag, SQLSRV_FETCH_ASSOC)) {
@@ -116,6 +115,11 @@ if ($connCombo) {
         .alert-minus { background-color: #ffebee; color: #c62828; border: 1px solid #ef9a9a; padding: 12px 15px; border-radius: 4px; margin-bottom: 10px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .alert-info { background-color: #e3f2fd; color: #0d47a1; border: 1px solid #bbdefb; padding: 12px 15px; border-radius: 4px; margin-bottom: 15px; font-weight: 700; display: flex; align-items: center; gap: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 
+        /* Highlight Weekend (Sabtu & Minggu) */
+        .weekend-bg { background-color: #ffccd5 !important; }
+        .weekend-bg input.input-r0 { background-color: #ffccd5 !important; }
+        .weekend-bg input.input-r0:focus { background-color: #fff !important; }
+
         @media print {
             @page { size: A4 landscape; margin: 5mm; }
             body { background-color: #f4f6f9; padding: 0; margin: 0; -webkit-print-color-adjust: exact !important; color-adjust: exact !important; zoom: 85%; }
@@ -191,17 +195,17 @@ if ($connCombo) {
                     </select>
                 </div>
                 
-				<div class="form-group">
+                <div class="form-group">
                     <button id="btnLoad" class="btn-primary"><i class="fa fa-search"></i> Load Schedule</button>
                     <button type="button" id="btnLoadAll" class="btn-secondary" style="background-color: #17a2b8; border-color: #117a8b; margin-left: 5px;"><i class="fa fa-globe"></i> Load All Mesin</button>
                 </div>
-				
+                
             </div>
 
             <div style="border-left: 2px solid #ccc; padding-left: 20px;">
                 <div class="form-group">
                     <label style="color:#d32f2f;"><i class="fa fa-map-marker"></i> Find Item Machine:</label>
-                    <input type="text" id="txtSearchItemSch" size="25" placeholder="Ketik Item Code (Lacak Mesin)..." style="border: 1px solid #d32f2f; font-weight: bold; background-color:#fff8e1;" autocomplete="off">
+                    <input type="text" id="txtSearchItemSch" size="25" placeholder="Ketik Item Code (Load Semua Mesin)..." style="border: 1px solid #d32f2f; font-weight: bold; background-color:#fff8e1;" autocomplete="off">
                 </div>
             </div>
 
@@ -221,14 +225,12 @@ if ($connCombo) {
                 <button id="btnAddItem" class="btn-success"><i class="fa fa-plus"></i> Add Item</button>
             </div>
             <span style="font-size:11px; color:#666; margin-left: 10px;">(Pilih Mesin, ketik Item Code & No Urut, lalu Add)</span>
-			
-			<!-- AWAL BUTTON LOGICAL STOK -->
-<div class="form-group" style="margin-bottom: 0; border-left: 2px solid #ccc; padding-left: 15px;">
-    <button type="button" id="btnLogicalStok" class="btn-warning" style="background-color: #17a2b8; border-color: #117a8b; color: white;">
-        <i class="fa fa-cubes"></i> Logical Stok
-    </button>
-</div>
-<!-- AKHIR BUTTON LOGICAL STOK -->
+            
+            <div class="form-group" style="margin-bottom: 0; border-left: 2px solid #ccc; padding-left: 15px;">
+                <button type="button" id="btnLogicalStok" class="btn-warning" style="background-color: #17a2b8; border-color: #117a8b; color: white;">
+                    <i class="fa fa-cubes"></i> Logical Stok
+                </button>
+            </div>
         </div>
         
     </div>
@@ -256,22 +258,51 @@ if ($connCombo) {
             return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m];
         });
     }
-	
-	// Fungsi klik untuk Button Logical Stok
-        $('#btnLogicalStok').click(function() {
-            var tahun = $('#cbTahun').val();
-            var bulan = $('#cbBulan').val();
-            var mcNo  = $('#cbMachCode').val();
-            
-            // Opsional: Validasi jika harus pilih mesin dulu
-            // if ($.trim(mcNo) === '') { alert('Pilih Machine Code terlebih dahulu.'); $('#cbMachCode').focus(); return; }
+    
+    // Fungsi khusus untuk menyimpan data R0 secara asynchronous
+    function saveWorkspaceData(workspace) {
+        var idno = workspace.find('.btn-action-save').data('idno');
+        var statusSpan = workspace.find('.save-status');
 
-            // Merangkai URL dengan parameter filter yang sedang aktif
-            var url = 'logical_stok.php?tahun=' + tahun + '&bulan=' + bulan + '&mc_no=' + mcNo;
-            
-            // Buka di tab baru
-            window.open(url, '_blank');
+        if (!idno || idno == 0) {
+            alert("Simpan gagal: ID NO tidak valid.");
+            return;
+        }
+
+        var r0Data = {};
+        for (var i = 1; i <= 31; i++) {
+            r0Data['d'+i] = parseFloat(workspace.find('.input-r0.day-'+i).val()) || 0;
+        }
+
+        statusSpan.removeClass('ok warn').text('Menyimpan...').show();
+
+        $.ajax({
+            url: 'ajax_save_all_r0.php', 
+            type: 'POST',
+            data: { id_no: idno, r0: r0Data },
+            dataType: 'json',
+            success: function(res) {
+                if (res.status === 'success') {
+                    statusSpan.removeClass('warn').addClass('ok').text('Jadwal R0 Tersimpan!');
+                    setTimeout(function(){ statusSpan.fadeOut(function(){ $(this).text('').show(); }); }, 3000);
+                } else {
+                    statusSpan.removeClass('ok').addClass('warn').text('Gagal: ' + res.message);
+                }
+            },
+            error: function() { 
+                statusSpan.removeClass('ok').addClass('warn').text('Error jaringan.'); 
+            }
         });
+    }
+    
+    // Fungsi klik untuk Button Logical Stok
+    $('#btnLogicalStok').click(function() {
+        var tahun = $('#cbTahun').val();
+        var bulan = $('#cbBulan').val();
+        var mcNo  = $('#cbMachCode').val();
+        var url = 'logical_stok.php?tahun=' + tahun + '&bulan=' + bulan + '&mc_no=' + mcNo;
+        window.open(url, '_blank');
+    });
 
     function populateMachine(selectedGroup) {
         var cbMac = $('#cbMachCode');
@@ -285,7 +316,6 @@ if ($connCombo) {
         if (currentMac) cbMac.val(currentMac); 
     }
 
-    // Fungsi Sortir Ringan Berbasis DOM Client
     function sortWorkspacesLocally() {
         var $container = $('#workspaceContainer');
         var $workspaces = $container.children('.workspace');
@@ -367,7 +397,6 @@ if ($connCombo) {
         }
     });
 
-    // Kalkulasi Matriks Harian (Standar ERP Inventory Balance)
     function recalcMatrix(idx) {
         var table = $('#matrix_' + idx);
         var begStock = parseFloat(table.data('begstock')) || 0;
@@ -384,18 +413,16 @@ if ($connCombo) {
             var po = parseFloat(table.find('.cell-po.day-' + d).text()) || 0;
             var ph = parseFloat(table.find('.cell-ph.day-' + d).text()) || 0;
 
-            // Mutasi Out & In
-            var ng   = parseFloat(table.find('.cell-ng.day-' + d).text()) || 0;   // NG Rework (- pengurangan)
+            var ng   = parseFloat(table.find('.cell-ng.day-' + d).text()) || 0;   
             var lo   = parseFloat(table.find('.cell-lo.day-' + d).text()) || 0;   
             var rtc  = parseFloat(table.find('.cell-rtc.day-' + d).text()) || 0;  
             var rfc  = parseFloat(table.find('.cell-rfc.day-' + d).text()) || 0;  
             var rtc2 = parseFloat(table.find('.cell-rtc2.day-' + d).text()) || 0; 
-            var rfc2 = parseFloat(table.find('.cell-rfc2.day-' + d).text()) || 0; 
+            var rfc2 = parseFloat(table.find('.cell-rfc2.day-' + d).text()) || 0;
 
             runDelBal  = runDelBal + (da - dp); 
             runProdBal = runProdBal + (po - pp); 
             
-            // LOGIKA STOCK ADJUSTMENT (Mengurangi NG Rework)
             var stockAdjustment = rfc + rfc2 - lo - rtc - rtc2 - ng;
 
             runPlan = runPlan + pp - dp + stockAdjustment;
@@ -430,7 +457,6 @@ if ($connCombo) {
         updateEmptyDatesSummary();
     }
 
-    // Builder UI Matriks berdasarkan Data Backend
     function buildWorkspaceHtml(index, item, tahun, bulan) {
         var h = item.header;
         var begStock   = parseFloat(h.BEG_BALANCE) || 0; 
@@ -447,14 +473,9 @@ if ($connCombo) {
         var sortVal = parseInt(noUrut);
         if (isNaN(sortVal)) sortVal = 99999;
         
-        // ==========================================================
-        // LOGIKA TANGGAL UNTUK LINK STOK ANALYSIS
-        // ==========================================================
-        // 1. start_date: Tanggal 1 dari Tahun dan Bulan dropdown
         var padBulan = bulan.toString().length === 1 ? '0' + bulan : bulan;
         var startDateStr = tahun + '-' + padBulan + '-01';
         
-        // 2. end_date: Mengambil tanggal hari ini (Date Now)
         var today = new Date();
         var tTahun = today.getFullYear();
         var tBulan = (today.getMonth() + 1).toString();
@@ -464,9 +485,7 @@ if ($connCombo) {
         
         var endDateStr = tTahun + '-' + padTBulan + '-' + padTHari;
 
-        // Merakit URL Stok Analysis
         var stokUrl = 'stok.php?report_type=barang&item_id=' + encodeURIComponent(h.ITEM_CODE) + '&start_date=' + startDateStr + '&end_date=' + endDateStr;
-        // ==========================================================
         
         var badgeUrut = '<span style="background-color:#dc3545; color:#fff; padding:3px 6px; border-radius:3px; margin-left:10px; font-size:11px; display:inline-flex; align-items:center;">' + 
                         'No. Urut: <input type="text" class="input-no-urut" data-idno="' + idNo + '" value="' + escapeHtml(noUrut) + '" ' + 
@@ -479,21 +498,15 @@ if ($connCombo) {
         html += '<div class="panel-title" style="color:#0056b3; font-size:13px; padding-bottom:6px;"><i class="fa fa-cube"></i> Item Code: ' + safeItemCode + badgeUrut + '</div>';
         
         html += '<table class="pref-table">';
-        html += '<tr><td class="label-cell">Machine No</td><td><input type="text" data-field="MC_NO" value="' + escapeHtml(h.MC_NO) + '" readonly></td></tr>';
+        html += '<tr><td class="label-cell">Machine No</td><td><input type="text" data-field="MC_NO" value="' + escapeHtml(h.MC_NO) + '" readonly style="background-color:#e8f4f8;"></td></tr>';
         html += '<tr><td class="label-cell">Part Name</td><td><input type="text" data-field="PART_NAME" value="' + escapeHtml(h.PART_NAME) + '" readonly></td></tr>';
         html += '<tr><td class="label-cell">Part No</td><td><input type="text" data-field="PART_NO" value="' + escapeHtml(h.PART_NO) + '" readonly></td></tr>';
-        
-        // --- HYPERLINK DENGAN TARGET="_BLANK" (Open in New Tab) ---
         html += '<tr><td class="label-cell">Item Code</td><td style="background:#fafafa;"><a href="' + stokUrl + '" target="_blank" style="color:#d32f2f; font-weight:bold; text-decoration:underline; display:block; padding:3px;" title="Lihat Analisis Stok (s/d Hari Ini)">' + safeItemCode + ' <i class="fa fa-external-link"></i></a></td></tr>';
-        
         html += '<tr><td class="label-cell">Customer</td><td><input type="text" data-field="CUST" value="' + escapeHtml(h.CUST) + '" readonly></td></tr>';
         html += '<tr><td class="label-cell">Estimation Order</td><td><input type="text" data-field="CUR_PO_BO" value="' + escapeHtml(h.CUR_PO_BO) + '" readonly></td></tr>';
         html += '<tr><td class="label-cell">Safety Stock</td><td><input type="text" data-field="SAFETY_STK" value="' + safetyStk + '" readonly style="background-color:#fff3cd;"></td></tr>';
         html += '<tr><td class="label-cell">Beginning Stock</td><td><input type="text" data-field="BEG_BALANCE" value="' + begStock + '" readonly style="background-color:#ffeeba; color:#d32f2f;"></td></tr>';
-        
-        // --- PENYISIPAN BARIS PREV EST ACTUAL ---
         html += '<tr><td class="label-cell">Last Mth Actual</td><td><input type="text" data-field="PREV_EST_ACTUAL" value="' + prevEstAct + '" readonly style="background-color:#e6f7ff; color:#0056b3;"></td></tr>';
-        
         html += '<tr><td class="label-cell">Cycle Time Std</td><td><input type="text" data-field="CYCLE_TIME_STD" value="' + escapeHtml(h.CYCLE_TIME_STD) + '" readonly></td></tr>';
         html += '<tr><td class="label-cell">Cavity Std</td><td><input type="text" data-field="CAVITY_STD" value="' + escapeHtml(h.CAVITY_STD) + '" readonly></td></tr>';
         html += '<tr><td class="label-cell">Cap / Days Std</td><td><input type="text" data-field="CAP_DAY_STD" value="' + woCap + '" readonly></td></tr>';
@@ -502,16 +515,24 @@ if ($connCombo) {
         html += '</table></div></div>';
 
         html += '<div class="right-pane"><div class="panel" style="margin-bottom:0; padding:0;">';
-        
+        var historyUrl = 'prod_history.php?item_code=' + encodeURIComponent(h.ITEM_CODE);
         html += '<div style="background-color: #fff3cd; padding: 6px 10px; border: 1px solid #bbb; border-bottom: none; display: flex; align-items: center;">';
         html += '  <label style="color:#856404; margin-right: 8px;"><i class="fa fa-sitemap"></i> Assembly Part:</label>';
         html += '  <select class="cb-assembly" data-item="' + safeItemCode + '" style="width: 180px; margin-right: 8px;"><option value="">-- Memuat BOM... --</option></select>';
         html += '  <button type="button" class="btn-warning btn-load-assembly-del" data-idx="' + index + '" style="height: 24px; padding: 2px 10px; font-size: 11px;"><i class="fa fa-download"></i> Pull Delivery</button>';
+		html += '  <a href="' + historyUrl + '" target="_blank" class="btn-secondary" style="height: 24px; padding: 2px 10px; font-size: 11px; text-decoration:none; display:inline-flex; align-items:center; gap:4px; margin-left: 8px; background-color: #17a2b8; border-color: #117a8b; color: white;"><i class="fa fa-history"></i> Prod History</a>';
         html += '</div>';
 
         html += '<div class="table-container"><table class="grid-table" id="matrix_' + index + '" data-begstock="' + begStock + '">';
+        
+        // HARI LIBUR - HEADER
         html += '<thead><tr><th class="desc-col">Description</th><th class="gtotal-col">Grand Total</th>';
-        for (var i = 1; i <= 31; i++) { html += '<th class="day-col">' + i + '</th>'; }
+        for (var i = 1; i <= 31; i++) { 
+            var dt = new Date(tahun, bulan - 1, i);
+            var isWeekend = (dt.getMonth() == (bulan - 1) && (dt.getDay() === 0 || dt.getDay() === 6));
+            var wClass = isWeekend ? ' weekend-bg' : '';
+            html += '<th class="day-col' + wClass + '">' + i + '</th>'; 
+        }
         html += '</tr></thead><tbody>';
         
         var idNoRecord = 0; 
@@ -527,10 +548,11 @@ if ($connCombo) {
             if (rName === 'Del Plan') rowClass = 'cell-dp';
             else if (rName === 'Del Actual') rowClass = 'cell-da';
             else if (rName === 'Prod OK') rowClass = 'cell-po';
+            else if (rName === 'Prod NG') rowClass = 'cell-png'; 
             else if (rName === 'Prod HOLD') rowClass = 'cell-ph';
             else if (rName === 'Del Balance') rowClass = 'cell-delbal';
             else if (rName === 'Prod Balance') rowClass = 'cell-prodbal';
-            else if (rName === 'NG Rework') rowClass = 'cell-ng'; // Tangkapan Class Mutasi NG Rework
+            else if (rName === 'NG Rework') rowClass = 'cell-ng';
             else if (rName === 'Limbah Out') rowClass = 'cell-lo';
             else if (rName === 'Repl To Customer') rowClass = 'cell-rtc';
             else if (rName === 'Retur From Cust') rowClass = 'cell-rfc';
@@ -539,25 +561,28 @@ if ($connCombo) {
             else if (rName === 'Est Stock Plan') rowClass = 'cell-estplan';
             else if (rName === 'Est Stock Actual') rowClass = 'cell-estact';
             
-            // --- MODIFIKASI LABEL DAN BACKGROUND KHUSUS PROD PLAN R0 ---
             var displayDesc = escapeHtml(row.DESC_PROD);
             var descStyle = '';
             
             if (isR0) {
                 displayDesc = 'PROD PLAN';
-                descStyle = 'background-color: #d4edda; color: #155724;'; // Hijau soft khas tabel sukses
+                descStyle = 'background-color: #d4edda; color: #155724;'; 
             }
-            // -----------------------------------------------------------
             
             html += '<tr><td class="desc-col" style="' + descStyle + '">' + displayDesc + '</td><td class="gtotal-col">' + (row.G_TOTAL || 0) + '</td>';
             
+            // HARI LIBUR - BODY
             for (var d = 1; d <= 31; d++) {
+                var dt2 = new Date(tahun, bulan - 1, d);
+                var isWeekend = (dt2.getMonth() == (bulan - 1) && (dt2.getDay() === 0 || dt2.getDay() === 6));
+                var wClass = isWeekend ? ' weekend-bg' : '';
+
                 var cellVal = row['D' + d] || 0;
                 if (isR0) {
-                    html += '<td class="day-col"><input type="text" class="input-r0 day-' + d + '" value="' + cellVal + '" /></td>';
+                    html += '<td class="day-col' + wClass + '"><input type="text" class="input-r0 day-' + d + '" value="' + cellVal + '" /></td>';
                 } else {
                     var tdClass = (cellVal < 0) ? ' val-minus' : '';
-                    html += '<td class="day-col ' + rowClass + ' day-' + d + tdClass + '">' + cellVal + '</td>';
+                    html += '<td class="day-col ' + rowClass + ' day-' + d + tdClass + wClass + '">' + cellVal + '</td>';
                 }
             }
             html += '</tr>';
@@ -617,8 +642,6 @@ if ($connCombo) {
             var idx = btn.data('idx');
             var workspace = $('#workspace_' + idx);
             var cbAssembly = workspace.find('.cb-assembly').val();
-            
-            // Ambil ID_NO dari atribut tombol save terdekat di workspace yang sama
             var idNoRecord = workspace.find('.btn-action-save').data('idno'); 
 
             var tahun = $('#cbTahun').val();
@@ -638,28 +661,23 @@ if ($connCombo) {
 
             $.ajax({
                 url: 'ajax_pull_delivery.php', 
-                type: 'POST', // Menggunakan POST karena kita melakukan perubahan database
+                type: 'POST',
                 data: {
                     assembly_code: cbAssembly,
                     tahun: tahun,
                     bulan: bulan,
-                    id_no: idNoRecord // Parameter baru yang dikirim
+                    id_no: idNoRecord 
                 },
                 dataType: 'json',
                 success: function(res) {
                     if (res.status === 'success') {
-                        // Update angka di Grid DOM (Layar)
                         for (var d = 1; d <= 31; d++) {
                             var planVal = res.data.plan['D' + d] || 0;
                             var actVal  = res.data.actual['D' + d] || 0;
-
                             workspace.find('.cell-dp.day-' + d).text(planVal);
                             workspace.find('.cell-da.day-' + d).text(actVal);
                         }
-
-                        // Rekalkulasi total agar balance bergeser
                         recalcMatrix(idx);
-
                         $('#saveStatus_' + idx).removeClass('warn').addClass('ok')
                             .text('Delivery ditarik & tersimpan!').show().delay(3000).fadeOut();
                     } else {
@@ -696,39 +714,11 @@ if ($connCombo) {
             });
         });
 
+        // Tombol Save Manual
         $('#workspaceContainer').on('click', '.btn-action-save', function() {
-            var btn = $(this);
-            var idx = btn.data('idx');
-            var idno = btn.data('idno');
+            var idx = $(this).data('idx');
             var workspace = $('#workspace_' + idx);
-            var statusSpan = $('#saveStatus_' + idx);
-
-            if (!idno || idno == 0) { alert("Simpan gagal: ID NO tidak valid."); return; }
-
-            btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Memproses...');
-            statusSpan.removeClass('ok warn').text('Menyimpan data...');
-
-            var r0Data = {};
-            for (var i = 1; i <= 31; i++) {
-                r0Data['d'+i] = parseFloat(workspace.find('.input-r0.day-'+i).val()) || 0;
-            }
-
-            $.ajax({
-                url: 'ajax_save_all_r0.php', 
-                type: 'POST',
-                data: { id_no: idno, r0: r0Data },
-                dataType: 'json',
-                success: function(res) {
-                    if (res.status === 'success') {
-                        statusSpan.removeClass('warn').addClass('ok').text('Jadwal R0 Tersimpan!');
-                        setTimeout(function(){ statusSpan.fadeOut(function(){ $(this).text('').show(); }); }, 3000);
-                    } else {
-                        statusSpan.removeClass('ok').addClass('warn').text('Gagal: ' + res.message);
-                    }
-                },
-                error: function() { statusSpan.removeClass('ok').addClass('warn').text('Error jaringan.'); },
-                complete: function() { btn.prop('disabled', false).html('<i class="fa fa-save"></i> Save'); }
-            });
+            saveWorkspaceData(workspace);
         });
 
         $('#txtSearchItemSch').autocomplete({
@@ -744,23 +734,27 @@ if ($connCombo) {
                 });
             },
             select: function(event, ui) {
-                $('#txtSearchItemSch').val(ui.item.value);
-                var macCode = ui.item.mac_code;
-                var magStation = ui.item.mag_station;
-
-                if (confirm("INFORMASI RUTING MESIN:\nItem " + ui.item.value + " (" + ui.item.name + ") dijadwalkan pada:\n\nGroup: " + magStation + "\nMesin: " + macCode + "\n\nApakah Anda ingin memuat jadwal mesin ini sekarang?")) {
+                var searchItem = ui.item.value;
+                $('#txtSearchItemSch').val(searchItem);
+                
+                if (confirm("Tampilkan jadwal Item " + searchItem + " di SEMUA mesin sekaligus ke layar?")) {
+                    loadScheduleData($('#cbTahun').val(), $('#cbBulan').val(), 'ALL', 'ALL', searchItem);
+                } else {
+                    var macCode = ui.item.mac_code;
+                    var magStation = ui.item.mag_station;
                     $('#cbMachGroup').val(magStation).trigger('change');
                     setTimeout(function() {
                         $('#cbMachCode').val(macCode);
-                        $('#btnLoad').trigger('click'); 
-                        $('#txtSearchItemSch').val('');
+                        loadScheduleData($('#cbTahun').val(), $('#cbBulan').val(), magStation, macCode, '');
                     }, 200);
-                } else { $('#txtSearchItemSch').val(''); }
+                }
+                
+                setTimeout(function(){ $('#txtSearchItemSch').val(''); }, 500);
                 return false;
             }
         }).autocomplete("instance")._renderItem = function(ul, item) {
             return $("<li>")
-                .append("<div><b style='color:#d32f2f;'>" + escapeHtml(item.value) + "</b><br><span style='color:#666; font-size:10px;'>" + escapeHtml(item.name) + " | Mesin: " + escapeHtml(item.mac_code) + "</span></div>")
+                .append("<div><b style='color:#d32f2f;'>" + escapeHtml(item.value) + "</b><br><span style='color:#666; font-size:10px;'>" + escapeHtml(item.name) + " | Mesin Tersedia: " + escapeHtml(item.mac_code) + "</span></div>")
                 .appendTo(ul);
         };
 
@@ -807,10 +801,11 @@ if ($connCombo) {
             });
         });
 
-        
-		var isProcessingAll = false;
+        var isProcessingAll = false;
 
-        function loadScheduleData(tahun, bulan, machGroup, mcNo) {
+        function loadScheduleData(tahun, bulan, machGroup, mcNo, searchItem) {
+            searchItem = searchItem || '';
+
             if (isProcessingAll) {
                 alert("Harap tunggu, sistem sedang memproses dan menyimpan data...");
                 return;
@@ -821,9 +816,11 @@ if ($connCombo) {
             $('#emptyDatesAlert').hide(); 
             $('#workspaceContainer').html('<div class="panel" style="text-align:center; padding:50px;"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br><span id="loadingText">Memuat jadwal dari server...</span></div>');
 
-            $.ajax({
-                url: urlLoadGrid, type: 'GET',
-                data: { tahun: tahun, bulan: bulan, mach_group: machGroup, mc_no: mcNo },
+           $.ajax({
+                url: urlLoadGrid, 
+                type: 'GET',
+                cache: false,
+                data: { tahun: tahun, bulan: bulan, mach_group: machGroup, mc_no: mcNo, search_item: searchItem },
                 dataType: 'json',
                 success: function(res) {
                     if (res.status === 'success') {
@@ -862,7 +859,7 @@ if ($connCombo) {
                             
                             processAutoSaveSequence(workspacesToSave, 0, function() {
                                 $('#progressOverlay').removeClass('fa-spinner fa-spin').css({'background-color':'#d4edda', 'color':'#155724', 'border-color':'#c3e6cb'})
-                                    .html('<i class="fa fa-check-circle"></i> Selesai! Semua data telah tersimpan dan siap dilihat pada Report Kapasitas Mesin. <button onclick="$(\'#progressOverlay\').slideUp()" style="margin-left:15px; padding:3px 10px; font-size:11px; cursor:pointer;" class="btn-success">Tutup</button>');
+                                    .html('<i class="fa fa-check-circle"></i> Selesai! Semua data telah tersimpan. <button onclick="$(\'#progressOverlay\').slideUp()" style="margin-left:15px; padding:3px 10px; font-size:11px; cursor:pointer;" class="btn-success">Tutup</button>');
                                 isProcessingAll = false;
                             });
                         } else {
@@ -933,7 +930,7 @@ if ($connCombo) {
                 return; 
             }
             
-            loadScheduleData(tahun, bulan, machGroup, mcNo);
+            loadScheduleData(tahun, bulan, machGroup, mcNo, '');
         });
 
         $('#btnLoadAll').click(function() {
@@ -944,14 +941,49 @@ if ($connCombo) {
                 return;
             }
             
-            loadScheduleData(tahun, bulan, 'ALL', 'ALL');
+            loadScheduleData(tahun, bulan, 'ALL', 'ALL', '');
         });
-		
-
+        
         $('#workspaceContainer').on('input change', '.input-r0', function() {
             var workspaceIdx = $(this).closest('.workspace').attr('id').split('_')[1];
             $(this).data('modified', true).addClass('modified');
             recalcMatrix(workspaceIdx);
+        });
+
+        // Navigasi Keyboard: Panah Kiri, Panah Kanan, & Enter = Save + Pindah Kolom Kanan
+        $('#workspaceContainer').on('keydown', '.input-r0', function(e) {
+            var currentTd = $(this).closest('td');
+            var workspace = $(this).closest('.workspace');
+            
+            if (e.which === 37) { // Panah Kiri (Left Arrow)
+                var prevInput = currentTd.prev('td.day-col').find('.input-r0');
+                if (prevInput.length > 0) {
+                    prevInput.focus();
+                    prevInput.select();
+                    e.preventDefault(); 
+                }
+            } 
+            else if (e.which === 39) { // Panah Kanan (Right Arrow)
+                var nextInput = currentTd.next('td.day-col').find('.input-r0');
+                if (nextInput.length > 0) {
+                    nextInput.focus();
+                    nextInput.select();
+                    e.preventDefault(); 
+                }
+            }
+            else if (e.which === 13) { // Enter = Save & Pindah Kolom Kanan
+                e.preventDefault();
+                
+                // 1. Simpan data langsung lewat helper
+                saveWorkspaceData(workspace);
+                
+                // 2. Pindah ke kolom (hari) berikutnya
+                var nextInput = currentTd.next('td.day-col').find('.input-r0');
+                if (nextInput.length > 0) {
+                    nextInput.focus();
+                    nextInput.select();
+                }
+            }
         });
 
         $('#workspaceContainer').on('keypress', '.input-no-urut', function(e) {

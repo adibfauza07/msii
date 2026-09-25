@@ -46,10 +46,15 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
 
     $tranDoc   = substr(trim($_POST['TRAN_DOC']), 0, 30);
     $tranDate  = $_POST['TRAN_DATE'];   
-    $tranADate = $_POST['TRAN_ADATE'];  
     $trtyCode  = $_POST['TRTY_CODE'];
     $supCode   = $_POST['SUP_CODE'];
     $remark    = substr(trim($_POST['TRAN_REM']), 0, 50);
+    
+    // PERBAIKAN 1: Tangkap BC_DATE dengan benar. Jika kosong, jadikan NULL sejati.
+    $BCdate    = (isset($_POST['BC_DATE']) && trim($_POST['BC_DATE']) !== '') ? $_POST['BC_DATE'] : null;
+    
+    // Kita buat TRAN_ADATE mengikuti BC_DATE. Jika BC_DATE null, gunakan tanggal hari ini.
+    $tranADate = $BCdate ? $BCdate : date('Y-m-d');
     
     if ($supCode === "") $supCode = null;
 
@@ -79,7 +84,9 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
                     if ($stmtHead === false) throw new Exception("Gagal Update Header (P1):\n" . print_r(sqlsrv_errors(), true));
                     
                     sqlsrv_query($conn, "DELETE FROM $TABEL_BC WHERE NO_TRANS=?", array($tranDoc));
-                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (NO_TRANS, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($tranDoc, $jenisBC, $nomorBC));
+                    
+                    // Eksekusi Insert tabel BC. Menggunakan NULL jika $BCdate kosong.
+                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (NO_TRANS, JENIS_BC, NOMOR_BC, BC_DATE) VALUES (?, ?, ?, ?)", array($tranDoc, $jenisBC, $nomorBC, $BCdate));
                     if ($stmtBC === false) throw new Exception("Gagal Update Tabel BC:\n" . print_r(sqlsrv_errors(), true));
 
                     $targetID = $currentID;
@@ -93,7 +100,7 @@ if (isset($_POST['btnSimpanTransaksi']) || isset($_POST['btnUpdateTransaksi'])) 
                     $rowID = sqlsrv_fetch_array($stmtHead);
                     $targetID = $rowID['ID'];
 
-                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (NO_TRANS, JENIS_BC, NOMOR_BC) VALUES (?, ?, ?)", array($tranDoc, $jenisBC, $nomorBC));
+                    $stmtBC = sqlsrv_query($conn, "INSERT INTO $TABEL_BC (NO_TRANS, JENIS_BC, NOMOR_BC, BC_DATE) VALUES (?, ?, ?, ?)", array($tranDoc, $jenisBC, $nomorBC, $BCdate));
                     if ($stmtBC === false) throw new Exception("Gagal Insert Tabel BC:\n" . print_r(sqlsrv_errors(), true));
                 }
             } else {
@@ -162,12 +169,11 @@ $isEntry = ($mode == 'new' || $mode == 'edit');
 
 $dataHeader = [
     'TRAN_ID' => '', 'TRAN_DOC' => '', 'TRAN_DATE' => date('Y-m-d'), 'TRAN_ADATE' => date('Y-m-d'), 
-    'TRTY_CODE' => '', 'SUP_CODE' => '', 'TRAN_REM' => '', 'JENIS_BC' => '', 'NOMOR_BC' => ''
+    'TRTY_CODE' => '', 'SUP_CODE' => '', 'TRAN_REM' => '', 'JENIS_BC' => '', 'NOMOR_BC' => '', 'BC_DATE' => ''
 ];
 $dataDetail = [];
 
 if ($mode == 'new') {
-    // PERBAIKAN: Membuat dokumen AUTO khusus untuk data baru
     $dataHeader['TRAN_DOC'] = "TR-" . date('ymd-His'); 
 } else {
     if (!$currentID) {
@@ -177,7 +183,8 @@ if ($mode == 'new') {
 
     if ($currentID) {
         if ($isPlant1) {
-            $sqlHead = "SELECT T.*, B.JENIS_BC, B.NOMOR_BC 
+            // PERBAIKAN 2: Mengambil kolom B.BC_DATE dari tabel BC_TRANS
+            $sqlHead = "SELECT T.*, B.JENIS_BC, B.NOMOR_BC, B.BC_DATE 
                         FROM TRANS T 
                         LEFT JOIN $TABEL_BC B ON T.TRAN_DOC = B.NO_TRANS 
                         WHERE T.TRAN_ID = ?";
@@ -197,9 +204,21 @@ if ($mode == 'new') {
             if (!isset($dataHeader['JENIS_BC'])) $dataHeader['JENIS_BC'] = '';
             if (!isset($dataHeader['NOMOR_BC'])) $dataHeader['NOMOR_BC'] = '';
 
+            // Formatting tanggal
             if (isset($dataHeader['TRAN_DATE']) && $dataHeader['TRAN_DATE'] instanceof DateTime) $dataHeader['TRAN_DATE'] = $dataHeader['TRAN_DATE']->format('Y-m-d');
             if (isset($dataHeader['TRAN_ADATE']) && $dataHeader['TRAN_ADATE'] instanceof DateTime) $dataHeader['TRAN_ADATE'] = $dataHeader['TRAN_ADATE']->format('Y-m-d');
             else if (empty($dataHeader['TRAN_ADATE'])) $dataHeader['TRAN_ADATE'] = date('Y-m-d');
+            
+            // PERBAIKAN 3: Format BC_DATE dan pastikan tahun 1900 dikosongkan saat tampil di web
+            if (isset($dataHeader['BC_DATE']) && $dataHeader['BC_DATE'] instanceof DateTime) {
+                if ($dataHeader['BC_DATE']->format('Y') == '1900') {
+                    $dataHeader['BC_DATE'] = '';
+                } else {
+                    $dataHeader['BC_DATE'] = $dataHeader['BC_DATE']->format('Y-m-d');
+                }
+            } else {
+                $dataHeader['BC_DATE'] = '';
+            }
         }
 
         $sqlDetail = "SELECT T.IT_LINENO, T.IT_QTY, 
@@ -314,8 +333,9 @@ while($qT && $r=sqlsrv_fetch_array($qT)) {
                         </div>
                         <div class="col-6 col-md-3 col-lg-2">
                             <label class="small fw-bold">Trans. Date</label>
-                            <input type="date" class="form-control form-control-sm" name="TRAN_ADATE" 
-                                   value="<?php echo $dataHeader['TRAN_ADATE']; ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
+                            <!-- PERBAIKAN 4: Ganti name jadi BC_DATE agar ditangkap dengan benar oleh PHP -->
+                            <input type="date" class="form-control form-control-sm" name="BC_DATE" 
+                                   value="<?php echo htmlspecialchars($dataHeader['BC_DATE']); ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
                         </div>
                         
                         <?php if ($isPlant1): ?>
@@ -330,6 +350,7 @@ while($qT && $r=sqlsrv_fetch_array($qT)) {
                                     <option value="BC 2.7" <?php echo ($dataHeader['JENIS_BC']=='BC 2.7')?'selected':''; ?>>BC 2.7</option>
                                     <option value="BC 3.0" <?php echo ($dataHeader['JENIS_BC']=='BC 3.0')?'selected':''; ?>>BC 3.0</option>
                                     <option value="BC 4.0" <?php echo ($dataHeader['JENIS_BC']=='BC 4.0')?'selected':''; ?>>BC 4.0</option>
+                                    <option value="BC 4.1" <?php echo ($dataHeader['JENIS_BC']=='BC 4.1')?'selected':''; ?>>BC 4.1</option>
                                 </select>
                             </div>
                             <div class="col-6 col-md-3 col-lg-3">
@@ -606,23 +627,19 @@ $(document).ready(function() {
         }
     });
 
-    $(document).on('click', '.btn-hapus-row', function() { $(this).closest('tr').remove(); });
-    
-    $(document).on('dblclick', '.cell-qty', function() {
-        var $td = $(this); $td.find('.txt-qty').addClass('d-none'); $td.find('.input-qty-edit').removeClass('d-none').focus().select(); $td.closest('tr').find('.btn-save-row').removeClass('d-none');
+    $(document).on('click', '.btn-hapus-row', function() { $(this).closest('tr').remove(); });$(document).on('dblclick', '.cell-qty', function() {
+        var $td = $(this);$td.find('.txt-qty').addClass('d-none'); $td.find('.input-qty-edit').removeClass('d-none').focus().select();$td.closest('tr').find('.btn-save-row').removeClass('d-none');
     });
     
     $(document).on('click', '.btn-save-row', function() {
-        var $row = $(this).closest('tr');
-        var $tdQty = $row.find('.cell-qty');
+        var $row =$(this).closest('tr');
+        var $tdQty =$row.find('.cell-qty');
         var newVal = $tdQty.find('.input-qty-edit').val();
-        $tdQty.find('.input-qty-val').val(newVal);
-        $tdQty.find('.txt-qty').text(parseFloat(newVal).toFixed(2)).removeClass('d-none');
-        $tdQty.find('.input-qty-edit').addClass('d-none');
-        $(this).addClass('d-none');
+        $tdQty.find('.input-qty-val').val(newVal);$tdQty.find('.txt-qty').text(parseFloat(newVal).toFixed(2)).removeClass('d-none');
+        $tdQty.find('.input-qty-edit').addClass('d-none');$(this).addClass('d-none');
     });
     
-    $(document).on('keypress', '.input-qty-edit', function(e) { if(e.which == 13) { e.preventDefault(); $(this).closest('tr').find('.btn-save-row').click(); } });
+    $(document).on('keypress', '.input-qty-edit', function(e) { if(e.which == 13) { e.preventDefault();$(this).closest('tr').find('.btn-save-row').click(); } });
 
     $('#btnTampilIcl').click(function() {
         var start = $('#icl_start_date').val();

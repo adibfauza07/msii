@@ -27,7 +27,7 @@ $plant_param = ($plant === "" ? 0 : (int)$plant);
 $data = [];
 if ($from_sql && $to_sql) {
     $sql    = "{CALL SP_MTN_HISTORY_PERBAIKAN_new(?, ?, ?, ?)}";
-    $params = array($from_sql, $to_sql, $mac_param, $plant_param);
+    $params = [$from_sql, $to_sql, $mac_param, $plant_param];
     $stmt = sqlsrv_query($conn, $sql, $params);
     if ($stmt !== false) {
         while($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
@@ -36,41 +36,54 @@ if ($from_sql && $to_sql) {
     }
 }
 
-// 4. SETUP PDF
-$pdf = new TCPDF('L', 'mm', 'A4', true, 'UTF-8', false);
+// ==========================================
+// 4. BIKIN CUSTOM CLASS UNTUK FOOTER TCPDF
+// ==========================================
+class MYPDF extends TCPDF {
+    // Override fungsi Footer() bawaan TCPDF
+    public function Footer() {
+        // Posisikan 15 mm dari margin paling bawah
+        $this->SetY(-15);
+        // Set font teks (Helvetica, Bold, ukuran 10)
+        $this->SetFont('helvetica', 'B', 10);
+        // Tulis kode dokumen rata kiri ('L')
+        $this->Cell(0, 10, 'FM.MTN.S01-43', 0, false, 'L', 0, '', 0, false, 'T', 'M');
+        
+        // (Opsional) Jika ingin menambah nomor halaman di pojok kanan, hapus tanda komentar di bawah ini:
+        // $this->Cell(0, 10, 'Halaman '.$this->getAliasNumPage().' / '.$this->getAliasNbPages(), 0, false, 'R', 0, '', 0, false, 'T', 'M');
+    }
+}
+
+// SETUP PDF (Gunakan class MYPDF yang baru dibuat, bukan TCPDF standar)
+$pdf = new MYPDF('L', 'mm', 'A4', true, 'UTF-8', false);
 $pdf->SetCreator('MSII System');
 $pdf->SetTitle('Laporan Perbaikan Mesin');
 $pdf->setPrintHeader(false);
-$pdf->setPrintFooter(false);
+// PENTING: Aktifkan Print Footer agar custom footer di atas tereksekusi
+$pdf->setPrintFooter(true); 
 $pdf->SetMargins(10, 10, 10);
-$pdf->SetAutoPageBreak(TRUE, 10);
+// Beri margin bawah sedikit lebih besar (misal 15 atau 20) agar tabel tidak menabrak footer
+$pdf->SetAutoPageBreak(TRUE, 18); 
 $pdf->AddPage();
 
 // 5. SUSUN HTML
 $periodeStr = ($from_sql ? date("d-M-Y", strtotime($from_sql)) : "-") . ' s/d ' . ($to_sql ? date("d-M-Y", strtotime($to_sql)) : "-");
 $filterStr  = "MAC: " . ($mac === "" ? "SEMUA" : $mac) . " | Plant: " . ($plant === "" ? "SEMUA" : $plant);
 
-// DEFINISI LEBAR KOLOM (TOTAL HARUS 100%)
-// Kita simpan di variabel biar gampang diedit dan pasti sama
-$w1 = "8%";   // MAC
-$w2 = "5%";   // Plant
-$w3 = "6%";   // Tonage
-$w4 = "12%";  // Tanggal
-$w5 = "24%";  // Description
-$w6 = "25%";  // Service
-$w7 = "20%";  // Kerusakan
+$w1 = "7%";  $w2 = "5%";  $w3 = "7%"; 
+$w4 = "11%"; $w5 = "25%"; $w6 = "25%"; $w7 = "20%"; 
 
 $html = '
-<h2 style="text-align:center;">LAPORAN PERBAIKAN MESIN</h2>
-<p style="text-align:center; font-size:10pt;">
+<h2 style="text-align:center; margin-bottom: 2px;">LAPORAN PERBAIKAN MESIN</h2>
+<p style="text-align:center; font-size:10pt; color: #555;">
     Periode: '.$periodeStr.'<br>
     '.$filterStr.'
 </p>
 <br>
 
-<table border="1" cellpadding="5" cellspacing="0" style="font-size:9pt; width:100%;">
+<table border="1" cellpadding="6" cellspacing="0" style="font-size:9pt; width:100%;">
     <thead>
-        <tr style="background-color:#eee; font-weight:bold;">
+        <tr style="background-color:#343a40; color:#ffffff; font-weight:bold;">
             <th width="'.$w1.'" align="center">MAC</th>
             <th width="'.$w2.'" align="center">Plt</th>
             <th width="'.$w3.'" align="center">Ton</th>
@@ -85,15 +98,15 @@ $html = '
 if (empty($data)) {
     $html .= '<tr><td colspan="7" align="center">Tidak ada data untuk periode ini.</td></tr>';
 } else {
+    $i = 0;
     foreach ($data as $r) {
+        $bg = ($i % 2 == 0) ? '#ffffff' : '#f9f9f9'; // Efek Zebra
         $tgl = $r['DATE'] instanceof DateTime ? $r['DATE']->format("d-M-Y") : "";
-        
         $desc  = nl2br(htmlspecialchars($r['DESCRIPTION']));
         $serv  = nl2br(htmlspecialchars($r['SERVICE']));
         $rusak = htmlspecialchars($r['KERUSAKAN']);
 
-        // FIX: Tambahkan width="xx%" di setiap td agar sama persis dengan th
-        $html .= '<tr>
+        $html .= '<tr style="background-color:'.$bg.';">
             <td width="'.$w1.'" align="center">'.$r['MAC'].'</td>
             <td width="'.$w2.'" align="center">'.$r['PLANT'].'</td>
             <td width="'.$w3.'" align="center">'.$r['TONAGE'].'</td>
@@ -102,6 +115,7 @@ if (empty($data)) {
             <td width="'.$w6.'">'.$serv.'</td>
             <td width="'.$w7.'">'.$rusak.'</td>
         </tr>';
+        $i++;
     }
 }
 

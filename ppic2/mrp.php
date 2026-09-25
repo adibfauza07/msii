@@ -403,24 +403,25 @@ if ($export == "excel") {
     <title>Material Requirement Planning</title>
 
     <style>
-        html, body {
-            margin: 0;
-            padding: 0;
-            background: #9c9c9c;
-            color: #000000;
-            font-family: "Times New Roman", serif;
-            font-size: 11px;
-        }
+       html, body {
+    margin: 0;
+    padding: 0;
+    background: #9c9c9c;
+    color: #000000;
+    font-family: Calibri, Arial, sans-serif;
+    font-size: 10px; /* Ukuran font di file MPS/MOR/MRP Anda */
+    zoom: 100%; /* <--- TAMBAHKAN BARIS INI UNTUK ZOOM 125% DI LAYAR */
+}
 
         .filter {
+            /* Hapus Max-Width untuk layar penuh */
             width: calc(100% - 20px);
-            max-width: 1130px;
             margin: 8px auto;
             background: #d4d0c8;
             border: 1px solid #777777;
             padding: 8px;
             box-sizing: border-box;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: Calibri, Arial, sans-serif;
             font-size: 12px;
             white-space: nowrap;
         }
@@ -430,7 +431,7 @@ if ($export == "excel") {
             height: 24px;
             border: 1px solid #777777;
             padding: 2px 5px;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: Calibri, Arial, sans-serif;
             font-size: 12px;
             box-sizing: border-box;
         }
@@ -441,7 +442,7 @@ if ($export == "excel") {
             border: 1px solid #777777;
             background: #eeeeee;
             cursor: pointer;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: Calibri, Arial, sans-serif;
             font-size: 12px;
             color: #000000;
             text-decoration: none;
@@ -449,21 +450,22 @@ if ($export == "excel") {
         }
 
         .toolbar {
+            /* Hapus Max-Width */
             width: calc(100% - 20px);
-            max-width: 1130px;
             margin: 0 auto 6px auto;
             text-align: right;
         }
 
         .page {
+            /* Hapus Max-Width dan tetapkan auto scroll */
             width: calc(100% - 20px);
-            max-width: 1130px;
             min-height: 780px;
             margin: 0 auto 20px auto;
             background: #ffffff;
             padding: 18px 16px;
             border: 2px solid #000000;
             box-sizing: border-box;
+            overflow-x: auto;
         }
 
         .header {
@@ -477,6 +479,7 @@ if ($export == "excel") {
             left: 0;
             top: 0;
             font-size: 14px;
+            font-weight: bold;
         }
 
         .dept {
@@ -491,6 +494,7 @@ if ($export == "excel") {
             font-size: 24px;
             line-height: 26px;
             padding-top: 14px;
+            font-weight: bold;
         }
 
         .subtitle {
@@ -508,24 +512,26 @@ if ($export == "excel") {
 
         table.report {
             width: 100%;
+            min-width: 1150px; /* Batas tidak menyusut untuk menjaga Grid */
             border-collapse: collapse;
-            table-layout: fixed;
-            font-size: 10px;
+            table-layout: fixed; /* Memaksa browser mengikuti lebar */
+            font-size: 8.5px;
             margin-top: 6px;
         }
 
         table.report th,
         table.report td {
             border: none;
-            padding: 1px 3px;
+            padding: 2px 3px;
             vertical-align: top;
             line-height: 12px;
             overflow: hidden;
+            word-wrap: break-word; /* Mencegah kolom melebar */
         }
 
         table.report th {
             text-align: center;
-            font-weight: normal;
+            font-weight: bold;
             border-bottom: 1px solid #000000;
         }
 
@@ -541,11 +547,13 @@ if ($export == "excel") {
             color: #000000;
             padding-top: 3px;
             padding-bottom: 3px;
+            font-size: 11px;
         }
 
         .mat-row td {
             font-weight: bold;
             padding-top: 4px;
+            font-size: 9.5px;
         }
 
         .part-row td {
@@ -554,12 +562,15 @@ if ($export == "excel") {
 
         .total-row td {
             font-weight: bold;
+            background: #f8f8f8;
+            font-size: 9px;
+            border-top: 1px dotted #000000;
         }
 
         .no-data {
             padding: 60px 0;
             text-align: center;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: Calibri, Arial, sans-serif;
             font-size: 14px;
         }
 
@@ -585,10 +596,11 @@ if ($export == "excel") {
                 margin: 0;
                 border: none;
                 padding: 0;
+                overflow: visible;
             }
 
             table.report {
-                font-size: 8px;
+                font-size: 8px; /* Lebih besar untuk cetakan */
             }
 
             table.report th,
@@ -598,14 +610,13 @@ if ($export == "excel") {
             }
         }
 
-
         /* --- Tambahan CSS untuk Kotak Tanda Tangan --- */
         .sign-wrapper {
             margin-top: 30px;
             width: 100%;
             display: flex;
-            justify-content: flex-end; /* Memposisikan kotak ke sebelah kanan */
-            page-break-inside: avoid; /* Mencegah kotak terpotong halaman saat di-print */
+            justify-content: flex-end; 
+            page-break-inside: avoid; 
         }
         
         .sign-box {
@@ -621,7 +632,7 @@ if ($export == "excel") {
         }
         
         .sign-box td {
-            height: 50px; /* Mengatur tinggi ruang untuk tanda tangan */
+            height: 50px; 
         }
     </style>
 </head>
@@ -675,64 +686,65 @@ if ($export == "excel") {
         <div class="no-data">Data MRP tidak ditemukan.</div>
     <?php } else { ?>
         <table class="report">
+            <!-- Porsi 15 Kolom Total 100% Untuk Mengunci Presisi Tabel -->
             <colgroup>
-                <col style="width:6%;">
-                <col style="width:24%;">
-                <col style="width:5%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:5%;">
-                <col style="width:4%;">
-                <col style="width:7%;">
-                <col style="width:6%;">
-                <col style="width:6%;">
-                <col style="width:6%;">
-                <col style="width:6%;">
-                <col style="width:6%;">
-                <col style="width:6%;">
+                <col style="width:8%;">   <!-- 1. CODE -->
+                <col style="width:26%;">  <!-- 2. PART NAME -->
+                <col style="width:4%;">   <!-- 3. Cavity -->
+                <col style="width:4%;">   <!-- 4. Weight Part -->
+                <col style="width:4%;">   <!-- 5. Weight Runner -->
+                <col style="width:4%;">   <!-- 6. Weight Total -->
+                <col style="width:3%;">   <!-- 7. Rcly (%) -->
+                <col style="width:5%;">   <!-- 8. Std.Used -->
+                <col style="width:3%;">   <!-- 9. Unit -->
+                <col style="width:6.5%;"> <!-- 10. M1 P.Plan -->
+                <col style="width:6.5%;"> <!-- 11. M1 M.Used -->
+                <col style="width:6.5%;"> <!-- 12. M2 P.Plan -->
+                <col style="width:6.5%;"> <!-- 13. M2 M.Used -->
+                <col style="width:6.5%;"> <!-- 14. M3 P.Plan -->
+                <col style="width:6.5%;"> <!-- 15. M3 M.Used -->
             </colgroup>
             <thead>
                 <tr>
-                    <th rowspan="2">CODE</th>
-                    <th rowspan="2">PART NAME</th>
-                    <th>Cavity</th>
-                    <th colspan="3">Weight</th>
-                    <th>Rcly</th>
-                    <th colspan="2"></th>
-                    <th colspan="2"><?php echo h($m1); ?></th>
-                    <th colspan="2"><?php echo h($m2); ?></th>
-                    <th colspan="2"><?php echo h($m3); ?></th>
+                    <!-- Atribut style="width: %" diterapkan pada sel Header -->
+                    <th rowspan="2" style="width:8%;">CODE</th>
+                    <th rowspan="2" style="width:26%;">PART NAME</th>
+                    <th style="width:4%;">Cavity</th>
+                    <th colspan="3" style="width:12%;">Weight</th>
+                    <th style="width:3%;">Rcly</th>
+                    <th colspan="2" style="width:8%;"></th>
+                    <th colspan="2" style="width:13%;"><?php echo h($m1); ?></th>
+                    <th colspan="2" style="width:13%;"><?php echo h($m2); ?></th>
+                    <th colspan="2" style="width:13%;"><?php echo h($m3); ?></th>
                 </tr>
                 <tr>
-                    <th>Part</th>
-                    <th>Part</th>
-                    <th>Runner</th>
-                    <th>Total</th>
-                    <th>(%)</th>
-                    <th>Std.Used</th>
-                    <th></th>
-                    <th>P.Plan</th>
-                    <th>M.Used</th>
-                    <th>P.Plan</th>
-                    <th>M.Used</th>
-                    <th>P.Plan</th>
-                    <th>M.Used</th>
+                    <th style="width:4%;">Part</th>
+                    <th style="width:4%;">Part</th>
+                    <th style="width:4%;">Runner</th>
+                    <th style="width:4%;">Total</th>
+                    <th style="width:3%;">(%)</th>
+                    <th style="width:5%;">Std.Used</th>
+                    <th style="width:3%;">Unit</th>
+                    <th style="width:6.5%;">P.Plan</th>
+                    <th style="width:6.5%;">M.Used</th>
+                    <th style="width:6.5%;">P.Plan</th>
+                    <th style="width:6.5%;">M.Used</th>
+                    <th style="width:6.5%;">P.Plan</th>
+                    <th style="width:6.5%;">M.Used</th>
                 </tr>
             </thead>
             <tbody>
                 <?php foreach ($groups as $g) { ?>
                     <tr class="group1">
-                        <td colspan="17"><?php echo h($g["ITTY_CODE"]); ?></td>
+                        <!-- Colspan disesuaikan dengan jumlah kolom HTML yang tersedia (15) -->
+                        <td colspan="15"><?php echo h($g["ITTY_CODE"]); ?></td>
                     </tr>
 
                     <?php foreach ($g["MATERIALS"] as $mat) { ?>
                         <tr class="mat-row">
                             <td><?php echo h($mat["MAT_CODE"]); ?></td>
                             <td><?php echo h($mat["MAT_NAME"]); ?></td>
-                            <td colspan="15"></td>
+                            <td colspan="13"></td>
                         </tr>
 
                         <?php foreach ($mat["ROWS"] as $r) { ?>
@@ -756,6 +768,7 @@ if ($export == "excel") {
                         <?php } ?>
 
                         <tr class="total-row">
+                            <!-- Sisa dari 15 kolom = 9 Kosong + 6 Data -->
                             <td colspan="9"></td>
                             <td class="num"><?php echo h(n0($mat["SUM_PP1"])); ?></td>
                             <td class="num"><?php echo h(n2($mat["SUM_USE1"])); ?></td>
@@ -793,6 +806,3 @@ if ($export == "excel") {
 
 </body>
 </html>
-
-
-

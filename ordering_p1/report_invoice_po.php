@@ -279,18 +279,19 @@ for ($i = 0; $i < count($rows); $i++) {
             box-sizing: border-box;
         }
 
+        /* --- PERBAIKAN LEBAR KOLOM --- */
         .detail .no {
             width: 4%;
             text-align: left;
         }
 
         .detail .partno {
-            width: 18%;
+            width: 14%; 
             text-align: left;
         }
 
         .detail .partname {
-            width: 30%;
+            width: 31%; /* Disesuaikan agar P.O.# dapat porsi lebih besar */
             text-align: left;
         }
 
@@ -300,33 +301,32 @@ for ($i = 0; $i < count($rows); $i++) {
         }
 
         .detail .unit {
-            width: 5%;
+            width: 4%;
             text-align: center;
         }
 
         .detail .price {
-            width: 10%;
+            width: 9%;
             text-align: right;
         }
 
         .detail .amount {
             width: 12%;
             text-align: right;
+            padding-right: 12px; /* Memberi jarak agar Amount geser kiri dan tidak rapat ke P.O.# */
         }
 
         .detail .po {
-            width: 10%;
+            width: 20%; /* Diperlebar signifikan agar teks PO tidak terpotong */
             text-align: center;
         }
+        /* --- BATAS PERBAIKAN --- */
 
-        .detail .remark {
-            width: 5%;
-            text-align: left;
-        }
-
+        /* --- PERBAIKAN BARIS TOTAL --- */
         .total-row {
             display: grid;
-            grid-template-columns: 1fr 180px;
+            /* 68% (Total kolom sblm amount) + 12% (amount) + 20% (P.O.#) = 100% */
+            grid-template-columns: 68% 12% 20%;
             border-bottom: 1px solid #000000;
             padding: 10px 0 8px 0;
             font-weight: bold;
@@ -343,8 +343,9 @@ for ($i = 0; $i < count($rows); $i++) {
 
         .total-value {
             text-align: right;
-            padding-right: 8px;
+            padding-right: 12px; /* Dibuat sama dengan padding-right kolom Amount agar sejajar */
         }
+        /* --- BATAS PERBAIKAN --- */
 
         .note-row {
             display: grid;
@@ -506,7 +507,6 @@ for ($i = 0; $i < count($rows); $i++) {
                 <th class="price">Unit<br>Price</th>
                 <th class="amount">Amount</th>
                 <th class="po">P.O.#</th>
-                <th class="remark">Remark</th>
             </tr>
         </thead>
 
@@ -541,8 +541,6 @@ for ($i = 0; $i < count($rows); $i++) {
                     $poNo = trim($r["ORDR_PO"]);
                 }
 
-                $remark = isset($r["ORDP_REM"]) ? trim($r["ORDP_REM"]) : "";
-
                 $partNoDisplay = $partNo;
 
                 if ($partNoDisplay == "") {
@@ -551,9 +549,11 @@ for ($i = 0; $i < count($rows); $i++) {
 
                 $partNameDisplay = $partName;
 
+                /* 
                 if ($partNum != "" && strpos($partNameDisplay, $partNum) === false) {
                     $partNameDisplay = trim($partNameDisplay . " " . $partNum);
-                }
+                } 
+                */
                 ?>
                 <tr>
                     <td class="no"><?php echo h($i + 1); ?>.</td>
@@ -564,7 +564,6 @@ for ($i = 0; $i < count($rows); $i++) {
                     <td class="price"><?php echo h(fmt_price($price)); ?></td>
                     <td class="amount"><?php echo h(fmt_amount($amount)); ?></td>
                     <td class="po"><?php echo h($poNo); ?></td>
-                    <td class="remark"><?php echo h($remark); ?></td>
                 </tr>
             <?php } ?>
         </tbody>
@@ -573,6 +572,7 @@ for ($i = 0; $i < count($rows); $i++) {
     <div class="total-row">
         <div class="total-label">TOTAL AMOUNT</div>
         <div class="total-value"><?php echo h(fmt_amount($totalAmount)); ?></div>
+        <div></div> <!-- Spasi kosong khusus untuk menyamai kolom P.O.# -->
     </div>
 
     <div class="note-row">

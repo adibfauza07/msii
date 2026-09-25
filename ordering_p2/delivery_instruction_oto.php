@@ -1,0 +1,667 @@
+<?php
+//delivery_instruction_oto.php
+require_once __DIR__ . "/../config/database_ordering.php";
+
+if ($conn === false) {
+    die("Koneksi database gagal.");
+}
+
+function h($value) {
+    return htmlspecialchars((string)$value, ENT_QUOTES, "UTF-8");
+}
+
+function get_param($name, $default = "") {
+    if (isset($_GET[$name])) {
+        return trim($_GET[$name]);
+    }
+    if (isset($_POST[$name])) {
+        return trim($_POST[$name]);
+    }
+    return $default;
+}
+
+function to_yyyymmdd($value) {
+    $value = trim($value);
+    if ($value == "") {
+        return "";
+    }
+    if (preg_match('/^\d{8}$/', $value)) {
+        return $value;
+    }
+    $ts = strtotime($value);
+    if ($ts === false) {
+        return "";
+    }
+    return date("Ymd", $ts);
+}
+
+function fmt_date_id($yyyymmdd) {
+    if ($yyyymmdd == "") {
+        return "";
+    }
+    $ts = strtotime($yyyymmdd);
+    if ($ts === false) {
+        return $yyyymmdd;
+    }
+    return strtoupper(date("d M Y", $ts));
+}
+
+function fmt_print_date() {
+    return date("d-M-Y H:i:s");
+}
+
+function fmt_num($value, $decimal = 0) {
+    if ($value === null || $value === "") {
+        $value = 0;
+    }
+    return number_format((float)$value, $decimal, ".", ",");
+}
+
+// Ambil parameter Customer
+$cust_code = get_param("CUST_CODE", "");
+$start_raw = get_param("START_DATE", "");
+$end_raw   = get_param("END_DATE", "");
+
+if ($cust_code == "") {
+    $cust_code = get_param("CUSTOMER", "");
+}
+
+// Jika CUST_CODE kosong, set ke '%' untuk menampilkan SEMUA
+if ($cust_code == "") {
+    $cust_code = "%";
+}
+
+$start_date = to_yyyymmdd($start_raw);
+$end_date   = to_yyyymmdd($end_raw);
+
+// Validasi Tanggal
+if ($start_date == "" || $end_date == "") {
+    die("START_DATE / END_DATE tidak valid.");
+}
+
+$sql = "
+    SELECT 
+        DP.DI_ID, DP.DIPA_LINO, DP.PART_CODE, DP.PART_ID, DP.SPR_CODE, DP.DIPA_QTY, DP.PACK_ID, 
+        DP.DIPA_PACK, DP.DIPA_PQTY, DP.DIPA_POSTED, DP.PRICE_ID, DP.DIPA_CLOSE, DP.LOCATION, 
+        DP.IS_MANUAL, DP.MANUAL_ORDR_ID, DP.MANUAL_ORDP_LINO, DP.BDQTY, DP.BC_NO, 
+        DT.DI_NO, DT.DI_START_DATE, DT.DI_DATE, DT.DI_INVNO, DT.DI_DSNO, 
+        C.CUST_CODE, C.CUST_COMP,
+        P.ITEM_NO AS PART_NO, P.ITEM_NAME AS PART_NAME
+    FROM dbo.DI_PART_TEMP DP
+    INNER JOIN dbo.DI_TEMP DT ON DP.DI_ID = DT.DI_ID
+    INNER JOIN dbo.CUST C ON DT.CUST_ID = C.CUST_ID
+    LEFT JOIN dbo.ITEMS P ON DP.PART_ID = P.ITEM_ID
+    WHERE C.CUST_CODE LIKE ? 
+      AND DT.DI_START_DATE = ? 
+      AND DT.DI_DATE = ?
+    ORDER BY DP.DI_ID ASC, DP.DIPA_LINO ASC
+";
+
+$stmt = sqlsrv_query($conn, $sql, array(
+    $cust_code,
+    $start_raw, 
+    $end_raw
+));
+
+if ($stmt === false) {
+    die("<pre>Query Gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
+}
+
+$rows = array();
+while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+    $rows[] = $r;
+}
+
+$displayStart = fmt_date_id($start_date);
+$displayEnd   = fmt_date_id($end_date);
+
+$documentPages = array();
+
+for ($i = 0; $i < count($rows); $i++) {
+    $r = $rows[$i];
+
+    $di_id = $r["DI_ID"]; 
+    $key = $di_id;
+
+    if (!isset($documentPages[$key])) {
+        $documentPages[$key] = array(
+            "CUST_CODE" => isset($r["CUST_CODE"]) ? trim((string)$r["CUST_CODE"]) : "",
+            "CUST_COMP" => isset($r["CUST_COMP"]) ? trim((string)$r["CUST_COMP"]) : "",
+            "DI_NO"     => isset($r["DI_NO"]) ? trim((string)$r["DI_NO"]) : "",
+            "DI_DSNO"   => isset($r["DI_DSNO"]) ? trim((string)$r["DI_DSNO"]) : "",
+            "DI_INVNO"  => isset($r["DI_INVNO"]) ? trim((string)$r["DI_INVNO"]) : "",
+            "LOCATION"  => isset($r["LOCATION"]) ? trim((string)$r["LOCATION"]) : "",
+            "ROWS"      => array()
+        );
+    }
+
+    $documentPages[$key]["ROWS"][] = array(
+        "ITEM_CODE"    => isset($r["PART_CODE"]) ? trim((string)$r["PART_CODE"]) : "",
+        "ITEM_NO"      => isset($r["PART_NO"]) ? trim((string)$r["PART_NO"]) : "",
+        "ITEM_NAME"    => isset($r["PART_NAME"]) ? trim((string)$r["PART_NAME"]) : "",
+        "PBQTY"        => isset($r["BDQTY"]) ? $r["BDQTY"] : 0, 
+        "PLAN_QTY"     => isset($r["DIPA_QTY"]) ? $r["DIPA_QTY"] : 0, 
+        "PO"           => "", 
+        "STD_PACK_BOX" => isset($r["DIPA_PQTY"]) ? $r["DIPA_PQTY"] : 0,
+        "PACK_CODE"    => isset($r["DIPA_PACK"]) ? trim((string)$r["DIPA_PACK"]) : ""
+    );
+}
+
+$pages = array();
+foreach ($documentPages as $page) {
+    $chunkedRows = array_chunk($page["ROWS"], 9);
+    if (empty($chunkedRows)) {
+        $chunkedRows = array(array());
+    }
+    
+    foreach ($chunkedRows as $chunk) {
+        $subPage = $page;
+        $subPage["ROWS"] = $chunk;
+        $pages[] = $subPage;
+    }
+}
+
+if (count($pages) == 0) {
+    $pages[] = array(
+        "CUST_CODE" => "",
+        "CUST_COMP" => "",
+        "DI_NO"     => "",
+        "DI_DSNO"   => "",
+        "DI_INVNO"  => "",
+        "LOCATION"  => "",
+        "ROWS"      => array()
+    );
+}
+
+$totalPages = count($pages);
+$rowsPerPage = 9;
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Delivery Instruction</title>
+
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 6mm;
+        }
+
+        body {
+            margin: 0;
+            background: #9a9a9a;
+            font-family: "Calibri", Arial, sans-serif;
+            font-size: 12px;
+            color: #000000;
+        }
+
+        .print-bar {
+            width: 285mm;
+            margin: 8px auto;
+            text-align: right;
+        }
+
+        .print-bar button {
+            padding: 6px 14px;
+            font-size: 11px;
+            cursor: pointer;
+            font-family: "Calibri", Arial, sans-serif;
+        }
+
+        .page {
+            width: 285mm;
+            min-height: 198mm;
+            margin: 10px auto;
+            background: #ffffff;
+            border: 2px solid #000000;
+            padding: 5mm;
+            box-sizing: border-box;
+            page-break-after: always;
+            overflow: hidden;
+        }
+
+        .page:last-child {
+            page-break-after: auto;
+        }
+
+        .header {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 3px;
+        }
+
+        .header td {
+            border: none;
+            vertical-align: top;
+        }
+
+        .company {
+            width: 32%;
+            font-family: "Calibri", Arial, sans-serif;
+            font-size: 12px;
+            line-height: 14px;
+        }
+
+        .company-title {
+            font-size: 15px;
+            font-weight: bold;
+        }
+        
+        .header-doc-info {
+            margin-top: 12px;
+            font-family: "Calibri", Arial, sans-serif;
+            font-size: 12px;
+            line-height: 15px;
+            font-weight: bold;
+        }
+
+        .title-area {
+            width: 40%;
+            text-align: center;
+            font-family: "Calibri", Arial, sans-serif;
+        }
+
+        .report-title {
+            font-size: 22px;
+            font-weight: bold;
+            margin-top: 16px;
+            margin-bottom: 5px;
+        }
+
+        .period {
+            font-size: 13px;
+        }
+
+        .right-info {
+            width: 28%;
+            text-align: right;
+            font-family: "Calibri", Arial, sans-serif;
+            font-size: 12px;
+            line-height: 16px;
+        }
+
+        .form-no {
+            font-weight: normal;
+        }
+
+        .page-no {
+            margin-top: 4px;
+        }
+
+        .qr-box {
+            margin-top: 4px;
+            text-align: right;
+        }
+        .qr-box img {
+            width: 50px;
+            height: 50px;
+            border: 1px solid #ccc;
+            padding: 2px;
+        }
+
+        .print-date {
+            text-align: right;
+            font-size: 11px;
+            font-family: "Calibri", Arial, sans-serif;
+            margin-top: 0;
+            margin-bottom: 3px;
+        }
+
+        .customer-title {
+            width: 100%;
+            font-family: "Calibri", Arial, sans-serif;
+            font-size: 13px;
+            font-weight: bold;
+            margin-top: 2px;
+            margin-bottom: 4px;
+            padding-left: 2px;
+            box-sizing: border-box;
+        }
+
+        .di-table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+        }
+
+        .di-table th,
+        .di-table td {
+            border: 1px solid #000000;
+            padding: 4px 3px;
+            height: 40px; 
+            line-height: 24px; 
+            font-size: 12px; 
+            box-sizing: border-box;
+            vertical-align: middle;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: clip;
+        }
+
+        .di-table th {
+            font-weight: bold;
+            text-align: center;
+            height: 25px;
+            font-size: 12px;
+        }
+
+        .empty-line td {
+            height: 40px;
+        }
+
+        .num {
+            text-align: right;
+        }
+
+        .center {
+            text-align: center;
+        }
+
+        .left {
+            text-align: left;
+            padding-left: 5px !important;
+        }
+
+        .signature {
+            width: 100%;
+            margin-top: 8px;
+            font-size: 12px;
+        }
+
+        .signature td {
+            border: none;
+        }
+
+        .sig-right {
+            text-align: right;
+            padding-right: 55px;
+            font-style: italic;
+        }
+
+        .col-no { width: 4%; }
+        .col-item-code { width: 9%; }
+        .col-item-no { width: 14%; }
+        .col-item-name { width: 18%; }
+        .col-lot-no { width: 7%; }
+        .col-po-bal { width: 7%; }
+        .col-plan { width: 7%; }
+        .col-pcs { width: 6%; }
+        .col-pack { width: 6%; }
+        .col-initial { width: 6%; }
+        .col-total { width: 7%; }
+        .col-remark { width: 6%; }
+        .col-check { width: 3%; }
+
+        @media print {
+            html, body {
+                width: 297mm;
+                height: 210mm;
+                background: #ffffff;
+            }
+            .print-bar { display: none; }
+            .page {
+                width: 285mm;
+                min-height: 198mm;
+                margin: 0 auto;
+                border: none;
+                padding: 0;
+                overflow: hidden;
+            }
+            .di-table th,
+            .di-table td {
+                height: 40px;
+                line-height: 24px;
+                font-size: 12px;
+                padding: 4px 3px;
+            }
+            .report-title { font-size: 22px; }
+            .company-title { font-size: 15px; }
+            .qr-box img {
+                border: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="print-bar">
+    <button type="button" onclick="window.print()">PRINT</button>
+    <button type="button" onclick="window.close()">CLOSE</button>
+</div>
+
+<?php 
+// Melacak nomor urut global per dokumen DI_NO
+$currentDiNo = "";
+$globalNo = 1;
+
+for ($p = 0; $p < count($pages); $p++) { 
+    $pageNo     = $p + 1;
+    $pageData   = $pages[$p];
+    $custCode   = $pageData["CUST_CODE"];
+    $custComp   = $pageData["CUST_COMP"];
+    $diNo       = $pageData["DI_NO"];
+    $diDsno     = $pageData["DI_DSNO"];
+    $diInvno    = $pageData["DI_INVNO"];
+    $location   = $pageData["LOCATION"];
+    $detailRows = $pageData["ROWS"];
+
+    // Reset nomor urut ke 1 jika berganti dokumen DI_NO baru
+    if ($diNo !== $currentDiNo) {
+        $currentDiNo = $diNo;
+        $globalNo = 1;
+    }
+?>
+
+    <div class="page">
+
+        <table class="header">
+            <tr>
+                <td class="company">
+                    <div class="company-title">P.T. IMC TEKNO INDONESIA</div>
+                    PPIC Department
+                    
+                    <div class="header-doc-info">
+                        DI NO &nbsp;: <?php echo h($diNo); ?><br>
+                        DS NO &nbsp;: <?php echo h($diDsno); ?><br>
+                        INV NO : <?php echo h($diInvno); ?>
+                        <?php if ($location != "") { ?>
+                        <br>LOC &nbsp;&nbsp;&nbsp;: <?php echo h($location); ?>
+                        <?php } ?>
+                    </div>
+                </td>
+
+                <td class="title-area">
+                    <div class="report-title">DELIVERY INSTRUCTION</div>
+                    <div class="period">
+                        <?php echo h($displayStart); ?>
+                        &nbsp;&nbsp;&nbsp;&nbsp; - &nbsp;&nbsp;&nbsp;&nbsp;
+                        <?php echo h($displayEnd); ?>
+                    </div>
+                </td>
+
+                <td class="right-info">
+                    <div class="form-no">FM.CO.00-06</div>
+                    <div class="page-no">Page <?php echo h($pageNo); ?> of <?php echo h($totalPages); ?></div>
+                    
+                    <div class="qr-box">
+                        <?php if ($diNo != "") { ?>
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=<?php echo urlencode($diNo); ?>" alt="QR Code">
+                        <?php } ?>
+                    </div>
+                </td>
+            </tr>
+        </table>
+
+        <div class="print-date">
+            Print Date : &nbsp; <?php echo h(fmt_print_date()); ?>
+        </div>
+
+        <div class="customer-title">
+            <?php echo h($custCode); ?>
+            &nbsp;&nbsp;
+            <?php echo h($custComp); ?>
+        </div>
+
+        <table class="di-table">
+            <thead>
+                <tr>
+                    <th rowspan="3" class="col-no">No</th>
+                    <th rowspan="3" class="col-item-code">Item Code</th>
+                    <th rowspan="3" class="col-item-no">Item No</th>
+                    <th rowspan="3" class="col-item-name">Item Name</th>
+                    <th rowspan="3" class="col-lot-no">Lot No</th>
+                    <th rowspan="3" class="col-po-bal">PO.Bal</th>
+                    <th rowspan="3" class="col-plan">Del.Plan</th>
+                    <th colspan="4">Actual Qty</th>
+                    <th rowspan="3" class="col-remark">REMARK</th>
+                    <th rowspan="3" class="col-check">loading<br>check</th>
+                </tr>
+                <tr>
+                    <th rowspan="2" class="col-pcs">actual</th>
+                    <th rowspan="2" class="col-pack">std_box</th>
+                    <th class="col-initial">Initial</th>
+                    <th rowspan="2" class="col-total">Total</th>
+                </tr>
+                <tr>
+                    <th class="col-initial">packing</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                <?php if (count($detailRows) == 0) { ?>
+                    <tr>
+                        <td colspan="13" class="center">
+                            Data tidak ditemukan.
+                        </td>
+                    </tr>
+                <?php } ?>
+
+                <?php 
+                    $total_po_bal = 0;
+                    $total_plan = 0;
+                    $total_box = 0;
+                ?>
+
+                <?php for ($i = 0; $i < count($detailRows); $i++) { ?>
+                    <?php 
+                        $r = $detailRows[$i]; 
+                        
+                        $jml_box = 0;
+                        if (!empty($r["STD_PACK_BOX"]) && $r["STD_PACK_BOX"] > 0) {
+                            $jml_box = ceil($r["PLAN_QTY"] / $r["STD_PACK_BOX"]);
+                        }
+
+                        $total_po_bal += $r["PBQTY"];
+                        $total_plan   += $r["PLAN_QTY"];
+                        $total_box    += $jml_box;
+                    ?>
+
+                    <tr>
+                        <td class="col-no center">
+                            <?php echo $globalNo++; ?>
+                        </td>
+
+                        <td class="col-item-code">
+                            <?php echo h($r["ITEM_CODE"]); ?>
+                        </td>
+
+                        <td class="col-item-no">
+                            <?php echo h($r["ITEM_NO"]); ?>
+                        </td>
+
+                        <td class="col-item-name">
+                            <?php echo h($r["ITEM_NAME"]); ?>
+                        </td>
+
+                        <td class="col-lot-no">&nbsp;</td>
+
+                        <td class="col-po-bal center">
+                            <?php echo h(fmt_num($r["PBQTY"], 0)); ?>
+                        </td>
+
+                        <td class="col-plan center">
+                            <?php echo h(fmt_num($r["PLAN_QTY"], 0)); ?>
+                        </td>
+
+                        <td class="col-pcs"></td>
+                        
+                        <td class="col-pack center">
+                            <?php echo h(fmt_num($r["STD_PACK_BOX"], 0)); ?>
+                        </td>
+                        
+                        <td class="col-initial center">
+                            <?php echo h($r["PACK_CODE"]); ?>
+                        </td>
+                        
+                        <td class="col-total center">
+                            <?php echo h(fmt_num($jml_box, 0)); ?>
+                        </td>
+
+                        <td class="col-remark">&nbsp;</td>
+
+                        <td class="col-check"></td>
+                    </tr>
+                <?php } ?>
+
+                <?php
+                    $usedRows = count($detailRows);
+
+                    if (count($detailRows) == 0) {
+                        $usedRows = 1;
+                    }
+
+                    $fillCount = $rowsPerPage - $usedRows - 1;
+
+                    if ($fillCount < 0) {
+                        $fillCount = 0;
+                    }
+                ?>
+
+                <?php for ($e = 0; $e < $fillCount; $e++) { ?>
+                    <tr class="empty-line">
+                        <td>&nbsp;</td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                <?php } ?>
+                
+                <tr>
+                    <td colspan="5" class="center"><strong>TOTAL</strong></td>
+                    <td class="center"><strong><?php echo h(fmt_num($total_po_bal, 0)); ?></strong></td>
+                    <td class="center"><strong><?php echo h(fmt_num($total_plan, 0)); ?></strong></td>
+                    <td></td> 
+                    <td></td> 
+                    <td></td> 
+                    <td class="center"><strong><?php echo h(fmt_num($total_box, 0)); ?></strong></td>
+                    <td></td> 
+                    <td></td> 
+                </tr>
+
+            </tbody>
+        </table>
+
+        <table class="signature">
+            <tr>
+                <td></td>
+                <td class="sig-right">[Checked by]</td>
+                <td class="sig-right">[Prepared by]</td>
+            </tr>
+        </table>
+
+    </div>
+<?php } ?>
+
+</body>
+</html>

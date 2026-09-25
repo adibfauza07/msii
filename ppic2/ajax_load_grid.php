@@ -24,8 +24,8 @@ if (!isset($conn) || $conn === false) {
 $tahun = isset($_GET['tahun']) ? trim($_GET['tahun']) : '';
 $bulan = isset($_GET['bulan']) ? trim($_GET['bulan']) : '';
 $mc_no = isset($_GET['mc_no']) ? trim($_GET['mc_no']) : ''; 
+$search_item = isset($_GET['search_item']) ? trim($_GET['search_item']) : ''; 
 
-// [PERUBAHAN 1]: Validasi mc_no dilepas agar "ALL" bisa masuk
 if ($tahun === '' || $bulan === '') {
     echo json_encode(array('status' => 'error', 'message' => 'Parameter pencarian (Tahun & Bulan) tidak lengkap.'));
     exit;
@@ -52,30 +52,66 @@ if ($nextMonth > 12) {
     $nextYear++;
 }
 
-$periode      = sprintf('%04d%02d', $curYear, $curMonth);
-$startDateStr = sprintf('%04d%02d01', $curYear, $curMonth); 
-$spEndDateStr = date('Ymd', strtotime(sprintf('%04d-%02d-01', $curYear, $curMonth) . ' +1 month -1 day'));
-$endDateStr   = date('Ymd', strtotime(sprintf('%04d-%02d-01', $curYear, $curMonth) . ' +1 month')); 
+$periode         = sprintf('%04d%02d', $curYear, $curMonth);
+$startDateStr    = sprintf('%04d%02d01', $curYear, $curMonth); 
+$spEndDateStr    = date('Ymd', strtotime(sprintf('%04d-%02d-01', $curYear, $curMonth) . ' +1 month -1 day'));
+$endDateStr      = date('Ymd', strtotime(sprintf('%04d-%02d-01', $curYear, $curMonth) . ' +1 month')); 
+$mpsStartDateStr = sprintf('%04d-%02d-01 00:00:00', $curYear, $curMonth);
+// TINDAKAN PROTEKTIF: Mencegah timeout & Out of Memory
+ini_set('memory_limit', '1024M'); 
+set_time_limit(300); 
 
+// =========================================================================
+// MODE BERJENJANG: Ambil Daftar Antrean Item
+// =========================================================================
+$action = isset($_GET['action']) ? trim($_GET['action']) : '';
+if ($action === 'get_queue') {
+    $sqlQ = "SELECT DISTINCT LTRIM(RTRIM(ITEM_CODE)) AS ITEM_CODE FROM RPT_PPIC WHERE periode = ?";
+    $paramsQ = array($periode);
+    
+    if ($mc_no !== '' && $mc_no !== 'ALL') {
+        $sqlQ .= " AND MC_NO = ?";
+        $paramsQ[] = $mc_no;
+    }
+    if ($search_item !== '') {
+        $sqlQ .= " AND LTRIM(RTRIM(ITEM_CODE)) = ?";
+        $paramsQ[] = $search_item;
+    }
+    $sqlQ .= " ORDER BY LTRIM(RTRIM(ITEM_CODE)) ASC";
+    
+    $stmtQ = sqlsrv_query($conn, $sqlQ, $paramsQ);
+    $queue = array();
+    if ($stmtQ) {
+        while ($rowQ = sqlsrv_fetch_array($stmtQ, SQLSRV_FETCH_ASSOC)) {
+            $queue[] = $rowQ['ITEM_CODE'];
+        }
+        sqlsrv_free_stmt($stmtQ);
+    }
+    echo json_encode(array('status' => 'success', 'data' => $queue));
+    exit;
+}
 /* =================================================================================
-   1. AMBIL HEADER MASTER (RPT_PPIC)
+   1. AMBIL HEADER MASTER (RPT_PPIC) + MPS3Month (OE1 & SAFETY)
 ==================================================================================== */
 $sqlHdr = "SELECT 
             P.ID_NO, P.MC_NO, P.PART_NAME, P.PART_NO, P.ITEM_CODE, 
             ISNULL(ICV.CUST_COMP, P.CUST) AS CUST, 
             ISNULL(P.FORECAST_N1, 0) AS FORECAST_N1, 
-            ISNULL(P.CUR_PO_BO, 0) AS CUR_PO_BO, 
+
+            -- MENGAMBIL OE1 DAN SAFETY DARI MPS3Month
+            ISNULL(MPS.OE1, ISNULL(P.CUR_PO_BO, 0)) AS ESTIMATION_ORDER,
+            ISNULL(MPS.OE1, ISNULL(P.CUR_PO_BO, 0)) AS CUR_PO_BO, 
+            ISNULL(MPS.ITEM_SAFETY, ISNULL(P.SAFETY_STK, 0)) AS SAFETY_STK,
+
             ISNULL(P.CYCLE_TIME_STD, 0) AS CYCLE_TIME_STD, 
             ISNULL(P.CAVITY_STD, 0) AS CAVITY_STD, 
             ISNULL(P.PROD_PLAN, 0) AS PROD_PLAN,        
             ISNULL(P.CAP_DAY_STD, 0) AS CAP_DAY_STD,    
             ISNULL((CAST(P.PROD_PLAN AS FLOAT) / NULLIF(P.CAP_DAY_STD, 0)), 0) AS WORK_DAY, 
-            ISNULL(P.ppa_qty, 0) AS ppa_qty,
-            ISNULL(P.SAFETY_STK, 0) AS SAFETY_STK,
+            ISNULL(MPS.OE1, ISNULL(P.ppa_qty, 0)) AS ppa_qty,
             ISNULL(P.no_urut, 0) AS NO_URUT,
             ISNULL(SOP_DATA.BEG_BALANCE, 0) AS BEG_BALANCE,
             
-            -- KALKULASI MATEMATIS EST STOCK ACTUAL DARI BULAN SEBELUMNYA
             ISNULL((
                 SELECT 
                     ISNULL((
@@ -96,7 +132,16 @@ $sqlHdr = "SELECT
             ), 0) AS PREV_EST_ACTUAL
             
            FROM RPT_PPIC P
+           LEFT JOIN ITEMS ITM ON LTRIM(RTRIM(P.ITEM_CODE)) = LTRIM(RTRIM(ITM.ITEM_CODE))
            LEFT JOIN ITEM_CUSTINFO_VIEW ICV ON LTRIM(RTRIM(ICV.PART_CODE)) = LTRIM(RTRIM(P.ITEM_CODE))
+
+           -- AMBIL OE1 & SAFETY DARI MPS3Month
+           OUTER APPLY (
+               SELECT ITEM_SAFETY, OE1 
+               FROM dbo.MPS3Month(?) 
+               WHERE ITEM_ID = ITM.ITEM_ID
+           ) MPS
+
            LEFT JOIN (
                SELECT ITEMS.ITEM_CODE, SUM(TAGS.TAG_QTY) AS BEG_BALANCE
                FROM TAGS 
@@ -108,12 +153,22 @@ $sqlHdr = "SELECT
            
            WHERE P.periode = ? ";
 
-// [PERUBAHAN 2]: Filter mesin dinamis, berjalan jika bukan ALL
-$paramsHdr = array($prevStartDateStr, $prevPeriode, $startDateStr, $periode);
+$paramsHdr = array(
+    $prevStartDateStr, 
+    $prevPeriode, 
+    $mpsStartDateStr, // Parameter untuk dbo.MPS3Month(?)
+    $startDateStr, 
+    $periode
+);
 
 if ($mc_no !== '' && $mc_no !== 'ALL') {
     $sqlHdr .= " AND P.MC_NO = ? ";
     $paramsHdr[] = $mc_no;
+}
+
+if ($search_item !== '') {
+    $sqlHdr .= " AND LTRIM(RTRIM(P.ITEM_CODE)) = ? ";
+    $paramsHdr[] = $search_item;
 }
 
 $sqlHdr .= " ORDER BY P.MC_NO ASC, CASE WHEN ISNUMERIC(P.no_urut) = 1 THEN CAST(P.no_urut AS INT) ELSE 99999 END ASC";
@@ -132,6 +187,16 @@ $arrItemCodes = array();
 
 while ($row = sqlsrv_fetch_array($stmtHdr, SQLSRV_FETCH_ASSOC)) {
     if (isset($row['WORK_DAY'])) $row['WORK_DAY'] = round((float)$row['WORK_DAY'], 2);
+
+    // Pastikan nilai Estimation Order & Safety Stock terformat rapi
+    $estVal = isset($row['ESTIMATION_ORDER']) ? (float)$row['ESTIMATION_ORDER'] : 0;
+    $row['ESTIMATION_ORDER'] = $estVal;
+    $row['estimation_order'] = $estVal;
+
+    $safetyVal = isset($row['SAFETY_STK']) ? (float)$row['SAFETY_STK'] : 0;
+    $row['SAFETY_STK'] = $safetyVal;
+    $row['safety_stk'] = $safetyVal;
+
     foreach ($row as $k => $v) $row[$k] = ($v !== null) ? $v : '';
     $headerRows[] = $row;
     $arrIdNos[]   = (int)$row['ID_NO']; 
@@ -140,22 +205,56 @@ while ($row = sqlsrv_fetch_array($stmtHdr, SQLSRV_FETCH_ASSOC)) {
 sqlsrv_free_stmt($stmtHdr);
 
 if (empty($headerRows)) {
-    echo json_encode(array('status' => 'error', 'message' => 'Data tidak ditemukan untuk periode ini.'));
+    echo json_encode(array('status' => 'error', 'message' => 'Data tidak ditemukan untuk periode/pencarian ini.'));
     exit;
+}
+
+/* =================================================================================
+   AMANKAN MEMORI: Buat Filter 'IN' Hanya Untuk Item Yang Tampil Saat Ini
+==================================================================================== */
+$inStringItems = "''"; 
+if (count($arrItemCodes) > 0) {
+    $uniqueItemCodes = array_unique($arrItemCodes);
+    $escapedItems = array();
+    foreach($uniqueItemCodes as $ic) { 
+        $escapedItems[] = "'" . str_replace("'", "''", $ic) . "'"; // Cegah SQL injection
+    }
+    $inStringItems = implode(',', $escapedItems);
 }
 
 /* =================================================================================
    2. UPDATE RPT_PPIC_DTL: SINKRONISASI DATABASE TRANSAKSI, DELIVERY, & PRODUKSI
 ==================================================================================== */
 
-// A. PULL DELIVERY SCHEDULE
+// A. PULL DELIVERY SCHEDULE (Akumulasi multi customer per item)
 $sqlSP = "EXEC sp_PivotDeliverySchedule_ByCustomer @start_date = ?, @end_date = ?";
 $stmtSP = sqlsrv_query($conn, $sqlSP, array($startDateStr, $spEndDateStr));
 
 $spLookup = array(); 
 if ($stmtSP !== false) {
     while ($rowSP = sqlsrv_fetch_array($stmtSP, SQLSRV_FETCH_ASSOC)) {
-        $spLookup[trim($rowSP['ITEM_CODE'])] = $rowSP;
+        $ic = trim($rowSP['ITEM_CODE']);
+        
+        if (!isset($spLookup[$ic])) {
+            $spLookup[$ic] = $rowSP;
+            if (!isset($spLookup[$ic]['TOTAL_SCH'])) $spLookup[$ic]['TOTAL_SCH'] = 0;
+            if (!isset($spLookup[$ic]['TOTAL_DEL'])) $spLookup[$ic]['TOTAL_DEL'] = 0;
+        } else {
+            for ($i = 1; $i <= 31; $i++) {
+                if (isset($rowSP[$i.'_SCH'])) {
+                    $spLookup[$ic][$i.'_SCH'] = (isset($spLookup[$ic][$i.'_SCH']) ? (float)$spLookup[$ic][$i.'_SCH'] : 0) + (float)$rowSP[$i.'_SCH'];
+                }
+                if (isset($rowSP[$i.'_DEL'])) {
+                    $spLookup[$ic][$i.'_DEL'] = (isset($spLookup[$ic][$i.'_DEL']) ? (float)$spLookup[$ic][$i.'_DEL'] : 0) + (float)$rowSP[$i.'_DEL'];
+                }
+            }
+            if (isset($rowSP['TOTAL_SCH'])) {
+                $spLookup[$ic]['TOTAL_SCH'] = (float)$spLookup[$ic]['TOTAL_SCH'] + (float)$rowSP['TOTAL_SCH'];
+            }
+            if (isset($rowSP['TOTAL_DEL'])) {
+                $spLookup[$ic]['TOTAL_DEL'] = (float)$spLookup[$ic]['TOTAL_DEL'] + (float)$rowSP['TOTAL_DEL'];
+            }
+        }
     }
     sqlsrv_free_stmt($stmtSP);
 }
@@ -164,7 +263,7 @@ if ($stmtSP !== false) {
 $sqlTrans = "
     SELECT 
         ITEMS.ITEM_CODE, 
-        TRANS.TRTY_CODE,
+        TRANS.TRTY_CODE, 
         DAY(TRANS.TRAN_DATE) AS TANGGAL, 
         SUM(INV_TRAN.IT_QTY) AS QTY
     FROM TRANS 
@@ -172,17 +271,15 @@ $sqlTrans = "
     INNER JOIN ITEMS ON INV_TRAN.ITEM_ID = ITEMS.ITEM_ID
     WHERE TRANS.TRTY_CODE IN ('23', '22', '25', '11', '13', '24') 
       AND TRANS.TRAN_DATE >= ? AND TRANS.TRAN_DATE < ?
-    GROUP BY ITEMS.ITEM_CODE, TRANS.TRTY_CODE, DAY(TRANS.TRAN_DATE)
+      AND LTRIM(RTRIM(ITEMS.ITEM_CODE)) IN ($inStringItems)
 ";
-$stmtTrans = sqlsrv_query($conn, $sqlTrans, array($startDateStr, $endDateStr));
+$paramsTrans = array($startDateStr, $endDateStr);
+$sqlTrans .= " GROUP BY ITEMS.ITEM_CODE, TRANS.TRTY_CODE, DAY(TRANS.TRAN_DATE)";
+$stmtTrans = sqlsrv_query($conn, $sqlTrans, $paramsTrans);
 
 $trtyToDesc = array(
-    '23' => 'NG Rework',
-    '22' => 'Limbah Out',
-    '25' => 'Repl To Customer',
-    '11' => 'Retur From Cust',
-    '13' => 'Retur To Cust2',
-    '24' => 'Replace From Cust2'
+    '23' => 'NG Rework', '22' => 'Limbah Out', '25' => 'Repl To Customer',
+    '11' => 'Retur From Cust', '13' => 'Retur To Cust2', '24' => 'Replace From Cust2'
 );
 
 $transLookup = array();
@@ -204,10 +301,11 @@ if ($stmtTrans !== false) {
 }
 $trackedDescs = array_values($trtyToDesc);
 
-// C. PULL PRODUKSI (OK, NG, HOLD) DARI TABEL PRODUCTION DAN WO
+// C. PULL PRODUKSI (OK, NG, HOLD) 
 $sqlProd = "
     SELECT 
         LTRIM(RTRIM(ITEMS.ITEM_CODE)) AS ITEM_CODE,
+        LTRIM(RTRIM(MAC.MAC_CODE)) AS machine_code,
         DAY(PRODUCTION.PD_DATE) AS TANGGAL,
         SUM(ISNULL(PRODUCTION.PD_OK, 0)) AS PD_OK,
         SUM(ISNULL(PRODUCTION.PD_NG, 0)) AS PD_NG,
@@ -215,38 +313,45 @@ $sqlProd = "
     FROM PRODUCTION
     INNER JOIN WO ON PRODUCTION.WO_ID = WO.WO_ID
     INNER JOIN ITEMS ON WO.ITEM_ID = ITEMS.ITEM_ID
+    INNER JOIN MAC ON WO.MAC_ID = MAC.MAC_ID
+    INNER JOIN MAG ON MAC.MAG_ID = MAG.MAG_ID
     WHERE PRODUCTION.PD_DATE >= ? AND PRODUCTION.PD_DATE < ?
-    GROUP BY ITEMS.ITEM_CODE, DAY(PRODUCTION.PD_DATE)
+      AND LTRIM(RTRIM(ITEMS.ITEM_CODE)) IN ($inStringItems)
 ";
-$stmtProd = sqlsrv_query($conn, $sqlProd, array($startDateStr, $endDateStr));
+$paramsProd = array($startDateStr, $endDateStr);
+$sqlProd .= " GROUP BY ITEMS.ITEM_CODE, MAC.MAC_CODE, DAY(PRODUCTION.PD_DATE)";
+$stmtProd = sqlsrv_query($conn, $sqlProd, $paramsProd);
 
 $prodLookup = array();
 if ($stmtProd !== false) {
     while ($rowP = sqlsrv_fetch_array($stmtProd, SQLSRV_FETCH_ASSOC)) {
-        $ic = trim($rowP['ITEM_CODE']);
+        $ic  = trim($rowP['ITEM_CODE']);
+        $mc  = trim($rowP['machine_code']); 
         $tgl = (int)$rowP['TANGGAL'];
         
         if (!isset($prodLookup[$ic])) {
-            $prodLookup[$ic] = array(
+            $prodLookup[$ic] = array();
+        }
+        
+        if (!isset($prodLookup[$ic][$mc])) {
+            $prodLookup[$ic][$mc] = array(
                 'Prod OK' => array(), 
                 'Prod NG' => array(), 
                 'Prod HOLD' => array()
             );
         }
         
-        $prodLookup[$ic]['Prod OK'][$tgl] = (float)$rowP['PD_OK'];
-        $prodLookup[$ic]['Prod NG'][$tgl] = (float)$rowP['PD_NG'];
-        $prodLookup[$ic]['Prod HOLD'][$tgl] = (float)$rowP['PD_HO'];
+        $prodLookup[$ic][$mc]['Prod OK'][$tgl] = (float)$rowP['PD_OK'];
+        $prodLookup[$ic][$mc]['Prod NG'][$tgl] = (float)$rowP['PD_NG'];
+        $prodLookup[$ic][$mc]['Prod HOLD'][$tgl] = (float)$rowP['PD_HO'];
     }
     sqlsrv_free_stmt($stmtProd);
 }
-
 
 // MEMULAI TRANSAKSI UPDATE
 sqlsrv_begin_transaction($conn);
 $isUpdateSuccess = true;
 
-// [PERUBAHAN 3]: MEMASTIKAN TEMPLATE BARIS LENGKAP - FILTER DINAMIS
 $sqlFixTemplate = "
     INSERT INTO RPT_PPIC_DTL (ID_NO, DESC_PROD)
     SELECT h.ID_NO, d.DESC_PROD
@@ -268,6 +373,11 @@ $fixParams = array($periode);
 if ($mc_no !== '' && $mc_no !== 'ALL') {
     $sqlFixTemplate .= " AND h.MC_NO = ? ";
     $fixParams[] = $mc_no;
+}
+
+if ($search_item !== '') {
+    $sqlFixTemplate .= " AND LTRIM(RTRIM(h.ITEM_CODE)) = ? ";
+    $fixParams[] = $search_item;
 }
 
 $sqlFixTemplate .= " AND NOT EXISTS (
@@ -296,23 +406,40 @@ if ($isUpdateSuccess) {
         &$updGTotal, &$updIdNo, &$updDesc
     ));
 
+    $processedDeliveryItems = array(); 
+    
     foreach ($headerRows as $hdr) {
         $updIdNo = $hdr['ID_NO'];
         $item_code = trim($hdr['ITEM_CODE']);
+        $mc_no_hdr = trim($hdr['MC_NO']); 
 
         // EXECUTE DELIVERY
         if (isset($spLookup[$item_code])) {
             $spData = $spLookup[$item_code];
             
-            $updDesc = 'Del Plan';
-            for ($i=1; $i<=31; $i++) { ${"updD".$i} = isset($spData[$i.'_SCH']) ? (float)$spData[$i.'_SCH'] : 0; }
-            $updGTotal = isset($spData['TOTAL_SCH']) ? (float)$spData['TOTAL_SCH'] : 0;
-            if (sqlsrv_execute($stmtUpd) === false) { $isUpdateSuccess = false; break; }
-            
-            $updDesc = 'Del Actual';
-            for ($i=1; $i<=31; $i++) { ${"updD".$i} = isset($spData[$i.'_DEL']) ? (float)$spData[$i.'_DEL'] : 0; }
-            $updGTotal = isset($spData['TOTAL_DEL']) ? (float)$spData['TOTAL_DEL'] : 0;
-            if (sqlsrv_execute($stmtUpd) === false) { $isUpdateSuccess = false; break; }
+            if (!isset($processedDeliveryItems[$item_code])) {
+                $updDesc = 'Del Plan';
+                for ($i=1; $i<=31; $i++) { ${"updD".$i} = isset($spData[$i.'_SCH']) ? (float)$spData[$i.'_SCH'] : 0; }
+                $updGTotal = isset($spData['TOTAL_SCH']) ? (float)$spData['TOTAL_SCH'] : 0;
+                if (sqlsrv_execute($stmtUpd) === false) { $isUpdateSuccess = false; break; }
+                
+                $updDesc = 'Del Actual';
+                for ($i=1; $i<=31; $i++) { ${"updD".$i} = isset($spData[$i.'_DEL']) ? (float)$spData[$i.'_DEL'] : 0; }
+                $updGTotal = isset($spData['TOTAL_DEL']) ? (float)$spData['TOTAL_DEL'] : 0;
+                if (sqlsrv_execute($stmtUpd) === false) { $isUpdateSuccess = false; break; }
+                
+                $processedDeliveryItems[$item_code] = true;
+            } else {
+                $updDesc = 'Del Plan';
+                for ($i=1; $i<=31; $i++) { ${"updD".$i} = 0; }
+                $updGTotal = 0;
+                if (sqlsrv_execute($stmtUpd) === false) { $isUpdateSuccess = false; break; }
+                
+                $updDesc = 'Del Actual';
+                for ($i=1; $i<=31; $i++) { ${"updD".$i} = 0; }
+                $updGTotal = 0;
+                if (sqlsrv_execute($stmtUpd) === false) { $isUpdateSuccess = false; break; }
+            }
         }
 
         // EXECUTE MUTASI
@@ -327,13 +454,13 @@ if ($isUpdateSuccess) {
             if (sqlsrv_execute($stmtUpd) === false) { $isUpdateSuccess = false; break 2; }
         }
 
-        // EXECUTE PRODUKSI (OK, NG, HOLD)
+        // EXECUTE PRODUKSI 
         $prodDescs = array('Prod OK', 'Prod NG', 'Prod HOLD');
         foreach ($prodDescs as $desc) {
             $updDesc = $desc;
             $updGTotal = 0;
             for ($i=1; $i<=31; $i++) { 
-                $valT = isset($prodLookup[$item_code][$desc][$i]) ? $prodLookup[$item_code][$desc][$i] : 0;
+                $valT = isset($prodLookup[$item_code][$mc_no_hdr][$desc][$i]) ? $prodLookup[$item_code][$mc_no_hdr][$desc][$i] : 0;
                 ${"updD".$i} = $valT;
                 $updGTotal += $valT;
             }
@@ -360,18 +487,18 @@ if (count($arrIdNos) > 0) {
                    ORDER BY ID_NO, CASE DESC_PROD 
                        WHEN 'Del Plan' THEN 1 
                        WHEN 'Del Actual' THEN 2 
-                       WHEN 'Del Balance' THEN 3
+                       WHEN 'Del Balance' THEN 3 
                        WHEN 'Prod Plan R0' THEN 4 
-                       WHEN 'Prod NG' THEN 5
-                       WHEN 'Prod OK' THEN 6 
-                       WHEN 'Prod HOLD' THEN 7 
-                       WHEN 'Prod Balance' THEN 8
+                       WHEN 'Prod OK' THEN 5 
+                       WHEN 'Prod HOLD' THEN 6 
+                       WHEN 'Prod NG' THEN 7 
+                       WHEN 'Prod Balance' THEN 8 
                        WHEN 'NG Rework' THEN 9 
-                       WHEN 'Limbah Out' THEN 10
-                       WHEN 'Repl To Customer' THEN 11
-                       WHEN 'Retur From Cust' THEN 12
-                       WHEN 'Retur To Cust2' THEN 13
-                       WHEN 'Replace From Cust2' THEN 14
+                       WHEN 'Limbah Out' THEN 10 
+                       WHEN 'Repl To Customer' THEN 11 
+                       WHEN 'Retur From Cust' THEN 12 
+                       WHEN 'Retur To Cust2' THEN 13 
+                       WHEN 'Replace From Cust2' THEN 14 
                        WHEN 'Est Stock Plan' THEN 98 
                        WHEN 'Est Stock Actual' THEN 99 
                        ELSE 20 END ASC";

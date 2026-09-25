@@ -357,23 +357,23 @@ if ($export == "excel") {
 
     <style>
         html, body {
-            margin: 0;
-            padding: 0;
-            background: #9c9c9c;
-            color: #000000;
-            font-family: "Times New Roman", serif;
-            font-size: 10px;
-        }
+    margin: 0;
+    padding: 0;
+    background: #9c9c9c;
+    color: #000000;
+    font-family: Calibri, Arial, sans-serif;
+    font-size: 10px; /* Ukuran font di file MPS/MOR/MRP Anda */
+    zoom: 100%; /* <--- TAMBAHKAN BARIS INI UNTUK ZOOM 125% DI LAYAR */
+}
 
         .filter {
             width: calc(100% - 20px);
-            max-width: 1180px;
             margin: 8px auto;
             background: #d4d0c8;
             border: 1px solid #777777;
             padding: 8px;
             box-sizing: border-box;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: Calibri, Arial, sans-serif;
             font-size: 12px;
             white-space: nowrap;
         }
@@ -382,7 +382,7 @@ if ($export == "excel") {
             height: 24px;
             border: 1px solid #777777;
             padding: 2px 5px;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: Calibri, Arial, sans-serif;
             font-size: 12px;
             box-sizing: border-box;
         }
@@ -393,7 +393,7 @@ if ($export == "excel") {
             border: 1px solid #777777;
             background: #eeeeee;
             cursor: pointer;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: Calibri, Arial, sans-serif;
             font-size: 12px;
             color: #000000;
             text-decoration: none;
@@ -402,20 +402,20 @@ if ($export == "excel") {
 
         .toolbar {
             width: calc(100% - 20px);
-            max-width: 1180px;
             margin: 0 auto 6px auto;
             text-align: right;
         }
 
         .page {
             width: calc(100% - 20px);
-            max-width: 1180px;
             min-height: 780px;
             margin: 0 auto 20px auto;
             background: #ffffff;
             padding: 8px 12px;
             border: 2px solid #000000;
             box-sizing: border-box;
+            /* Perubahan: Overflow untuk mengakomodasi layar sempit */
+            overflow-x: auto; 
         }
 
         .topline {
@@ -449,18 +449,23 @@ if ($export == "excel") {
 
         table.report {
             width: 100%;
+            /* Perubahan: Min Width agar tabel tidak menyusut paksa & merusak layout */
+            min-width: 1200px;
             border-collapse: collapse;
-            table-layout: fixed;
-            font-size: 7px;
+            /* Perubahan: Memaksa browser mengikuti lebar yang diinstruksikan */
+            table-layout: fixed; 
+            font-size: 8.5px; /* Perubahan: Diperbesar dari 7px */
         }
 
         table.report th,
         table.report td {
             border: 1px dotted #000000;
-            padding: 1px 2px;
+            padding: 2px 3px;
             vertical-align: top;
-            line-height: 9px;
+            line-height: 11px;
             overflow: hidden;
+            /* Perubahan: Teks panjang akan dipotong otomatis */
+            word-wrap: break-word; 
         }
 
         table.report th {
@@ -477,7 +482,8 @@ if ($export == "excel") {
             font-weight: bold;
             border-top: 1px solid #000000;
             border-bottom: 1px solid #000000;
-            background: #ffffff;
+            background: #f3f3f3;
+            font-size: 9.5px; /* Perubahan: Diperbesar */
         }
 
         .total-row td {
@@ -498,7 +504,7 @@ if ($export == "excel") {
         .no-data {
             padding: 60px 0;
             text-align: center;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: Calibri, Arial, sans-serif;
             font-size: 14px;
         }
 
@@ -519,21 +525,19 @@ if ($export == "excel") {
 
             .page {
                 width: 100%;
-                max-width: none;
+                max-width: none; /* Perubahan: Menyesuaikan halaman cetak */
                 min-height: auto;
                 margin: 0;
                 border: none;
                 padding: 0;
-            }
-
-            table.report {
-                font-size: 6px;
+                overflow: visible;
             }
 
             table.report th,
             table.report td {
-                padding: 1px;
-                line-height: 8px;
+                font-size: 8px; /* Perubahan: Diperbesar untuk cetakan */
+                padding: 2px;
+                line-height: 10px;
             }
         }
     </style>
@@ -575,68 +579,75 @@ if ($export == "excel") {
         <div class="no-data">Data MOR tidak ditemukan.</div>
     <?php } else { ?>
         <table class="report">
+            <!-- Perubahan: Mapping persentase lebar 26 kolom agar Genap 100% -->
             <colgroup>
-                <col style="width:2%;">
-                <col style="width:5%;">
-                <col style="width:14%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
-                <col style="width:4%;">
+                <col style="width:2%;">     <!-- 1. NO -->
+                <col style="width:6.5%;">   <!-- 2. CODE -->
+                <col style="width:13%;">    <!-- 3. Material Name -->
+                <col style="width:3%;">     <!-- 4. Safety -->
+                <!-- TAG -->
+                <col style="width:3%;">     <!-- 5. IN -->
+                <col style="width:3%;">     <!-- 6. EXT -->
+                <col style="width:3%;">     <!-- 7. TOTAL -->
+                <!-- M1 (8 Kolom x 3.5%) -->
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <!-- M2 (6 Kolom x 3.5%) -->
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <!-- M3 (5 Kolom x 3.5%) -->
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
+                <col style="width:3.5%;">
             </colgroup>
             <thead>
                 <tr>
-                    <th rowspan="3">NO</th>
-                    <th rowspan="3">CODE</th>
-                    <th rowspan="3">Material Name</th>
-                    <th rowspan="3">Safety</th>
-                    <th colspan="3">TAG</th>
-                    <th colspan="8"><?php echo h($m1); ?></th>
-                    <th colspan="6"><?php echo h($m2); ?></th>
-                    <th colspan="5"><?php echo h($m3); ?></th>
+                    <!-- Perubahan: Pemasangan inline style persentase pada <th> agar browser menurut (24.5%) -->
+                    <th rowspan="3" style="width:2%;">NO</th>
+                    <th rowspan="3" style="width:6.5%;">CODE</th>
+                    <th rowspan="3" style="width:13%;">Material Name</th>
+                    <th rowspan="3" style="width:3%;">Safety</th>
+                    <th colspan="3" style="width:9%;">TAG</th>
+                    <th colspan="8" style="width:28%;"><?php echo h($m1); ?></th>
+                    <th colspan="6" style="width:21%;"><?php echo h($m2); ?></th>
+                    <th colspan="5" style="width:17.5%;"><?php echo h($m3); ?></th>
                 </tr>
                 <tr>
-                    <th>IN</th>
-                    <th>EXT</th>
-                    <th>TOTAL</th>
-                    <th>PO<br>Supplier</th>
-                    <th>USE 1</th>
-                    <th>Demand</th>
-                    <th>Purchase</th>
-                    <th>Purchase1<br>Adjust</th>
-                    <th>REC</th>
-                    <th>ADD</th>
-                    <th>Endst1</th>
-                    <th>Out<br>Standing</th>
-                    <th>USE 2</th>
-                    <th>Demand</th>
-                    <th>Purchase2</th>
-                    <th>Purchase2<br>Adjust</th>
-                    <th>Endst2</th>
-                    <th>USE 3</th>
-                    <th>Demand</th>
-                    <th>Purchase3</th>
-                    <th>Purchase3<br>Adjust</th>
-                    <th>Endst3</th>
+                    <!-- Perubahan: Pemasangan inline style persentase pada <th> lapis kedua (75.5%) -->
+                    <th style="width:3%;">IN</th>
+                    <th style="width:3%;">EXT</th>
+                    <th style="width:3%;">TOTAL</th>
+                    <th style="width:3.5%;">PO<br>Supplier</th>
+                    <th style="width:3.5%;">USE 1</th>
+                    <th style="width:3.5%;">Demand</th>
+                    <th style="width:3.5%;">Purchase</th>
+                    <th style="width:3.5%;">Purchase1<br>Adjust</th>
+                    <th style="width:3.5%;">REC</th>
+                    <th style="width:3.5%;">ADD</th>
+                    <th style="width:3.5%;">Endst1</th>
+                    <th style="width:3.5%;">Out<br>Standing</th>
+                    <th style="width:3.5%;">USE 2</th>
+                    <th style="width:3.5%;">Demand</th>
+                    <th style="width:3.5%;">Purchase2</th>
+                    <th style="width:3.5%;">Purchase2<br>Adjust</th>
+                    <th style="width:3.5%;">Endst2</th>
+                    <th style="width:3.5%;">USE 3</th>
+                    <th style="width:3.5%;">Demand</th>
+                    <th style="width:3.5%;">Purchase3</th>
+                    <th style="width:3.5%;">Purchase3<br>Adjust</th>
+                    <th style="width:3.5%;">Endst3</th>
                 </tr>
                 <tr>
                     <th></th><th></th><th></th>

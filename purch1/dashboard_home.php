@@ -3,7 +3,7 @@ if (session_id() == "") {
     session_start();
 }
 
-require_once __DIR__ . "/../config/global.php";
+require_once __DIR__ . "/../config/db_plant1.php";
 
 if ($conn === false) {
     echo "Koneksi database gagal.";
@@ -169,11 +169,47 @@ function h($value) {
 
         <div class="report-grid">
 		
+		     <div class="report-item">
+                <div class="report-name">PURCHASE </div>
+                <a class="button" href="purchase1.php" target="_blank">OPEN</a>
+            </div>
+		
+		     <div class="report-item">
+                <div class="report-name">PURCHASE YEAR FINANCE P1 DAN P2</div>
+                <a class="button" href="purchase_finance.php" target="_blank">OPEN</a>
+            </div>
+
+            <div class="report-item">
+                <div class="report-name">PURCHASE YEAR</div>
+                <a class="button" href="purchase_year.php" target="_blank">OPEN</a>
+            </div>
+			
+			 <div class="report-item">
+                <div class="report-name">WEEKLY RECEIVE SUPPLIER</div>
+                <a class="button" href="weekly_receive.php" target="_blank">OPEN</a>
+            </div>
+			
+				 <div class="report-item">
+                <div class="report-name">OUTSTANDING PO SUPPLIER</div>
+                <a class="button" href="report_po_outstanding.php" target="_blank">OPEN</a>
+            </div>
+			
+				 <div class="report-item">
+                <div class="report-name">FORECAST VS RECEIVE MATERIAL</div>
+                <a class="button" href="forecast_receive.php" target="_blank">OPEN</a>
+            </div>
+			 <div class="report-item">
+                <div class="report-name">SALES VS RECEIVE MATERIAL</div>
+                <a class="button" href="sales_receive.php" target="_blank">OPEN</a>
+            </div>
+
             <div class="report-item">
                 <div class="report-name">MATERIAL PRICE LIST</div>
                 <a class="button" href="report_price_list.php" target="_blank">OPEN</a>
             </div>
-          
+
+
+
             
 
         </div>
@@ -184,7 +220,7 @@ function h($value) {
     </div>
 
     <div class="footer">
-        P.T. IMC TEKNO INDONESIA - Purchase System Plant 1
+        P.T. IMC TEKNO INDONESIA - Ordering System Plant 1
     </div>
 
 </div>

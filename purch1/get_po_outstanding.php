@@ -1,5 +1,5 @@
 <?php
-require_once dirname(__DIR__) . "/config/global.php";
+require_once dirname(__DIR__) . "/config/db_plant1.php";
 
 header("Content-Type: application/json");
 

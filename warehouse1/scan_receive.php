@@ -14,7 +14,11 @@ require_once __DIR__ . "/../config/global.php";
     <title>Material Incoming Scan</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
+    <!-- Tambahkan jQuery UI untuk Autocomplete -->
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
     
     <style>
         body { background-color: #f4f7f6; font-family: 'Segoe UI', Tahoma, sans-serif; font-size: 11px; }
@@ -25,8 +29,8 @@ require_once __DIR__ . "/../config/global.php";
         .qr-input { 
             font-size: 16px; 
             letter-spacing: 1px; 
-            transition: all 0.1s ease-in-out; /* Transisi dipercepat */
-            height: 55px; /* Diperbesar sedikit agar tulisan besar muat */
+            transition: all 0.1s ease-in-out; 
+            height: 55px; 
         }
         
         /* Tambahan CSS untuk Efek Form Scan (Sukses) */
@@ -52,6 +56,17 @@ require_once __DIR__ . "/../config/global.php";
             font-size: 32px !important; 
             font-weight: bold; 
         }
+		/* Perbaikan Dropdown Autocomplete jQuery UI */
+.ui-autocomplete {
+    position: absolute;
+    z-index: 9999 !important; /* Memaksa dropdown selalu di atas elemen lain termasuk sticky-top */
+    max-height: 250px;        /* Membatasi tinggi maksimal dropdown */
+    overflow-y: auto;         /* Menambahkan scrollbar jika data pencarian banyak */
+    overflow-x: hidden;
+    background-color: #ffffff !important;
+    border: 1px solid #ccc;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
     </style>
 </head>
 <body>
@@ -67,16 +82,15 @@ require_once __DIR__ . "/../config/global.php";
         <div class="row mb-3">
             <div class="col-md-12">
                 <label class="fw-bold text-secondary mb-1">Arahkan Scanner ke Kotak Ini (Auto-Scan):</label>
-                <!-- Menambahkan placeholder default yang akan dimanipulasi -->
                 <input type="text" id="qrcode" class="form-control qr-input border-primary shadow-sm" placeholder="Scan QR Code..." autocomplete="off" autofocus>
             </div>
         </div>
 
-        <!-- Header Riwayat & Pencarian RCV_NO -->
+        <!-- Header Riwayat & Pencarian RCV_NO / ITEM -->
         <div class="d-flex justify-content-between align-items-center mb-2 mt-4">
             <h6 class="fw-bold text-secondary m-0"><i class="bi bi-list-check me-1"></i>Riwayat & Pencarian Berdasarkan RCV No</h6>
             <div class="input-group" style="width: 250px;">
-                <input type="text" id="search_history" class="form-control form-control-sm" placeholder="Cari RCV No..." autocomplete="off">
+                <input type="text" id="search_history" class="form-control form-control-sm" placeholder="Cari RCV No, Item Code, atau Nama Item..." autocomplete="off">
                 <button class="btn btn-outline-secondary btn-sm" type="button"><i class="bi bi-search"></i></button>
             </div>
         </div>
@@ -102,7 +116,6 @@ require_once __DIR__ . "/../config/global.php";
     </div>
 </div>
 
-<!-- Player Audio untuk efek suara Sukses dan Gagal -->
 <audio id="audio-success" src="assets/sounds/beep-success.mp3" preload="auto"></audio>
 <audio id="audio-error" src="assets/sounds/beep-error.mp3" preload="auto"></audio>
 
@@ -164,6 +177,17 @@ $(document).ready(function() {
     loadHistory();
     $qr.focus(); 
 
+    // Inisialisasi jQuery UI Autocomplete
+    $('#search_history').autocomplete({
+        source: baseUrl + 'search_item.php', 
+        minLength: 2,
+        select: function(event, ui) {
+            $(this).val(ui.item.value);
+            loadHistory(ui.item.value);
+            return false;
+        }
+    });
+
     $('#search_history').on('keyup', function() {
         var query = $(this).val();
         clearTimeout(searchTimer);
@@ -171,17 +195,17 @@ $(document).ready(function() {
     });
 
     $(document).on('click', function(e) {
-        if (!$(e.target).closest('#search_history, .btn-cetak, .btn-delete, a, button').length) {
+        // Jangan auto-focus ke $qr jika sedang mengklik di dalam elemen autocomplete UI
+        if (!$(e.target).closest('#search_history, .btn-cetak, .btn-delete, a, button, .ui-menu-item').length) {
             $qr.focus();
         }
     });
 
     // ==========================================
-    // FUNGSI FEEDBACK TULISAN BESAR (DIPERCEPAT)
+    // FUNGSI FEEDBACK & ALERT
     // ==========================================
     function setInputFeedback(status) {
         clearTimeout(colorResetTimer);
-        // Reset warna & teks default terlebih dahulu
         $qr.removeClass('scan-success scan-error').val('').attr('placeholder', 'Scan QR Code...');
         
         if (status === 'success') {
@@ -190,38 +214,33 @@ $(document).ready(function() {
             $qr.addClass('scan-error').attr('placeholder', 'Gagal!');
         }
 
-        // Kembalikan form ke normal (tulisan kecil) sangat cepat (0.5 detik)
         colorResetTimer = setTimeout(function() {
             $qr.removeClass('scan-success scan-error').attr('placeholder', 'Scan QR Code...');
         }, 500);
     }
 
-    // ==========================================
-    // FUNGSI ALERT TULISAN MERAH/HIJAU (DIPERCEPAT)
-    // ==========================================
     function showAlert(type, text) {
         $alert.removeClass('alert-success alert-danger')
               .addClass('alert-' + type)
               .html('<strong>' + (type === 'success' ? 'Info:' : 'Peringatan!') + '</strong> ' + text)
-              .show(); // Animasi dihilangkan agar instan
+              .show(); 
               
-        setTimeout(function() { $alert.hide(); }, 1000); // Pesan hilang dalam 1 detik
+        setTimeout(function() { $alert.hide(); }, 1000); 
     }
 
     // ==========================================
-    // LOGIKA SCAN DIPERCEPAT
+    // LOGIKA SCAN
     // ==========================================
     function processQRCode(rawString) {
         if (rawString.trim() === '') return;
 
-        // Kosongkan dan matikan input sementara AJAX berjalan
         $qr.val('').prop('readonly', true); 
 
         var qrParts = rawString.split('|');
         if (qrParts.length < 5) {
             playSound('error');
             showAlert('danger', 'Format QR tidak sesuai spesifikasi.');
-            setInputFeedback('error'); // Form merah, tulisan "Gagal!"
+            setInputFeedback('error'); 
             $qr.prop('readonly', false).focus();
             return false;
         }
@@ -235,18 +254,18 @@ $(document).ready(function() {
                 if (res.status === 'success') {
                     playSound('success');
                     showAlert('success', res.message);
-                    setInputFeedback('success'); // Form hijau, tulisan "Sukses!"
+                    setInputFeedback('success'); 
                     loadHistory($('#search_history').val()); 
                 } else {
                     playSound('error');
                     showAlert('danger', res.message);
-                    setInputFeedback('error'); // Form merah, tulisan "Gagal!"
+                    setInputFeedback('error'); 
                 }
             },
             error: function() {
                 playSound('error');
                 showAlert('danger', 'Terjadi kesalahan sistem/jaringan.');
-                setInputFeedback('error'); // Form merah, tulisan "Gagal!"
+                setInputFeedback('error'); 
             },
             complete: function() {
                 $qr.prop('readonly', false).focus(); 
@@ -264,8 +283,6 @@ $(document).ready(function() {
     });
 
     $qr.on('input', function() {
-        // Hapus efek warna seketika jika operator mulai scan barcode baru 
-        // saat efek SUKSES/GAGAL masih tampil
         if ($(this).hasClass('scan-success') || $(this).hasClass('scan-error')) {
             $(this).removeClass('scan-success scan-error').attr('placeholder', 'Scan QR Code...');
             clearTimeout(colorResetTimer);
@@ -274,7 +291,6 @@ $(document).ready(function() {
         var qrValue = $(this).val();
         clearTimeout(scanTimer);
         
-        // Timeout dipercepat jadi 50ms agar input scanner tidak ter-delay
         scanTimer = setTimeout(function() {
             if ($qr.val().trim() !== '') {
                 processQRCode(qrValue);

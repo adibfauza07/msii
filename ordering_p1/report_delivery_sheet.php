@@ -81,9 +81,18 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
         .title { text-align: center; font-family: Arial, sans-serif; font-size: 22px; font-weight: normal; letter-spacing: 1px; padding-top: 34px; }
         .right-head { font-size: 11px; line-height: 16px; }
         .right-topline { display: flex; justify-content: space-between; margin-bottom: 28px; }
-        .info-line { display: grid; grid-template-columns: 90px 1fr; }
+        
+        /* --- PERBAIKAN ALIGNMENT INFO-LINE --- */
+        .info-line { display: grid; grid-template-columns: 90px 1fr; align-items: baseline; margin-bottom: 2px; }
+        /* ------------------------------------- */
+        
         .info-line .label { text-align: right; padding-right: 5px; }
         .info-line .value { text-align: right; }
+        
+        /* --- KELAS BARU UNTUK NOMOR DOKUMEN --- */
+        .doc-number { font-size: 15px; font-weight: bold; }
+        /* -------------------------------------- */
+
         .separator { border-top: 1px solid #000; margin: 15px 0 7px 0; }
         .customer-area { min-height: 80px; width: 100%; }
         .messrs { font-size: 12px; line-height: 16px; }
@@ -92,24 +101,28 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
         .detail { width: 100%; border-collapse: collapse; border-top: 1px solid #000; border-bottom: 1px solid #000; margin-top: 6px; table-layout: fixed; }
         .detail th { font-size: 12px; font-weight: bold; text-align: center; padding: 3px 1px; border-bottom: 1px solid #000; vertical-align: bottom; line-height: 13px; box-sizing: border-box; }
         .detail td { font-size: 12px; padding: 2px 1px; vertical-align: top; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: clip; box-sizing: border-box; }
+        
         .detail .no { width: 4%; text-align: left; }
-        .detail .partcode { width: 13%; text-align: left; }
-        .detail .partno { width: 18%; text-align: left; }
-        .detail .partname { width: 34%; text-align: left; }
-        .detail .qty { width: 7%; text-align: right; }
-        .detail .unit { width: 6%; text-align: center; }
+        .detail .partcode { width: 12%; text-align: left; }
+        .detail .partno { width: 14%; text-align: left; }
+        .detail .partname { width: 40%; text-align: left; }
+        .detail .qty { width: 7%; text-align: right; padding-right: 6px; }
+        .detail .unit { width: 5%; text-align: center; }
         .detail .packing { width: 9%; text-align: center; }
-        .detail .pqty { width: 9%; text-align: right; }
+        .detail .pqty { width: 9%; text-align: right; padding-right: 12px; }
+
         .signature-line { border-top: 1px solid #000; margin-top: 138mm; }
         .sign-area { display: grid; grid-template-columns: 1fr 1fr 1fr; margin-top: 12px; font-size: 10px; text-align: center; }
         .sign-box { height: 58px; position: relative; }
         .sign-name { position: absolute; left: 20%; right: 20%; bottom: 0; border-top: 1px solid #000; height: 1px; }
+        
         @media print {
             body { background: #fff; }
             .print-bar { display: none; }
             .paper { width: 196mm; min-height: 281mm; margin: 0; border: none; padding: 0; overflow: hidden; }
             .detail th, .detail td { font-size: 11px; line-height: 13px; }
             .company, .messrs, .right-head { font-size: 11px; }
+            .doc-number { font-size: 14px; } /* Ukuran font cetak sedikit disesuaikan */
             .signature-line { margin-top: 132mm; }
         }
     </style>
@@ -135,9 +148,11 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
                 <div><?php echo h(fmt_datetime_header()); ?></div>
                 <div>FM.CO.00-05<br>Page 1 of 1</div>
             </div>
+            <!-- --- IMPLEMENTASI KELAS DOC-NUMBER --- -->
             <div class="info-line"><div class="label">Date :</div><div class="value"><?php echo h(fmt_date_id($diDate)); ?></div></div>
-            <div class="info-line"><div class="label">DS.No :</div><div class="value"><?php echo h($dsNo); ?></div></div>
-            <div class="info-line"><div class="label">INV.No :</div><div class="value"><?php echo h($invNo); ?></div></div>
+            <div class="info-line"><div class="label">DS.No :</div><div class="value doc-number"><?php echo h($dsNo); ?></div></div>
+            <div class="info-line"><div class="label">INV.No :</div><div class="value doc-number"><?php echo h($invNo); ?></div></div>
+            <!-- ------------------------------------- -->
         </div>
     </div>
     <div class="separator"></div>
@@ -182,9 +197,12 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
                 $unit = isset($r["PART_UNIT"]) ? trim($r["PART_UNIT"]) : "";
                 $locationCust = isset($r["LOCATION_CUST"]) ? trim($r["LOCATION_CUST"]) : "";
                 $partNameDisplay = $partName;
+                
+                /*
                 if ($locationCust != "" && strpos($partNameDisplay, $locationCust) === false) {
                     $partNameDisplay = trim($partNameDisplay . " " . $locationCust);
                 }
+                */
                 ?>
                 <tr>
                     <td class="no"><?php echo h($i + 1); ?></td>

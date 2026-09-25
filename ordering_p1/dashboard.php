@@ -126,16 +126,18 @@ function h($value) {
             ORDERING SYSTEM
         </div>
 
-        <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Report</a>
+        <a class="menu-link active" href="dashboard_home.php" target="mainFrame">REPORT</a>
+		<a class="menu-link active" href="dokumen_bc.php" target="mainFrame">DOKUMENT CONFIRMATION </a>
+		<a class="menu-link active" href="inv_bc.php" target="mainFrame">DOKUMENT CONFIRMATION INV </a>
 		<a class="menu-link" href="generate.php" target="mainFrame">GENERATE DI_NO</a>
 		<a class="menu-link" href="master.php" target="mainFrame">MASTER CUST, PRICE, CURR</a>
 		<a class="menu-link" href="sync_part_price_customer.php" target="mainFrame">PRICE SYNCRONISATION</a>
-        <a class="menu-link" href="manual_order.php" target="mainFrame">Manual Delivery Instruction</a>
-        <a class="menu-link" href="input_order.php" target="mainFrame">Input Order</a>
-        <a class="menu-link" href="forecast.php" target="mainFrame">Forecast</a>
-        <a class="menu-link" href="schedule.php" target="mainFrame">Schedule</a>
-		 <a class="menu-link" href="schedule1.php" target="mainFrame">Schedule matrix</a>
-        <a class="menu-link" href="order_edit.php" target="mainFrame">Edit Order</a>
+        <a class="menu-link" href="manual_order.php" target="mainFrame">DELIVERY INSTRUCTION</a>
+        <a class="menu-link" href="input_order.php" target="mainFrame">INPUT ORDER</a>
+        <a class="menu-link" href="forecast.php" target="mainFrame">FORECAST</a>
+        <a class="menu-link" href="schedule.php" target="mainFrame">SCHEDULE</a>
+		 <a class="menu-link" href="schedule1.php" target="mainFrame">SCHEDULE MATRIX</a>
+        <a class="menu-link" href="order_edit.php" target="mainFrame">EDIT ORDER</a>
 		<a class="menu-link" href="depresiasi.php" target="mainFrame">DEPRESIASI</a>
 		<a class="menu-link" href="quotation.php" target="mainFrame">LIST QUOTATION</a>
 		

@@ -2,6 +2,7 @@
 // FILE: msii/4m/input_pcis.php
 if (session_status() === PHP_SESSION_NONE) { session_start(); }
 if (!isset($_SESSION['erp_user'])) { $_SESSION['erp_user'] = 'Guest'; }
+$page = 'input_pcis'; // Set flag active menu
 
 require_once __DIR__ . '/../config/database.php';
 require_once 'pcis_functions.php';
@@ -94,7 +95,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
     $supplier    = isset($_POST['supplier']) ? 1 : 0;
     $perm        = isset($_POST['perm']) ? intval($_POST['perm']) : 1;
 
-    // Capture Data Baru Hasil Sinkronisasi Fitur Kotak Merah Laporan
     $need_cust   = isset($_POST['need_customer']) ? intval($_POST['need_customer']) : 1;
     $f_email     = isset($_POST['attach_email']) ? 1 : 0;
     $f_drawing   = isset($_POST['attach_drawing']) ? 1 : 0;
@@ -106,7 +106,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
     $close_change = !empty($_POST['close_change']) ? $_POST['close_change'] : null;
 
     if ($control_id > 0) {
-        // MODE UPDATE (Total 39 Parameter Field SET)
         $sql = "UPDATE PROSES_CHANGE SET 
                     CONTROL_NO = ?, CONTROL_DATE1 = ?, DEP_CODE = ?, PIC_NAME = ?, 
                     ITEM_ID = ?, MODEL = ?, MATERIAL_ID = ?, TO_PCIS = ?, CC = ?, 
@@ -130,7 +129,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
         );
         $msg = "Data PCIS #{$control_no} berhasil diperbarui!";
     } else {
-        // MODE INSERT (KALIBRASI TOTAL: 39 nama kolom dipasangkan akurat dengan 39 buah tanda tanya)
         $sql = "INSERT INTO PROSES_CHANGE (
                     CONTROL_NO, CONTROL_DATE1, DEP_CODE, PIC_NAME, ITEM_ID, MODEL, MATERIAL_ID, TO_PCIS, CC,
                     MAN, MACHINE, METHOD, MATERIAL, OTHER, INTERNAL, CUSTOMER, SUPPLIER, PERMANENT_CHANGE, 
@@ -151,12 +149,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['btnSimpan'])) {
         $msg = "Data PCIS baru berhasil disimpan!";
     }
     
-// Matikan peringatan error karakter kepanjangan
     sqlsrv_query($conn, "SET ANSI_WARNINGS OFF"); 
-    
     $stmt = q($sql, $params);
-    
-    // Hidupkan kembali
     sqlsrv_query($conn, "SET ANSI_WARNINGS ON"); 
     
     if ($stmt === false) { die(print_r(sqlsrv_errors(), true)); }
@@ -195,22 +189,84 @@ $autoControlNo = getNewControlNumber();
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Input PCIS (4M Change) - PE System</title>
+    <title>Input PCIS (4M Change) - PT. IMC Tekno</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    
+    <!-- Bootstrap 5 & FontAwesome CDN -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- UI Autocomplete -->
     <link href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css" rel="stylesheet">
+    <!-- Google Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+
     <style>
-        body { background-color: #f4f7f6; font-family: "Segoe UI", Roboto, Arial, sans-serif; overflow-x: hidden; }
-        #sidebar { width: 260px; height: 100vh; background: #1f2a36; color: white; position: fixed; display: flex; flex-direction: column; z-index: 1050; box-shadow: 3px 0 10px rgba(0,0,0,0.2); }
-        #sidebar .brand { padding: 22px 20px; font-size: 16px; font-weight: 700; background: #8b5cf6; text-align: center; text-transform: uppercase; }
-        .nav-link { color: #aab0b6; padding: 12px 20px; font-size: 13.5px; border-left: 4px solid transparent; display: flex; align-items: center; gap: 10px; transition: 0.3s; }
-        .nav-link:hover, .nav-link.active { background: #2c3e50; color: #fff !important; border-left-color: #a78bfa; }
-        .menu-label { padding: 15px 20px 5px 20px; font-size: 11px; text-transform: uppercase; color: #5b6e80; font-weight: 800; }
-        #content { padding-left: 260px; transition: all 0.3s; }
-        .top-header { background: white; padding: 15px 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 25px; }
+        body { font-family: 'Nunito', sans-serif; background-color: #f4f7f6; overflow-x: hidden; margin: 0; }
+        
+        /* --- WRAPPER & SIDEBAR --- */
+        #wrapper { display: flex; width: 100%; align-items: stretch; }
+        
+        #sidebar {
+            min-width: 260px; max-width: 260px;
+            background: #1e2833; color: #fff;
+            transition: all 0.3s ease; height: 100vh;
+            position: sticky; top: 0; overflow-y: auto;
+            z-index: 1000; box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        }
+        #sidebar.toggled { margin-left: -260px; }
+
+        #sidebar::-webkit-scrollbar { width: 5px; }
+        #sidebar::-webkit-scrollbar-track { background: #1e2833; }
+        #sidebar::-webkit-scrollbar-thumb { background: #3a4b5c; border-radius: 4px; }
+        #sidebar::-webkit-scrollbar-thumb:hover { background: #51687d; }
+
+        .sidebar-header {
+            padding: 22px 20px; background: #171f28;
+            border-bottom: 1px solid #2a3847; text-align: center;
+        }
+        .sidebar-header h4 { margin: 0; font-weight: 800; font-size: 20px; letter-spacing: 1px; color: #fff;}
+        .sidebar-header span { color: #8b5cf6; } 
+
+        .sidebar-menu { padding: 10px 0; list-style: none; margin: 0; }
+        .sidebar-menu .menu-title {
+            padding: 15px 20px 5px; font-size: 11px; color: #7b8b9a;
+            text-transform: uppercase; font-weight: 800; letter-spacing: 1px;
+        }
+        .sidebar-menu a {
+            padding: 12px 20px; display: flex; align-items: center;
+            color: #aeb9c5; text-decoration: none; transition: 0.2s;
+            font-size: 14.5px; font-weight: 600;
+        }
+        .sidebar-menu a i.icon-main { width: 25px; font-size: 16px; text-align: center; margin-right: 12px; }
+        .sidebar-menu a:hover, .sidebar-menu a.active {
+            background: #273442; color: #fff; border-left: 4px solid #8b5cf6;
+        }
+
+        /* --- CONTENT AREA --- */
+        #content-wrapper { width: 100%; min-height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* TOP NAVBAR */
+        .topbar {
+            background: #fff; height: 65px; padding: 0 25px;
+            display: flex; align-items: center; justify-content: space-between;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.03); z-index: 999; position: sticky; top: 0;
+        }
+        .btn-toggle {
+            background: #f4f7f6; border: none; font-size: 18px; color: #2c3e50;
+            width: 40px; height: 40px; border-radius: 8px; cursor: pointer; transition: 0.2s;
+        }
+        .btn-toggle:hover { background: #e2e8f0; }
+
+        .user-profile { display: flex; align-items: center; gap: 12px; font-weight: 700; color: #495057; font-size: 14px; }
+        .user-profile img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; border: 2px solid #e2e8f0; }
+
+        .main-content { padding: 30px; flex: 1; }
+
+        /* FORM CUSTOM CSS */
+        .top-header { background: white; padding: 15px 30px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 25px; }
         .card-custom { border: none; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.04); background: white; margin-bottom: 25px; overflow: hidden; }
         .card-header-custom { background: #f8f9fa; padding: 15px 20px; border-bottom: 1px solid #eef0f3; font-weight: 700; color: #1f2a36; display: flex; align-items: center; }
         .card-header-custom i { color: #8b5cf6; margin-right: 10px; font-size: 1.2rem; }
@@ -220,246 +276,283 @@ $autoControlNo = getNewControlNumber();
         .ui-autocomplete { position: absolute; z-index: 9999 !important; background: #fff; border: 1px solid #ced4da; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-height: 200px; overflow-y: auto; padding: 5px 0; }
         .ui-menu-item .ui-menu-item-wrapper { padding: 8px 15px; font-size: 0.88rem; cursor: pointer; }
         .ui-menu-item .ui-menu-item-wrapper:hover, .ui-menu-item .ui-menu-item-wrapper.ui-state-active { background-color: #8b5cf6 !important; color: #fff !important; border: none; }
+        
+        @media (max-width: 768px) {
+            #sidebar { margin-left: -260px; position: fixed; }
+            #sidebar.toggled { margin-left: 0; }
+            .main-content { padding: 15px; }
+            .floating-action { flex-direction: column; gap: 15px; }
+        }
     </style>
 </head>
 <body>
 
-<div class="d-flex w-100">
-    <div id="sidebar">
-        <div class="brand"><i class="bi bi-arrow-repeat me-2"></i>4M Change System</div>
-        <div class="py-2 overflow-auto h-100">
-            <ul class="nav flex-column">
-                <li class="nav-item"><a href="dashboard_4m.php?page=home" class="nav-link"><i class="bi bi-speedometer2"></i> Dashboard Overview</a></li>
-                <div class="menu-label fw-bold">PROSES PERUBAHAN</div>
-                <li class="nav-item"><a href="input_pcis.php" class="nav-link active"><i class="bi bi-plus-circle"></i> Input 4M Change</a></li>
-                <li class="nav-item"><a href="dashboard_4m.php?page=history" class="nav-link"><i class="bi bi-clock-history"></i> Riwayat Perubahan</a></li>
-                <li class="nav-item"><a href="dashboard_4m.php?page=rekap" class="nav-link"><i class="bi bi-journal-text"></i> Rekap Summary (SP)</a></li>
-            </ul>
-        </div>
-        <div class="sidebar-footer p-3 bg-dark mt-auto">
-            <small class="text-white-50 d-block mb-2"><i class="bi bi-person-circle me-1"></i> <?php echo $_SESSION['erp_user']; ?></small>
-            <a href="logout.php" class="btn btn-danger w-100 btn-sm"><i class="bi bi-box-arrow-right"></i> LOGOUT</a><hr class="border-secondary my-2">
-            <a href="../index.php" class="btn btn-sm btn-outline-light w-100"><i class="bi bi-box-arrow-left"></i> Kembali ke ERP</a>
-        </div>
-    </div>
+<div id="wrapper">
 
-    <div id="content" class="w-100 pb-5">
-        <div class="top-header d-flex justify-content-between align-items-center">
-            <h4 class="mb-0 fw-bold text-dark"><i class="bi bi-file-earmark-plus text-primary me-2"></i> Pengajuan Formulir PCIS Baru</h4>
-            <a href="dashboard_4m.php?page=history" class="btn btn-outline-secondary btn-sm fw-bold"><i class="bi bi-arrow-left"></i> Riwayat</a>
+    <!-- SIDEBAR -->
+    <nav id="sidebar">
+        <div class="sidebar-header">
+            <h4>4M <span>SYSTEM</span></h4>
         </div>
 
-        <div class="container-fluid px-4">
-            <form method="POST" id="form4M">
-                <input type="hidden" name="control_id" id="CONTROL_ID" value="0">
+        <ul class="sidebar-menu">
+            <li class="menu-title">Home</li>
+            <li><a href="dashboard_4m.php?page=home"><i class="fas fa-home icon-main"></i> Dashboard</a></li>
 
-                <div class="card-custom mb-4" style="border-top: 4px solid #8b5cf6 !important;">
-                    <div class="card-body p-4">
-                        <div class="row g-3">
-                            <div class="col-md-3">
-                                <label>CONTROL NO</label>
-                                <input type="text" name="control_no" class="form-control fw-bold text-danger" readonly value="<?php echo $autoControlNo; ?>">
-                            </div>
-                            <div class="col-md-3">
-                                <label>CONTROL DATE</label>
-                                <input type="date" name="control_date" class="form-control" required value="<?php echo date('Y-m-d'); ?>">
-                            </div>
-                            <div class="col-md-3">
-                                <label>TO</label>
-                                <input type="text" name="to_pcis" class="form-control" value="ALL DEPARTEMENT">
-                            </div>
-                            <div class="col-md-3">
-                                <label>CC</label>
-                                <input type="text" name="cc_pcis" class="form-control" value="ALL HEAD DEPT">
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <li class="menu-title">Proses Perubahan</li>
+            <li><a href="input_pcis.php" class="active"><i class="fas fa-file-signature icon-main"></i> Input 4M Change</a></li>
+            <li><a href="dashboard_4m.php?page=history"><i class="fas fa-history icon-main"></i> Riwayat Perubahan</a></li>
+            <li><a href="dashboard_4m.php?page=rekap"><i class="fas fa-file-invoice icon-main"></i> Rekap Summary (SP)</a></li>
 
-                <div class="row">
-                    <div class="col-lg-8">
-                        <div class="card-custom">
-                            <div class="card-header-custom"><i class="bi bi-tools"></i> Technical Change Details</div>
-                            <div class="card-body p-4">
-                                <div class="row g-3 p-3 mb-4 rounded border bg-light">
-                                    <div class="col-md-4">
-                                        <label class="d-block mb-2">Request By</label>
-                                        <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="internal" value="1" checked> <label>Internal</label></div>
-                                        <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="customer" value="1"> <label>Customer</label></div>
-                                        <div class="form-check small"><input class="form-check-input" type="checkbox" name="supplier" value="1"> <label>Supplier</label></div>
-                                    </div>
-                                    <div class="col-md-8">
-                                        <label>Person in Charge (PIC)</label>
-                                        <input type="text" name="pic_name" class="form-control mb-2" placeholder="Ketik Nama PIC..." required>
-                                        <select name="dep_code" class="form-select" required>
-                                            <option value="">-- Pilih Departemen PIC --</option>
-                                            <?php while($d = sqlsrv_fetch_array($qDept, SQLSRV_FETCH_ASSOC)) echo "<option value='{$d['DEP_CODE']}'>{$d['DEP_NAME']}</option>"; ?>
-                                        </select>
-                                    </div>
-                                </div>
+            <li class="menu-title">Session</li>
+            <li><a href="logout.php" style="color:#ff6b6b;"><i class="fas fa-sign-out-alt icon-main"></i> Logout Sistem</a></li>
+            <li><a href="../index.php" style="color:#aeb9c5;"><i class="fas fa-arrow-left icon-main"></i> Kembali ke ERP</a></li>
+        </ul>
+    </nav>
 
-                                <div class="row g-3 mb-4">
-                                    <div class="col-md-6">
-                                        <label>Customer Name</label>
-                                        <input type="text" id="CUST_COMP" class="form-control border-primary" placeholder="Klik/Cari customer..." autocomplete="off" required>
-                                        <input type="hidden" name="cust_id" id="CUST_ID">
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label>Part / Item Name</label>
-                                        <input type="text" id="PART_NAME" class="form-control border-primary" placeholder="Pilih customer, lalu klik ini..." autocomplete="off" required>
-                                        <input type="hidden" name="item_id" id="ITEM_ID">
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label>Model</label>
-                                        <input type="text" name="model" id="MODEL" class="form-control" placeholder="Model item...">
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label>Material Name (Autocomplete)</label>
-                                        <input type="text" id="MATERIAL_TEXT" class="form-control border-primary" placeholder="Klik/Cari nama material...">
-                                        <input type="hidden" name="material_id" id="MATERIAL_ID">
-                                    </div>
-                                </div>
+    <!-- CONTENT WRAPPER -->
+    <div id="content-wrapper">
+        
+        <!-- TOP NAVBAR -->
+        <div class="topbar">
+            <button class="btn-toggle" id="sidebarToggle">
+                <i class="fas fa-bars"></i>
+            </button>
+            <div class="user-profile">
+                <span>Halo, <?php echo isset($_SESSION['erp_user']) ? strtoupper($_SESSION['erp_user']) : 'Guest'; ?></span>
+                <img src="https://ui-avatars.com/api/?name=4M&background=8b5cf6&color=fff&bold=true" alt="Avatar">
+            </div>
+        </div>
 
-                                <div class="row g-3 p-3 mb-4 rounded border bg-light">
-                                    <div class="col-md-6">
-                                        <label class="border-bottom d-block pb-1 mb-2">Item Change (4M Kategori)</label>
-                                        <div class="d-flex gap-2 flex-wrap">
-                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="man" value="1"> <label>Man</label></div>
-                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="machine" value="1"> <label>Machine</label></div>
-                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="method" value="1"> <label>Method</label></div>
-                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="material_4m" value="1"> <label>Material</label></div>
-                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="other" value="1"> <label>Other</label></div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6 border-start ps-4">
-                                        <label class="border-bottom d-block pb-1 mb-2">Changing Type</label>
-                                        <div class="form-check form-check-inline small"><input class="form-check-input" type="radio" name="perm" value="1" checked> <label>Permanent</label></div>
-                                        <div class="form-check form-check-inline small"><input class="form-check-input" type="radio" name="perm" value="0"> <label>Temporary</label></div>
-                                    </div>
-                                </div>
+        <!-- MAIN CONTENT AREA -->
+        <div class="main-content">
+            <div class="top-header d-flex justify-content-between align-items-center">
+                <h4 class="mb-0 fw-bold text-dark"><i class="fas fa-file-circle-plus text-primary me-2"></i> Pengajuan Formulir PCIS Baru</h4>
+                <a href="dashboard_4m.php?page=history" class="btn btn-outline-secondary btn-sm fw-bold"><i class="fas fa-arrow-left me-1"></i> Riwayat</a>
+            </div>
 
-                                <div class="row g-3 p-3 mb-4 rounded border bg-light">
-                                    <div class="col-md-12">
-                                        <label class="border-bottom d-block pb-1 mb-2">Checklist Attachments (Lampiran)</label>
-                                        <div class="d-flex gap-4 flex-wrap">
-                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_email" value="1"> <label>Email / Information</label></div>
-                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_drawing" value="1"> <label>Drawing</label></div>
-                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_sample" value="1"> <label>Sample</label></div>
-                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_data" value="1"> <label>Data</label></div>
-                                        </div>
-                                    </div>
-                                </div>
+            <div class="container-fluid px-0">
+                <form method="POST" id="form4M">
+                    <input type="hidden" name="control_id" id="CONTROL_ID" value="0">
 
-                                <div class="mb-3">
-                                    <label>Reason / Purpose</label>
-                                    <textarea name="reason" class="form-control" rows="2" placeholder="Tuliskan alasan modifikasi..."></textarea>
-                                </div>
-                                <div class="row g-3">
-                                    <div class="col-md-6">
-                                        <label class="text-danger fw-bold">BEFORE CHANGE</label>
-                                        <textarea name="bef_change" class="form-control border-danger-subtle" rows="3" placeholder="Kondisi awal sebelum perubahan..."></textarea>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label class="text-success fw-bold">AFTER CHANGE</label>
-                                        <textarea name="aft_change" class="form-control border-success-subtle" rows="3" placeholder="Kondisi target sesudah perubahan..."></textarea>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-lg-4">
-                        <div class="card-custom mb-4">
-                            <div class="card-header-custom"><i class="bi bi-calendar3"></i> Schedule Target</div>
-                            <div class="card-body p-3">
-                                <div class="mb-2">
-                                    <label class="small text-muted">Schedule Proses Change</label>
-                                    <input type="date" name="sch_change" id="SCH_CHANGE" class="form-control form-control-sm">
-                                </div>
-                                <div class="mb-2">
-                                    <label class="small text-muted">Start Changing Date</label>
-                                    <input type="date" name="start_change" id="START_CHANGE" class="form-control form-control-sm">
-                                </div>
-                                <div class="mb-2">
-                                    <label class="small text-muted">Close Changing Date</label>
-                                    <input type="date" name="close_change" id="CLOSE_CHANGE" class="form-control form-control-sm">
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="card-custom mb-4">
-                            <div class="card-header-custom"><i class="bi bi-question-circle"></i> Customer Approval Needs</div>
-                            <div class="card-body p-3">
-                                <label class="small text-muted d-block mb-2">Do we need Customer Approved?</label>
-                                <select name="need_customer" id="NEED_CUSTOMER" class="form-select form-select-sm fw-bold">
-                                    <option value="1">YES (Memerlukan Persetujuan)</option>
-                                    <option value="0">NO (Tidak Perlu)</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="card-custom mb-4">
-                            <div class="card-header-custom"><i class="bi bi-chat-square-text"></i> Departmental Review</div>
-                            <div class="card-body p-3 overflow-auto" style="max-height: 220px;">
-                                <?php foreach(['PE'=>'pe_remark','QC'=>'qc_remark','MOLD'=>'mold_remark','PPIC'=>'ppic_remark','PROD'=>'prod_remark','MKT'=>'mkt_remark'] as $lbl => $n): ?>
-                                <div class="mb-2 pb-2 border-bottom">
-                                    <label class="text-muted small" style="font-size:10px;"><?= $lbl ?> REMARK</label>
-                                    <textarea name="<?= $n ?>" class="form-control form-control-sm" rows="1"></textarea>
-                                </div>
-                                <?php endforeach; ?>
-                            </div>
-                        </div>
-
-                        <datalist id="list_nama_pegawai">
-                            <?php foreach($list_users as $nama): ?>
-                                <option value="<?php echo htmlspecialchars($nama); ?>">
-                            <?php endforeach; ?>
-                        </datalist>
-
-                        <div class="card-custom bg-dark text-white p-3">
-                            <label class="text-warning small mb-3"><i class="bi bi-shield-check me-1"></i> Post Validation & Status</label>
+                    <div class="card-custom mb-4" style="border-top: 4px solid #8b5cf6 !important;">
+                        <div class="card-body p-4">
                             <div class="row g-3">
-                                <div class="col-6">
-                                    <label class="text-white-50" style="font-size:10px;">STATUS</label>
-                                    <select name="status" class="form-select form-select-sm bg-warning text-dark border-0 fw-bold">
-                                        <?php while($s = sqlsrv_fetch_array($qStatus, SQLSRV_FETCH_ASSOC)) echo "<option value='{$s['STATUS']}'>{$s['STATUS']}</option>"; ?>
+                                <div class="col-md-3">
+                                    <label>CONTROL NO</label>
+                                    <input type="text" name="control_no" class="form-control fw-bold text-danger" readonly value="<?php echo $autoControlNo; ?>">
+                                </div>
+                                <div class="col-md-3">
+                                    <label>CONTROL DATE</label>
+                                    <input type="date" name="control_date" class="form-control" required value="<?php echo date('Y-m-d'); ?>">
+                                </div>
+                                <div class="col-md-3">
+                                    <label>TO</label>
+                                    <input type="text" name="to_pcis" class="form-control" value="ALL DEPARTEMENT">
+                                </div>
+                                <div class="col-md-3">
+                                    <label>CC</label>
+                                    <input type="text" name="cc_pcis" class="form-control" value="ALL HEAD DEPT">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <!-- LEFT COLUMN -->
+                        <div class="col-lg-8">
+                            <div class="card-custom">
+                                <div class="card-header-custom"><i class="fas fa-tools"></i> Technical Change Details</div>
+                                <div class="card-body p-4">
+                                    <div class="row g-3 p-3 mb-4 rounded border bg-light">
+                                        <div class="col-md-4">
+                                            <label class="d-block mb-2">Request By</label>
+                                            <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="internal" value="1" checked> <label>Internal</label></div>
+                                            <div class="form-check small mb-1"><input class="form-check-input" type="checkbox" name="customer" value="1"> <label>Customer</label></div>
+                                            <div class="form-check small"><input class="form-check-input" type="checkbox" name="supplier" value="1"> <label>Supplier</label></div>
+                                        </div>
+                                        <div class="col-md-8">
+                                            <label>Person in Charge (PIC)</label>
+                                            <input type="text" name="pic_name" class="form-control mb-2" placeholder="Ketik Nama PIC..." required>
+                                            <select name="dep_code" class="form-select" required>
+                                                <option value="">-- Pilih Departemen PIC --</option>
+                                                <?php while($d = sqlsrv_fetch_array($qDept, SQLSRV_FETCH_ASSOC)) echo "<option value='{$d['DEP_CODE']}'>{$d['DEP_NAME']}</option>"; ?>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div class="row g-3 mb-4">
+                                        <div class="col-md-6">
+                                            <label>Customer Name</label>
+                                            <input type="text" id="CUST_COMP" class="form-control border-primary" placeholder="Klik/Cari customer..." autocomplete="off" required>
+                                            <input type="hidden" name="cust_id" id="CUST_ID">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label>Part / Item Name</label>
+                                            <input type="text" id="PART_NAME" class="form-control border-primary" placeholder="Pilih customer, lalu klik ini..." autocomplete="off" required>
+                                            <input type="hidden" name="item_id" id="ITEM_ID">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label>Model</label>
+                                            <input type="text" name="model" id="MODEL" class="form-control" placeholder="Model item...">
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label>Material Name (Autocomplete)</label>
+                                            <input type="text" id="MATERIAL_TEXT" class="form-control border-primary" placeholder="Klik/Cari nama material...">
+                                            <input type="hidden" name="material_id" id="MATERIAL_ID">
+                                        </div>
+                                    </div>
+
+                                    <div class="row g-3 p-3 mb-4 rounded border bg-light">
+                                        <div class="col-md-6">
+                                            <label class="border-bottom d-block pb-1 mb-2">Item Change (4M Kategori)</label>
+                                            <div class="d-flex gap-2 flex-wrap">
+                                                <div class="form-check small"><input class="form-check-input" type="checkbox" name="man" value="1"> <label>Man</label></div>
+                                                <div class="form-check small"><input class="form-check-input" type="checkbox" name="machine" value="1"> <label>Machine</label></div>
+                                                <div class="form-check small"><input class="form-check-input" type="checkbox" name="method" value="1"> <label>Method</label></div>
+                                                <div class="form-check small"><input class="form-check-input" type="checkbox" name="material_4m" value="1"> <label>Material</label></div>
+                                                <div class="form-check small"><input class="form-check-input" type="checkbox" name="other" value="1"> <label>Other</label></div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6 border-start ps-4">
+                                            <label class="border-bottom d-block pb-1 mb-2">Changing Type</label>
+                                            <div class="form-check form-check-inline small"><input class="form-check-input" type="radio" name="perm" value="1" checked> <label>Permanent</label></div>
+                                            <div class="form-check form-check-inline small"><input class="form-check-input" type="radio" name="perm" value="0"> <label>Temporary</label></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="row g-3 p-3 mb-4 rounded border bg-light">
+                                        <div class="col-md-12">
+                                            <label class="border-bottom d-block pb-1 mb-2">Checklist Attachments (Lampiran)</label>
+                                            <div class="d-flex gap-4 flex-wrap">
+                                                <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_email" value="1"> <label>Email / Information</label></div>
+                                                <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_drawing" value="1"> <label>Drawing</label></div>
+                                                <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_sample" value="1"> <label>Sample</label></div>
+                                                <div class="form-check small"><input class="form-check-input" type="checkbox" name="attach_data" value="1"> <label>Data</label></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label>Reason / Purpose</label>
+                                        <textarea name="reason" class="form-control" rows="2" placeholder="Tuliskan alasan modifikasi..."></textarea>
+                                    </div>
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="text-danger fw-bold">BEFORE CHANGE</label>
+                                            <textarea name="bef_change" class="form-control border-danger-subtle" rows="3" placeholder="Kondisi awal sebelum perubahan..."></textarea>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="text-success fw-bold">AFTER CHANGE</label>
+                                            <textarea name="aft_change" class="form-control border-success-subtle" rows="3" placeholder="Kondisi target sesudah perubahan..."></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT COLUMN -->
+                        <div class="col-lg-4">
+                            <div class="card-custom mb-4">
+                                <div class="card-header-custom"><i class="fas fa-calendar-alt"></i> Schedule Target</div>
+                                <div class="card-body p-3">
+                                    <div class="mb-2">
+                                        <label class="small text-muted">Schedule Proses Change</label>
+                                        <input type="date" name="sch_change" id="SCH_CHANGE" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="small text-muted">Start Changing Date</label>
+                                        <input type="date" name="start_change" id="START_CHANGE" class="form-control form-control-sm">
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="small text-muted">Close Changing Date</label>
+                                        <input type="date" name="close_change" id="CLOSE_CHANGE" class="form-control form-control-sm">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card-custom mb-4">
+                                <div class="card-header-custom"><i class="fas fa-question-circle"></i> Customer Approval Needs</div>
+                                <div class="card-body p-3">
+                                    <label class="small text-muted d-block mb-2">Do we need Customer Approved?</label>
+                                    <select name="need_customer" id="NEED_CUSTOMER" class="form-select form-select-sm fw-bold">
+                                        <option value="1">YES (Memerlukan Persetujuan)</option>
+                                        <option value="0">NO (Tidak Perlu)</option>
                                     </select>
                                 </div>
-                                <div class="col-6">
-                                    <label class="text-white-50" style="font-size:10px;">PREPARED BY</label>
-                                    <input type="text" name="prepared" list="list_nama_pegawai" class="form-control form-control-sm bg-secondary text-white border-0" value="<?php echo $_SESSION['erp_user']; ?>" placeholder="Pilih / Ketik...">
+                            </div>
+
+                            <div class="card-custom mb-4">
+                                <div class="card-header-custom"><i class="fas fa-comments"></i> Departmental Review</div>
+                                <div class="card-body p-3 overflow-auto" style="max-height: 220px;">
+                                    <?php foreach(['PE'=>'pe_remark','QC'=>'qc_remark','MOLD'=>'mold_remark','PPIC'=>'ppic_remark','PROD'=>'prod_remark','MKT'=>'mkt_remark'] as $lbl => $n): ?>
+                                    <div class="mb-2 pb-2 border-bottom">
+                                        <label class="text-muted small" style="font-size:10px;"><?= $lbl ?> REMARK</label>
+                                        <textarea name="<?= $n ?>" class="form-control form-control-sm" rows="1"></textarea>
+                                    </div>
+                                    <?php endforeach; ?>
                                 </div>
-                                <div class="col-6">
-                                    <label class="text-white-50" style="font-size:10px;">CHECKED BY</label>
-                                    <input type="text" name="imc_checked" list="list_nama_pegawai" class="form-control form-control-sm bg-secondary text-white border-0" placeholder="Pilih / Ketik...">
-                                </div>
-                                <div class="col-6">
-                                    <label class="text-white-50" style="font-size:10px;">APPROVED BY</label>
-                                    <input type="text" name="imc_aprove" list="list_nama_pegawai" class="form-control form-control-sm bg-secondary text-white border-0" placeholder="Pilih / Ketik...">
+                            </div>
+
+                            <datalist id="list_nama_pegawai">
+                                <?php foreach($list_users as $nama): ?>
+                                    <option value="<?php echo htmlspecialchars($nama); ?>">
+                                <?php endforeach; ?>
+                            </datalist>
+
+                            <div class="card-custom bg-dark text-white p-3">
+                                <label class="text-warning small mb-3"><i class="fas fa-shield-check me-1"></i> Post Validation & Status</label>
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <label class="text-white-50" style="font-size:10px;">STATUS</label>
+                                        <select name="status" class="form-select form-select-sm bg-warning text-dark border-0 fw-bold">
+                                            <?php while($s = sqlsrv_fetch_array($qStatus, SQLSRV_FETCH_ASSOC)) echo "<option value='{$s['STATUS']}'>{$s['STATUS']}</option>"; ?>
+                                        </select>
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="text-white-50" style="font-size:10px;">PREPARED BY</label>
+                                        <input type="text" name="prepared" list="list_nama_pegawai" class="form-control form-control-sm bg-secondary text-white border-0" value="<?php echo $_SESSION['erp_user']; ?>" placeholder="Pilih / Ketik...">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="text-white-50" style="font-size:10px;">CHECKED BY</label>
+                                        <input type="text" name="imc_checked" list="list_nama_pegawai" class="form-control form-control-sm bg-secondary text-white border-0" placeholder="Pilih / Ketik...">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="text-white-50" style="font-size:10px;">APPROVED BY</label>
+                                        <input type="text" name="imc_aprove" list="list_nama_pegawai" class="form-control form-control-sm bg-secondary text-white border-0" placeholder="Pilih / Ketik...">
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <div class="floating-action d-flex justify-content-between align-items-center mt-4">
-                    <div>
-                        <button type="button" class="btn btn-outline-dark btn-nav shadow-sm" id="firstBtn">⏮ First</button>
-                        <button type="button" class="btn btn-outline-dark btn-nav shadow-sm" id="prevBtn">← Prev</button>
-                        <button type="button" class="btn btn-outline-dark btn-nav shadow-sm" id="nextBtn">Next →</button>
-                        <button type="button" class="btn btn-outline-dark btn-nav shadow-sm" id="lastBtn">Last ⏭</button>
+                    <div class="floating-action d-flex justify-content-between align-items-center mt-4">
+                        <div>
+                            <button type="button" class="btn btn-outline-dark btn-sm shadow-sm" id="firstBtn"><i class="fas fa-fast-backward"></i> First</button>
+                            <button type="button" class="btn btn-outline-dark btn-sm shadow-sm" id="prevBtn"><i class="fas fa-step-backward"></i> Prev</button>
+                            <button type="button" class="btn btn-outline-dark btn-sm shadow-sm" id="nextBtn">Next <i class="fas fa-step-forward"></i></button>
+                            <button type="button" class="btn btn-outline-dark btn-sm shadow-sm" id="lastBtn">Last <i class="fas fa-fast-forward"></i></button>
+                        </div>
+                        <div>
+                            <button type="button" class="btn btn-success btn-sm me-2 shadow-sm" id="newBtn"><i class="fas fa-plus"></i> Form Baru</button>
+                            <button type="submit" name="btnSimpan" class="btn btn-primary btn-sm shadow"><i class="fas fa-save"></i> Simpan Laporan</button>
+                        </div>
                     </div>
-                    <div>
-                        <button type="button" class="btn btn-success btn-nav me-2 shadow-sm" id="newBtn"><i class="bi bi-plus-lg"></i> Form Baru</button>
-                        <button type="submit" name="btnSimpan" class="btn btn-primary btn-nav shadow"><i class="bi bi-save"></i> Simpan Laporan</button>
-                    </div>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
 <script>
+// Sidebar Toggle Logic
+$('#sidebarToggle').click(function() {
+    $('#sidebar').toggleClass('toggled');
+});
+
+// Original Form Logic
 let MIN_ID = "", MAX_ID = "";
 
 function loadMinMax() {
@@ -500,7 +593,6 @@ function fillForm(rec) {
     $("input[name='material_4m']").prop('checked', rec.MATERIAL == 1 || rec.MATERIAL === true);
     $("input[name='other']").prop('checked', rec.OTHER == 1);
 
-    // Dynamic Binding Saat Navigasi (First/Prev/Next/Last)
     $("#NEED_CUSTOMER").val(rec.NEED_CUSTOMER !== undefined ? rec.NEED_CUSTOMER : 1);
     $("input[name='attach_email']").prop('checked', rec.EMAIL == 1);
     $("input[name='attach_drawing']").prop('checked', rec.DRAWING == 1);

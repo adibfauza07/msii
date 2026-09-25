@@ -23,8 +23,14 @@ $params = array();
 
 // 2. Jika ada pencarian, baru tambahkan WHERE dan parameternya
 if ($search !== '') {
-    $whereClause = " WHERE R.RCV_NO LIKE ? ";
-    $params[] = "%" . $search . "%";
+    // Tambahkan pencarian untuk RCV_NO, ITEM_CODE, dan ITEM_NAME
+    $whereClause = " WHERE R.RCV_NO LIKE ? OR I.ITEM_CODE LIKE ? OR I.ITEM_NAME LIKE ? ";
+    
+    // Siapkan parameter %keyword% untuk 3 kolom tersebut
+    $searchParam = "%" . $search . "%";
+    $params[] = $searchParam;
+    $params[] = $searchParam;
+    $params[] = $searchParam;
 }
 
 /* 

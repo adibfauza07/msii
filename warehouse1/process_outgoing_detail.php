@@ -29,7 +29,17 @@ if ($conn === false) {
 sqlsrv_begin_transaction($conn);
 
 try {
-    // 1. Cek Duplikasi Scan QR berdasarkan SCAN_TYPE = 1[cite: 7]
+    // 1. Verifikasi ketersediaan QR Code di database (INV_TRAN)
+    $sqlExist = "SELECT TOP 1 QRCODE_ID FROM INV_TRAN WHERE QRCODE_ID = ?";
+    $stmtExist = sqlsrv_query($conn, $sqlExist, array($qrcodeid));
+    
+    // Jika query gagal atau tidak ada baris yang ditemukan, hentikan proses
+    if ($stmtExist === false || !sqlsrv_has_rows($stmtExist)) {
+        throw new Exception("QR Code [$qrcodeid] tidak terdaftar di database sistem.");
+    }
+    sqlsrv_free_stmt($stmtExist);
+
+    // 2. Cek Duplikasi Scan QR berdasarkan SCAN_TYPE = 1
     $sqlCheck = "SELECT TOP 1 QRCODE_ID FROM INV_TRAN WHERE QRCODE_ID = ? AND SCAN_TYPE = 1";
     $stmtCheck = sqlsrv_query($conn, $sqlCheck, array($qrcodeid));
     if ($stmtCheck !== false && sqlsrv_has_rows($stmtCheck)) {
@@ -37,14 +47,14 @@ try {
     }
     if ($stmtCheck !== false) sqlsrv_free_stmt($stmtCheck);
 
-    // 2. Ambil nomor urut baris (IT_LINENO) berikutnya[cite: 7]
+    // 3. Ambil nomor urut baris (IT_LINENO) berikutnya
     $sqlLine = "SELECT MAX(IT_LINENO) AS max_line FROM INV_TRAN WHERE TRAN_ID = ?";
     $stmtLine = sqlsrv_query($conn, $sqlLine, array($tranid));
     $rowLine = sqlsrv_fetch_array($stmtLine, SQLSRV_FETCH_ASSOC);
     $lineno = isset($rowLine['max_line']) ? ((int)$rowLine['max_line'] + 1) : 1;
     sqlsrv_free_stmt($stmtLine);
 
-    // 3. Insert Detail ke tabel INV_TRAN[cite: 7]
+    // 4. Insert Detail ke tabel INV_TRAN
     $stcode = '';
     $type   = 1;
 

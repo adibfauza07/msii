@@ -90,6 +90,10 @@ $currentDateTime = date('d-M-Y H:i');
         .alert-minus { background-color: #ffebee; color: #c62828; border: 1px solid #ef9a9a; padding: 12px 15px; border-radius: 4px; margin-bottom: 15px; font-weight: 700; cursor: pointer; display: flex; align-items: center; gap: 10px; transition: background-color 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         .alert-minus:hover { background-color: #ffcdd2; }
 
+        /* KELAS UNTUK WEEKEND (SABTU & MINGGU) */
+        .bg-weekend { background-color: #ffe4e1 !important; }
+        input.input-in-plan.bg-weekend { background-color: #ffe4e1 !important; border-color: #d87093; }
+
         /* ========================================= */
         /* CSS Print Mode - A4 Landscape (Identik Layar) */
         /* ========================================= */
@@ -217,6 +221,14 @@ $currentDateTime = date('d-M-Y H:i');
                 });
             }
 
+            // Fungsi untuk mendeteksi apakah hari tsb Sabtu atau Minggu
+            function isWeekend(year, month, day) {
+                // Bulan di JavaScript dimulai dari 0 (Jan = 0, Des = 11)
+                var dt = new Date(year, month - 1, day);
+                var dayOfWeek = dt.getDay();
+                return (dayOfWeek === 6 || dayOfWeek === 0); // 6 = Sabtu, 0 = Minggu
+            }
+
             // =====================================================================
             // AUTOCOMPLETE
             // =====================================================================
@@ -332,16 +344,32 @@ $currentDateTime = date('d-M-Y H:i');
                 updateMinusSummary();
             };
 
+            
             function buildWorkspaceHtml(idx, data) {
                 var begStock = parseFloat(data.BEG_STOCK) || 0;
                 var safeCode = escapeHtml(data.ITEM_CODE);
                 var begStockDisplay = begStock !== 0 ? begStock.toFixed(2) : '0';
                 
+                // Ambil parameter tahun & bulan untuk dilempar ke stok.php
+                var y = $('#cbTahun').val();
+                var m = parseInt($('#cbBulan').val());
+                var mStr = (m < 10) ? '0' + m : m;
+                var lastDay = new Date(y, m, 0).getDate(); // Cari tanggal terakhir di bulan tersebut
+                var startDate = y + '-' + mStr + '-01';
+                var endDate = y + '-' + mStr + '-' + lastDay;
+                
+                // Bentuk URL hyperlink
+                var stokUrl = 'stok.php?report_type=bahanbaku&item_id=' + encodeURIComponent(data.ITEM_CODE) + '&start_date=' + startDate + '&end_date=' + endDate;
+                
                 var html = '<div class="workspace" id="ws_' + idx + '">';
                 html += '<div class="left-pane"><div class="panel" style="margin-bottom:0; height:100%; box-sizing:border-box;">';
                 html += '  <div class="panel-title title-blue"><i class="fa fa-cube"></i> MRP Target</div>';
                 html += '  <table class="pref-table">';
-                html += '    <tr><td class="label-cell">Mat. Code</td><td><input type="text" value="' + safeCode + '" readonly style="color:#0056b3; font-weight:600;"></td></tr>';
+                
+                // Modifikasi input text menjadi seperti link (cursor:pointer, underline, dan onclick)
+                html += '    <tr><td class="label-cell">Mat. Code</td><td><input type="text" value="' + safeCode + '" readonly style="color:#0056b3; font-weight:600; cursor:pointer; text-decoration:underline;" onclick="window.open(\'' + stokUrl + '\', \'_blank\')" title="Klik untuk buka Stock Analysis"></td></tr>';
+            
+            
                 html += '    <tr><td class="label-cell">Mat. Name</td><td><input type="text" value="' + escapeHtml(data.ITEM_NAME) + '" readonly></td></tr>';
                 html += '    <tr><td class="label-cell">Material</td><td><input type="text" value="' + escapeHtml(data.MATERIAL_NO) + '" readonly></td></tr>';
                 html += '    <tr><td class="label-cell">Supplier</td><td><input type="text" value="' + escapeHtml(data.SUPPLIER) + '" readonly></td></tr>';
@@ -354,7 +382,12 @@ $currentDateTime = date('d-M-Y H:i');
                 html += '<div class="right-pane">';
                 html += '<div class="table-container"><table class="grid-table" id="matrix_' + idx + '" data-begstock="' + begStock + '">';
                 html += '<thead><tr><th class="desc-col">Description</th><th class="gtotal-col">Grand Total</th>';
-                for(var i=1; i<=31; i++) { html += '<th class="day-col">' + i + '</th>'; }
+                
+                // HEADER TABEL (Menambahkan Kelas Weekend)
+                for(var i=1; i<=31; i++) { 
+                    var weekendClass = isWeekend(y, m, i) ? ' bg-weekend' : '';
+                    html += '<th class="day-col' + weekendClass + '">' + i + '</th>'; 
+                }
                 html += '</tr></thead><tbody>';
 
                 var rows = [
@@ -367,17 +400,31 @@ $currentDateTime = date('d-M-Y H:i');
                     { name: 'Stock Act', class: 'cell-stock-act' }
                 ];
 
-                $.each(rows, function(rIndex, rDef) {
+               $.each(rows, function(rIndex, rDef) {
                     html += '<tr>';
                     html += '<td class="desc-col">' + rDef.name + '</td><td class="gtotal-col">0</td>';
                     var rowData = data.rows[rDef.name] || {};
                     for(var d=1; d<=31; d++) {
                         var val = parseFloat(rowData['D'+d]) || 0;
                         var displayVal = val !== 0 ? val.toFixed(2) : '0'; 
+                        
+                        // Cek Weekend untuk Kolom Cell
+                        var weekendClass = isWeekend(y, m, d) ? ' bg-weekend' : '';
+                        
+                        // Buat format tanggal (YYYY-MM-DD) untuk URL
+                        var dStr = (d < 10) ? '0' + d : d;
+                        var fullDate = y + '-' + mStr + '-' + dStr;
+
                         if (rDef.isInput) {
-                            html += '<td class="day-col"><input type="text" class="input-in-plan day-' + d + '" value="' + (val !== 0 ? val.toFixed(2) : '') + '" /></td>';
+                            html += '<td class="day-col' + weekendClass + '"><input type="text" class="input-in-plan day-' + d + weekendClass + '" value="' + (val !== 0 ? val.toFixed(2) : '') + '" /></td>';
+                        } else if (rDef.name === 'In Act' && val !== 0) {
+                            // Render Hyperlink khusus untuk baris "In Act" jika ada nilainya
+                            var bcUrl = 'bc.php?item=' + encodeURIComponent(data.ITEM_CODE) + '&date=' + fullDate;
+                            html += '<td class="day-col ' + rDef.class + ' day-' + d + weekendClass + '">';
+                            html += '<a href="' + bcUrl + '" target="_blank" style="color: #0056b3; font-weight: bold; text-decoration: underline;" title="Klik untuk lihat detail BC/PO">' + displayVal + '</a>';
+                            html += '</td>';
                         } else {
-                            html += '<td class="day-col ' + rDef.class + ' day-' + d + '">' + displayVal + '</td>';
+                            html += '<td class="day-col ' + rDef.class + ' day-' + d + weekendClass + '">' + displayVal + '</td>';
                         }
                     }
                     html += '</tr>';
@@ -413,7 +460,7 @@ $currentDateTime = date('d-M-Y H:i');
                 $('.workspace').removeClass('no-print');
             });
 
-            // Keyboard Navigation (Panah Kiri & Kanan)
+            // Keyboard Navigation (Panah Kiri, Kanan & Enter untuk Save)
             $('#mrpDetailContainer').on('keydown', '.input-in-plan', function(e) {
                 var keyCode = e.keyCode || e.which;
                 if (keyCode === 37) {
@@ -424,6 +471,11 @@ $currentDateTime = date('d-M-Y H:i');
                     e.preventDefault();
                     var nextInput = $(this).closest('td').next('td').find('.input-in-plan');
                     if (nextInput.length) { nextInput.focus().select(); }
+                } else if (keyCode === 13) { // Deteksi tombol Enter
+                    e.preventDefault();
+                    $(this).blur(); // Hilangkan fokus agar sistem menghitung ulang Grand Total terlebih dahulu
+                    // Memicu klik pada tombol Save hijau di workspace yang sedang aktif
+                    $(this).closest('.workspace').find('.btn-save-mrp').click();
                 }
             });
 

@@ -157,8 +157,9 @@ if (
     $errors[] = 'Tanggal akhir harus lebih besar dari tanggal awal.';
 }
 
+// Transaksi ditarik hingga akhir bulan dari tanggal end_date
 $transactionEndDate = sap_valid_date($endDate)
-    ? date('Y-m-d', strtotime($endDate . ' -1 day'))
+    ? date('Y-m-t', strtotime($endDate))
     : $endDate;
 
 /* =========================================================
@@ -264,14 +265,14 @@ if (count($errors) == 0 && $queryError == '') {
             ORDER BY TL.LOC_ID
         ) AS W
         LEFT JOIN dbo.TRTY AS TY ON TY.TRTY_CODE = TR.TRTY_CODE
-        WHERE I.ITEM_ID = ? AND TR.TRAN_DATE >= ? AND TR.TRAN_DATE < ?
+        WHERE I.ITEM_ID = ? AND TR.TRAN_DATE >= ? AND TR.TRAN_DATE < DATEADD(day, 1, ?)
         GROUP BY
             TR.TRAN_ID, TR.TRAN_DATE, TR.TRAN_DOC, TR.TRAN_DOC2, TR.TRTY_CODE, ISNULL(TY.TRTY_DESC, ''),
             W.LOC_CODE, W.LOC_NAME, W.LOC_GROUP, W.TRTY_INOUT, W.TRTY_SIGN
         ORDER BY TR.TRAN_DATE, TR.TRAN_ID, TR.TRTY_CODE
     ";
 
-    $whsStmt = sqlsrv_query($conn, $whsSql, array($itemId, $startDate, $endDate));
+    $whsStmt = sqlsrv_query($conn, $whsSql, array($itemId, $startDate, $transactionEndDate));
 
     if ($whsStmt === false) {
         $queryError = sap_sql_error();
@@ -301,14 +302,14 @@ if (count($errors) == 0 && $queryError == '') {
         INNER JOIN dbo.TRTY_LOC AS TL ON TL.TRTY_CODE = TR.TRTY_CODE
         INNER JOIN dbo.LOC AS L ON L.LOC_ID = TL.LOC_ID
         LEFT JOIN dbo.TRTY AS TY ON TY.TRTY_CODE = TR.TRTY_CODE
-        WHERE I.ITEM_ID = ? AND L.LOC_CODE <> 'WHS' AND TR.TRAN_DATE >= ? AND TR.TRAN_DATE < ?
+        WHERE I.ITEM_ID = ? AND L.LOC_CODE <> 'WHS' AND TR.TRAN_DATE >= ? AND TR.TRAN_DATE < DATEADD(day, 1, ?)
         GROUP BY
             TR.TRAN_ID, TR.TRAN_DATE, TR.TRAN_DOC, TR.TRAN_DOC2, TR.TRTY_CODE, ISNULL(TY.TRTY_DESC, ''),
             L.LOC_CODE, L.LOC_NAME, L.LOC_GROUP, TL.TRTY_INOUT, TL.TRTY_SIGN
         ORDER BY L.LOC_GROUP, L.LOC_CODE, TR.TRAN_DATE, TR.TRAN_ID
     ";
 
-    $productionStmt = sqlsrv_query($conn, $productionSql, array($itemId, $startDate, $endDate));
+    $productionStmt = sqlsrv_query($conn, $productionSql, array($itemId, $startDate, $transactionEndDate));
 
     if ($productionStmt === false) {
         $queryError = sap_sql_error();
@@ -608,7 +609,7 @@ $backUrl = $backPage . "?" . http_build_query(
             <th>BEGINNING BALANCE<br><?php echo sap_h(sap_date($startDate, 'd-M-y')); ?></th>
             <th>PEMASUKAN WHS<br><?php echo sap_h(sap_date($startDate, 'd-M-y')); ?> - <?php echo sap_h(sap_date($transactionEndDate, 'd-M-y')); ?></th>
             <th>PENGELUARAN WHS<br><?php echo sap_h(sap_date($startDate, 'd-M-y')); ?> - <?php echo sap_h(sap_date($transactionEndDate, 'd-M-y')); ?></th>
-            <th>SALDO AKHIR SISTEM<br><?php echo sap_h(sap_date($endDate, 'd-M-y')); ?></th>
+            <th>SALDO AKHIR SISTEM<br><?php echo sap_h(sap_date($transactionEndDate, 'd-M-y')); ?></th>
             <th>STOK OPNAME<br><?php echo sap_h(sap_date($endDate, 'd-M-y')); ?></th>
             <th>SELISIH</th>
         </tr>
@@ -630,7 +631,7 @@ $backUrl = $backPage . "?" . http_build_query(
     </div>
 
     <div class="note">
-        Transaksi tanggal <strong><?php echo sap_h(sap_date($endDate, 'd-M-y')); ?></strong> tidak masuk mutasi periode. Tanggal tersebut hanya digunakan sebagai tanggal stok akhir/opname.
+        Patokan <strong>Stok Opname (TAGS)</strong> menggunakan tanggal <strong><?php echo sap_h(sap_date($endDate, 'd-M-y')); ?></strong>. Namun, penarikan <strong>Mutasi Transaksi</strong> tetap dihitung hingga akhir bulan maksimal, yaitu tanggal <strong><?php echo sap_h(sap_date($transactionEndDate, 'd-M-y')); ?></strong>.
     </div>
 
     <?php if ($selisih < -0.000001) { ?>
@@ -659,14 +660,13 @@ $backUrl = $backPage . "?" . http_build_query(
                 <th>QTY</th>
                 <th>MASUK</th>
                 <th>KELUAR</th>
-                <th>EFEK</th>
                 <th>SALDO BERJALAN</th>
             </tr>
         </thead>
         <tbody>
             <tr class="begin-row">
                 <td class="center">0</td>
-                <td colspan="10">BEGINNING BALANCE <?php echo sap_h(sap_date($startDate, 'd-M-y')); ?></td>
+                <td colspan="9">BEGINNING BALANCE <?php echo sap_h(sap_date($startDate, 'd-M-y')); ?></td>
                 <td class="number"><?php echo sap_h(sap_number($saldoAwal)); ?></td>
             </tr>
             <?php foreach ($whsRows as $index => $row) { 
@@ -689,20 +689,18 @@ $backUrl = $backPage . "?" . http_build_query(
                     <td class="number"><?php echo sap_h(sap_number($row['IT_QTY'])); ?></td>
                     <td class="number in"><?php echo sap_h(sap_number($row['CALC_MASUK'])); ?></td>
                     <td class="number out"><?php echo sap_h(sap_number($row['CALC_KELUAR'])); ?></td>
-                    <td class="number"><?php echo sap_h(sap_number($row['CALC_EFFECT'])); ?></td>
                     <td class="number <?php echo $isNegative ? 'negative' : ''; ?> <?php echo $isFirstNegative ? 'first-negative' : ''; ?>">
                         <?php echo sap_h(sap_number($balance)); ?>
                     </td>
                 </tr>
             <?php } ?>
             <?php if (count($whsRows) == 0) { ?>
-                <tr><td colspan="12" class="center">Tidak ada transaksi WHS pada periode ini.</td></tr>
+                <tr><td colspan="11" class="center">Tidak ada transaksi WHS pada periode ini.</td></tr>
             <?php } ?>
             <tr class="total-row">
                 <td colspan="8" class="right">TOTAL WHS</td>
                 <td class="number in"><?php echo sap_h(sap_number($totalMasuk)); ?></td>
                 <td class="number out"><?php echo sap_h(sap_number($totalKeluar)); ?></td>
-                <td class="number"><?php echo sap_h(sap_number($totalMasuk - $totalKeluar)); ?></td>
                 <td class="number"><?php echo sap_h(sap_number($saldoAkhir)); ?></td>
             </tr>
         </tbody>
@@ -778,7 +776,6 @@ $backUrl = $backPage . "?" . http_build_query(
                 <th>QTY</th>
                 <th>MASUK</th>
                 <th>KELUAR</th>
-                <th>EFEK</th>
             </tr>
         </thead>
         <tbody>
@@ -798,11 +795,10 @@ $backUrl = $backPage . "?" . http_build_query(
                     <td class="number"><?php echo sap_h(sap_number($row['IT_QTY'])); ?></td>
                     <td class="number in"><?php echo sap_h(sap_number($row['CALC_MASUK'])); ?></td>
                     <td class="number out"><?php echo sap_h(sap_number($row['CALC_KELUAR'])); ?></td>
-                    <td class="number"><?php echo sap_h(sap_number($row['CALC_EFFECT'])); ?></td>
                 </tr>
             <?php } ?>
             <?php if (count($productionRows) == 0) { ?>
-                <tr><td colspan="12" class="center">Tidak ada detail transaksi lokasi produksi/non-WHS.</td></tr>
+                <tr><td colspan="11" class="center">Tidak ada detail transaksi lokasi produksi/non-WHS.</td></tr>
             <?php } ?>
         </tbody>
     </table>

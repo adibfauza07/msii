@@ -16,6 +16,31 @@ if ($active_plant == 'p2') {
     require_once __DIR__ . '/../config/database_p1.php';
 }
 
+
+// Pastikan session dan koneksi database sudah di-include di atas ini
+// require_once __DIR__ . '/../config/database.php';
+
+// Tangkap data
+$kode_usul = isset($_POST['kode_usul']) ? $_POST['kode_usul'] : '';
+$active_plant = isset($_SESSION['active_plant']) ? $_SESSION['active_plant'] : 'p2';
+
+// ==========================================
+// 1. VALIDASI KODE USULAN (Cegah Duplikat)
+// ==========================================
+$sqlCek = "SELECT COUNT(*) AS total FROM USULAN_PERUBAHAN WHERE KODE_USUL = ?";
+$paramsCek = array($kode_usul);
+$resCek = sqlsrv_query($conn, $sqlCek, $paramsCek);
+
+$rowCek = sqlsrv_fetch_array($resCek, SQLSRV_FETCH_ASSOC);
+if ($rowCek['total'] > 0) {
+    // Jika kode sudah terpakai, kembalikan ke halaman input dengan notifikasi
+    echo "<script>
+            alert('Gagal menyimpan: Kode Usulan {$kode_usul} sudah digunakan. Sistem akan membuatkan kode baru secara otomatis.');
+            window.location.href = 'dashboard_qc.php?page=input_usulan&plant={$active_plant}';
+          </script>";
+    exit; // Hentikan eksekusi script ke bawah
+}
+
 // ==========================================
 // 2. PROSES PENYIMPANAN DATA
 // ==========================================

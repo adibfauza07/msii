@@ -10,14 +10,14 @@ function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
 }
 
- $today = date('Y-m-d');
- $firstDayOfMonth = date('Y-m-01');
- $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : 'System';
+$today = date('Y-m-d');
+$firstDayOfMonth = date('Y-m-01');
+$dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : 'System';
 
- $msgGenerate = "";
- $statGenerate = "";
- $msgTransfer = "";
- $statTransfer = "";
+$msgGenerate = "";
+$statGenerate = "";
+$msgTransfer = "";
+$statTransfer = "";
 
 // =========================================================================
 // 1. FUNGSI LOGIKA PENOMORAN (GENERATE)
@@ -634,9 +634,19 @@ if ($stmt_get !== false) {
             <input type="hidden" name="ACTION_TYPE" id="transferActionType" value="">
             
             <div class="toolbar">
-                <div>
+                <div style="display: flex; align-items: center; gap: 10px;">
                     <button type="button" class="btn-primary" onclick="submitTransfer('transfer_selected')">Kirim Terpilih</button>
-                    <button type="button" class="btn-success" onclick="submitTransfer('transfer_all')" style="margin-left: 10px;">Kirim Semua Data</button>
+                    <button type="button" class="btn-success" onclick="submitTransfer('transfer_all')">Kirim Semua Data</button>
+                    
+                    <!-- Form Print DI (Sesuai kotak merah di image_5ccba1.png) -->
+                    <div style="border-left: 2px solid #808080; height: 24px; margin: 0 5px;"></div>
+                    <div style="display: flex; gap: 5px; align-items: center;">
+                        <span style="font-weight:bold; font-size:11px; color:#000080;">Print Temp:</span>
+                        <input type="date" id="print_start" value="<?php echo h($firstDayOfMonth); ?>" style="width: 110px;">
+                        <span style="font-weight:bold;">-</span>
+                        <input type="date" id="print_end" value="<?php echo h($today); ?>" style="width: 110px;">
+                        <button type="button" onclick="printDI()" style="padding: 4px 10px; color: #000;">Print DI</button>
+                    </div>
                 </div>
                 <div style="font-weight: bold; font-size: 13px;">
                     Total Data: <?php echo count($temp_data); ?>
@@ -790,6 +800,22 @@ function submitTransfer(action) {
     document.getElementById('loadingText').innerText = "Sedang memindahkan data... Harap tunggu...";
     document.getElementById('loadingOverlay').style.display = 'flex';
     document.getElementById('transferForm').submit();
+}
+
+// ================= SCRIPT PRINT =================
+function printDI() {
+    var startDate = document.getElementById('print_start').value;
+    var endDate = document.getElementById('print_end').value;
+    
+    if (!startDate || !endDate) {
+        alert("Tanggal Start Date dan End Date untuk Print harus diisi!");
+        return;
+    }
+    
+    // Buka tab baru yang mengarah ke file delivery_instruction_oto.php
+    // Parameter CUST_CODE dibiarkan kosong agar di-fallback menjadi "%" (semua customer) oleh file print
+    var url = "delivery_instruction_oto.php?START_DATE=" + enc(startDate) + "&END_DATE=" + enc(endDate);
+    window.open(url, '_blank');
 }
 </script>
 

@@ -48,15 +48,25 @@ function renderBox($checked) {
     <title>PROCESS CHANGE INFORMATION SHEET - <?php echo htmlspecialchars($no); ?></title>
     <style>
         * { box-sizing: border-box; -moz-box-sizing: border-box; }
-        body { font-family: "Arial", sans-serif; font-size: 9.5pt; color: #000; background-color: #fff; margin: 0; padding: 0; }
+        body { font-family: "Arial", sans-serif; font-size: 9.5pt; color: #000; background-color: #525659; margin: 0; padding: 20px 0; }
         
-        /* BAR NAVIGASI ATAS */
-        .no-print { background: #f1f5f9; padding: 10px; text-align: center; border-bottom: 1px solid #cbd5e1; width: 100%; }
+        /* BAR NAVIGASI ATAS (TAMPILAN WEB SAJA) */
+        .no-print { background: #f1f5f9; padding: 10px; text-align: center; border-bottom: 1px solid #cbd5e1; width: 100%; position: fixed; top: 0; left: 0; z-index: 1000; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
         .no-print button { padding: 6px 16px; font-weight: bold; font-size: 12px; cursor: pointer; border-radius: 4px; margin: 0 5px; }
         
-        /* Mengunci ukuran kertas portrait A4 mirip lembar kerja .rpt asli */
-        .report-page { width: 210mm; margin: 0 auto; padding: 12mm 10mm; background: #fff; }
-        .main-title { font-size: 13pt; font-weight: bold; text-align: center; letter-spacing: 0.5px; margin-bottom: 15px; }
+        /* UKURAN KERTAS A4 (TAMPILAN DI BROWSER) */
+        .report-page { 
+            width: 210mm; 
+            height: 297mm; /* Kunci tepat 1 halaman A4 */
+            margin: 40px auto 0 auto; /* Margin atas untuk menghindari tertutup navbar */
+            padding: 10mm 10mm; /* Margin buatan ke dalam agar tidak terpotong */
+            background: #fff; 
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            overflow: hidden;
+            position: relative;
+        }
+
+        .main-title { font-size: 13pt; font-weight: bold; text-align: center; letter-spacing: 0.5px; margin-bottom: 12px; }
         
         /* Master Grid Tabel Lurus Tanpa Spasi */
         table { width: 100%; border-collapse: collapse; margin-bottom: -1px; table-layout: fixed; }
@@ -69,23 +79,45 @@ function renderBox($checked) {
         
         .cb-icon { font-size: 11pt; font-weight: bold; vertical-align: middle; margin-right: 3px; }
         .content-block { min-height: 55px; font-size: 8.5pt; line-height: 1.2; white-space: pre-wrap; }
-        
-        /* Utility Khusus Perbaikan Management Grid Border Sub-Tabel PIC */
         .sub-table-pic td { border: none !important; padding: 3px 0; }
         
-        /* UTILITY ABSOLUT UNTUK MENYEMBUNYIKAN TOMBOL SAAT PRINT OUT */
+        /* =======================================================
+           SETTING OTOMATIS SAAT MASUK KE MENU PRINT BROWSER
+        ======================================================= */
+        @page {
+            size: A4 portrait; /* Paksa kertas A4 dan posisi Portrait */
+            margin: 0; /* Set margin ke None di pengaturan printer */
+        }
+
         @media print {
-            html, body { background: #fff; margin: 0; padding: 0; }
-            .no-print { display: none !important; visibility: hidden !important; height: 0 !important; padding: 0 !important; border: none !important; }
-            .report-page { width: 100%; margin: 0; padding: 5mm; border: none !important; }
+            html, body { 
+                background: #fff; 
+                margin: 0 !important; 
+                padding: 0 !important; 
+                width: 210mm; 
+                height: 297mm; 
+            }
+            .no-print { 
+                display: none !important; 
+            }
+            .report-page { 
+                width: 210mm !important; 
+                height: 297mm !important; 
+                margin: 0 !important; 
+                padding: 10mm 10mm !important; /* Sebagai pengganti margin printer */
+                border: none !important; 
+                box-shadow: none !important;
+                page-break-after: avoid; 
+                page-break-inside: avoid;
+            }
         }
     </style>
 </head>
 <body <?php echo $is_filtered ? 'onload="window.print()"' : ''; ?>>
 
     <div class="no-print">
-        <button onclick="window.print()" style="background: #2563eb; color: white; border: 1px solid #1d4ed8;">Cetak / Print Report</button>
-        <button onclick="window.close()" style="background: #64748b; color: white; border: 1px solid #475569;">Tutup Halaman</button>
+        <button onclick="window.print()" style="background: #2563eb; color: white; border: 1px solid #1d4ed8;">🖨 Cetak / Print Report</button>
+        <button onclick="window.close()" style="background: #64748b; color: white; border: 1px solid #475569;">❌ Tutup Halaman</button>
     </div>
 
     <div class="report-page">
@@ -191,7 +223,7 @@ function renderBox($checked) {
             </tr>
             <tr>
                 <td style="border-top:none; padding: 6px;">
-                    <div class="content-block"><?php echo nl2br(htmlspecialchars($d['REASON'])); ?></div>
+                    <div class="content-block" style="min-height: 45px;"><?php echo nl2br(htmlspecialchars($d['REASON'])); ?></div>
                 </td>
                 <td style="border-top:none; text-align: center; vertical-align: middle; padding-left: 10px;">
                     <div style="margin-bottom: 5px;"><?php echo renderBox($d['NEED_CUSTOMER'] == 1); ?> Yes</div>
@@ -206,8 +238,8 @@ function renderBox($checked) {
                 <td width="50%" style="color: #15803d;">AFTER CHANGE</td>
             </tr>
             <tr>
-                <td><div style="min-height: 90px;" class="content-block"><?php echo nl2br(htmlspecialchars($d['BEF_CHANGE'])); ?></div></td>
-                <td><div style="min-height: 90px;" class="content-block"><?php echo nl2br(htmlspecialchars($d['AFT_CHANGE'])); ?></div></td>
+                <td><div style="min-height: 80px;" class="content-block"><?php echo nl2br(htmlspecialchars($d['BEF_CHANGE'])); ?></div></td>
+                <td><div style="min-height: 80px;" class="content-block"><?php echo nl2br(htmlspecialchars($d['AFT_CHANGE'])); ?></div></td>
             </tr>
         </table>
 
@@ -239,32 +271,32 @@ function renderBox($checked) {
             </tr>
             <tr>
                 <td class="lbl-bold" style="vertical-align: middle;">PPIC</td>
-                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['PPIC_REMARK'] ? $d['PPIC_REMARK'] : ''); ?></div></td>
+                <td><div style="min-height: 30px;" class="content-block"><?php echo htmlspecialchars($d['PPIC_REMARK'] ? $d['PPIC_REMARK'] : ''); ?></div></td>
                 <td></td>
             </tr>
             <tr>
                 <td class="lbl-bold" style="vertical-align: middle;">QC</td>
-                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['QC_REMARK'] ? $d['QC_REMARK'] : ''); ?></div></td>
+                <td><div style="min-height: 30px;" class="content-block"><?php echo htmlspecialchars($d['QC_REMARK'] ? $d['QC_REMARK'] : ''); ?></div></td>
                 <td></td>
             </tr>
             <tr>
                 <td class="lbl-bold" style="vertical-align: middle;">PRODUCTION</td>
-                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['PRODUCTION_REMARK'] ? $d['PRODUCTION_REMARK'] : ''); ?></div></td>
+                <td><div style="min-height: 30px;" class="content-block"><?php echo htmlspecialchars($d['PRODUCTION_REMARK'] ? $d['PRODUCTION_REMARK'] : ''); ?></div></td>
                 <td></td>
             </tr>
             <tr>
                 <td class="lbl-bold" style="vertical-align: middle;">MOLD SHOP</td>
-                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['MOLDSHOP_REMARK'] ? $d['MOLDSHOP_REMARK'] : ''); ?></div></td>
+                <td><div style="min-height: 30px;" class="content-block"><?php echo htmlspecialchars($d['MOLDSHOP_REMARK'] ? $d['MOLDSHOP_REMARK'] : ''); ?></div></td>
                 <td></td>
             </tr>
             <tr>
                 <td class="lbl-bold" style="vertical-align: middle;">PE</td>
-                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['PE_REMARK'] ? $d['PE_REMARK'] : ''); ?></div></td>
+                <td><div style="min-height: 30px;" class="content-block"><?php echo htmlspecialchars($d['PE_REMARK'] ? $d['PE_REMARK'] : ''); ?></div></td>
                 <td></td>
             </tr>
             <tr>
                 <td class="lbl-bold" style="vertical-align: middle;">MARKETING</td>
-                <td><div style="min-height: 32px;" class="content-block"><?php echo htmlspecialchars($d['MARKETING_REMARK'] ? $d['MARKETING_REMARK'] : ''); ?></div></td>
+                <td><div style="min-height: 30px;" class="content-block"><?php echo htmlspecialchars($d['MARKETING_REMARK'] ? $d['MARKETING_REMARK'] : ''); ?></div></td>
                 <td></td>
             </tr>
         </table>
@@ -272,40 +304,38 @@ function renderBox($checked) {
         <table style="width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed;">
             <tr class="text-center lbl-bold" style="font-size: 8pt; background-color: #f1f5f9;">
                 <td width="35%">CUSTOMER JUDGEMENT</td>
-                <td colspan="2" width="30%">CUSTOMER APPROVAL</td>
+                
                 <td colspan="3" width="35%">PT. IMC Tekno Indonesia</td>
             </tr>
             <tr class="text-center" style="font-size: 7.5pt; font-weight: bold; background: #fafafa;">
                 <td rowspan="3" style="padding: 6px; text-align: left; vertical-align: top; width: 35%;">
                     <span class="lbl-italic" style="font-size: 8pt; display:block; margin-bottom:2px;">Comment:</span>
-                    <div style="min-height: 45px; font-size:8pt; color:#475569;"><?php echo htmlspecialchars($d['CUSTOMER_COMMENT'] ? $d['CUSTOMER_COMMENT'] : ''); ?></div>
+                    <div style="min-height: 40px; font-size:8pt; color:#475569;"><?php echo htmlspecialchars($d['CUSTOMER_COMMENT'] ? $d['CUSTOMER_COMMENT'] : ''); ?></div>
                     <div class="text-right" style="padding-right: 15px; margin-top: 15px;">
                         <span style="margin-right: 15px; font-weight:bold; font-size:10pt;"><?php echo renderBox(isset($d['CUSTOMER_JUDGEMENT']) && ($d['CUSTOMER_JUDGEMENT'] == 1 || $d['CUSTOMER_JUDGEMENT'] === true)); ?> OK</span>
                         <span style="font-weight:bold; font-size:10pt;"><?php echo renderBox(isset($d['CUSTOMER_JUDGEMENT']) && ($d['CUSTOMER_JUDGEMENT'] == 0 || $d['CUSTOMER_JUDGEMENT'] === false) && $d['CUSTOMER_JUDGEMENT'] !== null && $d['CUSTOMER_JUDGEMENT'] !== ''); ?> NG</span>
                     </div>
                 </td>
-                <td width="15%">Approved</td>
-                <td width="15%">Checked</td>
+                
                 <td width="11.66%">Approved</td>
                 <td width="11.66%">Checked</td>
                 <td width="11.68%">Prepared</td>
             </tr>
-            <tr style="height: 70px;">
-                <td>&nbsp;</td>
-                <td>&nbsp;</td>
+            <tr style="height: 60px;">
+                
                 <td>&nbsp;</td>
                 <td>&nbsp;</td>
                 <td>&nbsp;</td>
             </tr>
             <tr class="text-center" style="font-size: 8pt; font-weight: bold; background: #fff;">
-                <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"><?php echo htmlspecialchars($d['CUSTOMER_APROVE'] ? $d['CUSTOMER_APROVE'] : ''); ?></td>
-                <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"><?php echo htmlspecialchars($d['CUSTOMER_CHECKED'] ? $d['CUSTOMER_CHECKED'] : ''); ?></td>
+                
                 <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"><?php echo htmlspecialchars($d['IMC_APROVE'] ? $d['IMC_APROVE'] : ''); ?></td>
                 <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"><?php echo htmlspecialchars($d['IMC_CHECKED'] ? $d['IMC_CHECKED'] : ''); ?></td>
                 <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"><?php echo htmlspecialchars($d['IMC_PREPARED'] ? $d['IMC_PREPARED'] : ''); ?></td>
             </tr>
         </table>
         
+        <!-- Kode dokumen sekarang mengalir natural dengan margin-top 5px -->
         <div style="font-size: 7.5pt; font-weight: bold; font-family: Arial; margin-top: 5px; text-align: left;">
             FM.EG.C.03-015-01 (REV.TGL.28/05/2026)
         </div>

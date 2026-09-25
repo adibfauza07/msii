@@ -367,7 +367,7 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
 <body>
 
 <div class="topbar">
-    <div>ORDERING SYSTEM - PLANT 2</div>
+    <div>ORDERING SYSTEM - PLANT 1</div>
     <div>
         User: <?php echo h($dbUser); ?>
         <a href="dashboard.php">Dashboard</a>
@@ -459,10 +459,10 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
                     <div class="report-menu-item" data-report="INVOICE_PO">INVOICE PO</div>
                     <div class="report-menu-item" data-report="DELIVERY_SHEET">DELIVERY SHEET</div>
                     <div class="report-menu-item" data-report="DELIVERY_SHEET_PO">DELIVERY SHEET PO</div>
-                    <div class="report-menu-item" data-report="DELIVERY_SHEET_CABININDO">DELIVERY SHEET CABININDO</div>
-                    <div class="report-menu-item" data-report="DS_TOYODENSO">DS TOYODENSO</div>
-                    <div class="report-menu-item" data-report="INVOICE_RATE_HIROSE">INVOICE RATE HIROSE</div>
-                    <div class="report-menu-item" data-report="INVOICE_HILEX">INVOICE HILEX</div>
+                    <div class="report-menu-item" data-report="DELIVERY_NOTE">DELIVERY NOTE MURAMOTO</div>
+					<div class="report-menu-item" data-report="INVOICE_PO_NX">INVOICE PO NX</div>
+					<div class="report-menu-item" data-report="DELIVERY_SHEET_PO_NX">DELIVERY SHEET PO NX</div>
+					 
                     <div class="report-menu-item" data-report="PACKING_LIST">PACKING LIST</div>
                 </div>
             </span>
@@ -1957,38 +1957,26 @@ function openReportMenuItem(reportType) {
         "report_delivery_sheet_po.php?DI_ID=" + enc(diId),"_blank");
         return;
     }
-
-    if (reportType == "DELIVERY_SHEET_CABININDO") {
-        window.open(
-        "report_delivery_sheet_cabinindo.php?DI_ID=" + enc(diId),
-        "_blank"
-    );
+	
+	 if (reportType == "DELIVERY_NOTE") {
+       window.open(
+        "report_dn.php?DI_ID=" + enc(diId),"_blank");
         return;
     }
 
-    if (reportType == "DS_TOYODENSO") {
-        window.open(
-        "report_ds_toyodenso.php?DI_ID=" + enc(diId),
-        "_blank"
-    );
+     if (reportType == "INVOICE_PO_NX") {
+        window.open("invoice_nx.php?DI_ID=" + enc(diId), "_blank");
+        return;
+    }
+	
+	
+	 if (reportType == "DELIVERY_SHEET_PO_NX") {
+        window.open("delivery_po_nx.php?DI_ID=" + enc(diId), "_blank");
         return;
     }
 
-    if (reportType == "INVOICE_RATE_HIROSE") {
-        window.open(
-        "report_invoice_rate.php?DI_ID=" + enc(diId),
-        "_blank"
-    );
-        return;
-    }
 
-    if (reportType == "INVOICE_HILEX") {
-        window.open(
-        "report_surat_jalan.php?DI_ID=" + enc(diId),
-        "_blank"
-    );
-        return;
-    }
+    
 
     if (reportType == "PACKING_LIST") {
          window.open(

@@ -193,6 +193,7 @@ function h($value) {
 		<a class="menu-link" href="hitung_label_vendor.php" target="mainFrame">REPORT KEBUTUHAN LABEL VENDOR</a>
 		<a class="menu-link" href="packaging_vendor.php" target="mainFrame">REPORT KEBUTUHAN PACK DAN BOX VENDOR</a>
 		<a class="menu-link" href="no_std.php" target="mainFrame">NO STD</a>
+        <a class="menu-link" href="std_cust.php" target="mainFrame">NO STD CUSTOMER</a>
         <a class="menu-link" href="grid_input.php" target="mainFrame">LIST MASTER HITACHI</a>
         <a class="menu-link" href="input.php" target="mainFrame">BUAT QR HITACHI LABEL</a>
         <a class="menu-link" href="label_plant2.php" target="mainFrame">LABEL MANUAL PLANT 2</a>

@@ -1,32 +1,23 @@
 <?php
 require_once "../mtn/middleware/Auth.php";
 require_once "../mtn/middleware/RoleCheck.php";
-only(['p2','admin']);      // sesuaikan role
+only(['p2','admin']);
 require_once "../config/database.php";
 
 header("Content-Type: application/json");
 
 // =====================================================
-// VALIDASI METHOD
+// VALIDASI METHOD & PARAMETER
 // =====================================================
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(array(
-        'status'  => 'error',
-        'message' => 'Invalid request'
-    ));
+    echo json_encode(['status' => 'error', 'message' => 'Invalid request']);
     exit;
 }
 
-// =====================================================
-// VALIDASI PARAMETER
-// =====================================================
 $carno = isset($_POST['carno']) ? trim($_POST['carno']) : '';
 
-if ($carno === '') {
-    echo json_encode(array(
-        'status'  => 'error',
-        'message' => 'CARNO kosong'
-    ));
+if (empty($carno)) {
+    echo json_encode(['status' => 'error', 'message' => 'Nomor CARNO tidak valid atau kosong']);
     exit;
 }
 
@@ -34,20 +25,18 @@ if ($carno === '') {
 // PROSES DELETE
 // =====================================================
 $sql = "DELETE FROM MTN_HISTORY_CARNO WHERE CARNO = ?";
-$stmt = sqlsrv_query($conn, $sql, array($carno));
+$stmt = sqlsrv_query($conn, $sql, [$carno]);
 
 if ($stmt === false) {
-    echo json_encode(array(
+    echo json_encode([
         'status'  => 'error',
-        'message' => 'SQL Delete Error',
+        'message' => 'Gagal menghapus data di database',
         'sqlsrv'  => sqlsrv_errors()
-    ));
+    ]);
     exit;
 }
 
-// =====================================================
 // SUCCESS
-// =====================================================
-echo json_encode(array('status' => 'ok'));
+echo json_encode(['status' => 'ok', 'message' => 'Data berhasil dihapus']);
 exit;
 ?>

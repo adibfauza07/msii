@@ -74,6 +74,15 @@ table {
     cursor:pointer;
     border-radius:4px;
 }
+
+.doc-code {
+    position: fixed;
+    bottom: 15px;
+    left: 15px;
+    font-size: 11px;
+    font-weight: bold;
+    color: #333;
+}
 </style>
 
 </head>
@@ -139,7 +148,27 @@ table {
 </tr>
 <?php endwhile; ?>
 </tbody>
+
+
+
+    <!-- TAMBAHKAN TFOOT INI SEBAGAI PENGGANJAL -->
+    <tfoot>
+        <tr>
+            <!-- colspan="9" karena tabelmu punya 9 kolom -->
+            <td colspan="9" style="border: none; height: 30px;"></td>
+        </tr>
+    </tfoot>
+
+
+
+<!-- Elemen kode form di pojok kiri bawah -->
+<div class="doc-code">FM.MTN.S01-43</div>
+
 </table>
+
+
+
+
 
 </body>
 </html>

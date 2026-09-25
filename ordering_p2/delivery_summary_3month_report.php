@@ -382,7 +382,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
 body {
     margin: 0;
     background: #9a9a9a;
-    font-family: "Courier New", monospace;
+    font-family: "Calibri", sans-serif;
     font-size: 11px;
     color: #000000;
 }
@@ -395,7 +395,7 @@ body {
     border: 1px solid #666666;
     padding: 6px;
     box-sizing: border-box;
-    font-family: Tahoma, Arial, sans-serif;
+    font-family: "Calibri", sans-serif;
     font-size: 12px;
 }
 
@@ -447,7 +447,7 @@ body {
     border-bottom: 1px solid #dddddd;
     cursor: pointer;
     line-height: 16px;
-    font-family: Tahoma, Arial, sans-serif;
+    font-family: "Calibri", sans-serif;
     font-size: 12px;
 }
 
@@ -468,7 +468,7 @@ body {
     padding: 6px 14px;
     font-size: 11px;
     cursor: pointer;
-    font-family: Arial, sans-serif;
+    font-family: "Calibri", sans-serif;
 }
 
 /* PAGE A3 */
@@ -502,7 +502,7 @@ body {
 
 .company {
     width: 28%;
-    font-family: Arial, sans-serif;
+    font-family: "Calibri", sans-serif;
     font-size: 13px;
     line-height: 18px;
 }
@@ -515,7 +515,7 @@ body {
 .title-area {
     width: 44%;
     text-align: center;
-    font-family: Arial, sans-serif;
+    font-family: "Calibri", sans-serif;
 }
 
 .report-title {
@@ -532,7 +532,7 @@ body {
 .right-info {
     width: 28%;
     text-align: right;
-    font-family: Arial, sans-serif;
+    font-family: "Calibri", sans-serif;
     font-size: 13px;
     line-height: 18px;
 }
@@ -639,7 +639,7 @@ body {
 }
 
 .no-data {
-    font-family: Arial, sans-serif;
+    font-family: "Calibri", sans-serif;
     font-size: 14px;
     text-align: center;
     margin-top: 70px;

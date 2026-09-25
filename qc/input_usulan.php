@@ -35,6 +35,34 @@ $remarkList = [];
 $sqlRem = "SELECT DISTINCT keterangan FROM usulan_remark ORDER BY keterangan";
 $resRem = sqlsrv_query($conn, $sqlRem);
 if($resRem) { while ($r = sqlsrv_fetch_array($resRem, SQLSRV_FETCH_ASSOC)) { $remarkList[] = $r['keterangan']; } }
+
+
+// ==========================================
+// 3. AUTO GENERATE KODE USULAN
+// ==========================================
+$sqlMaxKode = "SELECT MAX(KODE_USUL) AS max_kode FROM USULAN_PERUBAHAN";
+$resMaxKode = sqlsrv_query($conn, $sqlMaxKode);
+
+// Default awal jika tabel database masih kosong
+$new_kode = "VU0001"; 
+
+if ($resMaxKode) {
+    $rowMax = sqlsrv_fetch_array($resMaxKode, SQLSRV_FETCH_ASSOC);
+    if (!empty($rowMax['max_kode'])) {
+        $max_kode = $rowMax['max_kode'];
+        
+        // Memisahkan huruf (prefix) dan angka menggunakan regex
+        $prefix = preg_replace('/[0-9]/', '', $max_kode); // Ambil huruf saja (misal: VU)
+        $angka  = preg_replace('/[^0-9]/', '', $max_kode); // Ambil angka saja (misal: 0300)
+        
+        // Tambahkan 1 pada angka, lalu gabungkan kembali dengan padding nol di depan
+        if ($angka !== '') {
+            $new_angka = str_pad((int)$angka + 1, strlen($angka), '0', STR_PAD_LEFT);
+            $new_kode = $prefix . $new_angka;
+        }
+    }
+}
+
 ?>
 
 <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
@@ -71,10 +99,11 @@ if($resRem) { while ($r = sqlsrv_fetch_array($resRem, SQLSRV_FETCH_ASSOC)) { $re
                 <div class="card-header-qc"><i class="bi bi-info-square"></i> Informasi Dokumen</div>
                 <div class="card-body p-4">
                     <div class="row g-3">
-                        <div class="col-md-4">
-                            <label class="form-label">Kode Usulan <span class="text-danger">*</span></label>
-                            <input type="text" name="kode_usul" class="form-control form-control-sm fw-bold" placeholder="Contoh: VU0300" required>
-                        </div>
+                        <!-- Cari bagian ini di dalam form HTML -->
+<div class="col-md-4">
+    <label class="form-label">Kode Usulan <span class="text-danger">*</span></label>
+    <input type="text" name="kode_usul" class="form-control form-control-sm fw-bold bg-light" value="<?= htmlspecialchars($new_kode) ?>" readonly required>
+</div>
                         <div class="col-md-4">
                             <label class="form-label">Issue Date</label>
                             <input type="date" name="issue_date" class="form-control form-control-sm" value="<?= date('Y-m-d') ?>">
