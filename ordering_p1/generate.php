@@ -1,4 +1,5 @@
 <?php
+//script lama
 require_once __DIR__ . "/../config/database_ordering.php";
 
 if ($conn === false) {
@@ -8,6 +9,57 @@ if ($conn === false) {
 
 function h($value) {
     return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+}
+
+// =========================================================================
+// AJAX HANDLER UNTUK EDIT NO. DI (SAVE = ENTER)
+// =========================================================================
+if (isset($_POST['AJAX_ACTION']) && $_POST['AJAX_ACTION'] === 'update_dino') {
+    header('Content-Type: application/json');
+    $di_id = isset($_POST['DI_ID']) ? intval($_POST['DI_ID']) : 0;
+    $new_dino = isset($_POST['NEW_DINO']) ? trim($_POST['NEW_DINO']) : '';
+
+    if ($di_id > 0 && $new_dino !== '') {
+        $sql_upd = "UPDATE dbo.DI_TEMP SET DI_NO = ? WHERE DI_ID = ?";
+        $stmt_upd = sqlsrv_query($conn, $sql_upd, array($new_dino, $di_id));
+        
+        if ($stmt_upd) {
+            echo json_encode(array('status' => 'success'));
+        } else {
+            $err = sqlsrv_errors();
+            $error_msg = isset($err[0]['message']) ? $err[0]['message'] : 'Unknown SQL error';
+            echo json_encode(array('status' => 'error', 'message' => $error_msg));
+        }
+    } else {
+        echo json_encode(array('status' => 'error', 'message' => 'ID atau No DI kosong.'));
+    }
+    exit();
+}
+
+// =========================================================================
+// AJAX HANDLER UNTUK EDIT INVOICE / DS NO (SAVE = ENTER)
+// =========================================================================
+if (isset($_POST['AJAX_ACTION']) && $_POST['AJAX_ACTION'] === 'update_invno') {
+    header('Content-Type: application/json');
+    $di_id = isset($_POST['DI_ID']) ? intval($_POST['DI_ID']) : 0;
+    $new_invno = isset($_POST['NEW_INVNO']) ? trim($_POST['NEW_INVNO']) : '';
+
+    if ($di_id > 0 && $new_invno !== '') {
+        // Update kedua kolom (DI_INVNO dan DI_DSNO) dengan nilai yang sama
+        $sql_upd = "UPDATE dbo.DI_TEMP SET DI_INVNO = ?, DI_DSNO = ? WHERE DI_ID = ?";
+        $stmt_upd = sqlsrv_query($conn, $sql_upd, array($new_invno, $new_invno, $di_id));
+        
+        if ($stmt_upd) {
+            echo json_encode(array('status' => 'success'));
+        } else {
+            $err = sqlsrv_errors();
+            $error_msg = isset($err[0]['message']) ? $err[0]['message'] : 'Unknown SQL error';
+            echo json_encode(array('status' => 'error', 'message' => $error_msg));
+        }
+    } else {
+        echo json_encode(array('status' => 'error', 'message' => 'ID atau No Invoice kosong.'));
+    }
+    exit(); // Stop execution here for AJAX request
 }
 
 $today = date('Y-m-d');
@@ -122,7 +174,7 @@ function GenerateDSNo_Other($conn, $CustAbbr, $UseDate, $offset = 0) {
 // =========================================================================
 // 2. PROSES POST (GENERATE & TRANSFER)
 // =========================================================================
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['AJAX_ACTION'])) {
     $action = isset($_POST['ACTION_TYPE']) ? trim($_POST['ACTION_TYPE']) : '';
 
     // ---------------------------------------------------------
@@ -266,7 +318,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 else if ($plan_qty > 0) $qty_to_load = $plan_qty;
                                 else $qty_to_load = $pb_qty;
 
-                                // PERBAIKAN: Ambil nilai DIPA_PQTY dari hasil SP (Bisa STD_BOX atau STD_PACK_BOX)
                                 $dipa_pqty = isset($sp_row['STD_BOX']) ? intval($sp_row['STD_BOX']) : (isset($sp_row['STD_PACK_BOX']) ? intval($sp_row['STD_PACK_BOX']) : 0);
                                 
                                 $location  = isset($sp_row['LOCATION']) ? trim($sp_row['LOCATION']) : '';
@@ -277,13 +328,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $dipa_pack = '';
 
                                 if ($part_num != '') {
-                                    // PERBAIKAN: Join ke tabel STD_PACK dan PACK untuk mencari PACK_ID dan PACK_CODE
                                     $sql_part_info = "
                                         SELECT TOP 1 
                                             PV.PART_ID, 
                                             PV.PRICE_ID, 
                                             PV.PART_CODE,
-                                            SP.PACK_ID,
+                                            SP.PACK_ID, 
                                             P.PACK_CODE
                                         FROM dbo.PART_VIEW PV
                                         LEFT JOIN dbo.STD_PACK SP ON PV.PART_CODE = SP.ITEM_CODE
@@ -296,7 +346,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         $price_id = intval($pi_row['PRICE_ID']);
                                         $part_code_from_view = trim($pi_row['PART_CODE']);
                                         
-                                        // Set PACK_ID dan DIPA_PACK (PACK_CODE) jika ditemukan
                                         if (!empty($pi_row['PACK_ID'])) {
                                             $pack_id = intval($pi_row['PACK_ID']);
                                         }
@@ -310,7 +359,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                     $part_code_final = ($part_code_from_view != '') ? $part_code_from_view : substr($part_num, 0, 8);
                                     $part_code_8 = substr($part_code_final, 0, 8);
 
-                                    // PERBAIKAN: Mengganti hardcode '1' di PACK_ID menjadi parameter '?'
                                     $sql_ins_part = "
                                         INSERT INTO dbo.DI_PART_TEMP 
                                         (DI_ID, DIPA_LINO, PART_CODE, PART_ID, DIPA_QTY, PACK_ID, DIPA_PACK, DIPA_PQTY, BDQTY, PRICE_ID, LOCATION, DIPA_POSTED, IS_MANUAL)
@@ -322,9 +370,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         $part_code_8, 
                                         $part_id, 
                                         $qty_to_load, 
-                                        $pack_id,                     // Didapat dari STD_PACK
-                                        substr($dipa_pack, 0, 10),    // Didapat dari PACK.PACK_CODE
-                                        $dipa_pqty,                   // Didapat dari SP.STD_BOX
+                                        $pack_id,                       // Didapat dari STD_PACK
+                                        substr($dipa_pack, 0, 10),     // Didapat dari PACK.PACK_CODE
+                                        $dipa_pqty,                    // Didapat dari SP.STD_BOX
                                         $pb_qty, 
                                         $price_id, 
                                         substr($location, 0, 30)
@@ -379,15 +427,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $success_count = 0;
             $error_messages = array();
 
-            // ==========================================================
             // MENGAKTIFKAN SAKLAR BYPASS TRIGGER FIFO (REPOSTING MODE)
-            // ==========================================================
             sqlsrv_query($conn, "UPDATE dbo.CONTROL_FLAGS SET FLAG_VALUE = 1 WHERE FLAG_NAME = 'REPOSTING_MODE'");
 
             foreach ($selected_ids as $temp_di_id) {
                 sqlsrv_begin_transaction($conn);
                 try {
-                    // PERHATIAN: Kolom DI_ORDERNO Dihapus dari Query INSERT untuk menghindari Error Truncated
                     $sql_ins_di = "
                         SET NOCOUNT ON;
                         INSERT INTO dbo.DI (
@@ -442,7 +487,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         throw new Exception($errMsg);
                     }
 
-                    // Hapus data dari Temp setelah sukses dipindah
                     sqlsrv_query($conn, "DELETE FROM dbo.DI_PART_TEMP WHERE DI_ID = ?", array($temp_di_id));
                     sqlsrv_query($conn, "DELETE FROM dbo.DI_TEMP WHERE DI_ID = ?", array($temp_di_id));
 
@@ -455,9 +499,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
 
-            // ==========================================================
             // MEMATIKAN KEMBALI SAKLAR BYPASS SETELAH SELESAI
-            // ==========================================================
             sqlsrv_query($conn, "UPDATE dbo.CONTROL_FLAGS SET FLAG_VALUE = 0 WHERE FLAG_NAME = 'REPOSTING_MODE'");
 
             if ($success_count > 0) {
@@ -480,7 +522,7 @@ $sql_get_temp = "
     SELECT 
         T.DI_ID, 
         T.DI_NO, 
-        T.DI_INVNO,
+        T.DI_INVNO, 
         C.CUST_COMP, 
         (SELECT COUNT(*) FROM dbo.DI_PART_TEMP P WHERE P.DI_ID = T.DI_ID) AS TOTAL_ITEMS
     FROM dbo.DI_TEMP T
@@ -541,6 +583,16 @@ if ($stmt_get !== false) {
         tr:hover { background: #f0f0f0; }
         .text-center { text-align: center; }
         
+        /* Edit Invoice Field Style */
+        .edit-inv { width: 100%; box-sizing: border-box; border: 1px solid transparent; background: transparent; padding: 3px; cursor: pointer; transition: 0.2s; font-family: inherit; font-size: inherit; }
+        .edit-inv:focus { border: 1px solid #316ac5; background: #fff; cursor: text; outline: none; }
+        .edit-inv:hover:not(:focus) { background: #eef; border: 1px solid #ccc; }
+
+        /* Edit DI No Field Style */
+        .edit-dino { width: 100%; box-sizing: border-box; border: 1px solid transparent; background: transparent; padding: 3px; cursor: pointer; transition: 0.2s; font-family: inherit; font-size: inherit; font-weight: bold; color: #000080; }
+        .edit-dino:focus { border: 1px solid #316ac5; background: #fff; cursor: text; outline: none; }
+        .edit-dino:hover:not(:focus) { background: #eef; border: 1px solid #ccc; }
+
         #loadingOverlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0, 0, 0, 0.5); z-index: 99999; justify-content: center;
@@ -638,7 +690,6 @@ if ($stmt_get !== false) {
                     <button type="button" class="btn-primary" onclick="submitTransfer('transfer_selected')">Kirim Terpilih</button>
                     <button type="button" class="btn-success" onclick="submitTransfer('transfer_all')">Kirim Semua Data</button>
                     
-                    <!-- Form Print DI (Sesuai kotak merah di image_5ccba1.png) -->
                     <div style="border-left: 2px solid #808080; height: 24px; margin: 0 5px;"></div>
                     <div style="display: flex; gap: 5px; align-items: center;">
                         <span style="font-weight:bold; font-size:11px; color:#000080;">Print Temp:</span>
@@ -661,8 +712,8 @@ if ($stmt_get !== false) {
                                 <input type="checkbox" id="checkAll" onclick="toggleCheckboxes(this)">
                             </th>
                             <th class="text-center" style="width: 30px;">No</th>
-                            <th>No. DI</th>
-                            <th>No. Invoice</th>
+                            <th>No. DI (Edit & Enter)</th>
+                            <th>No. Invoice (Edit & Enter)</th>
                             <th>Customer</th>
                             <th class="text-center">Total Part</th>
                         </tr>
@@ -679,8 +730,24 @@ if ($stmt_get !== false) {
                                         <input type="checkbox" name="DI_IDS[]" value="<?php echo h($row['DI_ID']); ?>" class="rowCheckbox">
                                     </td>
                                     <td class="text-center"><?php echo $no++; ?></td>
-                                    <td style="font-weight: bold; color: #000080;"><?php echo h($row['DI_NO']); ?></td>
-                                    <td><?php echo h($row['DI_INVNO']); ?></td>
+                                    
+                                    <!-- Input Edit No. DI -->
+                                    <td style="padding: 0 4px;">
+                                        <input type="text" class="edit-dino" 
+                                               data-id="<?php echo h($row['DI_ID']); ?>" 
+                                               value="<?php echo h($row['DI_NO']); ?>" 
+                                               title="Klik untuk Edit lalu tekan Enter"
+                                               onkeydown="updateDINo(event, this)">
+                                    </td>
+
+                                    <!-- Input Edit Invoice / DS NO -->
+                                    <td style="padding: 0 4px;">
+                                        <input type="text" class="edit-inv" 
+                                               data-id="<?php echo h($row['DI_ID']); ?>" 
+                                               value="<?php echo h($row['DI_INVNO']); ?>" 
+                                               title="Klik untuk Edit lalu tekan Enter"
+                                               onkeydown="updateInvoiceDsno(event, this)">
+                                    </td>
                                     <td><?php echo h($row['CUST_COMP']); ?></td>
                                     <td class="text-center"><?php echo h($row['TOTAL_ITEMS']); ?> Part(s)</td>
                                 </tr>
@@ -695,6 +762,89 @@ if ($stmt_get !== false) {
 </div>
 
 <script>
+// ================= SCRIPT AJAX UPDATE NO. DI =================
+function updateDINo(event, inputElem) {
+    if (event.key === 'Enter' || event.keyCode === 13) {
+        event.preventDefault(); 
+        
+        var di_id = inputElem.getAttribute('data-id');
+        var new_val = inputElem.value.trim();
+
+        if (new_val === '') {
+            alert('Nilai No. DI tidak boleh kosong!');
+            return;
+        }
+
+        inputElem.disabled = true; // Kunci input selagi proses AJAX
+
+        var postData = "AJAX_ACTION=update_dino&DI_ID=" + encodeURIComponent(di_id) + "&NEW_DINO=" + encodeURIComponent(new_val);
+        
+        ajaxPost(window.location.href, postData, function(status, response) {
+            inputElem.disabled = false;
+            if (status === 200) {
+                try {
+                    var res = JSON.parse(response);
+                    if (res.status === 'success') {
+                        // Efek sukses berkedip hijau
+                        inputElem.style.backgroundColor = '#d4edda';
+                        setTimeout(function(){ 
+                            inputElem.style.backgroundColor = 'transparent'; 
+                        }, 1000);
+                        inputElem.blur();
+                    } else {
+                        alert("Gagal memperbarui No. DI: " + res.message);
+                    }
+                } catch (e) {
+                    alert("Error pada respon server: " + response);
+                }
+            } else {
+                alert("Terjadi kesalahan koneksi jaringan. Status: " + status);
+            }
+        });
+    }
+}
+
+// ================= SCRIPT AJAX UPDATE DS NO / INV NO =================
+function updateInvoiceDsno(event, inputElem) {
+    if (event.key === 'Enter' || event.keyCode === 13) {
+        event.preventDefault(); 
+        
+        var di_id = inputElem.getAttribute('data-id');
+        var new_val = inputElem.value.trim();
+
+        if (new_val === '') {
+            alert('Nilai Invoice / DS NO tidak boleh kosong!');
+            return;
+        }
+
+        inputElem.disabled = true;
+
+        var postData = "AJAX_ACTION=update_invno&DI_ID=" + encodeURIComponent(di_id) + "&NEW_INVNO=" + encodeURIComponent(new_val);
+        
+        ajaxPost(window.location.href, postData, function(status, response) {
+            inputElem.disabled = false;
+            if (status === 200) {
+                try {
+                    var res = JSON.parse(response);
+                    if (res.status === 'success') {
+                        inputElem.style.backgroundColor = '#d4edda';
+                        setTimeout(function(){ 
+                            inputElem.style.backgroundColor = 'transparent'; 
+                        }, 1000);
+                        inputElem.blur();
+                    } else {
+                        alert("Gagal memperbarui data: " + res.message);
+                    }
+                } catch (e) {
+                    alert("Error pada respon server: " + response);
+                }
+            } else {
+                alert("Terjadi kesalahan koneksi jaringan. Status: " + status);
+            }
+        });
+    }
+}
+
 // ================= SCRIPT KIRI (GENERATE) =================
 document.getElementById('generateForm').onsubmit = function() {
     if (document.getElementById('genActionType').value === 'generate') {
@@ -812,8 +962,6 @@ function printDI() {
         return;
     }
     
-    // Buka tab baru yang mengarah ke file delivery_instruction_oto.php
-    // Parameter CUST_CODE dibiarkan kosong agar di-fallback menjadi "%" (semua customer) oleh file print
     var url = "delivery_instruction_oto.php?START_DATE=" + enc(startDate) + "&END_DATE=" + enc(endDate);
     window.open(url, '_blank');
 }

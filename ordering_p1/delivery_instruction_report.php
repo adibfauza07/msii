@@ -13,58 +13,47 @@ function get_param($name, $default = "") {
     if (isset($_GET[$name])) {
         return trim($_GET[$name]);
     }
-
     if (isset($_POST[$name])) {
         return trim($_POST[$name]);
     }
-
     return $default;
 }
 
 function to_yyyymmdd($value) {
     $value = trim($value);
-
-    if ($value == "") {
-        return "";
-    }
-
-    if (preg_match('/^\d{8}$/', $value)) {
-        return $value;
-    }
-
+    if ($value == "") return "";
+    if (preg_match('/^\d{8}$/', $value)) return $value;
     $ts = strtotime($value);
-
-    if ($ts === false) {
-        return "";
-    }
-
+    if ($ts === false) return "";
     return date("Ymd", $ts);
 }
 
 function fmt_date_id($yyyymmdd) {
-    if ($yyyymmdd == "") {
-        return "";
-    }
-
+    if ($yyyymmdd == "") return "";
     $ts = strtotime($yyyymmdd);
-
-    if ($ts === false) {
-        return $yyyymmdd;
-    }
-
+    if ($ts === false) return $yyyymmdd;
     return strtoupper(date("d M Y", $ts));
 }
 
 function fmt_print_date() {
-    return date("d-M-Y H:i:s");
+    return date("d-M-Y  H:i.s");
 }
 
 function fmt_num($value, $decimal = 0) {
-    if ($value === null || $value === "") {
-        $value = 0;
-    }
-
+    if ($value === null || $value === "") $value = 0;
     return number_format((float)$value, $decimal, ".", ",");
+}
+
+// Fungsi pembaca kolom yang 100% Case-Insensitive
+function get_val($row, $keys, $default = "") {
+    $row_ci = array_change_key_case($row, CASE_UPPER);
+    foreach ($keys as $k) {
+        $k_up = strtoupper($k);
+        if (isset($row_ci[$k_up])) {
+            return trim((string)$row_ci[$k_up]);
+        }
+    }
+    return $default;
 }
 
 $cust_code = get_param("CUST_CODE", "");
@@ -86,9 +75,10 @@ if ($start_date == "" || $end_date == "") {
     die("START_DATE / END_DATE tidak valid.");
 }
 
+// MENGGUNAKAN PO1 SESUAI DENGAN CRYSTAL REPORT ASLI
 $sql = "
     SET NOCOUNT ON;
-    EXEC dbo.SP_DELIVERY_INSTRUCTION_PO2 ?, ?, ?
+    EXEC dbo.SP_DELIVERY_INSTRUCTION_PO1 ?, ?, ?
 ";
 
 $stmt = sqlsrv_query($conn, $sql, array(
@@ -98,85 +88,85 @@ $stmt = sqlsrv_query($conn, $sql, array(
 ));
 
 if ($stmt === false) {
-    die("<pre>Query SP_DELIVERY_INSTRUCTION_PO2 gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
+    die("<pre>Query SP_DELIVERY_INSTRUCTION_PO1 gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
 }
 
 $rows = array();
-
 while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $rows[] = $r;
 }
 
 if (count($rows) > 0) {
-    $displayStart = isset($rows[0]["START_DATE_DISPLAY"]) ? trim($rows[0]["START_DATE_DISPLAY"]) : fmt_date_id($start_date);
-    $displayEnd   = isset($rows[0]["END_DATE_DISPLAY"]) ? trim($rows[0]["END_DATE_DISPLAY"]) : fmt_date_id($end_date);
+    $displayStart = get_val($rows[0], ["START_DATE_DISPLAY"]) !== "" ? get_val($rows[0], ["START_DATE_DISPLAY"]) : fmt_date_id($start_date);
+    $displayEnd   = get_val($rows[0], ["END_DATE_DISPLAY"]) !== "" ? get_val($rows[0], ["END_DATE_DISPLAY"]) : fmt_date_id($end_date);
 } else {
     $displayStart = fmt_date_id($start_date);
     $displayEnd   = fmt_date_id($end_date);
 }
 
-/*
-    1 customer = 1 halaman.
-*/
-$customerPages = array();
-
+// Group data by customer and apply pagination (20 rows per page max)
+$tempGroup = array();
 for ($i = 0; $i < count($rows); $i++) {
     $r = $rows[$i];
 
-    $custCode = isset($r["CUST_CODE"]) ? trim((string)$r["CUST_CODE"]) : "";
-    $custComp = isset($r["CUST_COMP"]) ? trim((string)$r["CUST_COMP"]) : "";
+    $custCode = get_val($r, ["CUST_CODE"]);
+    $custComp = get_val($r, ["CUST_COMP"]);
 
     $key = $custCode . "|" . $custComp;
 
-    if (!isset($customerPages[$key])) {
-        $customerPages[$key] = array(
+    if (!isset($tempGroup[$key])) {
+        $tempGroup[$key] = array(
             "CUST_CODE" => $custCode,
             "CUST_COMP" => $custComp,
             "ROWS"      => array()
         );
     }
 
-    $customerPages[$key]["ROWS"][] = array(
-        "ITEM_CODE"    => isset($r["PART_NUM"]) ? trim((string)$r["PART_NUM"]) : "",
-        "ITEM_NO"      => isset($r["PART_NO"]) ? trim((string)$r["PART_NO"]) : "",
-        "ITEM_NAME"    => isset($r["PART_NAME"]) ? trim((string)$r["PART_NAME"]) : "",
-        "PBQTY"        => isset($r["PBQTY"]) ? $r["PBQTY"] : 0,
-        "PLAN_QTY"     => isset($r["PLAN_QTY"]) ? $r["PLAN_QTY"] : 0,
-        "PO"           => isset($r["PO"]) ? trim((string)$r["PO"]) : "",
-        "STD_PACK_BOX" => isset($r["STD_PACK_BOX"]) ? $r["STD_PACK_BOX"] : 0,
-        "STD_BOX"      => isset($r["STD_BOX"]) ? $r["STD_BOX"] : 0,
-        "PACK_CODE"    => isset($r["PACK_CODE"]) ? trim((string)$r["PACK_CODE"]) : ""
+    $stdPack = get_val($r, ["STD_PACK_BOX"]) !== "" ? get_val($r, ["STD_PACK_BOX"]) : (get_val($r, ["STD_BOX"]) !== "" ? get_val($r, ["STD_BOX"]) : 0);
+
+    $tempGroup[$key]["ROWS"][] = array(
+        "ITEM_CODE"    => get_val($r, ["PART_NUM"]),
+        "ITEM_NO"      => get_val($r, ["PART_NO"]),
+        "ITEM_NAME"    => get_val($r, ["PART_NAME"]),
+        "PBQTY"        => get_val($r, ["PBQTY"]) !== "" ? get_val($r, ["PBQTY"]) : 0,
+        "PLAN_QTY"     => get_val($r, ["PLAN_QTY"]) !== "" ? get_val($r, ["PLAN_QTY"]) : 0,
+        "STD_PACK_BOX" => $stdPack,
+        
+        // Membaca kolom LOCATION dengan prioritas penuh
+        "LOCATION"     => get_val($r, ["LOCATION", "LOC"]),
+        
+        "REMARK"       => get_val($r, ["REMARK", "POLYBAG", "PACK_CODE"])
     );
 }
 
+$rowsPerPage = 20;
 $pages = array();
 
-foreach ($customerPages as $page) {
-    $pages[] = $page;
+foreach ($tempGroup as $group) {
+    $chunks = array_chunk($group["ROWS"], $rowsPerPage);
+    $rowIndex = 1;
+    foreach ($chunks as $chunk) {
+        $pages[] = array(
+            "CUST_CODE"  => $group["CUST_CODE"],
+            "CUST_COMP"  => $group["CUST_COMP"],
+            "START_ROW"  => $rowIndex,
+            "ROWS"       => $chunk
+        );
+        $rowIndex += count($chunk); 
+    }
 }
 
 if (count($pages) == 0) {
-    $pages[] = array(
-        "CUST_CODE" => "",
-        "CUST_COMP" => "",
-        "ROWS"      => array()
-    );
+    $pages[] = array("CUST_CODE" => "", "CUST_COMP" => "", "START_ROW" => 1, "ROWS" => array());
 }
 
 $totalPages = count($pages);
-
-/*
-    Karena tulisan PART sudah dihapus dari dalam tabel,
-    jumlah baris detail bisa lebih banyak.
-*/
-$rowsPerPage = 20;
 ?>
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
     <title>Delivery Instruction</title>
-
     <style>
         @page {
             size: A4 landscape;
@@ -186,8 +176,8 @@ $rowsPerPage = 20;
         body {
             margin: 0;
             background: #9a9a9a;
-            font-family: "Courier New", monospace;
-            font-size: 10px;
+            font-family: Arial, sans-serif;
+            font-size: 11px;
             color: #000000;
         }
 
@@ -209,7 +199,6 @@ $rowsPerPage = 20;
             min-height: 198mm;
             margin: 10px auto;
             background: #ffffff;
-            border: 2px solid #000000;
             padding: 5mm;
             box-sizing: border-box;
             page-break-after: always;
@@ -220,187 +209,76 @@ $rowsPerPage = 20;
             page-break-after: auto;
         }
 
-        .header {
+        .header-layout {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 3px;
+            margin-bottom: 2px;
         }
+        .header-layout td { vertical-align: top; }
+        
+        .title-left { width: 33%; }
+        .title-center { width: 34%; text-align: center; }
+        .title-right { width: 33%; text-align: right; }
 
-        .header td {
-            border: none;
-            vertical-align: top;
-        }
+        .company-name { font-size: 14px; font-weight: bold; margin-bottom: 2px; }
+        .dept-name { font-size: 11px; }
+        
+        .report-title { font-size: 20px; letter-spacing: 1px; margin-bottom: 4px; }
+        .report-period { font-size: 12px; }
 
-        .company {
-            width: 32%;
-            font-family: Arial, sans-serif;
-            font-size: 11px;
-            line-height: 13px;
-        }
+        .form-no { font-size: 11px; }
+        .page-no { font-size: 11px; margin-top: 4px; }
+        .print-date { font-size: 11px; margin-top: 15px; margin-bottom: 2px;}
 
-        .company-title {
-            font-size: 14px;
-            font-weight: normal;
-        }
-
-        .title-area {
-            width: 40%;
-            text-align: center;
-            font-family: Arial, sans-serif;
-        }
-
-        .report-title {
-            font-size: 21px;
-            font-weight: normal;
-            margin-top: 16px;
-            margin-bottom: 5px;
-        }
-
-        .period {
-            font-size: 12px;
-        }
-
-        .right-info {
-            width: 28%;
-            text-align: right;
-            font-family: Arial, sans-serif;
-            font-size: 11px;
-            line-height: 16px;
-        }
-
-        .form-no {
-            font-weight: normal;
-        }
-
-        .page-no {
-            margin-top: 4px;
-        }
-
-        .print-date {
-            text-align: right;
-            font-size: 11px;
-            font-family: Arial, sans-serif;
-            margin-top: 0;
-            margin-bottom: 3px;
-        }
-
-        .customer-title {
-            width: 100%;
-            font-family: "Courier New", monospace;
-            font-size: 12px;
-            font-weight: bold;
-            margin-top: 2px;
-            margin-bottom: 4px;
-            padding-left: 2px;
-            box-sizing: border-box;
-        }
-
-        .di-table {
+        .report-table {
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
+            border-bottom: 1px solid #000;
         }
 
-        .di-table th,
-        .di-table td {
-            border: 1px solid #000000;
-            padding: 2px 3px;
-            height: 20px;
-            line-height: 12px;
-            box-sizing: border-box;
+        .report-table th, .report-table td {
+            font-size: 10px;
+            padding: 5px 2px; 
             vertical-align: middle;
-            white-space: nowrap;
+            word-wrap: break-word;
             overflow: hidden;
-            text-overflow: clip;
         }
 
-        .di-table th {
-            font-weight: normal;
-            text-align: center;
-        }
+        .solid-top th { border-top: 1px solid #000; }
+        .dash-bottom th, .dash-bottom td { border-bottom: 1px dashed #000; }
+        .dash-left { border-left: 1px dashed #000; }
+        .dash-right { border-right: 1px dashed #000; }
 
-        .empty-line td {
-            height: 20px;
-        }
+        .text-center { text-align: center; }
+        .text-left { text-align: left; }
+        .text-right { text-align: right; padding-right: 5px !important; }
+        .font-bold { font-weight: bold; }
 
-        .num {
-            text-align: right;
-        }
-
-        .center {
-            text-align: center;
-        }
-
-        .left {
-            text-align: left;
-            padding-left: 5px !important;
-        }
-
-        .signature {
-            width: 100%;
-            margin-top: 8px;
-            font-size: 11px;
-        }
-
-        .signature td {
-            border: none;
-        }
-
-        .sig-right {
-            text-align: right;
-            padding-right: 55px;
-            font-style: italic;
-        }
-
-        /*
-            Total kolom = 100%
-        */
-        .col-item-code { width: 9%; }
-        .col-item-no { width: 15%; }
-        .col-item-name { width: 20%; }
-        .col-lot-no { width: 7%; }
-        .col-po-bal { width: 7%; }
-        .col-plan { width: 7%; }
-        .col-pcs { width: 6%; }
-        .col-pack { width: 6%; }
-        .col-initial { width: 6%; }
-        .col-total { width: 7%; }
-        .col-remark { width: 7%; }
-        .col-check { width: 3%; }
+        .w1 { width: 9%; }   
+        .w2 { width: 17%; }  
+        .w3 { width: 10%; }  
+        .w4 { width: 7%; }   
+        .w5 { width: 6%; }   
+        .w6 { width: 5%; }   
+        .w7 { width: 4%; }   
+        .w8 { width: 5%; }   
+        .w9 { width: 5%; }   
+        .w10 { width: 4%; }  
+        .w11 { width: 5%; }  
+        .w12 { width: 13%; } 
+        .w13 { width: 6%; }  
+        .w14 { width: 4%; }  
+        
+        .data-row { height: 28px; }
 
         @media print {
-            html,
-            body {
-                width: 297mm;
-                height: 210mm;
-                background: #ffffff;
-            }
-
+            body { background: #ffffff; }
             .print-bar { display: none; }
-
-            .page {
-                width: 285mm;
-                min-height: 198mm;
-                margin: 0 auto;
-                border: none;
-                padding: 0;
-                overflow: hidden;
-            }
-
-            .di-table th,
-            .di-table td {
-                height: 20px;
-                line-height: 12px;
-                font-size: 10px;
-                padding: 2px 3px;
-            }
-
-            .report-title { font-size: 21px; }
-            .company-title { font-size: 14px; }
+            .page { border: none; margin: 0; padding: 0; }
         }
     </style>
 </head>
-
 <body>
 
 <div class="print-bar">
@@ -415,202 +293,133 @@ $rowsPerPage = 20;
         $custCode   = $pageData["CUST_CODE"];
         $custComp   = $pageData["CUST_COMP"];
         $detailRows = $pageData["ROWS"];
+        $startRow   = $pageData["START_ROW"];
     ?>
 
     <div class="page">
-
-        <table class="header">
+        <table class="header-layout">
             <tr>
-                <td class="company">
-                    <div class="company-title">P.T. IMC TEKNO INDONESIA</div>
-                    PPIC Department
+                <td class="title-left">
+                    <div class="company-name">P.T. IMC TEKNO INDONESIA</div>
+                    <div class="dept-name">PPIC Departement</div>
                 </td>
-
-                <td class="title-area">
+                <td class="title-center">
                     <div class="report-title">DELIVERY INSTRUCTION</div>
-                    <div class="period">
-                        <?php echo h($displayStart); ?>
-                        &nbsp;&nbsp;&nbsp;&nbsp; - &nbsp;&nbsp;&nbsp;&nbsp;
-                        <?php echo h($displayEnd); ?>
+                    <div class="report-period">
+                        <?php echo h($displayStart); ?> &nbsp;&nbsp;-&nbsp;&nbsp; <?php echo h($displayEnd); ?>
                     </div>
                 </td>
-
-                <td class="right-info">
+                <td class="title-right">
                     <div class="form-no">FM.CO.00-06</div>
                     <div class="page-no">Page <?php echo h($pageNo); ?> of <?php echo h($totalPages); ?></div>
+                    <div class="print-date">
+                        Print Date : &nbsp; <?php echo h(fmt_print_date()); ?>
+                    </div>
                 </td>
             </tr>
         </table>
 
-        <div class="print-date">
-            Print Date : &nbsp; <?php echo h(fmt_print_date()); ?>
-        </div>
-
-        <div class="customer-title">
-            <?php echo h($custCode); ?>
-            &nbsp;&nbsp;
-            <?php echo h($custComp); ?>
-        </div>
-
-        <table class="di-table">
+        <table class="report-table">
+            <colgroup>
+                <col class="w1">
+                <col class="w2">
+                <col class="w3">
+                <col class="w4">
+                <col class="w5">
+                <col class="w6">
+                <col class="w7">
+                <col class="w8">
+                <col class="w9">
+                <col class="w10">
+                <col class="w11">
+                <col class="w12">
+                <col class="w13">
+                <col class="w14">
+            </colgroup>
             <thead>
-                <tr>
-                    <th rowspan="3" class="col-item-code">Item Code</th>
-                    <th rowspan="3" class="col-item-no">Item No</th>
-                    <th rowspan="3" class="col-item-name">Item Name</th>
-                    <th rowspan="3" class="col-lot-no">Lot No</th>
-                    <th rowspan="3" class="col-po-bal">PO.Bal</th>
-                    <th rowspan="3" class="col-plan">Del.Plan</th>
-                    <th colspan="4">Actual Qty</th>
-                    <th rowspan="3" class="col-remark">REMARK</th>
-                    <th rowspan="3" class="col-check">loading<br>check</th>
+                <tr class="solid-top">
+                    <th colspan="6"></th>
+                    <th colspan="3" class="dash-left text-center" style="font-weight: normal; padding-bottom: 2px;">Actual Qty</th>
+                    <th class="dash-left"></th>
+                    <th class="dash-left text-center" style="font-weight: normal; padding-bottom: 2px;">loading</th>
+                    <th class="dash-left"></th>
+                    <th class="dash-left text-center" style="font-weight: normal; padding-bottom: 2px;">Initial</th>
+                    <th class="dash-left dash-right text-center" style="font-weight: normal; padding-bottom: 2px;">sample</th>
                 </tr>
-                <tr>
-                    <th rowspan="2" class="col-pcs">actual</th>
-                    <th rowspan="2" class="col-pack">std_box</th>
-                    <th class="col-initial">Initial</th>
-                    <th rowspan="2" class="col-total">Total</th>
-                </tr>
-                <tr>
-                    <th class="col-initial">packing</th>
+                <tr class="dash-bottom">
+                    <th colspan="3" class="text-left" style="font-weight: normal; letter-spacing: 15px; padding-left: 5px;">P A R T</th>
+                    
+                    <th style="font-weight: normal; text-align: right; padding-right: 5px;">
+                        <span style="float: left; padding-left: 5px;">Lot.No</span> STD
+                    </th>
+                    <th class="text-right" style="font-weight: normal;">PO.Bal</th>
+                    <th class="text-right" style="font-weight: normal;">Del.Plan</th>
+                    
+                    <th class="dash-left text-center" style="font-weight: normal;">pcs</th>
+                    <th class="dash-left text-center" style="font-weight: normal;">packing</th>
+                    <th class="dash-left text-center" style="font-weight: normal;">Total</th>
+                    <th class="dash-left text-center" style="font-weight: normal;">LOC</th>
+                    <th class="dash-left text-center" style="font-weight: normal; padding-top: 2px;">check</th>
+                    <th class="dash-left text-left" style="font-weight: normal; letter-spacing: 3px; padding-left: 8px;">R E M A R K</th>
+                    <th class="dash-left text-center" style="font-weight: normal; padding-top: 2px;">packing</th>
+                    <th class="dash-left dash-right text-center" style="font-weight: normal; padding-top: 2px;">QC</th>
                 </tr>
             </thead>
-
             <tbody>
-                <?php if (count($detailRows) == 0) { ?>
-                    <tr>
-                        <td colspan="12" class="center">
-                            Data tidak ditemukan.
-                        </td>
-                    </tr>
-                <?php } ?>
+                <tr>
+                    <td colspan="14" class="text-left font-bold" style="padding-top: 8px; padding-bottom: 8px; font-size: 11px;">
+                        <?php echo h($custCode); ?> &nbsp; <?php echo h($custComp); ?>
+                    </td>
+                </tr>
 
-                <?php 
-                    $total_po_bal = 0;
-                    $total_plan = 0;
-                    $total_box = 0;
+                <?php for ($i = 0; $i < count($detailRows); $i++) {
+                    $r = $detailRows[$i]; 
+                    $rowNum = $startRow + $i;
                 ?>
-
-                <?php for ($i = 0; $i < count($detailRows); $i++) { ?>
-                    <?php 
-                        $r = $detailRows[$i]; 
-                        
-                        $jml_box = 0;
-                        if (!empty($r["STD_PACK_BOX"]) && $r["STD_PACK_BOX"] > 0) {
-                            $jml_box = ceil($r["PLAN_QTY"] / $r["STD_PACK_BOX"]);
-                        }
-
-                        $total_po_bal += $r["PBQTY"];
-                        $total_plan   += $r["PLAN_QTY"];
-                        $total_box    += $jml_box;
-                    ?>
-
-                    <tr>
-                        <td class="col-item-code">
-                            <?php echo h($r["ITEM_CODE"]); ?>
-                        </td>
-
-                        <td class="col-item-no">
-                            <?php echo h($r["ITEM_NO"]); ?>
-                        </td>
-
-                        <td class="col-item-name">
-                            <?php echo h($r["ITEM_NAME"]); ?>
-                        </td>
-
-                        <td class="col-lot-no">
-                            &nbsp;
-                        </td>
-
-                        <td class="col-po-bal center">
-                            <?php echo h(fmt_num($r["PBQTY"], 0)); ?>
-                        </td>
-
-                        <td class="col-plan center">
-                            <?php echo h(fmt_num($r["PLAN_QTY"], 0)); ?>
-                        </td>
-
-                        <td class="col-pcs"></td>
-                        
-                        <!-- ISI STD_BOX DIAMBIL DARI DATABASE (STD_PACK_BOX) -->
-                        <td class="col-pack center">
-                            <?php echo h(fmt_num($r["STD_PACK_BOX"], 0)); ?>
-                        </td>
-                        
-                        <!-- HASIL PERHITUNGAN PINDAH KE KOLOM INITIAL PACKING -->
-                        <td class="col-initial center">
-                            <?php echo h($r["PACK_CODE"]); ?>
-                        </td>
-                        
-                        <!-- PACK CODE DITAMPILKAN DI KOLOM TOTAL DENGAN RATA KIRI -->
-                        <td class="col-total center">
-						    <?php echo h(fmt_num($jml_box, 0)); ?>
-         
-                        </td>
-
-                        <td class="col-remark">&nbsp;</td>
-
-                        <td class="col-check"></td>
+                    <tr class="dash-bottom data-row">
+                        <td class="text-left" style="padding-left: 2px;"><?php echo h($r["ITEM_NO"]); ?></td>
+                        <td class="text-left"><?php echo h($r["ITEM_NAME"]); ?></td>
+                        <td class="text-left"><?php echo h($r["ITEM_CODE"]); ?></td>
+                        <td class="text-right"><?php echo h(fmt_num($r["STD_PACK_BOX"], 0)); ?></td>
+                        <td class="text-right"><?php echo h(fmt_num($r["PBQTY"], 0)); ?></td>
+                        <td class="text-right"><?php echo h(fmt_num($r["PLAN_QTY"], 0)); ?></td>
+                        <td class="dash-left"></td>
+                        <td class="dash-left"></td>
+                        <td class="dash-left"></td>
+                        <td class="dash-left text-center"><?php echo h($r["LOCATION"]); ?></td>
+                        <td class="dash-left"></td>
+                        <td class="dash-left text-left"><?php echo h($r["REMARK"]); ?></td>
+                        <td class="dash-left text-center font-bold" style="font-size: 12px;"><?php echo h($rowNum); ?></td>
+                        <td class="dash-left dash-right"></td>
                     </tr>
                 <?php } ?>
 
                 <?php
                     $usedRows = count($detailRows);
-
-                    if (count($detailRows) == 0) {
-                        $usedRows = 1;
-                    }
-
-                    // Kurangi 1 untuk menyediakan ruang bagi baris TOTAL
-                    $fillCount = $rowsPerPage - $usedRows - 1;
-
+                    $fillCount = $rowsPerPage - $usedRows;
                     if ($fillCount < 0) {
                         $fillCount = 0;
                     }
                 ?>
-
                 <?php for ($e = 0; $e < $fillCount; $e++) { ?>
-                    <tr class="empty-line">
-                        <td>&nbsp;</td>
+                    <tr class="dash-bottom data-row">
                         <td></td>
                         <td></td>
                         <td></td>
                         <td></td>
                         <td></td>
                         <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
+                        <td class="dash-left"></td>
+                        <td class="dash-left"></td>
+                        <td class="dash-left"></td>
+                        <td class="dash-left"></td>
+                        <td class="dash-left"></td>
+                        <td class="dash-left"></td>
+                        <td class="dash-left"></td>
+                        <td class="dash-left dash-right"></td>
                     </tr>
                 <?php } ?>
-                
-                <!-- BARIS TOTAL -->
-                
-				
-				<!-- BARIS TOTAL -->
-                <tr>
-                    <td colspan="4" class="center"><strong>TOTAL</strong></td>
-                    <td class="center"><strong><?php echo h(fmt_num($total_po_bal, 0)); ?></strong></td>
-                    <td class="center"><strong><?php echo h(fmt_num($total_plan, 0)); ?></strong></td>
-                    <td></td> <!-- actual kosong -->
-                    <td></td> <!-- std_box tidak ditotal -->
-                    <td></td> <!-- Initial packing (Pack Code) tidak ditotal -->
-                    <td class="center"><strong><?php echo h(fmt_num($total_box, 0)); ?></strong></td> <!-- total perhitungan box -->
-                    <td></td> <!-- REMARK -->
-                    <td></td> <!-- loading check -->
-                </tr>
-
             </tbody>
-        </table>
-
-        <table class="signature">
-            <tr>
-                <td></td>
-                <td class="sig-right">[Checked by]</td>
-                <td class="sig-right">[Prepared by]</td>
-            </tr>
         </table>
 
     </div>

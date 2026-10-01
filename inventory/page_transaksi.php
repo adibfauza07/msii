@@ -343,14 +343,14 @@ while($qT && $r=sqlsrv_fetch_array($qT)) {
                                 <label class="small fw-bold text-primary">Tipe BC</label>
                                 <select class="form-select form-select-sm" name="JENIS_BC" <?php echo !$isEntry ? 'disabled' : ''; ?>>
                                     <option value="">- Non BC -</option>
-                                    <option value="BC 2.3" <?php echo ($dataHeader['JENIS_BC']=='BC 2.3')?'selected':''; ?>>BC 2.3</option>
-                                    <option value="BC 2.5" <?php echo ($dataHeader['JENIS_BC']=='BC 2.5')?'selected':''; ?>>BC 2.5</option>
-                                    <option value="BC 2.6.1" <?php echo ($dataHeader['JENIS_BC']=='BC 2.6.1')?'selected':''; ?>>BC 2.6.1</option>
-                                    <option value="BC 2.6.2" <?php echo ($dataHeader['JENIS_BC']=='BC 2.6.2')?'selected':''; ?>>BC 2.6.2</option>
-                                    <option value="BC 2.7" <?php echo ($dataHeader['JENIS_BC']=='BC 2.7')?'selected':''; ?>>BC 2.7</option>
-                                    <option value="BC 3.0" <?php echo ($dataHeader['JENIS_BC']=='BC 3.0')?'selected':''; ?>>BC 3.0</option>
-                                    <option value="BC 4.0" <?php echo ($dataHeader['JENIS_BC']=='BC 4.0')?'selected':''; ?>>BC 4.0</option>
-                                    <option value="BC 4.1" <?php echo ($dataHeader['JENIS_BC']=='BC 4.1')?'selected':''; ?>>BC 4.1</option>
+                                    <option value="BC.2.3" <?php echo ($dataHeader['JENIS_BC']=='BC.2.3')?'selected':''; ?>>BC.2.3</option>
+                                    <option value="BC.2.5" <?php echo ($dataHeader['JENIS_BC']=='BC.2.5')?'selected':''; ?>>BC.2.5</option>
+                                    <option value="BC.2.6.1" <?php echo ($dataHeader['JENIS_BC']=='BC.2.6.1')?'selected':''; ?>>BC.2.6.1</option>
+                                    <option value="BC.2.6.2" <?php echo ($dataHeader['JENIS_BC']=='BC.2.6.2')?'selected':''; ?>>BC.2.6.2</option>
+                                    <option value="BC.2.7" <?php echo ($dataHeader['JENIS_BC']=='BC.2.7')?'selected':''; ?>>BC.2.7</option>
+                                    <option value="BC.3.0" <?php echo ($dataHeader['JENIS_BC']=='BC.3.0')?'selected':''; ?>>BC.3.0</option>
+                                    <option value="BC.4.0" <?php echo ($dataHeader['JENIS_BC']=='BC.4.0')?'selected':''; ?>>BC.4.0</option>
+                                    <option value="BC.4.1" <?php echo ($dataHeader['JENIS_BC']=='BC.4.1')?'selected':''; ?>>BC.4.1</option>
                                 </select>
                             </div>
                             <div class="col-6 col-md-3 col-lg-3">

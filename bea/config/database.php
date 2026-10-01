@@ -1,42 +1,64 @@
 <?php
-/**
- * Bridge koneksi dashboard ke konfigurasi bersama Plant 1.
- * Kompatibel dengan PHP 5.4 + Microsoft SQL Server 2008.
- *
- * Struktur yang diasumsikan:
- *   /msii/config/db_plant1.php  (nama pada screenshot)
- *   /msii/it-inventory-bc/config/database.php
- *
- * Nama db_plan1.php juga didukung sebagai fallback.
- */
+// ==========================================================
+// config/database.php
+// Koneksi SQL Server (PHP 5.4 + SQL Server 2008)
+// Server   : 192.168.0.4
+// Database : msdata
+// ==========================================================
 
-$dbConnected = false;
-$dbError = '';
-$conn = false;
-
-$msiiRoot = dirname(dirname(__DIR__));
-$configCandidates = array(
-    $msiiRoot . '/config/db_plant1.php',
-    $msiiRoot . '/config/db_plan1.php'
-);
-
-$sharedConfig = '';
-foreach ($configCandidates as $candidate) {
-    if (file_exists($candidate)) {
-        $sharedConfig = $candidate;
-        break;
-    }
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
 }
 
-if ($sharedConfig === '') {
-    $dbError = 'File db_plant1.php atau db_plan1.php tidak ditemukan di ' . $msiiRoot . '/config/';
+$serverName   = "192.168.0.4";
+$databaseName = "msdata";
+$loginUrl     = "/msii/bea/login.php";
+
+$uid = "";
+$pwd = "";
+$should_connect = false;
+$conn = false;
+
+// KASUS A: SEDANG PROSES LOGIN (Dipanggil dari login.php)
+if (isset($is_login_process) && $is_login_process == true) {
+    if (isset($temp_username) && isset($temp_password)) {
+        $uid = $temp_username;
+        $pwd = $temp_password;
+        $should_connect = true;
+    }
+}
+// KASUS B: USER SUDAH LOGIN (Ambil dari session)
+elseif (isset($_SESSION['db_user']) && !empty($_SESSION['db_user'])) {
+    $uid = $_SESSION['db_user'];
+    $pwd = $_SESSION['db_pass'];
+    $should_connect = true;
+}
+// KASUS C: BELUM LOGIN
+else {
+    if (!defined('LOGIN_PAGE')) {
+        header("Location: " . $loginUrl);
+        exit();
+    }
+    $conn = false;
     return;
 }
 
-require_once $sharedConfig;
+// EKSEKUSI KONEKSI
+if ($should_connect) {
+    $connectionOptions = array(
+        "Database"     => $databaseName,
+        "Uid"          => $uid,
+        "PWD"          => $pwd,
+        "CharacterSet" => "UTF-8"
+    );
 
-if (isset($conn) && $conn !== false) {
-    $dbConnected = true;
-} else {
-    $dbError = 'Koneksi SQL Server Plant 1 tidak tersedia.';
+    $conn = sqlsrv_connect($serverName, $connectionOptions);
+
+    // Jika koneksi gagal dan bukan di halaman login, buang session dan redirect
+    if ($conn === false && !defined('LOGIN_PAGE')) {
+        session_destroy();
+        header("Location: " . $loginUrl . "?error=session_expired_or_db_error");
+        exit();
+    }
 }
+?>

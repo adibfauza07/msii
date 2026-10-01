@@ -79,12 +79,13 @@ if ($start_date == "" || $end_date == "") {
     die("START_DATE / END_DATE tidak valid.");
 }
 
+// Menambahkan DP.DI_ORDERNO dari DI_PART_TEMP
 $sql = "
     SELECT 
         DP.DI_ID, DP.DIPA_LINO, DP.PART_CODE, DP.PART_ID, DP.SPR_CODE, DP.DIPA_QTY, DP.PACK_ID, 
         DP.DIPA_PACK, DP.DIPA_PQTY, DP.DIPA_POSTED, DP.PRICE_ID, DP.DIPA_CLOSE, DP.LOCATION, 
-        DP.IS_MANUAL, DP.MANUAL_ORDR_ID, DP.MANUAL_ORDP_LINO, DP.BDQTY, DP.BC_NO, 
-        DT.DI_NO, DT.DI_START_DATE, DT.DI_DATE, DT.DI_INVNO, DT.DI_DSNO, 
+        DP.IS_MANUAL, DP.MANUAL_ORDR_ID, DP.MANUAL_ORDP_LINO, DP.BDQTY, DP.BC_NO, DP.DI_ORDERNO AS DP_ORDERNO,
+        DT.DI_NO, DT.DI_START_DATE, DT.DI_DATE, DT.DI_INVNO, DT.DI_DSNO, DT.DI_ORDERNO AS DT_ORDERNO, 
         C.CUST_CODE, C.CUST_COMP,
         P.ITEM_NO AS PART_NO, P.ITEM_NAME AS PART_NAME
     FROM dbo.DI_PART_TEMP DP
@@ -94,7 +95,7 @@ $sql = "
     WHERE C.CUST_CODE LIKE ? 
       AND DT.DI_START_DATE = ? 
       AND DT.DI_DATE = ?
-    ORDER BY DP.DI_ID ASC, DP.DIPA_LINO ASC
+    ORDER BY DP.DI_ID ASC, P.ITEM_NO ASC
 ";
 
 $stmt = sqlsrv_query($conn, $sql, array(
@@ -135,46 +136,98 @@ for ($i = 0; $i < count($rows); $i++) {
         );
     }
 
+    $planQty = isset($r["DIPA_QTY"]) ? $r["DIPA_QTY"] : 0;
+    
+    // Set REMARK: Panggil isi dari DP_ORDERNO secara langsung
+    $remarkVal = "";
+    if (isset($r["DP_ORDERNO"]) && trim((string)$r["DP_ORDERNO"]) !== "") {
+        $remarkVal = trim((string)$r["DP_ORDERNO"]);
+    } elseif (isset($r["BC_NO"]) && trim((string)$r["BC_NO"]) !== "") {
+        $remarkVal = "[" . trim((string)$r["BC_NO"]) . "=" . $planQty . "]";
+    }
+
     $documentPages[$key]["ROWS"][] = array(
         "ITEM_CODE"    => isset($r["PART_CODE"]) ? trim((string)$r["PART_CODE"]) : "",
         "ITEM_NO"      => isset($r["PART_NO"]) ? trim((string)$r["PART_NO"]) : "",
         "ITEM_NAME"    => isset($r["PART_NAME"]) ? trim((string)$r["PART_NAME"]) : "",
         "PBQTY"        => isset($r["BDQTY"]) ? $r["BDQTY"] : 0, 
-        "PLAN_QTY"     => isset($r["DIPA_QTY"]) ? $r["DIPA_QTY"] : 0, 
+        "PLAN_QTY"     => $planQty, 
         "PO"           => "", 
         "STD_PACK_BOX" => isset($r["DIPA_PQTY"]) ? $r["DIPA_PQTY"] : 0,
-        "PACK_CODE"    => isset($r["DIPA_PACK"]) ? trim((string)$r["DIPA_PACK"]) : ""
+        "PACK_CODE"    => isset($r["DIPA_PACK"]) ? trim((string)$r["DIPA_PACK"]) : "",
+        "REMARK"       => $remarkVal
     );
 }
 
 $pages = array();
+$rowsPerPage = 15; // Jumlah baris per halaman
+
 foreach ($documentPages as $page) {
-    $chunkedRows = array_chunk($page["ROWS"], 9);
+    // Hitung Grand Total untuk keseluruhan dokumen ini
+    $grand_po_bal = 0;
+    $grand_plan   = 0;
+    $grand_dipa   = 0;
+    
+    foreach ($page["ROWS"] as $r) {
+        $grand_po_bal += (float)$r["PBQTY"];
+        $grand_plan   += (float)$r["PLAN_QTY"];
+        $grand_dipa   += (float)$r["STD_PACK_BOX"];
+    }
+
+    // Pecah array menjadi 15 data per halaman
+    $chunkedRows = array_chunk($page["ROWS"], $rowsPerPage);
     if (empty($chunkedRows)) {
         $chunkedRows = array(array());
     }
     
-    foreach ($chunkedRows as $chunk) {
+    $docTotalPages = count($chunkedRows);
+    $itemNo = 1; // Variabel penomoran di-reset ke 1 setiap dokumen (DI_NO) berbeda
+    
+    // Memproses per halaman untuk satu dokumen (DI_NO)
+    foreach ($chunkedRows as $idx => $chunk) {
         $subPage = $page;
-        $subPage["ROWS"] = $chunk;
+        
+        $chunkWithNumbers = array();
+        foreach ($chunk as $row) {
+            if (!empty($row)) {
+                $row['ROW_NO'] = $itemNo++;
+            }
+            $chunkWithNumbers[] = $row;
+        }
+
+        $subPage["ROWS"] = $chunkWithNumbers;
+        $subPage["IS_LAST_PAGE"] = ($idx === $docTotalPages - 1);
+        $subPage["GRAND_PO_BAL"] = $grand_po_bal;
+        $subPage["GRAND_PLAN"]   = $grand_plan;
+        $subPage["GRAND_DIPA"]   = $grand_dipa;
+        
+        // Info Halaman Spesifik untuk Dokumen (DI_NO) ini saja
+        $subPage["PAGE_NO"] = $idx + 1;
+        $subPage["TOTAL_PAGES"] = $docTotalPages;
+        
         $pages[] = $subPage;
     }
 }
 
 if (count($pages) == 0) {
     $pages[] = array(
-        "CUST_CODE" => "",
-        "CUST_COMP" => "",
-        "DI_NO"     => "",
-        "DI_DSNO"   => "",
-        "DI_INVNO"  => "",
-        "LOCATION"  => "",
-        "ROWS"      => array()
+        "CUST_CODE"    => "",
+        "CUST_COMP"    => "",
+        "DI_NO"        => "",
+        "DI_DSNO"      => "",
+        "DI_INVNO"     => "",
+        "LOCATION"     => "",
+        "ROWS"         => array(),
+        "IS_LAST_PAGE" => true,
+        "GRAND_PO_BAL" => 0,
+        "GRAND_PLAN"   => 0,
+        "GRAND_DIPA"   => 0,
+        "PAGE_NO"      => 1,
+        "TOTAL_PAGES"  => 1
     );
 }
 
 $totalPages = count($pages);
-$rowsPerPage = 9;
 ?>
 <!DOCTYPE html>
 <html>
@@ -192,7 +245,7 @@ $rowsPerPage = 9;
             margin: 0;
             background: #9a9a9a;
             font-family: "Calibri", Arial, sans-serif;
-            font-size: 12px;
+            font-size: 14px;
             color: #000000;
         }
 
@@ -204,7 +257,7 @@ $rowsPerPage = 9;
 
         .print-bar button {
             padding: 6px 14px;
-            font-size: 11px;
+            font-size: 12px;
             cursor: pointer;
             font-family: "Calibri", Arial, sans-serif;
         }
@@ -239,20 +292,20 @@ $rowsPerPage = 9;
         .company {
             width: 32%;
             font-family: "Calibri", Arial, sans-serif;
-            font-size: 12px;
-            line-height: 14px;
+            font-size: 14px;
+            line-height: 16px;
         }
 
         .company-title {
-            font-size: 15px;
+            font-size: 16px;
             font-weight: bold;
         }
         
         .header-doc-info {
             margin-top: 12px;
             font-family: "Calibri", Arial, sans-serif;
-            font-size: 12px;
-            line-height: 15px;
+            font-size: 14px;
+            line-height: 17px;
             font-weight: bold;
         }
 
@@ -263,22 +316,22 @@ $rowsPerPage = 9;
         }
 
         .report-title {
-            font-size: 22px;
+            font-size: 24px;
             font-weight: bold;
             margin-top: 16px;
             margin-bottom: 5px;
         }
 
         .period {
-            font-size: 13px;
+            font-size: 14px;
         }
 
         .right-info {
             width: 28%;
             text-align: right;
             font-family: "Calibri", Arial, sans-serif;
-            font-size: 12px;
-            line-height: 16px;
+            font-size: 14px;
+            line-height: 18px;
         }
 
         .form-no {
@@ -302,7 +355,7 @@ $rowsPerPage = 9;
 
         .print-date {
             text-align: right;
-            font-size: 11px;
+            font-size: 12px;
             font-family: "Calibri", Arial, sans-serif;
             margin-top: 0;
             margin-bottom: 3px;
@@ -311,7 +364,7 @@ $rowsPerPage = 9;
         .customer-title {
             width: 100%;
             font-family: "Calibri", Arial, sans-serif;
-            font-size: 13px;
+            font-size: 15px;
             font-weight: bold;
             margin-top: 2px;
             margin-bottom: 4px;
@@ -328,13 +381,13 @@ $rowsPerPage = 9;
         .di-table th,
         .di-table td {
             border: 1px solid #000000;
-            padding: 4px 3px;
-            height: 40px; 
-            line-height: 24px; 
-            font-size: 12px; 
+            padding: 3px 3px; 
+            height: 28px; 
+            line-height: 1.1;
+            font-size: 13px; 
             box-sizing: border-box;
             vertical-align: middle;
-            white-space: nowrap;
+            white-space: nowrap; 
             overflow: hidden;
             text-overflow: clip;
         }
@@ -342,12 +395,11 @@ $rowsPerPage = 9;
         .di-table th {
             font-weight: bold;
             text-align: center;
-            height: 25px;
             font-size: 12px;
         }
 
         .empty-line td {
-            height: 40px;
+            height: 28px; 
         }
 
         .num {
@@ -366,7 +418,7 @@ $rowsPerPage = 9;
         .signature {
             width: 100%;
             margin-top: 8px;
-            font-size: 12px;
+            font-size: 14px;
         }
 
         .signature td {
@@ -379,19 +431,22 @@ $rowsPerPage = 9;
             font-style: italic;
         }
 
-        .col-no { width: 4%; }
-        .col-item-code { width: 9%; }
-        .col-item-no { width: 14%; }
-        .col-item-name { width: 18%; }
-        .col-lot-no { width: 7%; }
-        .col-po-bal { width: 7%; }
-        .col-plan { width: 7%; }
-        .col-pcs { width: 6%; }
-        .col-pack { width: 6%; }
-        .col-initial { width: 6%; }
-        .col-total { width: 7%; }
-        .col-remark { width: 6%; }
-        .col-check { width: 3%; }
+        /* Penyesuaian Lebar Kolom (Total 13 Kolom) */
+        .col-no { width: 3.5%; }
+        .col-part-code { width: 9%; } 
+        .col-part-name { width: 14.5%; white-space: normal !important; word-wrap: break-word; } 
+        .col-lot-no { width: 6.5%; } 
+        .col-po-bal { width: 6.5%; }
+        .col-plan { width: 6.5%; }
+        
+        .col-aq-pcs { width: 10%; } 
+        .col-aq-pack { width: 3%; } 
+        .col-aq-init { width: 3.5%; } 
+        .col-aq-tot { width: 6%; }
+        
+        .col-std-qty { width: 10%; } 
+        .col-remark { width: 13%; white-space: normal !important; word-wrap: break-word; }
+        .col-check { width: 5%; }
 
         @media print {
             html, body {
@@ -410,13 +465,13 @@ $rowsPerPage = 9;
             }
             .di-table th,
             .di-table td {
-                height: 40px;
-                line-height: 24px;
-                font-size: 12px;
-                padding: 4px 3px;
+                min-height: 28px; 
+                line-height: 1.1;
+                font-size: 13px; 
+                padding: 3px 3px;
             }
-            .report-title { font-size: 22px; }
-            .company-title { font-size: 15px; }
+            .report-title { font-size: 24px; }
+            .company-title { font-size: 16px; }
             .qr-box img {
                 border: none;
             }
@@ -432,12 +487,7 @@ $rowsPerPage = 9;
 </div>
 
 <?php 
-// Melacak nomor urut global per dokumen DI_NO
-$currentDiNo = "";
-$globalNo = 1;
-
 for ($p = 0; $p < count($pages); $p++) { 
-    $pageNo     = $p + 1;
     $pageData   = $pages[$p];
     $custCode   = $pageData["CUST_CODE"];
     $custComp   = $pageData["CUST_COMP"];
@@ -446,12 +496,6 @@ for ($p = 0; $p < count($pages); $p++) {
     $diInvno    = $pageData["DI_INVNO"];
     $location   = $pageData["LOCATION"];
     $detailRows = $pageData["ROWS"];
-
-    // Reset nomor urut ke 1 jika berganti dokumen DI_NO baru
-    if ($diNo !== $currentDiNo) {
-        $currentDiNo = $diNo;
-        $globalNo = 1;
-    }
 ?>
 
     <div class="page">
@@ -483,7 +527,7 @@ for ($p = 0; $p < count($pages); $p++) {
 
                 <td class="right-info">
                     <div class="form-no">FM.CO.00-06</div>
-                    <div class="page-no">Page <?php echo h($pageNo); ?> of <?php echo h($totalPages); ?></div>
+                    <div class="page-no">Page <?php echo h($pageData["PAGE_NO"]); ?> of <?php echo h($pageData["TOTAL_PAGES"]); ?></div>
                     
                     <div class="qr-box">
                         <?php if ($diNo != "") { ?>
@@ -507,25 +551,23 @@ for ($p = 0; $p < count($pages); $p++) {
         <table class="di-table">
             <thead>
                 <tr>
-                    <th rowspan="3" class="col-no">No</th>
-                    <th rowspan="3" class="col-item-code">Item Code</th>
-                    <th rowspan="3" class="col-item-no">Item No</th>
-                    <th rowspan="3" class="col-item-name">Item Name</th>
-                    <th rowspan="3" class="col-lot-no">Lot No</th>
-                    <th rowspan="3" class="col-po-bal">PO.Bal</th>
-                    <th rowspan="3" class="col-plan">Del.Plan</th>
-                    <th colspan="4">Actual Qty</th>
-                    <th rowspan="3" class="col-remark">REMARK</th>
-                    <th rowspan="3" class="col-check">loading<br>check</th>
+                    <th rowspan="2" class="col-no">No</th>
+                    <th rowspan="2" class="col-part-code">Part Code</th>
+                    <th rowspan="2" class="col-part-name">Part Name</th>
+                    <th rowspan="2" class="col-lot-no">Lot No</th>
+                    <th rowspan="2" class="col-po-bal">PO.Bal</th>
+                    <th rowspan="2" class="col-plan">Del.Plan</th>
+                    <!-- Grup Actual Qty -->
+                    <th colspan="4" class="center">Actual Qty</th>
+                    <th rowspan="2" class="col-std-qty">Std Qty</th>
+                    <th rowspan="2" class="col-remark">REMARK</th>
+                    <th rowspan="2" class="col-check">loading<br>check</th>
                 </tr>
                 <tr>
-                    <th rowspan="2" class="col-pcs">actual</th>
-                    <th rowspan="2" class="col-pack">std_box</th>
-                    <th class="col-initial">Initial</th>
-                    <th rowspan="2" class="col-total">Total</th>
-                </tr>
-                <tr>
-                    <th class="col-initial">packing</th>
+                    <th class="col-aq-pcs">packing</th>
+                    <th class="col-aq-pack">pcs</th>
+                    <th class="col-aq-init">Initial<br>packing</th>
+                    <th class="col-aq-tot">Total</th>
                 </tr>
             </thead>
 
@@ -538,12 +580,6 @@ for ($p = 0; $p < count($pages); $p++) {
                     </tr>
                 <?php } ?>
 
-                <?php 
-                    $total_po_bal = 0;
-                    $total_plan = 0;
-                    $total_box = 0;
-                ?>
-
                 <?php for ($i = 0; $i < count($detailRows); $i++) { ?>
                     <?php 
                         $r = $detailRows[$i]; 
@@ -553,29 +589,33 @@ for ($p = 0; $p < count($pages); $p++) {
                             $jml_box = ceil($r["PLAN_QTY"] / $r["STD_PACK_BOX"]);
                         }
 
-                        $total_po_bal += $r["PBQTY"];
-                        $total_plan   += $r["PLAN_QTY"];
-                        $total_box    += $jml_box;
+                        // Batasi Part Code maksimal 12 karakter
+                        $partCode12 = substr(trim((string)$r["ITEM_CODE"]), 0, 12);
+                        $partName   = trim((string)$r["ITEM_NAME"]);
+                        
+                        $stdQtyText = "";
+                        if (!empty($r["STD_PACK_BOX"]) && $jml_box > 0) {
+                            $packCode = !empty($r["PACK_CODE"]) ? "(" . $r["PACK_CODE"] . ")" : "";
+                            $stdQtyText = $r["STD_PACK_BOX"] . " x " . $jml_box . " " . $packCode;
+                        }
                     ?>
 
                     <tr>
                         <td class="col-no center">
-                            <?php echo $globalNo++; ?>
+                            <?php echo isset($r['ROW_NO']) ? $r['ROW_NO'] : ''; ?>
                         </td>
 
-                        <td class="col-item-code">
-                            <?php echo h($r["ITEM_CODE"]); ?>
+                        <!-- Kolom Part Code (Max 12 Char) -->
+                        <td class="col-part-code left">
+                            <?php echo h($partCode12); ?>
                         </td>
 
-                        <td class="col-item-no">
-                            <?php echo h($r["ITEM_NO"]); ?>
+                        <!-- Kolom Part Name -->
+                        <td class="col-part-name left">
+                            <?php echo h($partName); ?>
                         </td>
-
-                        <td class="col-item-name">
-                            <?php echo h($r["ITEM_NAME"]); ?>
-                        </td>
-
-                        <td class="col-lot-no">&nbsp;</td>
+                        
+                        <td class="col-lot-no center"></td>
 
                         <td class="col-po-bal center">
                             <?php echo h(fmt_num($r["PBQTY"], 0)); ?>
@@ -585,35 +625,35 @@ for ($p = 0; $p < count($pages); $p++) {
                             <?php echo h(fmt_num($r["PLAN_QTY"], 0)); ?>
                         </td>
 
-                        <td class="col-pcs"></td>
-                        
-                        <td class="col-pack center">
-                            <?php echo h(fmt_num($r["STD_PACK_BOX"], 0)); ?>
-                        </td>
-                        
-                        <td class="col-initial center">
-                            <?php echo h($r["PACK_CODE"]); ?>
-                        </td>
-                        
-                        <td class="col-total center">
-                            <?php echo h(fmt_num($jml_box, 0)); ?>
+                        <td class="col-aq-pcs center"></td>
+                        <td class="col-aq-pack center"></td>
+                        <td class="col-aq-init center"></td>
+                        <td class="col-aq-tot center"></td>
+
+                        <td class="col-std-qty center">
+                            <?php echo h(trim($stdQtyText)); ?>
                         </td>
 
-                        <td class="col-remark">&nbsp;</td>
+                        <td class="col-remark left">
+                            <?php echo h($r["REMARK"]); ?>
+                        </td>
 
                         <td class="col-check"></td>
                     </tr>
                 <?php } ?>
 
                 <?php
+                    // Menambahkan baris kosong agar tinggi konsisten
                     $usedRows = count($detailRows);
-
-                    if (count($detailRows) == 0) {
-                        $usedRows = 1;
+                    
+                    // Hitung jumlah baris kosong yang dibutuhkan
+                    $fillCount = $rowsPerPage - $usedRows;
+                    
+                    // Jika halaman terakhir, kurangi 1 agar muat baris 'TOTAL'
+                    if ($pageData["IS_LAST_PAGE"]) {
+                        $fillCount -= 1;
                     }
-
-                    $fillCount = $rowsPerPage - $usedRows - 1;
-
+                    
                     if ($fillCount < 0) {
                         $fillCount = 0;
                     }
@@ -624,7 +664,7 @@ for ($p = 0; $p < count($pages); $p++) {
                         <td>&nbsp;</td>
                         <td></td>
                         <td></td>
-                        <td></td>
+                        <td></td> 
                         <td></td>
                         <td></td>
                         <td></td>
@@ -637,17 +677,22 @@ for ($p = 0; $p < count($pages); $p++) {
                     </tr>
                 <?php } ?>
                 
+                <?php 
+                // Cek apakah halaman ini adalah halaman paling akhir dari dokumen yang bersangkutan
+                if ($pageData["IS_LAST_PAGE"]) { ?>
                 <tr>
-                    <td colspan="5" class="center"><strong>TOTAL</strong></td>
-                    <td class="center"><strong><?php echo h(fmt_num($total_po_bal, 0)); ?></strong></td>
-                    <td class="center"><strong><?php echo h(fmt_num($total_plan, 0)); ?></strong></td>
+                    <td colspan="4" class="center"><strong>TOTAL</strong></td>
+                    <td class="center"><strong><?php echo h(fmt_num($pageData["GRAND_PO_BAL"], 0)); ?></strong></td>
+                    <td class="center"><strong><?php echo h(fmt_num($pageData["GRAND_PLAN"], 0)); ?></strong></td>
                     <td></td> 
                     <td></td> 
                     <td></td> 
-                    <td class="center"><strong><?php echo h(fmt_num($total_box, 0)); ?></strong></td>
+                    <td></td> 
+                    <td class="center"><strong><?php echo h(fmt_num($pageData["GRAND_DIPA"], 0)); ?></strong></td> 
                     <td></td> 
                     <td></td> 
                 </tr>
+                <?php } ?>
 
             </tbody>
         </table>

@@ -38,6 +38,12 @@ $currentMonth = (int)date('n');
         .btn-clear { background-color: #dc3545; padding: 4px 10px; margin-left: -5px; }
         .btn-report { background-color: #28a745; }
         .btn-report:hover { background-color: #218838; }
+
+        /* Tombol Cetak & PDF */
+        .btn-print { background-color: #17a2b8; }
+        .btn-print:hover { background-color: #138496; }
+        .btn-pdf { background-color: #e67e22; }
+        .btn-pdf:hover { background-color: #d35400; }
         
         /* Grid Table Structure & Sticky Columns */
         .table-container { width: 100%; overflow: auto; max-height: 60vh; border: 1px solid #bbb; background-color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
@@ -80,9 +86,92 @@ $currentMonth = (int)date('n');
         .detail-grid th, .detail-grid td { border: 1px solid #ccc; padding: 6px; text-align: center; }
         .detail-grid th { background-color: #e2e8f0; }
         .ui-autocomplete { z-index: 9999 !important; font-size: 11px; max-height: 200px; overflow-y: auto; overflow-x: hidden; }
+
+        /* Header cetak yang hanya tampil saat dicetak */
+        .print-header { display: none; }
+
+        /* ================= MEDIA PRINT SETUP (A4 LANDSCAPE) ================= */
+        @media print {
+            @page {
+                size: A4 landscape;
+                margin: 6mm 4mm;
+            }
+            body {
+                background: #fff !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                font-size: 7.5px !important;
+                color: #000 !important;
+            }
+            /* Sembunyikan navigasi dan panel input */
+            .panel, #summaryAlertContainer, .ui-dialog, .btn-clear {
+                display: none !important;
+            }
+            .print-header {
+                display: block !important;
+                margin-bottom: 8px;
+            }
+            .print-header h2 {
+                margin: 0; font-size: 14px; color: #000;
+            }
+            .print-header p {
+                margin: 2px 0; font-size: 9px; color: #444;
+            }
+            .table-container {
+                max-height: none !important;
+                overflow: visible !important;
+                border: none !important;
+                box-shadow: none !important;
+            }
+            table.grid-table {
+                width: 100% !important;
+                min-width: 100% !important;
+                border-collapse: collapse !important;
+                table-layout: auto !important;
+                font-size: 7.5px !important;
+            }
+            /* Hilangkan posisi sticky agar tidak error di printer */
+            table.grid-table th, table.grid-table td,
+            .fix-mc, .fix-item, .fix-lastshoot, .fix-desc, .fix-total, .group-header {
+                position: static !important;
+                box-shadow: none !important;
+                padding: 2px 3px !important;
+                border: 0.5px solid #666 !important;
+                white-space: normal !important;
+            }
+            .fix-item { width: 110px !important; min-width: 110px !important; }
+            .fix-mc { width: 35px !important; min-width: 35px !important; }
+            .day-col { width: auto !important; min-width: 16px !important; font-size: 7px !important; padding: 1px !important; }
+            .edit-last-shoot {
+                border: none !important;
+                background: transparent !important;
+                padding: 0 !important;
+                font-size: 7.5px !important;
+            }
+            .ovh-link { border: none !important; text-decoration: none !important; color: #000 !important; }
+            /* Pertahankan warna penanda target 25k pada print */
+            .reach-target {
+                background-color: #fef08a !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            .group-header {
+                background-color: #ddd !important;
+                color: #000 !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            tr { page-break-inside: avoid; }
+        }
     </style>
 </head>
 <body>
+
+<!-- Header cetak untuk output print A4 -->
+<div class="print-header" id="printHeaderInfo">
+    <h2>Matrix Over Hour - Molding (Std Limit 25.000 Shots)</h2>
+    <p id="printPeriodeText">Periode: -</p>
+</div>
 
 <!-- ================= PANEL FILTER ================= -->
 <div class="panel">
@@ -123,6 +212,14 @@ $currentMonth = (int)date('n');
     <a href="report_ovh_per_machine.php" target="_blank" style="text-decoration: none; margin-left: 5px;">
         <button type="button" class="btn-report"><i class="fa fa-file-text-o"></i> Report Plan & Actual OVH</button>
     </a>
+
+    <!-- TOMBOL BARU: CETAK A4 & EXPORT PDF -->
+    <button type="button" id="btnPrintA4" class="btn-print" style="margin-left: 5px;">
+        <i class="fa fa-print"></i> Cetak A4
+    </button>
+    <button type="button" id="btnExportPdf" class="btn-pdf" style="margin-left: 5px;">
+        <i class="fa fa-file-pdf-o"></i> Export PDF
+    </button>
     
     <!-- Legend Info -->
     <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc;">
@@ -147,7 +244,7 @@ $currentMonth = (int)date('n');
 </div>
 
 <!-- ================= AREA MATRIKS GRID ================= -->
-<div class="table-container">
+<div class="table-container" id="printableArea">
     <table class="grid-table" id="tblMatrix">
         <thead>
             <tr id="tableHeaderRow">
@@ -205,6 +302,8 @@ $currentMonth = (int)date('n');
 <!-- JQuery 1.12.4 (Legacy yang aman) & UI -->
 <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
 <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+<!-- Library html2pdf.js untuk export client-side langsung unduh file PDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 
 <script>
 $(document).ready(function() {
@@ -243,6 +342,13 @@ $(document).ready(function() {
     }
     function getDaysInMonth(month, year) { return new Date(year, month, 0).getDate(); }
 
+    function updatePrintHeader() {
+        var blnName = $("#cbBulan option:selected").text();
+        var thn = $("#cbTahun").val();
+        var custName = $("#inputCustomer").val() || "Semua Customer";
+        $("#printPeriodeText").html("<b>Periode:</b> " + blnName + " " + thn + " &nbsp;|&nbsp; <b>Customer:</b> " + escapeHtml(custName));
+    }
+
     // --- 3. LOAD DATA & LOGIKA KALKULASI FRONT-END ---
     $('#btnLoadMatrix').click(function() {
         var btn = $(this);
@@ -255,6 +361,8 @@ $(document).ready(function() {
         var theadTr = $('#tableHeaderRow');
         var tbody = $('#tblMatrix tbody');
         
+        updatePrintHeader();
+
         // Render Header
         var headHtml = '<th class="fix-mc">Mesin</th><th class="fix-item">Item Detail</th>' +
                        '<th class="fix-lastshoot" title="Klik lalu Enter untuk Update">Last Shoot <i class="fa fa-pencil"></i></th>' +
@@ -333,7 +441,6 @@ $(document).ready(function() {
                                 
                                 var linkPlan = (dPlan > 0) ? '<a class="ovh-link" data-type="plan" data-mc="'+escapeHtml(row.mc_no)+'" data-item="'+escapeHtml(row.item_code)+'" data-day="'+d+'" data-reach="'+(isReachTargetPlan ? '1':'0')+'">' + formatMatrixNumber(dPlan) + '</a>' : '-';
                                 
-                                // Checkbox penanda tanggal aktual OVH di SEMUA kolom tanggal baris Actual (baik ada data maupun kosong)
                                 var isCheckedDate = (row.checked_dates && row.checked_dates[d] == '1') ? 'checked' : '';
                                 var valDisplay = (dAct > 0) ? formatMatrixNumber(dAct) : '-';
                                 var dateCheckbox = '<br><label style="font-size:9px; color:#166534; cursor:pointer;" title="Centang tanggal aktual pelaksanaan OVH"><input type="checkbox" class="chk-ovh-date" data-mc="'+escapeHtml(row.mc_no)+'" data-item="'+escapeHtml(row.item_code)+'" data-day="'+d+'" ' + isCheckedDate + '> Actual</label>';
@@ -498,7 +605,7 @@ $(document).ready(function() {
         });
     });
 
-   // --- 7. EVENT CHECKBOX PER TANGGAL: SIMPAN STATUS AKTUAL OVH ---
+    // --- 7. EVENT CHECKBOX PER TANGGAL: SIMPAN STATUS AKTUAL OVH ---
     $('#tblMatrix').on('change', '.chk-ovh-date', function() {
         var chk = $(this);
         var mcCode = chk.data('mc');
@@ -509,9 +616,7 @@ $(document).ready(function() {
         var statusVal = chk.is(':checked') ? 1 : 0;
         
         var labelEl = chk.closest('label');
-        var origText = labelEl.text();
 
-        // Berikan indikator visual sedang menyimpan
         chk.prop('disabled', true);
         labelEl.css('color', '#d9534f').text(' Saving...');
 
@@ -523,12 +628,10 @@ $(document).ready(function() {
             success: function(res) {
                 chk.prop('disabled', false);
                 if(res.status === 'success') {
-                    // Berikan indikator sukses tersimpan
                     labelEl.css('color', '#28a745').text(' Saved!');
                     setTimeout(function() {
                         labelEl.css('color', '#166534');
                         labelEl.html('').append(chk).append(' Actual');
-                        // Kembalikan status centangnya
                         chk.prop('checked', statusVal === 1);
                     }, 1200);
                 } else {
@@ -545,6 +648,53 @@ $(document).ready(function() {
                 labelEl.css('color', '#166534');
                 labelEl.html('').append(chk).append(' Actual');
             }
+        });
+    });
+
+    // --- 8. ACTION: CETAK A4 & EXPORT PDF ---
+    $('#btnPrintA4').click(function() {
+        updatePrintHeader();
+        window.print();
+    });
+
+    $('#btnExportPdf').click(function() {
+        updatePrintHeader();
+        var btn = $(this);
+        btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Exporting...');
+
+        var thn = $('#cbTahun').val();
+        var bln = $('#cbBulan').val();
+        var filename = 'Matrix_OVH_' + thn + '_' + bln + '.pdf';
+
+        // Buat container kloningan sementara agar format print A4 rapi tanpa merusak tampilan layar
+        var elementToExport = document.createElement('div');
+        elementToExport.style.padding = '8px';
+        elementToExport.style.backgroundColor = '#ffffff';
+
+        // Sisipkan judul dokumen
+        var headerClone = document.getElementById('printHeaderInfo').cloneNode(true);
+        headerClone.style.display = 'block';
+        elementToExport.appendChild(headerClone);
+
+        // Sisipkan tabel data
+        var tableClone = document.getElementById('tblMatrix').cloneNode(true);
+        elementToExport.appendChild(tableClone);
+
+        // Opsi konfigurasi format PDF A4 Landscape
+        var opt = {
+            margin:       [5, 5, 5, 5],
+            filename:     filename,
+            image:        { type: 'jpeg', quality: 0.98 },
+            html2canvas:  { scale: 2, useCORS: true, scrollX: 0, scrollY: 0 },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'landscape' }
+        };
+
+        html2pdf().set(opt).from(elementToExport).save().then(function() {
+            btn.prop('disabled', false).html('<i class="fa fa-file-pdf-o"></i> Export PDF');
+        }).catch(function(err) {
+            console.error(err);
+            btn.prop('disabled', false).html('<i class="fa fa-file-pdf-o"></i> Export PDF');
+            alert('Gagal mengekspor PDF.');
         });
     });
 

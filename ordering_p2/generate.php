@@ -23,71 +23,49 @@ $statGenerate = "";
 $msgTransfer = "";
 $statTransfer = "";
 
-// =========================================================================
-// 1. FUNGSI LOGIKA PENOMORAN (GENERATE)
-// =========================================================================
+// Default range tanggal untuk filter Print Temp
+$print_start_val = $firstDayOfMonth;
+$print_end_val   = $today;
 
-function GetNextDINo($conn, $UseDate) {
+function GetNextDINo($conn, $UseDate, $offset = 0) {
     $ts = strtotime($UseDate);
     if ($ts === false) $ts = time();
     $yymm = date('y', $ts) . date('m', $ts); 
     
     $minNo = intval($yymm . "001");  
-    $prefix = $yymm . "%";
+    $pattern = $yymm . "%";
 
     $sql = "
         SELECT MAX(CAST(DI_NO AS INT)) AS MaxNo FROM (
-            SELECT DI_NO FROM dbo.DI WHERE DI_NO LIKE ? AND DI_NO NOT LIKE '%[^0-9]%'
+            SELECT TOP 1 DI_NO FROM dbo.DI 
+            WHERE DI_NO LIKE ? AND DI_NO NOT LIKE '%[^0-9]%' 
+            ORDER BY DI_ID DESC
+            
             UNION
-            SELECT DI_NO FROM dbo.DI_TEMP WHERE DI_NO LIKE ? AND DI_NO NOT LIKE '%[^0-9]%'
+            
+            SELECT TOP 1 DI_NO FROM dbo.DI_TEMP 
+            WHERE DI_NO LIKE ? AND DI_NO NOT LIKE '%[^0-9]%' 
+            ORDER BY DI_ID DESC
         ) t
     ";
-    $stmt = sqlsrv_query($conn, $sql, array($prefix, $prefix));
+    
+    $stmt = sqlsrv_query($conn, $sql, array($pattern, $pattern));
     
     $lastNo = 0;
     if ($stmt !== false && $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-        if ($row['MaxNo'] !== null) {
+        if ($row['MaxNo'] != null) {
             $lastNo = intval($row['MaxNo']);
         }
     }
 
-    if ($lastNo == 0 || $lastNo < $minNo) {
-        return $minNo; 
+    if ($lastNo == 0) {
+        return $minNo + $offset; 
     } else {
         return $lastNo + 1; 
     }
 }
 
-function GenerateDSNo_275($conn, $UseDate) {
-    $ts = strtotime($UseDate);
-    if ($ts === false) $ts = time();
-    $monthStr = date('m', $ts);
-    $yearStr  = date('y', $ts);
-
-    $pattern = '%/E/' . $monthStr . '/' . $yearStr;
-
-    $sql = "
-        SELECT MAX(CAST(LEFT(DI_DSNO, CHARINDEX('/', DI_DSNO) - 1) AS INT)) AS MaxNo
-        FROM (
-            SELECT DI_DSNO FROM dbo.DI WHERE CUST_ID = 275 AND DI_DSNO LIKE ? AND DI_DSNO LIKE '%/%'
-            UNION
-            SELECT DI_DSNO FROM dbo.DI_TEMP WHERE CUST_ID = 275 AND DI_DSNO LIKE ? AND DI_DSNO LIKE '%/%'
-        ) t
-        WHERE ISNUMERIC(LEFT(DI_DSNO, CHARINDEX('/', DI_DSNO) - 1)) = 1
-    ";
-    $stmt = sqlsrv_query($conn, $sql, array($pattern, $pattern));
-    
-    $newNo = 1;
-    if ($stmt !== false && $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-        if ($row['MaxNo'] !== null) {
-            $newNo = intval($row['MaxNo']) + 1;
-        }
-    }
-
-    return sprintf('%03d/E/%s/%s', $newNo, $monthStr, $yearStr);
-}
-
-function GenerateDSNo_Other($conn, $CustAbbr, $UseDate) {
+function GenerateDSNo_Other($conn, $CustAbbr, $UseDate, $offset = 0) {
     $rom = array('I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII');
     $ts = strtotime($UseDate);
     if ($ts === false) $ts = time();
@@ -99,44 +77,97 @@ function GenerateDSNo_Other($conn, $CustAbbr, $UseDate) {
     $pattern = '%/IMC/DS/' . trim($CustAbbr) . '/%/' . $year2;
 
     $sql = "
-        SELECT MAX(CAST(LEFT(DI_DSNO, CHARINDEX('/', DI_DSNO) - 1) AS INT)) AS MaxNo
-        FROM (
-            SELECT DI_DSNO FROM dbo.DI WHERE DI_DSNO LIKE ? AND DI_DSNO LIKE '%/%'
+        SELECT TOP 1 DI_DSNO FROM (
+            SELECT DI_DSNO, DI_ID FROM dbo.DI WHERE DI_DSNO LIKE ?
             UNION
-            SELECT DI_DSNO FROM dbo.DI_TEMP WHERE DI_DSNO LIKE ? AND DI_DSNO LIKE '%/%'
-        ) t
-        WHERE ISNUMERIC(LEFT(DI_DSNO, CHARINDEX('/', DI_DSNO) - 1)) = 1
+            SELECT DI_DSNO, DI_ID FROM dbo.DI_TEMP WHERE DI_DSNO LIKE ?
+        ) t ORDER BY DI_ID DESC
     ";
     $stmt = sqlsrv_query($conn, $sql, array($pattern, $pattern));
     
     $newNo = 1;
     if ($stmt !== false && $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-        if ($row['MaxNo'] !== null) {
-            $newNo = intval($row['MaxNo']) + 1;
+        $lastDS = trim($row['DI_DSNO']);
+        $pPos = strpos($lastDS, '/IMC/');
+        if ($pPos !== false && $pPos > 0) {
+            $lastNo = intval(substr($lastDS, 0, $pPos));
+            if ($lastNo > 0) {
+                $newNo = $lastNo + 1;
+            }
         }
     }
 
-    return sprintf('%03d/IMC/DS/%s/%s/%s', $newNo, trim($CustAbbr), $monthRoman, $year2);
+    $newNo = $newNo + $offset; 
+    $dsno = sprintf('%03d/IMC/DS/%s/%s/%s', $newNo, trim($CustAbbr), $monthRoman, $year2);
+    return str_replace('/DS/', '/INV/', $dsno);
 }
 
 // =========================================================================
-// 2. PROSES POST (GENERATE, TRANSFER, & UPLOAD PDF)
+// 2. PROSES POST (AJAX ENTER SAVE, GENERATE, TRANSFER, & UPLOAD PDF KOITO)
 // =========================================================================
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = isset($_POST['ACTION_TYPE']) ? trim($_POST['ACTION_TYPE']) : '';
 
     // ---------------------------------------------------------
-    // A. LOGIKA UPLOAD PDF KOITO
+    // AJAX: SIMPAN SAAT TEKAN ENTER PADA INPUT MANUAL DS NO / INV NO
+    // ---------------------------------------------------------
+    if ($action === 'update_single_dsno') {
+        $di_id = isset($_POST['DI_ID']) ? intval($_POST['DI_ID']) : 0;
+        $new_dsno = isset($_POST['NEW_DSNO']) ? trim($_POST['NEW_DSNO']) : '';
+
+        if ($di_id > 0 && $new_dsno !== '') {
+            $new_invno = str_replace('/DS/', '/INV/', $new_dsno);
+            $sql = "UPDATE dbo.DI_TEMP SET DI_DSNO = ?, DI_INVNO = ? WHERE DI_ID = ?";
+            $stmt = sqlsrv_query($conn, $sql, array($new_dsno, $new_invno, $di_id));
+            if ($stmt) {
+                echo "OK";
+            } else {
+                echo "ERROR";
+            }
+        } else {
+            echo "INVALID";
+        }
+        exit(); 
+    }
+
+    // ---------------------------------------------------------
+    // AJAX: SIMPAN SAAT TEKAN ENTER PADA INPUT MANUAL DI NO
+    // ---------------------------------------------------------
+    if ($action === 'update_single_dino') {
+        $di_id = isset($_POST['DI_ID']) ? intval($_POST['DI_ID']) : 0;
+        $new_dino = isset($_POST['NEW_DINO']) ? trim($_POST['NEW_DINO']) : '';
+
+        if ($di_id > 0 && $new_dino !== '') {
+            $sql = "UPDATE dbo.DI_TEMP SET DI_NO = ? WHERE DI_ID = ?";
+            $stmt = sqlsrv_query($conn, $sql, array($new_dino, $di_id));
+            if ($stmt) {
+                echo "OK";
+            } else {
+                echo "ERROR";
+            }
+        } else {
+            echo "INVALID";
+        }
+        exit(); 
+    }
+
+    // ---------------------------------------------------------
+    // A. LOGIKA UPLOAD PDF KOITO (CUST_ID = 181)
     // ---------------------------------------------------------
     if ($action === 'upload_pdf') {
         if (isset($_FILES['file_pdf']) && $_FILES['file_pdf']['error'] == 0) {
             $di_date_pdf = isset($_POST['DI_DATE_PDF']) ? trim($_POST['DI_DATE_PDF']) : $today;
             $file_tmp = $_FILES['file_pdf']['tmp_name'];
             
+            // Otomatis Start Date adalah tanggal 1 di bulan yang dipilih pada DI_DATE_PDF
+            $start_date_pdf = date('Y-m-01', strtotime($di_date_pdf));
+            
+            // Set range print agar langsung mengikuti bulan yang baru saja diupload
+            $print_start_val = $start_date_pdf;
+            $print_end_val   = $di_date_pdf;
+
             try {
-                // 1. BACA ISI PDF MENGGUNAKAN PDFTOTEXT.EXE
                 $exePath = __DIR__ . '/assets/pdftotext.exe'; 
-                
                 if (!file_exists($exePath)) {
                     throw new Exception("File pdftotext.exe tidak ditemukan di jalur: $exePath");
                 }
@@ -145,17 +176,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $text = shell_exec("\"$exePath\" -layout $pdfPath -");
                 
                 if (empty(trim($text))) {
-                    throw new Exception("Gagal membaca teks dari PDF. File mungkin berupa gambar hasil scan atau corrupt.");
+                    throw new Exception("Gagal membaca teks dari PDF. Pastikan file valid.");
                 }
                 
-                // --- DETEKSI CYCLE DARI PDF UNTUK LOKASI (C1 / C2) ---
-                $cycle_num = 1; // Default
+                $cycle_num = 1; 
                 if (preg_match('/Cycle\s*\|\s*(\d+)/i', $text, $cycle_match)) {
                     $cycle_num = intval($cycle_match[1]);
                 }
-                $cycle_prefix = "C" . $cycle_num; // Menghasilkan "C1" atau "C2"
+                $cycle_prefix = "C" . $cycle_num; 
                 
-                // 2. PARSING TEKS PDF KOITO & GROUPING PO
                 $grouped_items = array();
                 $lines = explode("\n", $text);
 
@@ -163,8 +192,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (preg_match('/([A-Z0-9]{4,5}-[A-Z0-9]{5}-\d{2}).*?(\d{10})\s+(\d+)\s+(\d+)/', $line, $item_match)) {
                         $part_no_pdf = trim($item_match[1]);
                         $po_no_pdf   = trim($item_match[2]);
-                        $qty_pdf     = intval($item_match[3]); // Total Pcs
-                        $box_pdf     = intval($item_match[4]); // Box Qty
+                        $qty_pdf     = intval($item_match[3]); 
+                        $box_pdf     = intval($item_match[4]); 
                         
                         if ($qty_pdf > 0) {
                             if (!isset($grouped_items[$po_no_pdf])) {
@@ -179,19 +208,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
                 
-                if (empty($grouped_items)) {
-                    throw new Exception("Gagal mengekstrak data Part & Qty. Pastikan PDF berformat Pick Up Order KOITO.");
-                }
+                if (empty($grouped_items)) throw new Exception("Gagal mengekstrak data Part & Qty dari PDF.");
 
-                // 3. AMBIL DATA CUSTOMER KOITO (CUST_ID = 181)
                 $c_id = 181;
                 $sql_cust = "SELECT CUST_CODE, CUST_ABBR FROM dbo.CUST WHERE CUST_ID = ?";
                 $stmt_cust = sqlsrv_query($conn, $sql_cust, array($c_id));
                 $c_row = sqlsrv_fetch_array($stmt_cust, SQLSRV_FETCH_ASSOC);
-                if (!$c_row) throw new Exception("Customer dengan ID 181 (Koito) tidak ditemukan di database.");
+                if (!$c_row) throw new Exception("Customer Koito (ID 181) tidak ditemukan di database.");
                 
                 $c_code = trim($c_row['CUST_CODE']);
                 $c_abbr = trim($c_row['CUST_ABBR']);
+
+                // Tarik data dari SP_DELIVERY_INSTRUCTION_PO2 menggunakan range awal bulan DI_DATE_PDF
+                $sp_start_date = date('Ymd', strtotime($start_date_pdf));
+                $sp_end_date   = date('Ymd', strtotime($di_date_pdf));
+                
+                $sp_koito_map = array();
+                $sql_sp = "SET NOCOUNT ON; EXEC dbo.SP_DELIVERY_INSTRUCTION_PO2 ?, ?, ?";
+                $stmt_sp = sqlsrv_query($conn, $sql_sp, array($c_code, $sp_start_date, $sp_end_date));
+                if ($stmt_sp !== false) {
+                    while ($sp_r = sqlsrv_fetch_array($stmt_sp, SQLSRV_FETCH_ASSOC)) {
+                        $sp_part_num = trim(isset($sp_r['PART_NUM']) ? $sp_r['PART_NUM'] : '');
+                        $sp_part_no  = trim(isset($sp_r['PART_NO']) ? $sp_r['PART_NO'] : '');
+                        $sp_po       = trim(isset($sp_r['PO']) ? $sp_r['PO'] : '');
+                        $sp_pbqty    = isset($sp_r['PBQTY']) ? floatval($sp_r['PBQTY']) : 0;
+                        $sp_pack     = trim(isset($sp_r['PACK_CODE']) ? $sp_r['PACK_CODE'] : '');
+
+                        $item_data = array('PBQTY' => $sp_pbqty, 'PACK_CODE' => $sp_pack);
+
+                        if ($sp_part_num !== '' && $sp_po !== '') $sp_koito_map[$sp_part_num . '___' . $sp_po] = $item_data;
+                        if ($sp_part_no !== '' && $sp_po !== '')  $sp_koito_map[$sp_part_no . '___' . $sp_po] = $item_data;
+                        if ($sp_part_num !== '' && !isset($sp_koito_map[$sp_part_num])) $sp_koito_map[$sp_part_num] = $item_data;
+                        if ($sp_part_no !== '' && !isset($sp_koito_map[$sp_part_no]))   $sp_koito_map[$sp_part_no] = $item_data;
+                    }
+                }
                 
                 sqlsrv_begin_transaction($conn);
                 
@@ -204,67 +254,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $total_part_created = 0;
                 $alphabet = range('A', 'Z');
 
-                // 4. LOOPING PER GRUP PO
                 foreach ($grouped_items as $current_po_no => $items_in_po) {
-                    
                     $suffix = isset($alphabet[$loop_index]) ? $alphabet[$loop_index] : 'X';
-                    $location_code = $cycle_prefix . $suffix; // Hasil: C1A, C1B, C2A, dst.
+                    $location_code = $cycle_prefix . $suffix; 
                     
-                    // Increment Nomor DI & Invoice
                     $di_no = $base_dino + $loop_index;
                     $ds_parts[0] = sprintf('%03d', $start_ds_int + $loop_index);
                     $di_dsno = implode('/', $ds_parts);
                     $di_invno = str_replace('/DS/', '/INV/', $di_dsno);
                     
-                    // Insert Header
                     $sql_ins_di = "
                         INSERT INTO dbo.DI_TEMP (DI_NO, CUST_ID, CUST_CODE, DI_START_DATE, DI_DATE, DI_INVNO, DI_DSNO, DI_ORDERNO, DI_POSTED) 
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0);
                         SELECT SCOPE_IDENTITY() AS NEW_DI_ID;
                     ";
-                    $stmt_di = sqlsrv_query($conn, $sql_ins_di, array($di_no, $c_id, $c_code, $firstDayOfMonth, $di_date_pdf, $di_invno, $di_dsno, $current_po_no));
-                    if ($stmt_di === false) throw new Exception("Gagal insert header DI_TEMP untuk PO: " . $current_po_no);
+                    $stmt_di = sqlsrv_query($conn, $sql_ins_di, array($di_no, $c_id, $c_code, $start_date_pdf, $di_date_pdf, $di_invno, $di_dsno, $current_po_no));
+                    if ($stmt_di === false) throw new Exception("Gagal insert header DI_TEMP PO: " . $current_po_no);
                     
                     sqlsrv_next_result($stmt_di);
                     $row_di_id = sqlsrv_fetch_array($stmt_di, SQLSRV_FETCH_ASSOC);
                     $new_di_id = $row_di_id ? intval($row_di_id['NEW_DI_ID']) : 0;
-                    if ($new_di_id <= 0) throw new Exception("Gagal mendapatkan DI_ID baru untuk PO: " . $current_po_no);
                     
-                    // Insert Detail
                     $lino = 1;
                     foreach ($items_in_po as $item) {
-                        
                         $part_pdf = trim($item['PART_NUM']);
-
+                        
                         $sql_part_info = "
                             SELECT TOP 1 
-                                PV.PART_ID,
-                                PV.PART_CODE,
-                                SP.PACK_ID,
-                                PD.PRICE_ID
+                                PV.PART_ID, PV.PART_CODE, PV.PART_NUM, PV.PART_NO, 
+                                SP.PACK_ID, PK.PACK_CODE, PD.PRICE_ID
                             FROM dbo.PART_VIEW PV
-                            LEFT JOIN dbo.STD_PACK SP ON PV.PART_ID = SP.ITEM_ID
+                            LEFT JOIN dbo.STD_PACK SP ON (PV.PART_CODE = SP.ITEM_CODE OR PV.PART_NUM = SP.ITEM_CODE OR PV.PART_ID = SP.ITEM_ID)
+                            LEFT JOIN dbo.PACK PK ON SP.PACK_ID = PK.PACK_ID
                             LEFT JOIN dbo.PRICE P ON PV.PART_ID = P.PART_ID
                             LEFT JOIN dbo.PRICE_DETAIL PD ON P.PRICE_ID = PD.PRICE_ID 
                                  AND (PD.PRDT_START IS NOT NULL AND ? >= PD.PRDT_START) 
                                  AND (PD.PRDT_END IS NULL OR ? <= PD.PRDT_END)
                             WHERE LTRIM(RTRIM(PV.PART_NO)) = ? 
-                               OR LTRIM(RTRIM(PV.PART_CODE)) = ?
+                               OR LTRIM(RTRIM(PV.PART_CODE)) = ? 
+                               OR LTRIM(RTRIM(PV.PART_NUM)) = ?
                             ORDER BY PD.PRDT_START DESC
                         ";
                         
-                        $stmt_pi = sqlsrv_query($conn, $sql_part_info, array(
-                            $di_date_pdf,  
-                            $di_date_pdf,  
-                            $part_pdf,     
-                            $part_pdf      
-                        ));
-                        
-                        if ($stmt_pi === false) {
-                            $errs = sqlsrv_errors();
-                            $err_msg = isset($errs[0]['message']) ? $errs[0]['message'] : 'Unknown SQL error';
-                            throw new Exception("Error Database saat mencari Part <strong>" . $part_pdf . "</strong>: " . $err_msg);
-                        }
+                        $stmt_pi = sqlsrv_query($conn, $sql_part_info, array($di_date_pdf, $di_date_pdf, $part_pdf, $part_pdf, $part_pdf));
                         
                         if ($pi_row = sqlsrv_fetch_array($stmt_pi, SQLSRV_FETCH_ASSOC)) {
                             $part_id   = intval($pi_row['PART_ID']);
@@ -272,33 +304,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $pack_id   = isset($pi_row['PACK_ID']) ? intval($pi_row['PACK_ID']) : 1;
                             $price_id  = isset($pi_row['PRICE_ID']) ? intval($pi_row['PRICE_ID']) : 0;
                             
-                            $total_pcs   = $item['QTY'];
-                            $total_boxes = $item['BOX_QTY'];
-
-                            // =======================================================================
-                            // PERBAIKAN PEMETAAN KOTAK
-                            // DIPA_PQTY (std_box / isi per kotak) = Total Pcs dibagi Jumlah Kotak
-                            // BDQTY (Total Kotak) = Jumlah Kotak dari PDF
-                            // =======================================================================
-                            $dipa_pqty = ($total_boxes > 0) ? ($total_pcs / $total_boxes) : $total_pcs;
-                            $bdqty = $total_boxes;
+                            $db_part_num = trim((string)$pi_row['PART_NUM']);
+                            $db_part_no  = trim((string)$pi_row['PART_NO']);
                             
+                            $total_pcs   = $item['QTY'];
+                            $total_boxes = ($item['BOX_QTY'] > 0) ? $item['BOX_QTY'] : 1;
+                            
+                            $po_bal = 0;
+                            $dipa_pack = !empty($pi_row['PACK_CODE']) ? trim($pi_row['PACK_CODE']) : 'BB';
+
+                            if (isset($sp_koito_map[$part_pdf . '___' . $current_po_no])) {
+                                $po_bal = $sp_koito_map[$part_pdf . '___' . $current_po_no]['PBQTY'];
+                                if (!empty($sp_koito_map[$part_pdf . '___' . $current_po_no]['PACK_CODE'])) {
+                                    $dipa_pack = $sp_koito_map[$part_pdf . '___' . $current_po_no]['PACK_CODE'];
+                                }
+                            } elseif ($db_part_num !== '' && isset($sp_koito_map[$db_part_num . '___' . $current_po_no])) {
+                                $po_bal = $sp_koito_map[$db_part_num . '___' . $current_po_no]['PBQTY'];
+                                if (!empty($sp_koito_map[$db_part_num . '___' . $current_po_no]['PACK_CODE'])) {
+                                    $dipa_pack = $sp_koito_map[$db_part_num . '___' . $current_po_no]['PACK_CODE'];
+                                }
+                            } elseif ($db_part_no !== '' && isset($sp_koito_map[$db_part_no . '___' . $current_po_no])) {
+                                $po_bal = $sp_koito_map[$db_part_no . '___' . $current_po_no]['PBQTY'];
+                                if (!empty($sp_koito_map[$db_part_no . '___' . $current_po_no]['PACK_CODE'])) {
+                                    $dipa_pack = $sp_koito_map[$db_part_no . '___' . $current_po_no]['PACK_CODE'];
+                                }
+                            } elseif (isset($sp_koito_map[$part_pdf])) {
+                                $po_bal = $sp_koito_map[$part_pdf]['PBQTY'];
+                                if (!empty($sp_koito_map[$part_pdf]['PACK_CODE'])) {
+                                    $dipa_pack = $sp_koito_map[$part_pdf]['PACK_CODE'];
+                                }
+                            } elseif ($db_part_num !== '' && isset($sp_koito_map[$db_part_num])) {
+                                $po_bal = $sp_koito_map[$db_part_num]['PBQTY'];
+                                if (!empty($sp_koito_map[$db_part_num]['PACK_CODE'])) {
+                                    $dipa_pack = $sp_koito_map[$db_part_num]['PACK_CODE'];
+                                }
+                            }
+
                             $sql_ins_part = "
                                 INSERT INTO dbo.DI_PART_TEMP 
-                                (DI_ID, DIPA_LINO, PART_CODE, PART_ID, DIPA_QTY, PACK_ID, DIPA_PQTY, BDQTY, PRICE_ID, DIPA_POSTED, IS_MANUAL, LOCATION)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)
+                                (DI_ID, DIPA_LINO, PART_CODE, PART_ID, DIPA_QTY, PACK_ID, DIPA_PACK, DIPA_PQTY, BDQTY, PRICE_ID, DIPA_POSTED, IS_MANUAL, LOCATION, BC_NO, DI_ORDERNO)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?, ?, ?)
                             ";
                             sqlsrv_query($conn, $sql_ins_part, array(
-                                $new_di_id, $lino, substr($part_code, 0, 8), $part_id, $total_pcs, $pack_id, $dipa_pqty, $bdqty, $price_id, $location_code
+                                $new_di_id, 
+                                $lino, 
+                                substr($part_code, 0, 8), 
+                                $part_id, 
+                                $total_pcs, 
+                                $pack_id, 
+                                substr($dipa_pack, 0, 10), 
+                                $total_boxes, 
+                                $po_bal, 
+                                $price_id, 
+                                $location_code, 
+                                $current_po_no, 
+                                $current_po_no
                             ));
-                            
                             $lino++;
                             $total_part_created++;
                         } else {
-                            throw new Exception("Part Number <strong>" . $part_pdf . "</strong> tidak ditemukan di Master PART_VIEW (Kolom PART_NO/PART_CODE). Harap daftarkan terlebih dahulu.");
+                            throw new Exception("Part Number <strong>" . $part_pdf . "</strong> tidak ditemukan di Master.");
                         }
                     }
-                    
                     $loop_index++;
                 }
                 
@@ -311,9 +378,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $msgGenerate = "Gagal memproses PDF: " . $e->getMessage();
                 $statGenerate = "error";
             }
-        } else {
-            $msgGenerate = "Gagal memproses. File PDF tidak ditemukan atau korup saat upload.";
-            $statGenerate = "error";
         }
     }
 
@@ -330,6 +394,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $start_date = date('Ymd', strtotime($start_raw));
         $end_date   = date('Ymd', strtotime($end_raw));
+
+        $print_start_val = $start_raw;
+        $print_end_val   = $end_raw;
 
         if ($action === 'clear_only') {
             if ($clear_pwd === 'q9tj9') {
@@ -353,7 +420,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         else {
             $customers_to_process = array();
             if ($cust_code == '') {
-                $sql_all_cust = "SELECT CUST_CODE, CUST_ID, CUST_ABBR FROM dbo.CUST";
+                $sql_all_cust = "SELECT CUST_CODE, CUST_ID, CUST_ABBR FROM dbo.CUST WHERE CUST_ID <> 181";
                 $stmt_all = sqlsrv_query($conn, $sql_all_cust);
                 if ($stmt_all !== false) {
                     while ($c_row = sqlsrv_fetch_array($stmt_all, SQLSRV_FETCH_ASSOC)) {
@@ -369,7 +436,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             if (empty($customers_to_process)) {
-                $msgGenerate = "Tidak ada customer yang ditemukan!";
+                $msgGenerate = "Tidak ada customer yang ditemukan untuk digenerate!";
                 $statGenerate = "error";
             } else {
                 $success_count = 0;
@@ -381,7 +448,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $c_code = trim($cust['CUST_CODE']);
                     $c_abbr = trim($cust['CUST_ABBR']);
 
-                    $sql_chk = "SET NOCOUNT ON; EXEC dbo.SP_DELIVERY_INSTRUCTION_PO1 ?, ?, ?";
+                    $sql_chk = "SET NOCOUNT ON; EXEC dbo.SP_DELIVERY_INSTRUCTION_PO2 ?, ?, ?";
                     $stmt_chk = sqlsrv_query($conn, $sql_chk, array($c_code, $start_date, $end_date));
                     
                     if ($stmt_chk === false) continue; 
@@ -394,8 +461,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     $grouped_rows = array();
                     foreach ($sp_rows as $sp_row) {
-                        $loc = isset($sp_row['LOCATION']) ? trim($sp_row['LOCATION']) : '';
-                        $group_key = ($c_id == 275) ? ($loc == '' ? 'BLANK' : $loc) : 'ALL';
+                        $group_key = 'ALL';
                         if (!isset($grouped_rows[$group_key])) {
                             $grouped_rows[$group_key] = array();
                         }
@@ -404,6 +470,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     sqlsrv_begin_transaction($conn);
                     try {
+                        $offset = 0;
+                        
                         foreach ($grouped_rows as $group_key => $group_items) {
                             $header_order_no = $order_no;
                             if ($header_order_no === '' && isset($group_items[0]['PO'])) {
@@ -422,16 +490,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 }
                             }
 
-                            $di_no = GetNextDINo($conn, $end_raw);
-                            if ($c_id == 275) {
-                                $di_dsno = GenerateDSNo_275($conn, $end_raw);
-                                $di_invno = $di_dsno; 
-                            } else {
-                                if ($c_abbr == '') throw new Exception("Customer Abbr kosong.");
-                                $di_dsno = GenerateDSNo_Other($conn, $c_abbr, $end_raw);
-                                $di_invno = str_replace('/DS/', '/INV/', $di_dsno); 
-                            }
-
+                            $di_no = GetNextDINo($conn, $end_raw, 0); 
+                            
+                            if ($c_abbr == '') throw new Exception("Customer Abbr kosong. (Cust ID: " . $c_id . ")");
+                            $di_dsno = GenerateDSNo_Other($conn, $c_abbr, $end_raw, $offset);
+                            $di_invno = str_replace('/DS/', '/INV/', $di_dsno); 
+                            
                             $sql_ins_di = "
                                 INSERT INTO dbo.DI_TEMP (DI_NO, CUST_ID, CUST_CODE, DI_START_DATE, DI_DATE, DI_INVNO, DI_DSNO, DI_ORDERNO, DI_POSTED) 
                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0);
@@ -453,44 +517,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $plan_qty  = isset($sp_row['PLAN_QTY']) ? floatval($sp_row['PLAN_QTY']) : 0;
                                 $pb_qty    = isset($sp_row['PBQTY']) ? floatval($sp_row['PBQTY']) : 0;
                                 
+                                $row_po = '';
+                                if (isset($sp_row['PO']) && trim((string)$sp_row['PO']) !== '') {
+                                    $row_po = trim((string)$sp_row['PO']);
+                                } elseif (isset($sp_row['BC_NO']) && trim((string)$sp_row['BC_NO']) !== '') {
+                                    $row_po = trim((string)$sp_row['BC_NO']);
+                                } elseif (isset($sp_row['ORDER_NO']) && trim((string)$sp_row['ORDER_NO']) !== '') {
+                                    $row_po = trim((string)$sp_row['ORDER_NO']);
+                                } else {
+                                    $row_po = $header_order_no;
+                                }
+                                
                                 if ($plan_qty > 0 && $pb_qty > 0) $qty_to_load = ($plan_qty < $pb_qty) ? $plan_qty : $pb_qty;
                                 else if ($plan_qty > 0) $qty_to_load = $plan_qty;
                                 else $qty_to_load = $pb_qty;
 
                                 $dipa_pqty = isset($sp_row['STD_BOX']) ? intval($sp_row['STD_BOX']) : (isset($sp_row['STD_PACK_BOX']) ? intval($sp_row['STD_PACK_BOX']) : 0);
-                                
-                                $location  = isset($sp_row['LOCATION']) ? trim($sp_row['LOCATION']) : '';
-                                if ($c_id != 275) $location = '';
+                                $location = '';
 
                                 $part_id = 0; $price_id = 0; $part_code_from_view = '';
                                 $pack_id = 1; 
-                                $dipa_pack = '';
+                                $dipa_pack = isset($sp_row['PACK_CODE']) ? trim($sp_row['PACK_CODE']) : '';
 
                                 if ($part_num != '') {
                                     $sql_part_info = "
                                         SELECT TOP 1 
-                                            PV.PART_ID, 
-                                            PV.PRICE_ID, 
-                                            PV.PART_CODE,
-                                            SP.PACK_ID,
-                                            P.PACK_CODE
+                                            PV.PART_ID, PV.PRICE_ID, PV.PART_CODE, SP.PACK_ID, P.PACK_CODE
                                         FROM dbo.PART_VIEW PV
                                         LEFT JOIN dbo.STD_PACK SP ON PV.PART_CODE = SP.ITEM_CODE
                                         LEFT JOIN dbo.PACK P ON SP.PACK_ID = P.PACK_ID
-                                        WHERE PV.PART_NO = ?
+                                        WHERE LTRIM(RTRIM(PV.PART_NO)) = ? OR LTRIM(RTRIM(PV.PART_CODE)) = ?
                                     ";
-                                    $stmt_pi = sqlsrv_query($conn, $sql_part_info, array($part_num));
+                                    $stmt_pi = sqlsrv_query($conn, $sql_part_info, array($part_num, $part_num));
                                     if ($stmt_pi !== false && $pi_row = sqlsrv_fetch_array($stmt_pi, SQLSRV_FETCH_ASSOC)) {
                                         $part_id  = intval($pi_row['PART_ID']);
                                         $price_id = intval($pi_row['PRICE_ID']);
                                         $part_code_from_view = trim($pi_row['PART_CODE']);
                                         
-                                        if (!empty($pi_row['PACK_ID'])) {
-                                            $pack_id = intval($pi_row['PACK_ID']);
-                                        }
-                                        if (!empty($pi_row['PACK_CODE'])) {
-                                            $dipa_pack = trim($pi_row['PACK_CODE']);
-                                        }
+                                        if (!empty($pi_row['PACK_ID'])) $pack_id = intval($pi_row['PACK_ID']);
+                                        if (empty($dipa_pack) && !empty($pi_row['PACK_CODE'])) $dipa_pack = trim($pi_row['PACK_CODE']);
                                     }
                                 }
 
@@ -500,25 +565,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                                     $sql_ins_part = "
                                         INSERT INTO dbo.DI_PART_TEMP 
-                                        (DI_ID, DIPA_LINO, PART_CODE, PART_ID, DIPA_QTY, PACK_ID, DIPA_PACK, DIPA_PQTY, BDQTY, PRICE_ID, LOCATION, DIPA_POSTED, IS_MANUAL)
-                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+                                        (DI_ID, DIPA_LINO, PART_CODE, PART_ID, DIPA_QTY, PACK_ID, DIPA_PACK, DIPA_PQTY, BDQTY, PRICE_ID, LOCATION, DIPA_POSTED, IS_MANUAL, BC_NO, DI_ORDERNO)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
                                     ";
                                     sqlsrv_query($conn, $sql_ins_part, array(
-                                        $new_di_id, 
-                                        $lino, 
-                                        $part_code_8, 
-                                        $part_id, 
-                                        $qty_to_load, 
-                                        $pack_id,                     
-                                        substr($dipa_pack, 0, 10),    
-                                        $dipa_pqty,                   
-                                        $pb_qty, 
-                                        $price_id, 
-                                        substr($location, 0, 30)
+                                        $new_di_id, $lino, $part_code_8, $part_id, $qty_to_load, $pack_id,                       
+                                        substr($dipa_pack, 0, 10), $dipa_pqty, $pb_qty, $price_id, substr($location, 0, 30),
+                                        $row_po, $row_po
                                     ));
                                     $lino++;
                                 }
                             }
+                            $offset++;
                         } 
                         sqlsrv_commit($conn);
                         $success_count++;
@@ -542,7 +600,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // ---------------------------------------------------------
-    // C. LOGIKA TRANSFER DENGAN BYPASS TRIGGER FIFO
+    // C. LOGIKA TRANSFER DENGAN EDIT MANUAL DI_NO, DS_NO & BYPASS TRIGGER
     // ---------------------------------------------------------
     if ($action === 'transfer_selected' || $action === 'transfer_all') {
         $selected_ids = isset($_POST['DI_IDS']) ? $_POST['DI_IDS'] : array();
@@ -565,11 +623,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $success_count = 0;
             $error_messages = array();
 
+            $edit_dsno = isset($_POST['EDIT_DSNO']) ? $_POST['EDIT_DSNO'] : array();
+            $edit_dino = isset($_POST['EDIT_DINO']) ? $_POST['EDIT_DINO'] : array();
+
             sqlsrv_query($conn, "UPDATE dbo.CONTROL_FLAGS SET FLAG_VALUE = 1 WHERE FLAG_NAME = 'REPOSTING_MODE'");
 
             foreach ($selected_ids as $temp_di_id) {
                 sqlsrv_begin_transaction($conn);
                 try {
+                    $upd_dsno = isset($edit_dsno[$temp_di_id]) ? trim($edit_dsno[$temp_di_id]) : '';
+                    if ($upd_dsno !== '') {
+                        $upd_invno = str_replace('/DS/', '/INV/', $upd_dsno);
+                        $sql_upd_temp = "UPDATE dbo.DI_TEMP SET DI_DSNO = ?, DI_INVNO = ? WHERE DI_ID = ?";
+                        sqlsrv_query($conn, $sql_upd_temp, array($upd_dsno, $upd_invno, $temp_di_id));
+                    }
+
+                    $upd_dino = isset($edit_dino[$temp_di_id]) ? trim($edit_dino[$temp_di_id]) : '';
+                    if ($upd_dino !== '') {
+                        $sql_upd_dino = "UPDATE dbo.DI_TEMP SET DI_NO = ? WHERE DI_ID = ?";
+                        sqlsrv_query($conn, $sql_upd_dino, array($upd_dino, $temp_di_id));
+                    }
+
                     $sql_ins_di = "
                         SET NOCOUNT ON;
                         INSERT INTO dbo.DI (
@@ -658,7 +732,7 @@ $sql_get_temp = "
     SELECT 
         T.DI_ID, 
         T.DI_NO, 
-        T.DI_INVNO,
+        T.DI_DSNO, 
         C.CUST_COMP, 
         (SELECT COUNT(*) FROM dbo.DI_PART_TEMP P WHERE P.DI_ID = T.DI_ID) AS TOTAL_ITEMS
     FROM dbo.DI_TEMP T
@@ -691,8 +765,12 @@ if ($stmt_get !== false) {
 
         .title { font-weight: bold; margin-bottom: 12px; font-size: 14px; border-bottom: 1px solid #808080; padding-bottom: 5px; }
         .form-grid { display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 10px; }
-        input[type="text"], input[type="date"], input[type="file"], select { height: 24px; border: 1px solid #808080; background: #ffffff; font-family: Tahoma, Arial, sans-serif; font-size: 12px; padding: 2px 5px; box-sizing: border-box; width: 100%; }
+        input[type="text"], input[type="date"], select { height: 24px; border: 1px solid #808080; background: #ffffff; font-family: Tahoma, Arial, sans-serif; font-size: 12px; padding: 2px 5px; box-sizing: border-box; width: 100%; }
         
+        /* Style untuk input inline yang bisa di-Enter */
+        .input-manual { border: 1px solid #a0a0a0; background: #ffffcc; font-size: 11px; width: 100%; padding: 4px; font-family: Tahoma; transition: background-color 0.3s; }
+        .input-manual:focus { background: #ffffff; border-color: #000080; outline: none; }
+
         button { font-family: Tahoma, Arial, sans-serif; font-size: 12px; background: #d4d0c8; border: 2px outset #ffffff; padding: 6px 14px; cursor: pointer; font-weight: bold; }
         button:active { border: 2px inset #ffffff; }
         .btn-danger { background: #e0c2c2; color: #800000; }
@@ -714,8 +792,8 @@ if ($stmt_get !== false) {
         /* Style Tabel */
         .toolbar { display: flex; justify-content: space-between; margin-bottom: 10px; align-items: center; }
         table { width: 100%; border-collapse: collapse; background: #ffffff; border: 1px solid #808080; }
-        th, td { border: 1px solid #808080; padding: 6px 8px; text-align: left; }
-        th { background: #ece9d8; position: sticky; top: 0; }
+        th, td { border: 1px solid #808080; padding: 6px 8px; text-align: left; vertical-align: top; }
+        th { background: #ece9d8; position: sticky; top: 0; z-index: 10; }
         tr:hover { background: #f0f0f0; }
         .text-center { text-align: center; }
         
@@ -748,7 +826,7 @@ if ($stmt_get !== false) {
 
 <div class="layout-container">
     
-    <!-- KOLOM KIRI: GENERATE -->
+    <!-- KOLOM KIRI: GENERATE & PDF UPLOAD -->
     <div class="panel left-panel">
         <div class="title">1. Generate Header & Detail ke DI_TEMP</div>
 
@@ -772,10 +850,10 @@ if ($stmt_get !== false) {
                 </div>
 
                 <label>START DATE :</label>
-                <input type="date" name="START_DATE" value="<?php echo h($firstDayOfMonth); ?>" required>
+                <input type="date" name="START_DATE" id="GEN_START_DATE" value="<?php echo h($firstDayOfMonth); ?>" required>
 
                 <label>DI DATE :</label>
-                <input type="date" name="DI_DATE" value="<?php echo h($today); ?>" required>
+                <input type="date" name="DI_DATE" id="GEN_DI_DATE" value="<?php echo h($today); ?>" required>
 
                 <label>ORDER NO (Ops) :</label>
                 <input type="text" name="DI_ORDERNO" placeholder="Nomor PO / Order khusus...">
@@ -796,7 +874,7 @@ if ($stmt_get !== false) {
                 <button type="submit" id="btnGen">GENERATE DATA</button>
             </div>
         </form>
-
+        
         <!-- Form Tambahan: Upload PDF Koito -->
         <div style="margin-top: 30px; border-top: 2px solid #808080; padding-top: 15px;">
             <div class="title" style="color: #000080;">Upload PDF (Khusus Customer Koito)</div>
@@ -805,10 +883,10 @@ if ($stmt_get !== false) {
                 
                 <div class="form-grid">
                     <label>Pilih File PDF :</label>
-                    <input type="file" name="file_pdf" accept="application/pdf" required style="border: none; padding-top: 5px;">
+                    <input type="file" name="file_pdf" accept="application/pdf" required style="border: none; padding-top: 5px; width: 100%;">
                     
                     <label>Tanggal DI :</label>
-                    <input type="date" name="DI_DATE_PDF" value="<?php echo h($today); ?>" required>
+                    <input type="date" name="DI_DATE_PDF" id="DI_DATE_PDF" value="<?php echo h($today); ?>" required>
                 </div>
 
                 <div class="button-row">
@@ -840,9 +918,9 @@ if ($stmt_get !== false) {
                     <div style="border-left: 2px solid #808080; height: 24px; margin: 0 5px;"></div>
                     <div style="display: flex; gap: 5px; align-items: center;">
                         <span style="font-weight:bold; font-size:11px; color:#000080;">Print Temp:</span>
-                        <input type="date" id="print_start" value="<?php echo h($firstDayOfMonth); ?>" style="width: 110px;">
+                        <input type="date" id="print_start" value="<?php echo h($print_start_val); ?>" style="width: 110px;">
                         <span style="font-weight:bold;">-</span>
-                        <input type="date" id="print_end" value="<?php echo h($today); ?>" style="width: 110px;">
+                        <input type="date" id="print_end" value="<?php echo h($print_end_val); ?>" style="width: 110px;">
                         <button type="button" onclick="printDI()" style="padding: 4px 10px; color: #000;">Print DI</button>
                     </div>
                 </div>
@@ -859,8 +937,8 @@ if ($stmt_get !== false) {
                                 <input type="checkbox" id="checkAll" onclick="toggleCheckboxes(this)">
                             </th>
                             <th class="text-center" style="width: 30px;">No</th>
-                            <th>No. DI</th>
-                            <th>No. Invoice</th>
+                            <th style="width: 140px;">No. DI (Bisa Diedit)</th>
+                            <th style="width: 280px;">No. DS / Invoice (Bisa Diedit)</th>
                             <th>Customer</th>
                             <th class="text-center">Total Part</th>
                         </tr>
@@ -877,8 +955,32 @@ if ($stmt_get !== false) {
                                         <input type="checkbox" name="DI_IDS[]" value="<?php echo h($row['DI_ID']); ?>" class="rowCheckbox">
                                     </td>
                                     <td class="text-center"><?php echo $no++; ?></td>
-                                    <td style="font-weight: bold; color: #000080;"><?php echo h($row['DI_NO']); ?></td>
-                                    <td><?php echo h($row['DI_INVNO']); ?></td>
+                                    
+                                    <!-- INPUT EDIT MANUAL NO. DI DENGAN ENTER -->
+                                    <td>
+                                        <input type="text" name="EDIT_DINO[<?php echo h($row['DI_ID']); ?>]" 
+                                               value="<?php echo h($row['DI_NO']); ?>" 
+                                               class="input-manual" 
+                                               style="font-weight: bold; color: #000080;"
+                                               onkeydown="saveDiNoOnEnter(event, this, <?php echo h($row['DI_ID']); ?>)"
+                                               title="Tekan ENTER untuk menyimpan No. DI">
+                                        <div style="font-size: 10px; color: #808080; margin-top: 3px;">
+                                            *Tekan <b>ENTER</b> untuk simpan
+                                        </div>
+                                    </td>
+                                    
+                                    <!-- INPUT EDIT MANUAL NO. DS/INV DENGAN ENTER -->
+                                    <td>
+                                        <input type="text" name="EDIT_DSNO[<?php echo h($row['DI_ID']); ?>]" 
+                                               value="<?php echo h($row['DI_DSNO']); ?>" 
+                                               class="input-manual" 
+                                               onkeydown="saveDsNoOnEnter(event, this, <?php echo h($row['DI_ID']); ?>)"
+                                               title="Tekan ENTER untuk menyimpan No. DS / INV">
+                                        <div style="font-size: 10px; color: #808080; margin-top: 3px;">
+                                            *Tekan <b>ENTER</b> untuk simpan (/INV/ otomatis)
+                                        </div>
+                                    </td>
+                                    
                                     <td><?php echo h($row['CUST_COMP']); ?></td>
                                     <td class="text-center"><?php echo h($row['TOTAL_ITEMS']); ?> Part(s)</td>
                                 </tr>
@@ -893,7 +995,103 @@ if ($stmt_get !== false) {
 </div>
 
 <script>
-// ================= SCRIPT KIRI (GENERATE & PDF) =================
+// ================= AUTO SINKRON TANGGAL AWAL BULAN =================
+// Setiap kali input "Tanggal DI" diubah, Print Temp otomatis mulai dari tgl 1 bulan tersebut
+document.getElementById('DI_DATE_PDF').addEventListener('change', function() {
+    var val = this.value;
+    if (val) {
+        var d = new Date(val);
+        if (!isNaN(d.getTime())) {
+            var y = d.getFullYear();
+            var m = ('0' + (d.getMonth() + 1)).slice(-2);
+            var firstDay = y + '-' + m + '-01';
+            
+            // Set otomatis input Print Temp
+            document.getElementById('print_start').value = firstDay;
+            document.getElementById('print_end').value = val;
+        }
+    }
+});
+
+// Begitu juga jika mengganti DI DATE pada form Generate manual
+document.getElementById('GEN_DI_DATE').addEventListener('change', function() {
+    var val = this.value;
+    if (val) {
+        var d = new Date(val);
+        if (!isNaN(d.getTime())) {
+            var y = d.getFullYear();
+            var m = ('0' + (d.getMonth() + 1)).slice(-2);
+            var firstDay = y + '-' + m + '-01';
+            document.getElementById('GEN_START_DATE').value = firstDay;
+            document.getElementById('print_start').value = firstDay;
+            document.getElementById('print_end').value = val;
+        }
+    }
+});
+
+// ================= SCRIPT JAVASCRIPT: AJAX SAVE ENTER NO. DI =================
+function saveDiNoOnEnter(e, inputElem, diId) {
+    if (e.key === 'Enter' || e.keyCode === 13) {
+        e.preventDefault();
+
+        var newDiNo = inputElem.value.trim();
+        inputElem.style.backgroundColor = '#e0e0e0';
+
+        var data = "ACTION_TYPE=update_single_dino&DI_ID=" + encodeURIComponent(diId) + "&NEW_DINO=" + encodeURIComponent(newDiNo);
+
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", "", true);
+        xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState == 4) {
+                if (xhr.status == 200 && xhr.responseText.trim() === "OK") {
+                    inputElem.style.backgroundColor = '#ccffcc';
+                    inputElem.blur();
+                    setTimeout(function() { 
+                        inputElem.style.backgroundColor = '#ffffcc'; 
+                    }, 1500);
+                } else {
+                    alert("Gagal menyimpan No. DI ke database!");
+                    inputElem.style.backgroundColor = '#ffcccc';
+                }
+            }
+        };
+        xhr.send(data);
+    }
+}
+
+// ================= SCRIPT JAVASCRIPT: AJAX SAVE ENTER NO. DS =================
+function saveDsNoOnEnter(e, inputElem, diId) {
+    if (e.key === 'Enter' || e.keyCode === 13) {
+        e.preventDefault();
+
+        var newDsNo = inputElem.value.trim();
+        inputElem.style.backgroundColor = '#e0e0e0';
+
+        var data = "ACTION_TYPE=update_single_dsno&DI_ID=" + encodeURIComponent(diId) + "&NEW_DSNO=" + encodeURIComponent(newDsNo);
+
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", "", true);
+        xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+        xhr.onreadystatechange = function () {
+            if (xhr.readyState == 4) {
+                if (xhr.status == 200 && xhr.responseText.trim() === "OK") {
+                    inputElem.style.backgroundColor = '#ccffcc';
+                    inputElem.blur();
+                    setTimeout(function() { 
+                        inputElem.style.backgroundColor = '#ffffcc'; 
+                    }, 1500);
+                } else {
+                    alert("Gagal menyimpan No. DS ke database!");
+                    inputElem.style.backgroundColor = '#ffcccc';
+                }
+            }
+        };
+        xhr.send(data);
+    }
+}
+
+// ================= SCRIPT KIRI (GENERATE & PDF UPLOAD) =================
 function showLoadingPdf() {
     if (document.forms['uploadPdfForm']['file_pdf'].value != '') {
         document.getElementById('loadingText').innerText = "Sedang mengekstrak file PDF dan membuat DI... Harap tunggu...";
@@ -991,18 +1189,18 @@ function submitTransfer(action) {
             alert("Pilih setidaknya satu data yang ingin ditransfer!");
             return;
         }
-        if (!confirm("Pindahkan data TERPILIH ke tabel Original?")) return;
+        if (!confirm("Data DI dan DS/Invoice yang Anda edit akan disimpan.\nPindahkan data TERPILIH ke tabel Original?")) return;
     } 
     else if (action === 'transfer_all') {
         <?php if (empty($temp_data)) { ?>
             alert("Tidak ada data untuk ditransfer!");
             return;
         <?php } ?>
-        if (!confirm("PERHATIAN!\nPindahkan SEMUA data temporary ke tabel Original?")) return;
+        if (!confirm("PERHATIAN!\nSemua data DI dan DS/Invoice yang Anda edit akan disimpan.\nPindahkan SEMUA data temporary ke tabel Original?")) return;
     }
 
     document.getElementById('transferActionType').value = action;
-    document.getElementById('loadingText').innerText = "Sedang memindahkan data... Harap tunggu...";
+    document.getElementById('loadingText').innerText = "Sedang menyimpan dan memindahkan data... Harap tunggu...";
     document.getElementById('loadingOverlay').style.display = 'flex';
     document.getElementById('transferForm').submit();
 }

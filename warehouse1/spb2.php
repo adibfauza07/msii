@@ -100,13 +100,13 @@ if ($stmtD !== false) {
         }
     }
 
-    body { background: #fff; color: #000; font-family: 'Segoe UI', Tahoma, sans-serif; line-height: 1.1; }
+    body { background: #fff; color: #000; font-family: 'Calibri', sans-serif; font-size: 12px; line-height: 1.2; }
     table { width: 100% !important; border-collapse: collapse; }
-    .table-slip { margin-top: 3px; margin-bottom: 3px; }
-    .table-slip th { padding: 2px 4px; font-size: 11px; border: 1px solid #000; text-align: center; }
-    .table-slip td { padding: 1px 4px; font-size: 11px; border: 1px solid #000; height: 20px; vertical-align: middle; }
-    .rapat { line-height: 1.1; margin: 0; padding: 0; font-size: 10px; }
-    .kecil { font-size: 11px; padding-right: 2px; color: #000; }
+    .table-slip { margin-top: 5px; margin-bottom: 5px; }
+    .table-slip th { padding: 4px; font-size: 12px; border: 1px solid #000; text-align: center; }
+    .table-slip td { padding: 3px 4px; font-size: 15px; border: 1px solid #000; height: 22px; vertical-align: middle; }
+    .rapat { line-height: 1.2; margin: 0; padding: 0; font-size: 12px; }
+    .kecil { font-size: 15px; padding-right: 2px; color: #000; }
     .tengah { text-align: center; }
     .kanan { text-align: right; }
 </style>
@@ -118,8 +118,8 @@ if ($stmtD !== false) {
             <table width="100%" border="0">
                 <tr>
                     <td style="width:65%; text-align: left; vertical-align: top;">
-                        <b style="font-size:14px;"><?php echo $nama_pabrik; ?></b>
-                        <div class="rapat">
+                        <b style="font-size:16px;"><?php echo $nama_pabrik; ?></b>
+                        <div class="rapat" style="margin-top: 2px;">
                             <?php echo $alamat_pabrik; ?>
                         </div>
                     </td>
@@ -128,26 +128,26 @@ if ($stmtD !== false) {
                     </td>
                 </tr>
                 <tr>
-                    <td colspan="2" style="padding:3px 0px; text-align:center;">
-                        <b style="font-size:14px; text-decoration: underline;">SURAT PENGANTAR BARANG</b>
+                    <td colspan="2" style="padding:5px 0px; text-align:center;">
+                        <b style="font-size:16px; text-decoration: underline;">SURAT PENGANTAR BARANG</b>
                     </td>
                 </tr>
             </table>
             
-            <table width="100%" border="0" style="text-align: left;">
+            <table width="100%" border="0" style="text-align: left; margin-bottom: 3px;">
                 <tr>
                     <th class="kecil gkiri gatas gbawah" style="width:12%; padding-left:3px;">Nomor</th>
                     <th class="kecil gatas" style="width:2%;">:</th>
-                    <th class="kecil gatas gkanan" style="width:36%;"><b style="font-size:12px;"><?php echo htmlspecialchars($header['TRAN_DOC']); ?></b></th>
-                    <th rowspan="4" class="kecil gatas gkanan gbawah" style="width:50%; vertical-align:top; padding: 3px;">
+                    <th class="kecil gatas gkanan" style="width:36%;"><b style="font-size:15px;"><?php echo htmlspecialchars($header['TRAN_DOC']); ?></b></th>
+                    <th rowspan="4" class="kecil gatas gkanan gbawah" style="width:50%; vertical-align:top; padding: 4px;">
                         Kepada Yth.<br>
-                        <b style="font-size:12px;"><?php echo htmlspecialchars((string)$header['SUP_COMP']); ?></b>
+                        <b style="font-size:13px;"><?php echo htmlspecialchars((string)$header['SUP_COMP']); ?></b>
                     </th>
                 </tr>
                 <tr>
                     <th class="kecil gkiri gatas" style="padding-left:3px;">Tanggal</th>
                     <th class="kecil gatas">:</th>
-                    <th class="kecil gatas gkanan"><b style="font-size:11px;"><?php echo $tran_adate; ?></b></th>
+                    <th class="kecil gatas gkanan"><b style="font-size:12px;"><?php echo $tran_adate; ?></b></th>
                 </tr>
                 <tr>
                     <th class="kecil gkiri gatas" style="padding-left:3px;">No. Kend</th>
@@ -197,7 +197,7 @@ if ($stmtD !== false) {
                 </tbody>
             </table>
             
-            <table width="100%" border="0" style="margin-top: 2px;">
+            <table width="100%" border="0" style="margin-top: 4px;">
                 <tr>
                     <td style="width:20%;" class="kecil tengah">Penerima</td>
                     <td style="width:20%;" class="kecil tengah">&nbsp;</td>
@@ -205,7 +205,7 @@ if ($stmtD !== false) {
                     <td style="width:20%;" class="kecil tengah">&nbsp;</td>
                     <td style="width:20%;" class="kecil tengah">Hormat Kami</td>
                 </tr>
-                <tr><td colspan="5" style="height:35px;"></td></tr>
+                <tr><td colspan="5" style="height:40px;"></td></tr>
                 <tr>
                     <td class="kecil tengah">(..............................)</td>
                     <td class="kecil tengah"></td>
@@ -213,7 +213,7 @@ if ($stmtD !== false) {
                     <td class="kecil tengah"></td>
                     <td class="kecil tengah">(..............................)</td>
                 </tr>
-                <tr><td colspan="5" style="height:3px;"></td></tr>
+                <tr><td colspan="5" style="height:4px;"></td></tr>
                 <tr>
                     <td class="kecil">1. White:Customer</td>
                     <td class="kecil">2. Pink:Accounting</td>
@@ -222,14 +222,14 @@ if ($stmtD !== false) {
                     <td class="kecil">5. Green:Security</td>
                 </tr>
                 <tr>
-                    <td colspan="5" class="kecil" style="padding-top:2px; font-size:9px;">FM.CO.01-20(Revisi4:Tgl.1.Mei.12)</td>
+                    <td colspan="5" class="kecil" style="padding-top:2px; font-size:10px;">FM.CO.01-20(Revisi4:Tgl.1.Mei.12)</td>
                 </tr>
             </table>
         </center>
         
         <div class="no-print" style="margin-top: 15px; text-align: right; border-top: 1px solid #ccc; padding-top: 10px;">
-            <button style="padding: 5px 15px; cursor: pointer;" onclick="window.print();">Print</button> 
-            <button style="padding: 5px 15px; cursor: pointer;" onclick="window.close();">Close</button>
+            <button style="padding: 5px 15px; cursor: pointer; font-size: 14px;" onclick="window.print();">Print</button> 
+            <button style="padding: 5px 15px; cursor: pointer; font-size: 14px;" onclick="window.close();">Close</button>
         </div>
     </div>
 </section>

@@ -1,885 +1,486 @@
 <?php
-/**
- * Dashboard IT Inventory Bea Cukai - Plant 1
- * PHP 5.4 + Bootstrap 3 + SQLSRV
- *
- * Lokasi file:
- *   /msii/it-inventory-bc/index.php
- */
+$dbConnected = false;
+$dbError = '';
+$conn = false;
 
-/* =========================================================
- * SESSION DAN LOGIN PROTECTION
- * ========================================================= */
-if (session_status() == PHP_SESSION_NONE) {
-    session_start();
+// Memanggil file konfigurasi database
+require_once __DIR__ . '/config/database.php';
+
+if (isset($conn) && $conn !== false) {
+    $dbConnected = true;
+} else {
+    $dbError = 'Koneksi SQL Server tidak tersedia.';
 }
 
-$loginUrl = "/msii/bea/login.php";
-
-/*
- * Periksa session lebih dahulu agar pengguna yang belum login
- * langsung diarahkan ke login IT Inventory.
- */
-if (
-    !isset($_SESSION['db_user']) ||
-    trim($_SESSION['db_user']) == "" ||
-    !isset($_SESSION['active_module']) ||
-    $_SESSION['active_module'] != "it_inventory"
-) {
-    header("Location: " . $loginUrl);
-    exit();
-}
-
-/*
- * config/database.php akan mencari:
- *   /msii/config/db_plant1.php
- * atau:
- *   /msii/config/db_plan1.php
- *
- * Variabel $loginUrl di atas diteruskan ke db_plant1.php,
- * sehingga kegagalan koneksi kembali ke login IT Inventory.
- */
-require_once __DIR__ . "/config/database.php";
-
-if (!isset($dbConnected) || !$dbConnected || !isset($conn) || $conn === false) {
-    header("Location: " . $loginUrl . "?error=session_expired");
-    exit();
-}
-
-require_once __DIR__ . "/inc/functions.php";
-require_once __DIR__ . "/inc/data.php";
-require_once __DIR__ . "/inc/repository.php";
-
-/* =========================================================
- * IDENTITAS HALAMAN
- * ========================================================= */
-$pageTitle  = "Dashboard - IT Inventory Kawasan Berikat";
-$currentPage = "dashboard";
-$currentUser = $_SESSION['db_user'];
-
-/* =========================================================
- * DEFAULT DATA
- * Tidak memakai angka demo agar dashboard produksi tidak
- * menampilkan angka yang bukan berasal dari database.
- * ========================================================= */
-$summary = array(
-    "pemasukan_bulan"  => 0,
-    "pengeluaran_bulan"=> 0,
-    "stok_bahan_baku"  => 0,
-    "stok_barang_jadi" => 0,
-    "dokumen_pending"  => 0,
-    "aset_it"          => 0
-);
-
-$recentDocuments = array();
-$assetActive     = 0;
-$assetRepair     = 0;
-
-/* =========================================================
- * AMBIL RINGKASAN DATABASE
- * Tabel contoh:
- *   dbo.dokumen_bc
- *   dbo.aset_it
- * Sesuaikan inc/repository.php dengan tabel produksi.
- * ========================================================= */
-$summary = inventory_get_summary($conn, $summary);
-
-$dbRows = inventory_get_recent_documents($conn, 5);
-if (is_array($dbRows)) {
-    $recentDocuments = $dbRows;
-}
-
-if (inventory_table_exists($conn, "aset_it")) {
-    $assetActive = (int) db_query_value(
-        $conn,
-        "SELECT COUNT(*) FROM dbo.aset_it WHERE status = ?",
-        array("Aktif"),
-        0
-    );
-
-    $assetRepair = (int) db_query_value(
-        $conn,
-        "SELECT COUNT(*) FROM dbo.aset_it
-         WHERE status IN (?, ?, ?)",
-        array("Perbaikan", "Rusak", "Maintenance"),
-        0
-    );
-}
-
-/* =========================================================
- * ARUS DOKUMEN ENAM BULAN
- * ========================================================= */
-$monthNames = array(
-    1  => "Jan",
-    2  => "Feb",
-    3  => "Mar",
-    4  => "Apr",
-    5  => "Mei",
-    6  => "Jun",
-    7  => "Jul",
-    8  => "Agu",
-    9  => "Sep",
-    10 => "Okt",
-    11 => "Nov",
-    12 => "Des"
-);
-
-$monthlyFlow = array();
-$monthKeys   = array();
-
-/*
- * Siapkan enam bulan, termasuk bulan berjalan.
- */
-for ($i = 5; $i >= 0; $i--) {
-    $time = strtotime("-" . $i . " month");
-    $year = (int) date("Y", $time);
-    $month = (int) date("n", $time);
-    $key = $year . "-" . str_pad($month, 2, "0", STR_PAD_LEFT);
-
-    $monthKeys[$key] = count($monthlyFlow);
-
-    $monthlyFlow[] = array(
-        "bulan"  => $monthNames[$month],
-        "tahun"  => $year,
-        "masuk"  => 0,
-        "keluar" => 0
-    );
-}
-
-if (inventory_table_exists($conn, "dokumen_bc")) {
-    $flowSql = "
-        SELECT
-            YEAR(tanggal) AS tahun,
-            MONTH(tanggal) AS bulan,
-            SUM(CASE WHEN arah = 'Pemasukan' THEN 1 ELSE 0 END) AS masuk,
-            SUM(CASE WHEN arah = 'Pengeluaran' THEN 1 ELSE 0 END) AS keluar
-        FROM dbo.dokumen_bc
-        WHERE tanggal >= DATEADD(
-            month,
-            DATEDIFF(month, 0, GETDATE()) - 5,
-            0
-        )
-        GROUP BY YEAR(tanggal), MONTH(tanggal)
-        ORDER BY YEAR(tanggal), MONTH(tanggal)
-    ";
-
-    $flowRows = db_query_rows($conn, $flowSql, array());
-
-    foreach ($flowRows as $flowRow) {
-        $rowYear  = isset($flowRow["tahun"]) ? (int) $flowRow["tahun"] : 0;
-        $rowMonth = isset($flowRow["bulan"]) ? (int) $flowRow["bulan"] : 0;
-        $rowKey   = $rowYear . "-" . str_pad($rowMonth, 2, "0", STR_PAD_LEFT);
-
-        if (isset($monthKeys[$rowKey])) {
-            $rowIndex = $monthKeys[$rowKey];
-
-            $monthlyFlow[$rowIndex]["masuk"] = isset($flowRow["masuk"])
-                ? (int) $flowRow["masuk"]
-                : 0;
-
-            $monthlyFlow[$rowIndex]["keluar"] = isset($flowRow["keluar"])
-                ? (int) $flowRow["keluar"]
-                : 0;
-        }
-    }
-}
-
-/*
- * Cari nilai terbesar untuk menentukan lebar diagram.
- */
-$maxFlow = 1;
-foreach ($monthlyFlow as $flowItem) {
-    if ($flowItem["masuk"] > $maxFlow) {
-        $maxFlow = $flowItem["masuk"];
-    }
-
-    if ($flowItem["keluar"] > $maxFlow) {
-        $maxFlow = $flowItem["keluar"];
-    }
-}
+// ---------------------------------------------------------
+// TANGKAP PERMINTAAN HALAMAN DARI MENU DROPDOWN
+// ---------------------------------------------------------
+$page = isset($_GET['page']) ? $_GET['page'] : 'dashboard';
 ?>
 <!DOCTYPE html>
-<html lang="id">
+<html>
 <head>
     <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>IT Inventory P.T. IMC TEKNO INDONESIA</title>
+    <meta content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" name="viewport">
+    
+    <!-- Link CSS Bootstrap & AdminLTE -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/admin-lte/2.4.18/css/AdminLTE.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/admin-lte/2.4.18/css/skins/_all-skins.min.css">
+    
+    <!-- JQUERY UI CSS (Untuk Tampilan Dropdown Autocomplete) -->
+    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1"
-    >
+    <!-- jQuery (Wajib paling atas) -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    
+    <!-- JQUERY UI JS (Wajib di bawah jQuery agar fungsi autocomplete aktif) -->
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+</head>
+<body class="hold-transition skin-blue layout-top-nav">
+<div class="wrapper">
 
-    <title><?php echo e($pageTitle); ?></title>
+  <header class="main-header">
+    <nav class="navbar navbar-static-top">
+      <div class="container-fluid"> <!-- Diubah ke container-fluid agar tabel/form lebih luas -->
+        <div class="navbar-header">
+          <a href="index.php" class="navbar-brand"><b>IT Inventory</b> P.T. IMC</a>
+          <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar-collapse">
+            <i class="fa fa-bars"></i>
+          </button>
+        </div>
 
-    <link
-        rel="stylesheet"
-        href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css"
-    >
+        <!-- Bagian Menu Dropdown di Atas -->
+        <div class="collapse navbar-collapse pull-left" id="navbar-collapse">
+          <ul class="nav navbar-nav">
+            
+            <!-- 0. Menu Master -->
+            <li class="dropdown <?php echo (strpos($page, 'master_') !== false) ? 'active' : ''; ?>">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown">Master <span class="caret"></span></a>
+              <ul class="dropdown-menu" role="menu">
+                <li><a href="?page=master_barang">Master Barang</a></li>
+                <li><a href="?page=master_bom">BOM (Bill of Materials)</a></li>
+                <li><a href="?page=master_price">Price, Customer, Currency, Supplier</a></li>
+                <li><a href="?page=master_unit">Unit</a></li>
+              </ul>
+            </li>
 
-    <link
-        rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"
-    >
+            <!-- 1. Menu Planning dan Ordering -->
+            <li class="dropdown <?php echo (strpos($page, 'plan_') !== false) ? 'active' : ''; ?>">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown">Ordering <span class="caret"></span></a>
+              <ul class="dropdown-menu" role="menu">
+                <li><a href="?page=plan_forecast">Forecast, Order, Schedule</a></li>
+                <li><a href="?page=plan_gen">Generate DI</a></li>
+                 <li><a href="?page=plan_schedule">Delivery Instruction</a></li>
+              </ul>
+            </li>
+            
+            <!-- 2. Menu pemesanan barang -->
+            <li class="dropdown <?php echo (strpos($page, 'order_') !== false) ? 'active' : ''; ?>">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown">Purchasing <span class="caret"></span></a>
+              <ul class="dropdown-menu" role="menu">
+                <li><a href="?page=order_pr">PR, Quotation, Purchase Order</a></li>
+                <li><a href="?page=order_rec">Receive Suppier</a></li>
+              </ul>
+            </li>
+            
+            <!-- 3. Menu transaksi in dan out -->
+            <li class="dropdown <?php echo (strpos($page, 'proses_') !== false) ? 'active' : ''; ?>">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown">Inventory Transaction <span class="caret"></span></a>
+              <ul class="dropdown-menu" role="menu">
+                <li><a href="?page=sop_trans">SOP & TRANS</a></li>
+              </ul>
+            </li>
+            
+            <!-- 4. Menu Proses -->
+            <li class="dropdown <?php echo (strpos($page, 'proses_') !== false) ? 'active' : ''; ?>">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown"> PROSES <span class="caret"></span></a>
+              <ul class="dropdown-menu" role="menu">
+                <li><a href="?page=wo">WORK ORDER</a></li>
+                <li><a href="?page=sms">SUPPLY MATERIAL</a></li>
+                <li><a href="?page=prod">PRODUCTION</a></li>
+              </ul>
+            </li>
+            
+            <!-- 5. Menu Accounting -->
+            <li class="dropdown <?php echo (strpos($page, 'acc_') !== false) ? 'active' : ''; ?>">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown">Accounting <span class="caret"></span></a>
+              <ul class="dropdown-menu" role="menu">
+                <li><a href="?page=acc_jurnal">Jurnal</a></li>
+                <li><a href="?page=acc_laporan">Laporan Keuangan</a></li>
+              </ul>
+            </li>
+            
+            <!-- 6. Menu User -->
+            <li class="dropdown <?php echo (strpos($page, 'acc_') !== false) ? 'active' : ''; ?>">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown">Daftar User <span class="caret"></span></a>
+              <ul class="dropdown-menu" role="menu">
+                <li><a href="?page=acc_jurnal">User Log</a></li>
+                <li><a href="?page=acc_laporan">Change password</a></li>
+              </ul>
+            </li>
 
-    <link
-        rel="stylesheet"
-        href="assets/css/style.css"
-    >
+            <!-- 7. Menu Laporan -->
+            <li class="dropdown <?php echo (strpos($page, 'lap_') !== false) ? 'active' : ''; ?>">
+              <a href="#" class="dropdown-toggle" data-toggle="dropdown">Laporan <span class="caret"></span></a>
+              <ul class="dropdown-menu" role="menu">
+                <li><a href="?page=lap_1">1. Laporan Pemasukan Barang</a></li>
+                <li><a href="?page=lap_2">2. Laporan Pengeluaran Barang</a></li>
+                <li><a href="?page=lap_3">3. Laporan Posisi Barang per Dokumen</a></li>
+                
+                <li class="dropdown-header" style="font-size: 14px; color: #333;">4. Laporan Mutasi Barang</li>
+                <li><a href="?page=lap_4_bb">&nbsp;&nbsp;&nbsp;a. Mutasi Bahan Baku</a></li>
+                <li><a href="?page=lap_4_bj">&nbsp;&nbsp;&nbsp;b. Mutasi Barang Jadi</a></li>
+                <li><a href="?page=lap_4_mesin">&nbsp;&nbsp;&nbsp;c. Mutasi Mesin dan Peralatan</a></li>
+                <li><a href="?page=lap_4_scrap">&nbsp;&nbsp;&nbsp;d. Mutasi Scrap</a></li>
+                
+                <li><a href="?page=lap_5">5. Laporan Barang dalam Proses</a></li>
+                <li><a href="?page=lap_6">6. Laporan Barang Sisa/Scrap</a></li>
+                <li><a href="?page=lap_7">7. Laporan Mesin dan Peralatan</a></li>
+              </ul>
+            </li>
 
-    <style>
-        .user-menu-name {
-            max-width: 210px;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-        }
+          </ul>
+        </div>
+        <!-- /.navbar-collapse -->
 
-        .dashboard-user-box {
-            float: right;
-            margin-top: -35px;
-            font-size: 12px;
-            color: #617789;
-        }
+        <!-- Menu Kanan (User) -->
+        <div class="navbar-custom-menu">
+          <ul class="nav navbar-nav">
+            <li><a href="#"><i class="fa fa-user"></i> plan1</a></li>
+            <li><a href="logout.php"><i class="fa fa-sign-out"></i> Keluar</a></li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+  </header>
 
-        .empty-table {
-            padding: 28px !important;
-            color: #8999a6;
-            text-align: center;
-        }
+  <!-- KONTEN UTAMA -->
+  <div class="content-wrapper">
+    <div class="container-fluid">
+      <section class="content-header">
+        <h1>
+            <?php 
+                if ($page == 'dashboard') {
+                    echo "Dashboard <small>Ringkasan IT Inventory Kawasan Berikat</small>";
+                } else {
+                    // Mengubah text judul halaman sesuai URL (contoh: master_barang -> Master Barang)
+                    echo ucwords(str_replace('_', ' ', $page)); 
+                }
+            ?>
+        </h1>
+        
+        <!-- Pesan Status Koneksi Database -->
+        <?php if($dbConnected && $page == 'dashboard'): ?>
+            <div class="alert alert-success alert-dismissible" style="margin-top:10px;">
+                <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+                <i class="icon fa fa-check"></i> Database Terhubung!
+            </div>
+        <?php elseif($dbError != ''): ?>
+            <div class="alert alert-danger alert-dismissible" style="margin-top:10px;">
+                <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+                <i class="icon fa fa-ban"></i> Gagal Terhubung: <?php echo $dbError; ?>
+            </div>
+        <?php endif; ?>
+      </section>
 
-        @media (max-width: 767px) {
-            .dashboard-user-box {
-                float: none;
-                margin-top: 8px;
+      <section class="content">
+          
+        <?php 
+        // =========================================================================
+        // LOGIKA ROUTING: MENAMPILKAN HALAMAN SESUAI MENU YANG DIKLIK
+        // =========================================================================
+        
+        if ($page == 'dashboard' || $page == '') { 
+            // -------------------------------------------------------------
+            // TAMPILAN JIKA BERADA DI DASHBOARD AWAL
+            // -------------------------------------------------------------
+            
+            $totalPemasukan = 0;
+            $totalPengeluaran = 0;
+
+            // LOGIKA MENGHITUNG DOKUMEN BULAN BERJALAN
+            if ($dbConnected) {
+                $tglAwalBulan = date('Y-m-01');
+                $tglAkhirBulan = date('Y-m-t');
+
+                // 1. Menghitung Dokumen Pemasukan (Berdasarkan SP Laporan)
+                $stmtIn = sqlsrv_query($conn, "{CALL dbo.sp_pemasukan_dok_receive(?, ?, ?)}", array($tglAwalBulan, $tglAkhirBulan, "%"));
+                if ($stmtIn !== false) {
+                    $uniqueDocsIn = array();
+                    while ($row = sqlsrv_fetch_array($stmtIn, SQLSRV_FETCH_ASSOC)) {
+                        $no_bc = isset($row["NOMOR_BC"]) ? trim($row["NOMOR_BC"]) : "";
+                        if ($no_bc !== "") {
+                            $uniqueDocsIn[$no_bc] = true; // Menyaring agar 1 nomor BC hanya dihitung 1 kali
+                        }
+                    }
+                    $totalPemasukan = count($uniqueDocsIn);
+                    sqlsrv_free_stmt($stmtIn);
+                }
+
+                // 2. Menghitung Dokumen Pengeluaran (Berdasarkan SP Laporan)
+                $startParamOut = $tglAwalBulan . " 00:00:00";
+                $endParamOut   = $tglAkhirBulan . " 23:59:59";
+                $stmtOut = sqlsrv_query($conn, "{CALL dbo.sp_pengeluaran_dok(?, ?, ?)}", array($startParamOut, $endParamOut, "%"));
+                if ($stmtOut !== false) {
+                    $uniqueDocsOut = array();
+                    while ($row = sqlsrv_fetch_array($stmtOut, SQLSRV_FETCH_ASSOC)) {
+                        $no_bc = isset($row["NOMOR_BC"]) ? trim($row["NOMOR_BC"]) : "";
+                        if ($no_bc !== "") {
+                            $uniqueDocsOut[$no_bc] = true; // Menyaring agar 1 nomor BC hanya dihitung 1 kali
+                        }
+                    }
+                    $totalPengeluaran = count($uniqueDocsOut);
+                    sqlsrv_free_stmt($stmtOut);
+                }
+            }
+        ?>
+            <!-- 4 KOLOM PANEL MENYAMPING -->
+            <div class="row">
+              <div class="col-lg-3 col-xs-6">
+                <div class="small-box bg-aqua">
+                  <div class="inner">
+                    <h3><?php echo number_format($totalPemasukan, 0, ',', '.'); ?></h3>
+                    <p>DOKUMEN PEMASUKAN</p>
+                  </div>
+                  <a href="?page=lap_1" class="small-box-footer">Lihat laporan <i class="fa fa-arrow-circle-right"></i></a>
+                </div>
+              </div>
+              <div class="col-lg-3 col-xs-6">
+                <div class="small-box bg-green">
+                  <div class="inner">
+                    <h3><?php echo number_format($totalPengeluaran, 0, ',', '.'); ?></h3>
+                    <p>DOKUMEN PENGELUARAN</p>
+                  </div>
+                  <a href="?page=lap_2" class="small-box-footer">Lihat laporan <i class="fa fa-arrow-circle-right"></i></a>
+                </div>
+              </div>
+              <div class="col-lg-3 col-xs-6">
+                <div class="small-box bg-yellow">
+                  <div class="inner">
+                    <h3>0</h3>
+                    <p>STOK BAHAN BAKU</p>
+                  </div>
+                  <a href="?page=lap_4_bb" class="small-box-footer">Lihat mutasi <i class="fa fa-arrow-circle-right"></i></a>
+                </div>
+              </div>
+              <div class="col-lg-3 col-xs-6">
+                <div class="small-box bg-red">
+                  <div class="inner">
+                    <h3>0</h3>
+                    <p>DOKUMEN MENUNGGU</p>
+                  </div>
+                  <a href="?page=proses_bc" class="small-box-footer">Periksa dokumen <i class="fa fa-arrow-circle-right"></i></a>
+                </div>
+              </div>
+            </div>
+            
+            <!-- PESAN INFO DASHBOARD -->
+            <div class="box box-primary">
+                <div class="box-body" style="min-height: 300px; display:flex; align-items:center; justify-content:center;">
+                    <h4 class="text-center text-muted"><i class="fa fa-info-circle"></i> Silakan pilih menu navigasi di atas untuk memulai.</h4>
+                </div>
+            </div>
+            
+        <?php 
+        } 
+        // -------------------------------------------------------------
+        // PEMANGGILAN HALAMAN MASTER BARANG
+        // -------------------------------------------------------------
+        elseif ($page == 'master_barang') { 
+            if (file_exists('master_barang.php')) {
+                include 'master_barang.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>master_barang.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        
+        elseif ($page == 'master_bom') { 
+            if (file_exists('bom.php')) {
+                include 'bom.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>bom.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        
+        elseif ($page == 'master_price') { 
+            if (file_exists('master.php')) {
+                include 'master.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>master.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        
+        elseif ($page == 'plan_forecast') { 
+            if (file_exists('forecast.php')) {
+                include 'forecast.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>forecast.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        
+        elseif ($page == 'plan_gen') { 
+            if (file_exists('generate.php')) {
+                include 'generate.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>generate.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        
+        elseif ($page == 'plan_schedule') { 
+            if (file_exists('manual_order.php')) {
+                include 'manual_order.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>manual_order.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        
+        elseif ($page == 'order_pr') { 
+            if (file_exists('pr.php')) {
+                include 'pr.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>pr.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        
+        elseif ($page == 'order_rec') { 
+            if (file_exists('receive.php')) {
+                include 'receive.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>receive.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        
+        elseif ($page == 'sop_trans') { 
+            if (file_exists('trans.php')) {
+                include 'trans.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>trans.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        
+        elseif ($page == 'wo') { 
+            if (file_exists('work_order.php')) {
+                include 'work_order.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>work_order.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        
+        elseif ($page == 'sms') { 
+            if (file_exists('sms.php')) {
+                include 'sms.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>sms.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        
+        elseif ($page == 'prod') { 
+            if (file_exists('production.php')) {
+                include 'production.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>production.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+         
+        // LAPORAN BEA CUKAI
+        
+        elseif ($page == 'lap_1') { 
+            if (file_exists('pemasukan.php')) {
+                include 'pemasukan.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>pemasukan.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        
+        elseif ($page == 'lap_2') { 
+            if (file_exists('pengeluaran.php')) {
+                include 'pengeluaran.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>pengeluaran.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        
+        elseif ($page == 'lap_3') { 
+            if (file_exists('posisi_dokumen.php')) {
+                include 'posisi_dokumen.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>posisi_dokumen.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+
+        // -------------------------------------------------------------
+        // PEMANGGILAN HALAMAN MUTASI BARANG
+        // -------------------------------------------------------------
+        elseif ($page == 'lap_4_bb') { 
+            if (file_exists('mutasi_bahan_baku.php')) {
+                include 'mutasi_bahan_baku.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>mutasi_bahan_baku.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        elseif ($page == 'lap_4_bj') { 
+            if (file_exists('mutasi_barang_jadi.php')) {
+                include 'mutasi_barang_jadi.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>mutasi_barang_jadi.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+        elseif ($page == 'lap_4_mesin') { 
+            if (file_exists('mutasi_mesin.php')) {
+                include 'mutasi_mesin.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>mutasi_mesin.php</b> tidak ditemukan pada server.</div>";
+            }
+        } 
+		
+        elseif ($page == 'lap_4_scrap') { 
+            if (file_exists('mutasi_scrap.php')) {
+                include 'mutasi_scrap.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>mutasi_scrap.php</b> tidak ditemukan pada server.</div>";
             }
         }
-    </style>
-</head>
+		
+		 elseif ($page == 'lap_5') { 
+            if (file_exists('mutasi_wip.php')) {
+                include 'mutasi_wip.php';
+            } else {
+                echo "<div class='alert alert-danger'><h4><i class='icon fa fa-ban'></i> Error 404</h4>File <b>mutasi_scrap.php</b> tidak ditemukan pada server.</div>";
+            }
+        }
+		
+		
+         
+        // -------------------------------------------------------------
+        // FALLBACK UNTUK HALAMAN LAIN YANG BELUM DIBUAT
+        // -------------------------------------------------------------
+        else {
+            echo "
+            <div class='box box-warning'>
+                <div class='box-header with-border'>
+                    <h3 class='box-title'><i class='fa fa-code'></i> Dalam Pengembangan</h3>
+                </div>
+                <div class='box-body'>
+                    <p>Halaman untuk modul <b>" . htmlspecialchars($page) . "</b> saat ini belum tersedia atau sedang dalam tahap pengembangan.</p>
+                    <a href='index.php' class='btn btn-primary'><i class='fa fa-arrow-left'></i> Kembali ke Dashboard</a>
+                </div>
+            </div>";
+        }
+        ?>
 
-<body>
-
-<!-- =======================================================
-     TOP NAVIGATION
-     ======================================================= -->
-<nav class="navbar navbar-fixed-top topbar">
-    <div class="container-fluid">
-
-        <div class="navbar-header">
-
-            <button
-                type="button"
-                class="navbar-toggle collapsed"
-                data-toggle="collapse"
-                data-target="#main-menu"
-            >
-                <span class="sr-only">Buka navigasi</span>
-                <span class="icon-bar"></span>
-                <span class="icon-bar"></span>
-                <span class="icon-bar"></span>
-            </button>
-
-            <a class="navbar-brand" href="index.php">
-                <span class="brand-mark">
-                    <i class="fa fa-bar-chart"></i>
-                </span>
-
-                IT Inventory P.T. IMC TEKNO INDONESIA
-            </a>
-        </div>
-
-        <ul class="nav navbar-nav navbar-right hidden-xs">
-
-            <li>
-                <a href="#" class="user-menu-name">
-                    <i class="fa fa-user-circle"></i>
-
-                    <?php echo e($currentUser); ?>
-                </a>
-            </li>
-
-            <li>
-                <a href="logout.php">
-                    <i class="fa fa-sign-out"></i>
-                    Keluar
-                </a>
-            </li>
-        </ul>
+      </section>
     </div>
-</nav>
-
-<div class="layout">
-
-    <!-- ===================================================
-         SIDEBAR
-         =================================================== -->
-    <aside class="sidebar">
-
-        <div class="sidebar-profile">
-
-            <div class="profile-icon">
-                <i class="fa fa-cubes"></i>
-            </div>
-
-            <div>
-                <strong>IT Inventory</strong>
-                <small>Kawasan Berikat</small>
-            </div>
-        </div>
-
-        <div class="collapse navbar-collapse" id="main-menu">
-
-            <ul class="nav sidebar-nav">
-
-                <li class="active">
-                    <a href="index.php">
-                        <i class="fa fa-dashboard"></i>
-                        <span>Dashboard</span>
-                    </a>
-                </li>
-
-                <li>
-                    <a href="laporan.php">
-                        <i class="fa fa-briefcase"></i>
-                        <span>Laporan</span>
-                        <i class="fa fa-angle-right menu-arrow"></i>
-                    </a>
-                </li>
-
-                <li>
-                    <a href="#">
-                        <i class="fa fa-exchange"></i>
-                        <span>Transaksi Barang</span>
-                        <i class="fa fa-angle-right menu-arrow"></i>
-                    </a>
-                </li>
-
-                <li>
-                    <a href="#">
-                        <i class="fa fa-database"></i>
-                        <span>Master Data</span>
-                        <i class="fa fa-angle-right menu-arrow"></i>
-                    </a>
-                </li>
-
-                <li>
-                    <a href="#">
-                        <i class="fa fa-wrench"></i>
-                        <span>Utility</span>
-                        <i class="fa fa-angle-right menu-arrow"></i>
-                    </a>
-                </li>
-            </ul>
-        </div>
-
-        <div class="sidebar-footer">
-            BC Inventory v1.0
-        </div>
-    </aside>
-
-    <!-- ===================================================
-         MAIN CONTENT
-         =================================================== -->
-    <main class="main-content">
-
-        <div class="page-header-box">
-
-            <h1>Dashboard</h1>
-
-            <ol class="breadcrumb breadcrumb-clean">
-                <li>
-                    <i class="fa fa-home"></i>
-                </li>
-
-                <li class="active">
-                    Ringkasan IT Inventory Kawasan Berikat
-                </li>
-            </ol>
-
-            <div class="dashboard-user-box">
-                Login:
-                <strong><?php echo e($currentUser); ?></strong>
-
-                &nbsp;|&nbsp;
-
-                <a href="logout.php">
-                    Logout
-                </a>
-            </div>
-        </div>
-
-        <!-- =================================================
-             SUMMARY CARDS
-             ================================================= -->
-        <div class="row">
-
-            <div class="col-sm-6 col-lg-3">
-                <div class="summary-card">
-
-                    <div class="value">
-                        <?php
-                        echo format_number_id(
-                            $summary["pemasukan_bulan"]
-                        );
-                        ?>
-                    </div>
-
-                    <div class="label-text">
-                        Dokumen pemasukan bulan ini
-                    </div>
-
-                    <a
-                        class="mini-link"
-                        href="laporan.php?report=1"
-                    >
-                        Lihat laporan
-                        <i class="fa fa-angle-right"></i>
-                    </a>
-
-                    <i class="fa fa-sign-in icon"></i>
-                </div>
-            </div>
-
-            <div class="col-sm-6 col-lg-3">
-                <div class="summary-card">
-
-                    <div class="value">
-                        <?php
-                        echo format_number_id(
-                            $summary["pengeluaran_bulan"]
-                        );
-                        ?>
-                    </div>
-
-                    <div class="label-text">
-                        Dokumen pengeluaran bulan ini
-                    </div>
-
-                    <a
-                        class="mini-link"
-                        href="laporan.php?report=2"
-                    >
-                        Lihat laporan
-                        <i class="fa fa-angle-right"></i>
-                    </a>
-
-                    <i class="fa fa-sign-out icon"></i>
-                </div>
-            </div>
-
-            <div class="col-sm-6 col-lg-3">
-                <div class="summary-card">
-
-                    <div class="value">
-                        <?php
-                        echo format_number_id(
-                            $summary["stok_bahan_baku"]
-                        );
-                        ?>
-                    </div>
-
-                    <div class="label-text">
-                        Stok bahan baku dan penolong
-                    </div>
-
-                    <a
-                        class="mini-link"
-                        href="laporan.php?report=3"
-                    >
-                        Lihat mutasi
-                        <i class="fa fa-angle-right"></i>
-                    </a>
-
-                    <i class="fa fa-cubes icon"></i>
-                </div>
-            </div>
-
-            <div class="col-sm-6 col-lg-3">
-                <div class="summary-card">
-
-                    <div class="value">
-                        <?php
-                        echo format_number_id(
-                            $summary["dokumen_pending"]
-                        );
-                        ?>
-                    </div>
-
-                    <div class="label-text">
-                        Dokumen menunggu proses
-                    </div>
-
-                    <a
-                        class="mini-link"
-                        href="#recent-documents"
-                    >
-                        Periksa dokumen
-                        <i class="fa fa-angle-right"></i>
-                    </a>
-
-                    <i class="fa fa-clock-o icon"></i>
-                </div>
-            </div>
-        </div>
-
-        <!-- =================================================
-             DOKUMEN TERBARU DAN ARUS DOKUMEN
-             ================================================= -->
-        <div class="row">
-
-            <div class="col-md-8">
-
-                <div
-                    class="panel panel-clean"
-                    id="recent-documents"
-                >
-                    <div class="panel-heading">
-                        <i class="fa fa-file-text-o"></i>
-                        Dokumen Terbaru
-                    </div>
-
-                    <div class="table-responsive">
-
-                        <table class="table table-hover table-condensed">
-
-                            <thead>
-                                <tr>
-                                    <th>No. Dokumen</th>
-                                    <th>Tanggal</th>
-                                    <th>Jenis</th>
-                                    <th>Arah</th>
-                                    <th>Partner/Gudang</th>
-                                    <th class="text-right">Jumlah</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-
-                            <tbody>
-
-                            <?php if (count($recentDocuments) > 0) { ?>
-
-                                <?php foreach ($recentDocuments as $doc) { ?>
-
-                                    <?php
-                                    $statusValue = isset($doc["status"])
-                                        ? strtolower($doc["status"])
-                                        : "";
-
-                                    $allowedStatus = array(
-                                        "selesai",
-                                        "proses",
-                                        "pending"
-                                    );
-
-                                    if (!in_array($statusValue, $allowedStatus)) {
-                                        $statusValue = "proses";
-                                    }
-                                    ?>
-
-                                    <tr>
-                                        <td>
-                                            <?php
-                                            echo e(
-                                                isset($doc["no_dokumen"])
-                                                    ? $doc["no_dokumen"]
-                                                    : ""
-                                            );
-                                            ?>
-                                        </td>
-
-                                        <td>
-                                            <?php
-                                            echo e(
-                                                isset($doc["tanggal"])
-                                                    ? $doc["tanggal"]
-                                                    : ""
-                                            );
-                                            ?>
-                                        </td>
-
-                                        <td>
-                                            <?php
-                                            echo e(
-                                                isset($doc["jenis"])
-                                                    ? $doc["jenis"]
-                                                    : ""
-                                            );
-                                            ?>
-                                        </td>
-
-                                        <td>
-                                            <?php
-                                            echo e(
-                                                isset($doc["arah"])
-                                                    ? $doc["arah"]
-                                                    : ""
-                                            );
-                                            ?>
-                                        </td>
-
-                                        <td>
-                                            <?php
-                                            echo e(
-                                                isset($doc["supplier"])
-                                                    ? $doc["supplier"]
-                                                    : ""
-                                            );
-                                            ?>
-                                        </td>
-
-                                        <td class="text-right">
-                                            <?php
-                                            echo format_number_id(
-                                                isset($doc["jumlah"])
-                                                    ? $doc["jumlah"]
-                                                    : 0
-                                            );
-                                            ?>
-                                        </td>
-
-                                        <td>
-                                            <span
-                                                class="status-badge status-<?php echo e($statusValue); ?>"
-                                            >
-                                                <?php
-                                                echo e(
-                                                    isset($doc["status"])
-                                                        ? $doc["status"]
-                                                        : ""
-                                                );
-                                                ?>
-                                            </span>
-                                        </td>
-                                    </tr>
-
-                                <?php } ?>
-
-                            <?php } else { ?>
-
-                                <tr>
-                                    <td
-                                        colspan="7"
-                                        class="empty-table"
-                                    >
-                                        <i class="fa fa-info-circle"></i>
-                                        Belum ada data dokumen pada tabel
-                                        <strong>dbo.dokumen_bc</strong>.
-                                    </td>
-                                </tr>
-
-                            <?php } ?>
-
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-md-4">
-
-                <div class="panel panel-clean">
-
-                    <div class="panel-heading">
-                        <i class="fa fa-line-chart"></i>
-                        Arus Dokumen 6 Bulan
-                    </div>
-
-                    <div class="panel-body">
-
-                        <div class="legend">
-
-                            <span>
-                                <i class="fa fa-square legend-in"></i>
-                                Pemasukan
-                            </span>
-
-                            <span>
-                                <i class="fa fa-square legend-out"></i>
-                                Pengeluaran
-                            </span>
-                        </div>
-
-                        <div class="flow-bars">
-
-                            <?php foreach ($monthlyFlow as $flow) { ?>
-
-                                <?php
-                                $inWidth = round(
-                                    ($flow["masuk"] / $maxFlow) * 100
-                                );
-
-                                $outWidth = round(
-                                    ($flow["keluar"] / $maxFlow) * 100
-                                );
-                                ?>
-
-                                <div class="flow-row">
-
-                                    <div class="flow-label">
-
-                                        <strong>
-                                            <?php
-                                            echo e(
-                                                $flow["bulan"]
-                                                . " "
-                                                . $flow["tahun"]
-                                            );
-                                            ?>
-                                        </strong>
-
-                                        <span class="pull-right">
-                                            <?php
-                                            echo (int) $flow["masuk"];
-                                            ?>
-                                            /
-                                            <?php
-                                            echo (int) $flow["keluar"];
-                                            ?>
-                                        </span>
-                                    </div>
-
-                                    <div
-                                        class="bar-track"
-                                        title="Masuk <?php echo (int) $flow["masuk"]; ?>, Keluar <?php echo (int) $flow["keluar"]; ?>"
-                                    >
-                                        <div
-                                            class="bar-in"
-                                            style="width: <?php echo (int) $inWidth; ?>%;"
-                                        ></div>
-
-                                        <div
-                                            class="bar-out"
-                                            style="width: <?php echo (int) $outWidth; ?>%;"
-                                        ></div>
-                                    </div>
-                                </div>
-
-                            <?php } ?>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- =================================================
-             ASET IT DAN STATUS SISTEM
-             ================================================= -->
-        <div class="row">
-
-            <div class="col-sm-6">
-
-                <div class="panel panel-clean">
-
-                    <div class="panel-heading">
-                        <i class="fa fa-desktop"></i>
-                        Ringkasan Aset IT
-                    </div>
-
-                    <div class="panel-body">
-
-                        <div class="row text-center">
-
-                            <div class="col-xs-4">
-                                <h3>
-                                    <?php
-                                    echo format_number_id(
-                                        $summary["aset_it"]
-                                    );
-                                    ?>
-                                </h3>
-                                <small>Total aset</small>
-                            </div>
-
-                            <div class="col-xs-4">
-                                <h3>
-                                    <?php
-                                    echo format_number_id(
-                                        $assetActive
-                                    );
-                                    ?>
-                                </h3>
-                                <small>Aktif</small>
-                            </div>
-
-                            <div class="col-xs-4">
-                                <h3>
-                                    <?php
-                                    echo format_number_id(
-                                        $assetRepair
-                                    );
-                                    ?>
-                                </h3>
-                                <small>Perbaikan</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="col-sm-6">
-
-                <div class="panel panel-clean">
-
-                    <div class="panel-heading">
-                        <i class="fa fa-check-square-o"></i>
-                        Status Sistem
-                    </div>
-
-                    <div class="panel-body">
-
-                        <p>
-                            Koneksi SQL Server:
-                            <strong class="text-success">
-                                <i class="fa fa-check-circle"></i>
-                                Terhubung
-                            </strong>
-                        </p>
-
-                        <p>
-                            Server:
-                            <strong>192.168.0.4</strong>
-                        </p>
-
-                        <p>
-                            Database:
-                            <strong>msdata</strong>
-                        </p>
-
-                        <p>
-                            Waktu akses:
-                            <strong>
-                                <?php echo date("d-m-Y H:i:s"); ?>
-                            </strong>
-                        </p>
-
-                        <small>
-                            Pastikan pemetaan tabel dan kolom pada
-                            <code>inc/repository.php</code>
-                            sesuai dengan database produksi.
-                        </small>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="footer-note">
-            Bootstrap 3, PHP 5.4, SQLSRV, dan SQL Server 2008.
-        </div>
-    </main>
+  </div>
 </div>
 
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
-
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
-
-<script>
-(function () {
-    "use strict";
-
-    if (typeof jQuery !== "undefined") {
-        jQuery('[data-toggle="tooltip"]').tooltip();
-    }
-})();
-</script>
+<!-- Link JavaScript menggunakan CDN -->
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/admin-lte/2.4.18/js/adminlte.min.js"></script>
 
 </body>
 </html>

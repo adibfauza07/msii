@@ -20,6 +20,6 @@ if (ini_get("session.use_cookies")) {
 session_destroy();
 
 // 5. Redireksi kembali ke halaman login di dalam folder mold
-header("Location: mold/login.php");
+header("Location: login.php");
 exit();
 ?>

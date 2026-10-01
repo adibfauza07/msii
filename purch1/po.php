@@ -644,26 +644,161 @@ if (count($details) == 0) {
 <meta charset="utf-8">
 <title>Purchase Order</title>
 <style>
-html,body{margin:0;padding:0;background:#a8c8e8;font-family:Tahoma,Arial,sans-serif;font-size:12px;color:#000}
-.wrap{padding:8px 10px}.page-title{background:#fff;text-align:center;font-size:26px;line-height:42px;height:42px;margin:-8px -10px 8px -10px}
-.top-buttons{margin-bottom:6px}.btn{height:24px;padding:2px 12px;border:1px solid #777;background:#eee;color:#000;cursor:pointer;font-family:Tahoma,Arial,sans-serif;font-size:12px;text-decoration:none;display:inline-block;line-height:18px;box-sizing:border-box}
-.btn-save{background:#dff0d8}.btn-del,.btn-x{background:#f2dede}.btn-x{width:26px;padding:2px 4px}.btn:hover{background:#dcdcdc}
-.msg{background:#dff0d8;color:#006100;border:1px solid #6aa84f;padding:6px;margin-bottom:6px}.err{background:#f2dede;color:#900;border:1px solid #c00;padding:6px;margin-bottom:6px;white-space:pre-wrap}
-.label{display:block;margin-bottom:2px}table.form-table{border-collapse:collapse;width:760px}table.form-table td{padding:2px 5px;vertical-align:top}
-input[type=text],input[type=date],select{height:23px;border:1px solid #777;padding:2px 4px;font-family:Tahoma,Arial,sans-serif;font-size:12px;box-sizing:border-box;background:#fff;color:#000}
-textarea{border:1px solid #777;padding:4px;font-family:Tahoma,Arial,sans-serif;font-size:12px;box-sizing:border-box;resize:none}
-.po-no{width:135px}.date{width:115px}.supplier-code{width:70px}.supplier-name{width:345px}.term{width:255px}.cur{width:65px}.remark{width:490px;height:36px}
-.header-toolbar{margin:4px 0 8px 128px}
-table.detail{width:665px;border-collapse:collapse;background:#fff;margin-top:6px}table.detail th{background:#d9d9d9;border:1px solid #888;padding:3px;text-align:left;font-weight:normal;height:20px}
-table.detail td{border:1px solid #ccc;padding:1px 2px;height:21px}table.detail input{width:100%;height:20px;border:none;padding:1px 2px;box-sizing:border-box}
-table.detail input:focus{outline:1px solid #2f65d9}tr.detail-selected td{background:#e7f1ff}
-.num{text-align:right}.center{text-align:center}.action-cell{display:flex;justify-content:center;align-items:center;gap:3px}
-.search-area{margin-top:10px}.grid-wrap{width:665px;height:125px;overflow:auto;background:#fff;border:1px solid #777;margin-top:8px;position:relative;z-index:1}
-table.grid{width:100%;border-collapse:collapse;background:#fff}table.grid th{background:#d9d9d9;border:1px solid #888;padding:3px;text-align:left;font-weight:normal;white-space:nowrap}
-table.grid td{border:1px solid #ccc;padding:3px 4px;white-space:nowrap}table.grid tr.po-row:hover{background:#cce5ff;cursor:pointer}.go-btn{cursor:pointer;font-weight:bold;color:#000080}
-.bottom-buttons{margin-top:8px;width:665px;display:flex;justify-content:space-between}
-.ac-box{position:absolute;z-index:9999;background:#fff;color:#000;border:1px solid #333;max-height:220px;overflow-y:auto;min-width:360px;display:none;font-family:Tahoma,Arial,sans-serif;font-size:12px;box-shadow:2px 2px 5px rgba(0,0,0,.3)}
-.ac-item{padding:4px 6px;cursor:pointer;border-bottom:1px solid #ddd}.ac-item:hover,.ac-item.active{background:#2f65d9;color:#fff}
+        /* ==== CSS UNIVERSAL - RESPONSIVE, SIMPLE & MENARIK ==== */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        html, body { 
+            margin: 0; padding: 0; 
+            background-color: #f0f2f5; 
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            font-size: 13px; color: #374151; 
+        }
+        
+        /* Container Responsif */
+        .wrap { 
+            padding: 20px; 
+            max-width: 100%; 
+            margin: 0 auto; 
+            box-sizing: border-box; 
+            overflow-x: auto; /* Memungkinkan scroll horizontal jika layar terlalu kecil */
+        }
+
+        .page-title { 
+            background: #ffffff; color: #1f2937; 
+            font-size: 22px; font-weight: 700; 
+            padding: 15px 25px; margin: -20px -20px 20px -20px; 
+            border-bottom: 1px solid #e5e7eb; 
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05); 
+        }
+        
+        /* Tombol Modern & Sederhana */
+        .top-buttons, .bottom-buttons, .header-toolbar { 
+            display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; align-items: center;
+        }
+        .bottom-buttons { margin-top: 20px; justify-content: space-between; background: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb; }
+        
+        .btn { 
+            height: 36px; padding: 0 16px; border: 1px solid transparent; border-radius: 6px; 
+            background: #ffffff; color: #4b5563; font-family: inherit; font-size: 13px; font-weight: 600; 
+            cursor: pointer; display: inline-flex; align-items: center; justify-content: center; 
+            transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.05); border-color: #d1d5db;
+            text-decoration: none;
+        }
+        .btn:hover { background: #f3f4f6; color: #111827; }
+        
+        .btn-save { background: #10b981; color: #ffffff; border-color: #10b981; }
+        .btn-save:hover { background: #059669; border-color: #059669; color: #ffffff; }
+        
+        .btn-del { background: #ef4444; color: #ffffff; border-color: #ef4444; }
+        .btn-del:hover { background: #dc2626; border-color: #dc2626; color: #ffffff; }
+        
+        .btn-x { background: #fee2e2; color: #ef4444; width: 32px; padding: 0; font-weight: bold; border-color: transparent; }
+        .btn-x:hover { background: #ef4444; color: #ffffff; }
+        
+        .btn-po, .btn-os { background: #e0f2fe; color: #0284c7; border-color: transparent; }
+        .btn-po:hover, .btn-os:hover { background: #0284c7; color: #ffffff; }
+
+        /* Notifikasi */
+        .msg { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; }
+        .err { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; white-space: pre-wrap; }
+        
+        /* Area Form Header */
+        .label { display: block; margin-bottom: 6px; font-weight: 600; color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+        
+        table.form-table, table.bc-table { 
+            width: 100%; border-collapse: separate; border-spacing: 12px; 
+            background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; 
+            padding: 10px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+        }
+        table.form-table td, table.bc-table td { vertical-align: top; padding: 0; }
+        
+        /* Input Field Styling (Fluid Width) */
+        input[type=text], input[type=date], select, textarea { 
+            width: 100% !important; /* Paksa responsif mengikuti lebar TD */
+            height: 36px; border: 1px solid #d1d5db; border-radius: 6px; 
+            padding: 6px 12px; font-family: inherit; font-size: 13px; box-sizing: border-box; 
+            background: #ffffff; color: #1f2937; transition: all 0.2s ease; 
+        }
+        input[type=text]:focus, input[type=date]:focus, select:focus, textarea:focus { 
+            outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); 
+        }
+        textarea { height: 60px; resize: vertical; line-height: 1.5; }
+        
+        input[readonly], input[style*="background:#f9f9f9"], input[style*="background:#ddd;"] { 
+            background: #f3f4f6 !important; color: #6b7280; cursor: not-allowed; 
+        }
+        input[type=checkbox] { width: 16px; height: 16px; accent-color: #3b82f6; vertical-align: middle; cursor: pointer; }
+        label { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+
+        /* Area Tabel Data (Detail & Grid) */
+        table.detail, table.grid { 
+            width: 100%; min-width: 900px; /* Minimal lebar agar tidak hancur di HP, akan otomatis bisa di-scroll berkat .wrap / .grid-wrap */
+            border-collapse: collapse; background: #ffffff; 
+            border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; 
+        }
+        table.detail th, table.grid th { 
+            background: #f9fafb; color: #4b5563; border: 1px solid #e5e7eb; 
+            padding: 10px 12px; text-align: left; font-weight: 600; font-size: 12px; 
+        }
+        table.detail td, table.grid td { 
+            border: 1px solid #e5e7eb; padding: 4px 6px; vertical-align: middle; 
+        }
+        
+        /* Input transparan di dalam tabel */
+        table.detail input { 
+            width: 100%; height: 30px; border: 1px solid transparent; 
+            padding: 4px 8px; border-radius: 4px; background: transparent; 
+        }
+        table.detail input:focus { border-color: #3b82f6; background: #ffffff; }
+        table.detail input:hover:not([readonly]) { border-color: #d1d5db; }
+        
+        tr.detail-selected td { background: #eff6ff; }
+        table.grid tr:hover td { background: #f3f4f6; cursor: pointer; }
+        
+        .num { text-align: right; }
+        .center { text-align: center; }
+        .action-cell { display: flex; justify-content: center; align-items: center; gap: 6px; }
+
+        /* Area Pencarian */
+        .search-area { 
+            margin-top: 30px; background: #ffffff; padding: 15px; border-radius: 8px; 
+            border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; 
+        }
+        .search-area input { max-width: 350px; }
+        
+        .grid-wrap { 
+            width: 100%; max-height: 400px; overflow: auto; border-radius: 8px; 
+            border: 1px solid #e5e7eb; margin-top: 15px; background: #ffffff; 
+        }
+        .go-btn { color: #3b82f6; font-weight: bold; font-size: 14px; }
+
+        /* Autocomplete Modern */
+        .ac-box { 
+            position: absolute; z-index: 9999; background: #ffffff; border: 1px solid #d1d5db; 
+            border-radius: 6px; max-height: 250px; overflow-y: auto; min-width: 320px; 
+            display: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 5px 0; 
+        }
+        .ac-item { padding: 8px 12px; cursor: pointer; transition: background 0.1s; }
+        .ac-item:hover, .ac-item.active { background: #3b82f6; color: #ffffff; }
+        
+        /* === MEDIA QUERY UNTUK HP / LAYAR KECIL === */
+        @media (max-width: 768px) {
+            table.form-table td, table.bc-table td { 
+                display: block; width: 100% !important; padding-bottom: 10px; 
+            }
+            table.form-table tr, table.bc-table tr { 
+                display: block; margin-bottom: 0; 
+            }
+            .search-area input { max-width: 100%; }
+        }
+
+        /* Mode Print */
+        @media print {
+            body { background: #ffffff; padding: 0; }
+            .no-print, .top-buttons, .bottom-buttons, .search-area, .header-toolbar { display: none !important; }
+            .wrap { padding: 0; }
+            table.form-table, table.detail { border: none; box-shadow: none; }
+        }
 </style>
 <script>
 var supplierData = <?php echo json_encode($supplierAuto); ?>;

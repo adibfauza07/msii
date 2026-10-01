@@ -6,7 +6,7 @@ $loginTime = isset($_SESSION["login_time"]) ? $_SESSION["login_time"] : date("Y-
 <html lang="id">
 <head>
     <meta charset="utf-8">
-    <title>ERP System - Mold Control</title>
+    <title>Mold Controling System</title>
     <style>
         html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #d4d0c8; font-family: Tahoma, Arial, sans-serif; font-size: 12px; overflow: hidden; }
         .layout { display: flex; width: 100%; height: 100vh; }
@@ -35,9 +35,10 @@ $loginTime = isset($_SESSION["login_time"]) ? $_SESSION["login_time"] : date("Y-
         </div>
         
         <div class="menu-section">Main Menu</div>
-        <a class="menu-link active" href="report_center.php" target="mainFrame">Report Center</a>
+        <a class="menu-link active" href="home_dashboard.php" target="mainFrame">Dashboard</a>
         
-        <div class="menu-section">Transaction</div>
+        <div class="menu-section">Menu Entry/Input</div>
+        <a class="menu-link" href="report_center.php" target="mainFrame">Mold History Entry</a>
         <a class="menu-link" href="mold_trans.php" target="mainFrame">Mold Transaction Entry</a>
         <a class="menu-link" href="mold_tags.php" target="mainFrame">Generate Mold Tags</a>
         
@@ -45,7 +46,7 @@ $loginTime = isset($_SESSION["login_time"]) ? $_SESSION["login_time"] : date("Y-
         <a class="menu-link" href="mold_master.php" target="mainFrame">Mold Master</a>
         <a class="menu-link" href="master_classification.php" target="mainFrame">Classification Master</a>
         
-        <a class="menu-link logout" href="mold/logout.php" target="_top">Logout</a>
+        <a class="menu-link logout" href="logout.php" target="_top">Logout</a>
     </div>
     
     <div class="main">
@@ -54,7 +55,7 @@ $loginTime = isset($_SESSION["login_time"]) ? $_SESSION["login_time"] : date("Y-
             <div class="topbar-right"><?= date("d-M-Y H:i"); ?></div>
         </div>
         <div class="frame-area">
-            <iframe id="mainFrame" name="mainFrame" src="report_center.php"></iframe>
+            <iframe id="mainFrame" name="mainFrame" src="home_dashboard.php"></iframe>
         </div>
     </div>
 </div>

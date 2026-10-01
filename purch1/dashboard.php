@@ -23,134 +23,67 @@ function h($value) {
     <meta charset="utf-8">
     <title>PURCHASING System - Plant 2</title>
 
-    <style>
+<style>
         html, body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            background: #d4d0c8;
-            font-family: Tahoma, Arial, sans-serif;
-            font-size: 12px;
-            color: #000000;
-            overflow: hidden;
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background: #f1f5f9; font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+            font-size: 13px; color: #334155; overflow: hidden;
         }
-
-        .layout {
-            display: flex;
-            width: 100%;
-            height: 100vh;
-        }
-
+        .layout { display: flex; width: 100%; height: 100vh; }
+        
+        /* Sidebar Modern */
         .sidebar {
-            width: 230px;
-            min-width: 230px;
-            height: 100vh;
-            background: #1d2a3d;
-            color: #ffffff;
-            box-sizing: border-box;
-            padding: 18px 14px;
-            overflow-y: auto;
+            width: 250px; min-width: 250px; height: 100vh;
+            background: #0f172a; color: #f8fafc;
+            box-sizing: border-box; padding: 25px 15px;
+            overflow-y: auto; box-shadow: 2px 0 10px rgba(0,0,0,0.1); z-index: 10;
         }
-
         .sidebar-title {
-            font-size: 16px;
-            font-weight: bold;
-            margin-bottom: 18px;
-            text-align: center;
-            line-height: 23px;
-            letter-spacing: 1px;
+            font-size: 16px; font-weight: 800; margin-bottom: 25px;
+            text-align: center; line-height: 1.5; letter-spacing: 1px; color: #38bdf8;
         }
-
         .user-box {
-            background: #263850;
-            border: 1px solid #425a78;
-            border-radius: 4px;
-            padding: 8px;
-            margin-bottom: 16px;
-            font-size: 11px;
-            line-height: 17px;
+            background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+            padding: 12px; margin-bottom: 25px; font-size: 12px; line-height: 1.6;
+            color: #cbd5e1; text-align: center;
         }
-
         .menu-section {
-            font-size: 11px;
-            color: #b8c7dd;
-            margin: 14px 0 6px 2px;
-            font-weight: bold;
-            text-transform: uppercase;
+            font-size: 11px; color: #64748b; margin: 20px 0 10px 5px;
+            font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
         }
-
         .menu-link {
-            display: block;
-            color: #ffffff;
-            text-decoration: none;
-            padding: 11px 10px;
-            margin-bottom: 6px;
-            border-radius: 4px;
-            font-size: 12px;
-            background: transparent;
+            display: block; color: #e2e8f0; text-decoration: none;
+            padding: 10px 15px; margin-bottom: 5px; border-radius: 6px;
+            font-size: 13px; font-weight: 500; transition: all 0.2s ease;
         }
-
-        .menu-link:hover {
-            background: #2f65d9;
-        }
-
+        .menu-link:hover { background: #334155; color: #ffffff; transform: translateX(3px); }
         .menu-link.active {
-            background: #2f65d9;
-            font-weight: bold;
+            background: #38bdf8; color: #0f172a; font-weight: 700;
+            box-shadow: 0 4px 6px -1px rgba(56,189,248,0.3);
         }
-
         .menu-link.logout {
-            background: #7a1f1f;
-            margin-top: 14px;
+            background: #ef4444; color: #ffffff; margin-top: 30px; text-align: center;
         }
-
-        .menu-link.logout:hover {
-            background: #b32626;
-        }
-
+        .menu-link.logout:hover { background: #dc2626; transform: none; }
+        
+        /* Area Konten Utama */
         .main {
-            flex: 1;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            background: #d4d0c8;
-            overflow: hidden;
+            flex: 1; height: 100vh; display: flex; flex-direction: column;
+            background: #f8fafc; overflow: hidden;
         }
-
         .topbar {
-            height: 38px;
-            line-height: 38px;
-            background: #000080;
-            color: #ffffff;
-            font-weight: bold;
-            text-align: center;
-            font-size: 16px;
-            letter-spacing: 1px;
-            flex-shrink: 0;
-            position: relative;
+            height: 55px; line-height: 55px; background: #ffffff; color: #0f172a;
+            font-weight: 700; text-align: center; font-size: 16px; letter-spacing: 1px;
+            flex-shrink: 0; position: relative; box-shadow: 0 1px 3px rgba(0,0,0,0.05); z-index: 5;
         }
-
         .topbar-right {
-            position: absolute;
-            right: 12px;
-            top: 0;
-            font-size: 11px;
-            font-weight: normal;
-            letter-spacing: 0;
+            position: absolute; right: 20px; top: 0; font-size: 12px;
+            font-weight: 600; color: #64748b; letter-spacing: 0;
         }
-
-        .frame-area {
-            flex: 1;
-            overflow: hidden;
-            background: #d4d0c8;
-        }
-
+        .frame-area { flex: 1; overflow: hidden; background: #f1f5f9; padding: 15px; }
         #mainFrame {
-            width: 100%;
-            height: 100%;
-            border: none;
-            background: #d4d0c8;
+            width: 100%; height: 100%; border: none; background: #ffffff;
+            border-radius: 10px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
         }
     </style>
 </head>

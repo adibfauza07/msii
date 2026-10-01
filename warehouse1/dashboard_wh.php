@@ -180,6 +180,11 @@ function h($value) {
 		<a class="menu-link" href="scan_receive.php" target="mainFrame"> PEMASUKAN PART/MATERIAL SUPPLIER </a> 
 		
 		<div class="menu-section"> OUTGOING MATERIAL </div>
+		<a class="menu-link" href="in_excess.php" target="mainFrame"> INCOMING EXCESS </a> 
+
+		
+		
+		<div class="menu-section"> OUTGOING MATERIAL </div>
 		<a class="menu-link" href="outgoing_form.php" target="mainFrame"> OUTGOING PRODUCTION / OTHER </a> 
 
 

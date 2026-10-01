@@ -51,6 +51,9 @@ if (isset($_POST['btnSimpan']) || isset($_POST['btnUpdate'])) {
     $curr = $_POST['ITEM_CUR'];
     $itty = $_POST['ITTY_CODE'];
     
+    // PERBAIKAN 1: Tangkap isian ITEM_NO
+    $itemNo = isset($_POST['ITEM_NO']) ? $_POST['ITEM_NO'] : '';
+    
     // Checkbox
     $inactive = isset($_POST['ITEM_INACTIVE']) ? 1 : 0;
     $forsale  = isset($_POST['ITEM_FORSALE']) ? 1 : 0;
@@ -60,11 +63,11 @@ if (isset($_POST['btnSimpan']) || isset($_POST['btnUpdate'])) {
         echo "<div class='alert alert-warning'>Kode dan Nama Barang wajib diisi!</div>";
     } else {
         if ($isUpdate) {
-            // --- UPDATE ---
+            // --- UPDATE --- (PERBAIKAN 2: Tambah ITEM_NO di Update)
             $sql = "UPDATE ITEMS SET ITEM_NAME=?, ITEM_UNIT=?, ITEM_COST=?, ITEM_CUR=?, ITTY_CODE=?, 
-                    ITEM_INACTIVE=?, ITEM_FORSALE=?, ITEM_INV=? 
+                    ITEM_INACTIVE=?, ITEM_FORSALE=?, ITEM_INV=?, ITEM_NO=? 
                     WHERE ITEM_CODE=?";
-            $params = array($name, $unit, $cost, $curr, $itty, $inactive, $forsale, $inv, $code);
+            $params = array($name, $unit, $cost, $curr, $itty, $inactive, $forsale, $inv, $itemNo, $code);
             $msg = "Data Barang Berhasil Diupdate!";
         } else {
             // --- INSERT ---
@@ -74,10 +77,11 @@ if (isset($_POST['btnSimpan']) || isset($_POST['btnUpdate'])) {
                 echo "<script>alert('Gagal! Kode Barang $code sudah ada.');</script>";
                 $params = null; // Batal
             } else {
+                // (PERBAIKAN 3: Tambah ITEM_NO di Insert)
                 $sql = "INSERT INTO ITEMS (ITEM_NAME, ITEM_UNIT, ITEM_COST, ITEM_CUR, ITTY_CODE, 
-                        ITEM_INACTIVE, ITEM_FORSALE, ITEM_INV, ITEM_CODE) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-                $params = array($name, $unit, $cost, $curr, $itty, $inactive, $forsale, $inv, $code);
+                        ITEM_INACTIVE, ITEM_FORSALE, ITEM_INV, ITEM_CODE, ITEM_NO) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                $params = array($name, $unit, $cost, $curr, $itty, $inactive, $forsale, $inv, $code, $itemNo);
                 $msg = "Data Barang Baru Berhasil Disimpan!";
             }
         }
@@ -101,15 +105,14 @@ $mode = isset($_GET['mode']) ? $_GET['mode'] : 'view';
 $currentID = isset($_GET['id']) ? $_GET['id'] : null;
 $isEntry = ($mode == 'new' || $mode == 'edit');
 
-// Default Data (Kosong)
+// Default Data (Kosong) // (PERBAIKAN 4: Masukkan default value ITEM_NO)
 $data = [
-    'ITEM_CODE'=>'', 'ITEM_NAME'=>'', 'ITEM_UNIT'=>'Pcs', 'ITEM_COST'=>0, 'ITEM_CUR'=>'IDR',
+    'ITEM_CODE'=>'', 'ITEM_NAME'=>'', 'ITEM_NO'=>'', 'ITEM_UNIT'=>'Pcs', 'ITEM_COST'=>0, 'ITEM_CUR'=>'IDR',
     'ITTY_CODE'=>'RM', 'ITEM_INACTIVE'=>0, 'ITEM_FORSALE'=>1, 'ITEM_INV'=>1, 'ITEM_ONHAND'=>0
 ];
 
 // Jika Mode View/Edit, Ambil Data dari DB
 if ($mode != 'new') {
-    // FIX: Jika tidak ada ID, ambil barang pertama (ABAIKAN KODE BARANG YANG KOSONG)
     if (empty($currentID)) {
         $qFirst = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_CODE IS NOT NULL AND ITEM_CODE <> '' ORDER BY ITEM_CODE ASC");
         if ($rFirst = sqlsrv_fetch_array($qFirst)) {
@@ -117,7 +120,6 @@ if ($mode != 'new') {
         }
     }
 
-    // FIX: Gunakan pengecekan ketat agar string kosong tidak membatalkan query
     if ($currentID !== null && $currentID !== '') {
         $qData = sqlsrv_query($conn, "SELECT * FROM ITEMS WHERE ITEM_CODE = ?", array($currentID));
         if ($rData = sqlsrv_fetch_array($qData, SQLSRV_FETCH_ASSOC)) {
@@ -126,7 +128,7 @@ if ($mode != 'new') {
     }
 }
 
-// Navigasi Next/Prev (FIX: Abaikan data kosong di database)
+// Navigasi Next/Prev
 $prevID = $nextID = $firstID = $lastID = null;
 if (!$isEntry && $currentID !== null && $currentID !== '') {
     $qP = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_CODE < ? AND ITEM_CODE <> '' ORDER BY ITEM_CODE DESC", array($currentID)); 
@@ -141,15 +143,6 @@ if (!$isEntry && $currentID !== null && $currentID !== '') {
     $qL = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_CODE <> '' ORDER BY ITEM_CODE DESC"); 
     if($r=sqlsrv_fetch_array($qL)) $lastID=$r['ITEM_CODE'];
 }
-
-// Data Dropdown Tipe Barang
-$optItty = "";
-$qItty = sqlsrv_query($conn, "SELECT ITTY_CODE, ITTY_DESC FROM ITTY ORDER BY ITTY_CODE ASC");
-while($r=sqlsrv_fetch_array($qItty)) {
-    $sel = ($data['ITTY_CODE'] == $r['ITTY_CODE']) ? 'selected' : '';
-    $optItty .= "<option value='{$r['ITTY_CODE']}' $sel>{$r['ITTY_CODE']} - {$r['ITTY_DESC']}</option>";
-}
-
 
 // Data Dropdown Tipe Barang
 $optItty = "";
@@ -213,14 +206,26 @@ while($r=sqlsrv_fetch_array($qItty)) {
                             <label class="form-label small fw-bold">Kode Barang</label>
                             <input type="text" class="form-control fw-bold text-primary" name="ITEM_CODE" 
                                    value="<?php echo $data['ITEM_CODE']; ?>" 
-                                   <?php echo ($mode!='new') ? 'readonly' : ''; ?> required maxlength="8">
+                                   <?php echo ($mode!='new') ? 'readonly' : ''; ?> required maxlength="20">
                         </div>
-                        <div class="col-md-6">
+                        
+                        <!-- PERBAIKAN 5: Tambahkan div untuk Item No di sela-sela Nama Barang agar sejajar rapi -->
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold">Item No.</label>
+                            <input type="text" class="form-control" name="ITEM_NO" 
+                                   value="<?php echo isset($data['ITEM_NO']) ? htmlspecialchars($data['ITEM_NO']) : ''; ?>" 
+                                   <?php echo !$isEntry ? 'readonly' : ''; ?> maxlength="30">
+                        </div>
+                        
+                        <div class="col-md-5">
                             <label class="form-label small fw-bold">Nama Barang</label>
                             <input type="text" class="form-control" name="ITEM_NAME" 
                                    value="<?php echo $data['ITEM_NAME']; ?>" 
                                    <?php echo !$isEntry ? 'readonly' : ''; ?> required>
                         </div>
+                        
+                        <!-- Pindah Baris Baru untuk Sisa Kolom -->
+                        
                         <div class="col-md-3">
                              <label class="form-label small fw-bold">Stok Saat Ini (On Hand)</label>
                              <input type="text" class="form-control bg-light fw-bold text-end" value="<?php echo number_format($data['ITEM_ONHAND'], 2); ?>" readonly>
@@ -232,7 +237,7 @@ while($r=sqlsrv_fetch_array($qItty)) {
                                 <?php echo $optItty; ?>
                             </select>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="form-label small fw-bold">Satuan (Unit)</label>
                             <select class="form-select" name="ITEM_UNIT" <?php echo !$isEntry ? 'disabled' : ''; ?>>
                                 <option value="Pcs" <?php echo ($data['ITEM_UNIT']=='Pcs')?'selected':''; ?>>Pcs</option>
@@ -241,12 +246,12 @@ while($r=sqlsrv_fetch_array($qItty)) {
                                 <option value="Set" <?php echo ($data['ITEM_UNIT']=='Set')?'selected':''; ?>>Set</option>
                             </select>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="form-label small fw-bold">Cost</label>
                             <input type="number" step="0.001" class="form-control text-end" name="ITEM_COST" 
                                    value="<?php echo $data['ITEM_COST']; ?>" <?php echo !$isEntry ? 'readonly' : ''; ?>>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="form-label small fw-bold">Mata Uang</label>
                             <select class="form-select" name="ITEM_CUR" <?php echo !$isEntry ? 'disabled' : ''; ?>>
                                 <option value="IDR" <?php echo ($data['ITEM_CUR']=='IDR')?'selected':''; ?>>IDR (Rupiah)</option>
