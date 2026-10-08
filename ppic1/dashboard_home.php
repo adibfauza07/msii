@@ -44,7 +44,10 @@ $rawReports = [
     // Kategori: Inventory & Stock
     ["name" => "STOK PLAN VS ACTUAL", "url" => "report_stok_actual.php", "category" => "Inventory & Stock", "target" => "_blank"],
     ["name" => "STOK PLAN VS ACTUAL PART COMMON", "url" => "part_common.php", "category" => "Inventory & Stock", "target" => "_blank"],
-    ["name" => "DEAD STOCK", "url" => "dead_stok.php", "category" => "Inventory & Stock", "target" => "_blank"]
+    ["name" => "DEAD STOCK", "url" => "dead_stok.php", "category" => "Inventory & Stock", "target" => "_blank"],
+
+    // Kategori: Packing
+    ["name" => "PACK IN OUT", "url" => "report_pack_in_out.php", "category" => "Packing", "target" => "_blank"]
 ];
 
 // 2. URUTKAN A-Z BERDASARKAN NAMA REPORT

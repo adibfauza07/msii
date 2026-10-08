@@ -148,12 +148,11 @@ if ($action == "save") {
 
     if ($rcvDate == "") $rcvDate = date("Y-m-d");
 
-    // Jika ICL NO dikosongkan oleh user, generate ulang
     if ($rcvNo == "") {
         $rcvNo = generate_rcv_no($conn);
     }
 
-    $isNewRecord = ($rcvId == 0); // Penanda apakah ini data baru
+    $isNewRecord = ($rcvId == 0);
 
     if ($supId <= 0) $error = "Supplier wajib dipilih.";
 
@@ -176,22 +175,17 @@ if ($action == "save") {
             sqlsrv_begin_transaction($conn);
             $ok = true;
 
-            // 1. HEADER (Menggunakan SET NOCOUNT ON untuk mengatasi Error Trigger pada SQL Server)
-            // 1. HEADER
             if (!$isNewRecord) {
                 $sqlH = "UPDATE dbo.RECEIVE SET RCV_NO=?, RCV_DONO=?, RCV_DATE=?, RCV_PIC=?, SUP_ID=?, RCV_TYPE=? WHERE RCV_ID=?";
                 $stmtH = sqlsrv_query($conn, $sqlH, array($rcvNo, $rcvDono, $rcvDate, $rcvPic, $supId, $rcvType, $rcvId));
                 if ($stmtH === false) { $ok=false; $error="Simpan header gagal:\n".sql_error_text(); }
             } else {
-                // Solusi Standar SQL Server untuk Insert tabel yang memiliki Trigger aktif
                 $sqlH = "
                     SET NOCOUNT ON;
                     DECLARE @OutputTbl TABLE (NEW_ID INT);
-                    
                     INSERT INTO dbo.RECEIVE (RCV_NO, RCV_DONO, RCV_DATE, RCV_PIC, SUP_ID, RCV_TYPE) 
                     OUTPUT INSERTED.RCV_ID INTO @OutputTbl
                     VALUES (?, ?, ?, ?, ?, ?);
-                    
                     SELECT NEW_ID FROM @OutputTbl;
                 ";
                 $stmtH = sqlsrv_query($conn, $sqlH, array($rcvNo, $rcvDono, $rcvDate, $rcvPic, $supId, $rcvType));
@@ -203,7 +197,6 @@ if ($action == "save") {
                     if ($new && isset($new['NEW_ID'])) {
                         $rcvId = intval($new['NEW_ID']);
                     } else { 
-                        // Jika driver PDO/SQLSRV butuh skip result pembacaan struktur, kita next_result()
                         if (sqlsrv_next_result($stmtH)) {
                             $new = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_ASSOC);
                             if ($new && isset($new['NEW_ID'])) {
@@ -218,7 +211,6 @@ if ($action == "save") {
                 }
             }
 
-            // 2. BC TRANS
             if ($ok) {
                 sqlsrv_query($conn, "DELETE FROM dbo.BC_TRANS WHERE NO_TRANS=?", array($rcvNo));
                 if ($jenisBc != "" || $nomorBc != "") {
@@ -228,7 +220,6 @@ if ($action == "save") {
                 }
             }
 
-            // 3. DETAILS
             if ($ok) {
                 $stmtDel = sqlsrv_query($conn, "DELETE FROM dbo.RECEIVE_DETAIL WHERE RCV_ID = ?", array($rcvId));
                 if ($stmtDel === false) { $ok=false; $error="Hapus detail lama gagal:\n".sql_error_text(); }
@@ -251,7 +242,6 @@ if ($action == "save") {
 
             if ($ok) {
                 sqlsrv_commit($conn);
-                // Selalu increment ICL jika data baru berhasil disave (Meskipun diedit manual oleh user)
                 if ($isNewRecord) inc_next_rcv_no($conn); 
                 header("Location: receive.php?edit=".$rcvId."&msg=saved");
                 exit;
@@ -301,7 +291,6 @@ if ($editId > 0) {
     $stmtD = sqlsrv_query($conn,$sqlD,array($editId));
     if ($stmtD !== false) while ($rd = sqlsrv_fetch_array($stmtD, SQLSRV_FETCH_ASSOC)) $details[] = $rd;
 } else {
-    // Generate ICL baru jika form mode Add New
     $header["RCV_NO"] = generate_rcv_no($conn);
 }
 
@@ -334,6 +323,30 @@ if ($stmtBc !== false) {
     while ($b = sqlsrv_fetch_array($stmtBc, SQLSRV_FETCH_ASSOC)) $bcList[] = trim((string)$b["BCTY_NAME"]);
 }
 
+/* ======================================================
+   RECEIVE AUTO COMPLETE DATA
+====================================================== */
+$rcvAuto = array();
+$sqlRcvAuto = "
+    SELECT TOP 1000 R.RCV_ID, R.RCV_NO, R.RCV_DONO, S.SUP_CODE, S.SUP_COMP
+    FROM dbo.RECEIVE R
+    LEFT JOIN dbo.SUPPLIER S ON R.SUP_ID = S.SUP_ID
+    ORDER BY R.RCV_DATE DESC, R.RCV_NO DESC
+";
+$stmtRcvAuto = sqlsrv_query($conn, $sqlRcvAuto);
+if ($stmtRcvAuto !== false) {
+    while ($ra = sqlsrv_fetch_array($stmtRcvAuto, SQLSRV_FETCH_ASSOC)) {
+        $rcvAuto[] = array(
+            "RCV_ID" => intval($ra["RCV_ID"]),
+            "RCV_NO" => trim((string)$ra["RCV_NO"]),
+            "RCV_DONO" => trim((string)$ra["RCV_DONO"]),
+            "SUP_CODE" => trim((string)$ra["SUP_CODE"]),
+            "SUP_COMP" => trim((string)$ra["SUP_COMP"])
+        );
+    }
+}
+
+
 /* LIST RECEIVE */
 $q = getv("q","");
 $where = "";
@@ -362,350 +375,693 @@ if (count($details) == 0) {
 }
 ?>
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Items Receive</title>
-<style>
-html,body{margin:0;padding:0;background:#a8c8e8;font-family:Tahoma,Arial,sans-serif;font-size:12px;color:#000}
-.wrap{padding:8px 10px}.page-title{background:#fff;text-align:center;font-size:26px;line-height:42px;height:42px;margin:-8px -10px 8px -10px}
-.top-buttons{margin-bottom:6px}.btn{height:24px;padding:2px 12px;border:1px solid #777;background:#eee;color:#000;cursor:pointer;font-family:Tahoma,Arial,sans-serif;font-size:12px;text-decoration:none;display:inline-block;line-height:18px;box-sizing:border-box}
-.btn-save{background:#dff0d8}.btn-del,.btn-x{background:#f2dede}.btn-x{width:26px;padding:2px 4px}.btn:hover{background:#dcdcdc}
-.msg{background:#dff0d8;color:#006100;border:1px solid #6aa84f;padding:6px;margin-bottom:6px}.err{background:#f2dede;color:#900;border:1px solid #c00;padding:6px;margin-bottom:6px;white-space:pre-wrap}
-.label{display:block;margin-bottom:2px;font-weight:bold;}
-table.form-table, table.bc-table{border-collapse:collapse;width:760px}table.form-table td, table.bc-table td{padding:2px 5px;vertical-align:top}
-table.form-table { background:#008080; color:#ff0; padding:5px; margin-bottom: 5px; border-radius: 4px; }
-table.bc-table { background:#008000; color:#ff0; padding:5px; border-radius: 4px;}
-.form-table .label, .bc-table .label { color: #ff0; font-weight: bold; }
-input[type=text],input[type=date],select{height:23px;border:1px solid #777;padding:2px 4px;font-family:Tahoma,Arial,sans-serif;font-size:12px;box-sizing:border-box;background:#fff;color:#000;width:100%;}
-.rcv-no{width:135px}.date{width:115px}.supplier-code{width:100px}.supplier-name{width:345px}
-.header-toolbar{margin:4px 0 8px 0}
-table.detail{width:760px;border-collapse:collapse;background:#fff;margin-top:6px}table.detail th{background:#d9d9d9;border:1px solid #888;padding:3px;text-align:left;font-weight:normal;height:20px}
-table.detail td{border:1px solid #ccc;padding:1px 2px;height:21px}table.detail input{width:100%;height:20px;border:none;padding:1px 2px;box-sizing:border-box}
-table.detail input:focus{outline:1px solid #2f65d9}tr.detail-selected td{background:#e7f1ff}
-.num{text-align:right}.center{text-align:center}.action-cell{display:flex;justify-content:center;align-items:center;gap:3px}
-.search-area{margin-top:10px}.grid-wrap{width:760px;height:140px;overflow:auto;background:#fff;border:1px solid #777;margin-top:8px;position:relative;z-index:1}
-table.grid{width:100%;border-collapse:collapse;background:#fff}table.grid th{background:#d9d9d9;border:1px solid #888;padding:3px;text-align:left;font-weight:normal;white-space:nowrap}
-table.grid td{border:1px solid #ccc;padding:3px 4px;white-space:nowrap}table.grid tr.po-row:hover{background:#cce5ff;cursor:pointer}.go-btn{cursor:pointer;font-weight:bold;color:#000080}
-.bottom-buttons{margin-top:8px;width:760px;display:flex;justify-content:space-between}
-.ac-box{position:absolute;z-index:9999;background:#fff;color:#000;border:1px solid #333;max-height:220px;overflow-y:auto;min-width:360px;display:none;font-family:Tahoma,Arial,sans-serif;font-size:12px;box-shadow:2px 2px 5px rgba(0,0,0,.3)}
-.ac-item{padding:4px 6px;cursor:pointer;border-bottom:1px solid #ddd}.ac-item:hover,.ac-item.active{background:#2f65d9;color:#fff}
-</style>
-<script>
-var supplierData = <?php echo json_encode($supplierAuto); ?>;
-var deptData = <?php echo json_encode($deptAuto); ?>;
-var acBox=null, acItems=[], acIndex=-1, acMode="", acRow=-1;
-var rowSeq=<?php echo count($details); ?>;
-var selectedDetailRow=null;
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Purchase Receive - Purchasing</title>
 
-function byId(id){return document.getElementById(id);}
-function setValue(id,value){var el=byId(id); if(el) el.value=(value==null?"":value);}
-function initAC(){acBox=byId("acBox");}
-function hideAC(){if(acBox){acBox.style.display="none";acBox.innerHTML="";} acItems=[];acIndex=-1;acMode="";acRow=-1;}
-function positionAC(input){initAC();var r=input.getBoundingClientRect();acBox.style.left=(r.left+window.scrollX)+"px";acBox.style.top=(r.bottom+window.scrollY)+"px";acBox.style.width=(r.width<360?360:r.width)+"px";}
-function renderAC(renderText,pickFunc){initAC();acBox.innerHTML="";for(var i=0;i<acItems.length;i++){var d=document.createElement("div");d.className="ac-item"+(i==acIndex?" active":"");d.innerHTML=renderText(acItems[i]);d.setAttribute("data-index",i);d.onmousedown=function(){pickFunc(acItems[parseInt(this.getAttribute("data-index"),10)]);};acBox.appendChild(d);}acBox.style.display=acItems.length>0?"block":"none";}
-function acMove(step,renderText,pickFunc){if(acItems.length<=0)return;acIndex+=step;if(acIndex<0)acIndex=acItems.length-1;if(acIndex>=acItems.length)acIndex=0;renderAC(renderText,pickFunc);}
-function acEnter(pickFunc){if(acItems.length<=0)return false;if(acIndex<0)acIndex=0;pickFunc(acItems[acIndex]);return true;}
+    <!-- Google Font: Source Sans Pro -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <!-- Theme style (AdminLTE 3) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
 
-function submitSave(allowEmpty){if(byId("allow_empty_detail")) byId("allow_empty_detail").value=allowEmpty?"1":"0";var f=byId("rcvForm");if(f) f.submit();}
-function newData(){window.location.href="receive.php";}
-function goEdit(id){if(!id)return;window.location.href="receive.php?edit="+encodeURIComponent(id);}
-function deleteCurrent(){var id=byId("rcv_id").value;if(id==""||id=="0"){alert("Pilih Receive dulu.");return;}if(!confirm("Yakin hapus Receive ini?"))return;byId("delete_rcv_id").value=id;byId("deleteForm").submit();}
-function headerKey(e){if(e.key==="Enter"){if(acMode!==""&&acItems.length>0)return true;e.preventDefault();submitSave(false);return false;}}
-function fieldEnterSave(e){if(e.key==="Enter"){e.preventDefault();submitSave(false);return false;}}
+    <style>
+        .ac-box {
+            position: absolute;
+            z-index: 9999;
+            background: #ffffff;
+            color: #333;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            max-height: 250px;
+            overflow-y: auto;
+            min-width: 360px;
+            display: none;
+            font-size: 14px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .ac-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #f4f4f4;
+        }
+        .ac-item:last-child { border-bottom: none; }
+        .ac-item:hover, .ac-item.active { background: #007bff; color: #ffffff; }
 
-function selectDetailRow(tr){var rows=document.querySelectorAll("#detailBody tr");for(var i=0;i<rows.length;i++) rows[i].classList.remove("detail-selected");selectedDetailRow=tr;if(tr)tr.classList.add("detail-selected");}
+        /* CUSTOM COMPACT TABLE ROW */
+        #detailTable th, #detailTable td {
+            padding: 2px 4px !important;
+            vertical-align: middle !important;
+        }
+        .table-input-transparent {
+            border: 1px solid transparent;
+            background: transparent;
+            height: 22px !important;
+            padding: 0px 4px !important;
+            font-size: 12px !important;
+            border-radius: 0;
+        }
+        .table-input-transparent:focus {
+            background: #fff;
+            border-color: #80bdff;
+            outline: 0;
+            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+        }
+        #detailTable .btn-xs {
+            padding: 1px 6px !important;
+            font-size: 11px !important;
+            height: 22px !important;
+            line-height: 1.5 !important;
+        }
+        tr.pointer:hover, tr.detail-selected td {
+            cursor: pointer;
+            background-color: #e7f1ff !important;
+        }
+    </style>
 
-// Supplier Autocomplete
-function showSupplierAC(input){initAC();var key=(input.value||"").toUpperCase();acMode="supplier";acItems=[];acIndex=-1;if(key.length<1){hideAC();return;}for(var i=0;i<supplierData.length;i++){var s=supplierData[i];var t=(s.SUP_CODE||"")+" "+(s.SUP_COMP||"");if(t.toUpperCase().indexOf(key)>=0)acItems.push(s);if(acItems.length>=40)break;}positionAC(input);renderAC(function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);}
-function supplierKey(e,input){if(e.key==="ArrowDown"){e.preventDefault();if(acMode!=="supplier"||acItems.length==0)showSupplierAC(input);acMove(1,function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);return false;}if(e.key==="ArrowUp"){e.preventDefault();if(acMode!=="supplier"||acItems.length==0)showSupplierAC(input);acMove(-1,function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);return false;}if(e.key==="Enter"){if(acMode==="supplier"&&acItems.length>0){e.preventDefault();acEnter(pickSupplier);return false;}e.preventDefault();submitSave(false);return false;}if(e.key==="Escape")hideAC();}
-function pickSupplier(s){setValue("sup_id",s.SUP_ID);setValue("sup_code",s.SUP_CODE);setValue("sup_comp",s.SUP_COMP);hideAC();}
+    <script>
+        var supplierData = <?php echo json_encode($supplierAuto); ?>;
+        var deptData = <?php echo json_encode($deptAuto); ?>;
+        var rcvData = <?php echo json_encode($rcvAuto); ?>;
+        
+        var acBox=null, acItems=[], acIndex=-1, acMode="", acRow=-1;
+        var rowSeq=<?php echo count($details); ?>;
+        var selectedDetailRow=null;
 
-// PIC / Dept Autocomplete
-function showPicAC(input){initAC();var key=(input.value||"").toUpperCase();acMode="pic";acItems=[];acIndex=-1;if(key.length<1){hideAC();return;}for(var i=0;i<deptData.length;i++){var d=deptData[i];if((d.DEP_NAME||"").toUpperCase().indexOf(key)>=0)acItems.push(d);if(acItems.length>=40)break;}positionAC(input);renderAC(function(d){return d.DEP_NAME;},pickPic);}
-function picKey(e,input){if(e.key==="ArrowDown"){e.preventDefault();if(acMode!=="pic"||acItems.length==0)showPicAC(input);acMove(1,function(d){return d.DEP_NAME;},pickPic);return false;}if(e.key==="ArrowUp"){e.preventDefault();if(acMode!=="pic"||acItems.length==0)showPicAC(input);acMove(-1,function(d){return d.DEP_NAME;},pickPic);return false;}if(e.key==="Enter"){if(acMode==="pic"&&acItems.length>0){e.preventDefault();acEnter(pickPic);return false;}e.preventDefault();return false;}if(e.key==="Escape")hideAC();}
-function pickPic(d){setValue("rcv_pic",d.DEP_NAME);hideAC();}
+        function byId(id){return document.getElementById(id);}
+        function setValue(id,value){var el=byId(id); if(el) el.value=(value==null?"":value);}
 
-// PO Item Autocomplete (AJAX Request)
-function showPOItemAC(input, row) {
-    initAC();
-    var supId = byId("sup_id").value;
-    if(!supId || supId == "0") { alert("Pilih supplier dulu."); input.value = ""; return; }
-    
-    var key = (input.value || "").toUpperCase();
-    acMode = "poitem"; acRow = row; acItems = []; acIndex = -1;
-    if(key.length < 1){ hideAC(); return; }
+        function initAC(){acBox=byId("acBox");}
+        function hideAC(){
+            if(acBox){acBox.style.display="none";acBox.innerHTML="";}
+            acItems=[];acIndex=-1;acMode="";acRow=-1;
+        }
+        function positionAC(input){
+            initAC();var r=input.getBoundingClientRect();
+            acBox.style.left=(r.left+window.scrollX)+"px";
+            acBox.style.top=(r.bottom+window.scrollY)+"px";
+            acBox.style.width=(r.width<360?360:r.width)+"px";
+        }
+        function renderAC(renderText,pickFunc){
+            initAC();acBox.innerHTML="";
+            for(var i=0;i<acItems.length;i++){
+                var d=document.createElement("div");
+                d.className="ac-item"+(i==acIndex?" active":"");
+                d.innerHTML=renderText(acItems[i]);
+                d.setAttribute("data-index",i);
+                d.onmousedown=function(){pickFunc(acItems[parseInt(this.getAttribute("data-index"),10)]);};
+                acBox.appendChild(d);
+            }
+            acBox.style.display=acItems.length>0?"block":"none";
+        }
+        function acMove(step,renderText,pickFunc){
+            if(acItems.length<=0)return;
+            acIndex+=step;
+            if(acIndex<0)acIndex=acItems.length-1;
+            if(acIndex>=acItems.length)acIndex=0;
+            renderAC(renderText,pickFunc);
+        }
+        function acEnter(pickFunc){
+            if(acItems.length<=0)return false;
+            if(acIndex<0)acIndex=0;
+            pickFunc(acItems[acIndex]);
+            return true;
+        }
 
-    var xhr = new XMLHttpRequest();
-    xhr.open("POST", "search_po_item.php", true);
-    xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState == 4 && xhr.status == 200) {
-            acItems = JSON.parse(xhr.responseText);
+        function submitSave(allowEmpty){
+            if(byId("allow_empty_detail")) byId("allow_empty_detail").value=allowEmpty?"1":"0";
+            var f=byId("rcvForm");if(f) f.submit();
+        }
+        function newData(){window.location.href="receive.php";}
+        function goEdit(id){if(!id)return;window.location.href="receive.php?edit="+encodeURIComponent(id);}
+        function deleteCurrent(){
+            var id=byId("rcv_id").value;
+            if(id==""||id=="0"){alert("Pilih Receive dulu.");return;}
+            if(!confirm("Yakin hapus Receive ini?"))return;
+            byId("delete_rcv_id").value=id;byId("deleteForm").submit();
+        }
+        function headerKey(e){
+            if(e.key==="Enter"){
+                if(acMode!==""&&acItems.length>0)return true;
+                e.preventDefault();submitSave(false);return false;
+            }
+        }
+        function fieldEnterSave(e){
+            if(e.key==="Enter"){e.preventDefault();submitSave(false);return false;}
+        }
+
+        function selectDetailRow(tr){
+            var rows=document.querySelectorAll("#detailBody tr");
+            for(var i=0;i<rows.length;i++) rows[i].classList.remove("detail-selected");
+            selectedDetailRow=tr;
+            if(tr)tr.classList.add("detail-selected");
+        }
+
+        // Receive Search AutoComplete (Header)
+        function showRcvAC(input){
+            initAC();
+            var key=(input.value||"").toUpperCase();
+            acMode="rcv"; acItems=[]; acIndex=-1;
+            if(key.length<1){hideAC();return;}
+            
+            for(var i=0; i<rcvData.length; i++){
+                var r = rcvData[i];
+                var t = (r.RCV_NO||"")+" "+(r.RCV_DONO||"")+" "+(r.SUP_CODE||"")+" "+(r.SUP_COMP||"");
+                if(t.toUpperCase().indexOf(key) >= 0) acItems.push(r);
+                if(acItems.length >= 40) break;
+            }
             positionAC(input);
-            renderAC(function(o){ return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY; }, pickPOItem);
+            renderAC(function(r){
+                return "<b>" + r.RCV_NO + "</b> - DO: " + r.RCV_DONO + "<br><small class='text-muted'>" + r.SUP_CODE + " - " + r.SUP_COMP + "</small>";
+            }, pickRcv);
         }
-    };
-    xhr.send("q=" + encodeURIComponent(key) + "&sup_id=" + encodeURIComponent(supId));
-}
-
-function poItemKey(e,input,row){if(e.key==="ArrowDown"){e.preventDefault();if(acMode!=="poitem"||acItems.length==0)showPOItemAC(input,row);acMove(1,function(o){return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY;},pickPOItem);return false;}if(e.key==="ArrowUp"){e.preventDefault();if(acMode!=="poitem"||acItems.length==0)showPOItemAC(input,row);acMove(-1,function(o){return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY;},pickPOItem);return false;}if(e.key==="Enter"){if(acMode==="poitem"&&acItems.length>0){e.preventDefault();acEnter(pickPOItem);return false;}e.preventDefault();return false;}if(e.key==="Escape")hideAC();}
-function pickPOItem(o){var row=acRow;setValue("item_id_"+row,o.ITEM_ID);setValue("po_id_"+row,o.PO_ID);setValue("item_code_"+row,o.ITEM_CODE);setValue("item_name_"+row,o.ITEM_NAME);setValue("po_num_"+row,o.PO_NUM);setValue("rcvd_qty_"+row,o.OS_QTY);setValue("pod_price_"+row,o.POD_PRICE);hideAC();var q=byId("rcvd_qty_"+row);if(q){q.focus();q.select();}}
-
-function addRow(){var tbody=byId("detailBody");var row=rowSeq;rowSeq++;var tr=document.createElement("tr");tr.onclick=function(){selectDetailRow(this);};tr.innerHTML='<td class="center row-no"></td><td><input type="hidden" name="item_id[]" id="item_id_'+row+'"><input type="hidden" name="po_id[]" id="po_id_'+row+'"><input type="text" name="item_code[]" id="item_code_'+row+'" autocomplete="off" oninput="showPOItemAC(this, '+row+')" onkeydown="poItemKey(event, this, '+row+')"></td><td><input type="text" name="item_name[]" id="item_name_'+row+'" readonly style="background:#f9f9f9"></td><td><input type="text" name="rcvd_qty[]" id="rcvd_qty_'+row+'" class="num" onkeydown="fieldEnterSave(event, '+row+')"></td><td><input type="text" name="pod_price[]" id="pod_price_'+row+'" class="num" readonly style="background:#f9f9f9"></td><td><input type="text" name="po_num[]" id="po_num_'+row+'" readonly style="background:#f9f9f9"></td><td><div class="action-cell"><button type="button" class="btn btn-x" onclick="deleteRow(this); event.stopPropagation();">X</button></div></td>';tbody.appendChild(tr);renumberRows();selectDetailRow(tr);byId("item_code_"+row).focus();}
-function deleteRow(btn){var tr=btn.parentNode.parentNode.parentNode;if(!confirm("Hapus baris detail ini?"))return;tr.parentNode.removeChild(tr);renumberRows();var id=byId("rcv_id").value;if(id!=""&&id!="0")submitSave(true);}
-function renumberRows(){var rows=byId("detailBody").getElementsByTagName("tr");for(var i=0;i<rows.length;i++){var c=rows[i].getElementsByClassName("row-no")[0];if(c)c.innerHTML=i+1;else rows[i].cells[0].innerHTML=i+1;}}
-
-// Trigger & Action Custom Buttons
-function triggerAction(actionName) {
-    if(!confirm("Jalankan aksi " + actionName.toUpperCase() + "?")) return;
-    byId("exec_action").value = actionName;
-    byId("execForm").submit();
-}
-
-function triggerUpdatePrice() {
-    var rcvId = byId("rcv_id").value;
-    if(!rcvId || rcvId == "0") { alert("Pilih / simpan Receive terlebih dahulu."); return; }
-    
-    var tr = selectedDetailRow;
-    if(!tr){
-        var rows=byId("detailBody").getElementsByTagName("tr");
-        if(rows.length>0) tr=rows[0];
-    }
-    if(!tr) { alert("Pilih baris detail item dulu."); return; }
-    
-    var itemInput = tr.querySelector('input[name="item_id[]"]');
-    var poInput = tr.querySelector('input[name="po_id[]"]');
-    var itemId = itemInput ? itemInput.value : "";
-    var poId = poInput ? poInput.value : "";
-    
-    if(!itemId || !poId) { alert("Pilih detail item yang valid."); return; }
-    
-    if(confirm("Jalankan Update Price untuk item yang dipilih?")) {
-        byId("exec_action").value = "update_price";
-        byId("upd_rcv_id").value = rcvId;
-        byId("upd_item_id").value = itemId;
-        byId("upd_po_id").value = poId;
-        byId("execForm").submit();
-    }
-}
-
-// Aksi Tombol Cetak ICL
-function cetakICL() {
-    var rcvId = byId("rcv_id").value;
-    if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
-    window.open("print_icl.php?id=" + encodeURIComponent(rcvId), "CETAK_ICL", "width=900,height=700,scrollbars=yes");
-}
-
-// Aksi Tombol ICL OTO
-function cetakICLOto() {
-    var rcvId = byId("rcv_id").value;
-    if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
-    window.open("print_icl_oto.php?id=" + encodeURIComponent(rcvId), "CETAK_OTO", "width=900,height=700,scrollbars=yes");
-}
-
-// Aksi Tombol Sch Material
-function cetakSchedule() {
-    var rcvNo = document.querySelector('.rcv-no').value;
-    if (!rcvNo) { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
-    var shortNo = rcvNo.substring(0, 6);
-    window.open("print_schedule.php?no=" + encodeURIComponent(shortNo), "CETAK_SCH", "width=900,height=700,scrollbars=yes");
-}
-
-// Aksi Tombol SET NEXT ICL
-function setNextICL() {
-    var nextNum = prompt("Masukkan nilai antrian untuk ICL selanjutnya:", "");
-    if (nextNum !== null && nextNum.trim() !== "") {
-        if (isNaN(nextNum)) {
-            alert("Format harus berupa angka!");
-            return;
+        function rcvKey(e,input){
+            if(e.key==="ArrowDown"){
+                e.preventDefault(); if(acMode!=="rcv"||acItems.length==0) showRcvAC(input);
+                acMove(1, function(r){ return "<b>" + r.RCV_NO + "</b> - DO: " + r.RCV_DONO + "<br><small class='text-muted'>" + r.SUP_CODE + " - " + r.SUP_COMP + "</small>"; }, pickRcv); return false;
+            }
+            if(e.key==="ArrowUp"){
+                e.preventDefault(); if(acMode!=="rcv"||acItems.length==0) showRcvAC(input);
+                acMove(-1, function(r){ return "<b>" + r.RCV_NO + "</b> - DO: " + r.RCV_DONO + "<br><small class='text-muted'>" + r.SUP_CODE + " - " + r.SUP_COMP + "</small>"; }, pickRcv); return false;
+            }
+            if(e.key==="Enter"){
+                if(acMode==="rcv"&&acItems.length>0){e.preventDefault(); acEnter(pickRcv); return false;}
+                return true; 
+            }
+            if(e.key==="Escape") hideAC();
         }
-        byId("exec_action").value = "set_next_icl";
-        byId("upd_rcv_id").value = nextNum; 
-        byId("execForm").submit();
-    }
-}
+        function pickRcv(r){
+            hideAC();
+            goEdit(r.RCV_ID);
+        }
 
-document.addEventListener("DOMContentLoaded",function(){var rows=document.querySelectorAll("#detailBody tr");for(var i=0;i<rows.length;i++){rows[i].onclick=function(){selectDetailRow(this);};}});
-document.addEventListener("click",function(e){initAC();if(acBox&&!acBox.contains(e.target)){if(!e.target||!e.target.getAttribute||e.target.getAttribute("autocomplete")!=="off")hideAC();}});
-</script>
+        // Supplier Autocomplete
+        function showSupplierAC(input){
+            initAC();
+            var key=(input.value||"").toUpperCase();
+            acMode="supplier";acItems=[];acIndex=-1;
+            if(key.length<1){hideAC();return;}
+            for(var i=0;i<supplierData.length;i++){
+                var s=supplierData[i];var t=(s.SUP_CODE||"")+" "+(s.SUP_COMP||"");
+                if(t.toUpperCase().indexOf(key)>=0)acItems.push(s);
+                if(acItems.length>=40)break;
+            }
+            positionAC(input);
+            renderAC(function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);
+        }
+        function supplierKey(e,input){
+            if(e.key==="ArrowDown"){
+                e.preventDefault();if(acMode!=="supplier"||acItems.length==0)showSupplierAC(input);
+                acMove(1,function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);return false;
+            }
+            if(e.key==="ArrowUp"){
+                e.preventDefault();if(acMode!=="supplier"||acItems.length==0)showSupplierAC(input);
+                acMove(-1,function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);return false;
+            }
+            if(e.key==="Enter"){
+                if(acMode==="supplier"&&acItems.length>0){e.preventDefault();acEnter(pickSupplier);return false;}
+                e.preventDefault();submitSave(false);return false;
+            }
+            if(e.key==="Escape")hideAC();
+        }
+        function pickSupplier(s){
+            setValue("sup_id",s.SUP_ID);setValue("sup_code",s.SUP_CODE);setValue("sup_comp",s.SUP_COMP);hideAC();
+        }
+
+        // PIC / Dept Autocomplete
+        function showPicAC(input){
+            initAC();
+            var key=(input.value||"").toUpperCase();
+            acMode="pic";acItems=[];acIndex=-1;
+            if(key.length<1){hideAC();return;}
+            for(var i=0;i<deptData.length;i++){
+                var d=deptData[i];
+                if((d.DEP_NAME||"").toUpperCase().indexOf(key)>=0)acItems.push(d);
+                if(acItems.length>=40)break;
+            }
+            positionAC(input);
+            renderAC(function(d){return d.DEP_NAME;},pickPic);
+        }
+        function picKey(e,input){
+            if(e.key==="ArrowDown"){
+                e.preventDefault();if(acMode!=="pic"||acItems.length==0)showPicAC(input);
+                acMove(1,function(d){return d.DEP_NAME;},pickPic);return false;
+            }
+            if(e.key==="ArrowUp"){
+                e.preventDefault();if(acMode!=="pic"||acItems.length==0)showPicAC(input);
+                acMove(-1,function(d){return d.DEP_NAME;},pickPic);return false;
+            }
+            if(e.key==="Enter"){
+                if(acMode==="pic"&&acItems.length>0){e.preventDefault();acEnter(pickPic);return false;}
+                e.preventDefault();return false;
+            }
+            if(e.key==="Escape")hideAC();
+        }
+        function pickPic(d){setValue("rcv_pic",d.DEP_NAME);hideAC();}
+
+        // PO Item Autocomplete (AJAX Request)
+        function showPOItemAC(input, row) {
+            initAC();
+            var supId = byId("sup_id").value;
+            if(!supId || supId == "0") { alert("Pilih supplier dulu."); input.value = ""; return; }
+            
+            var key = (input.value || "").toUpperCase();
+            acMode = "poitem"; acRow = row; acItems = []; acIndex = -1;
+            if(key.length < 1){ hideAC(); return; }
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "search_po_item.php", true);
+            xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4 && xhr.status == 200) {
+                    acItems = JSON.parse(xhr.responseText);
+                    positionAC(input);
+                    renderAC(function(o){ return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY; }, pickPOItem);
+                }
+            };
+            xhr.send("q=" + encodeURIComponent(key) + "&sup_id=" + encodeURIComponent(supId));
+        }
+
+        function poItemKey(e,input,row){
+            if(e.key==="ArrowDown"){
+                e.preventDefault();if(acMode!=="poitem"||acItems.length==0)showPOItemAC(input,row);
+                acMove(1,function(o){return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY;},pickPOItem);return false;
+            }
+            if(e.key==="ArrowUp"){
+                e.preventDefault();if(acMode!=="poitem"||acItems.length==0)showPOItemAC(input,row);
+                acMove(-1,function(o){return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY;},pickPOItem);return false;
+            }
+            if(e.key==="Enter"){
+                if(acMode==="poitem"&&acItems.length>0){e.preventDefault();acEnter(pickPOItem);return false;}
+                e.preventDefault();return false;
+            }
+            if(e.key==="Escape")hideAC();
+        }
+        function pickPOItem(o){
+            var row=acRow;
+            setValue("item_id_"+row,o.ITEM_ID);setValue("po_id_"+row,o.PO_ID);
+            setValue("item_code_"+row,o.ITEM_CODE);setValue("item_name_"+row,o.ITEM_NAME);
+            setValue("po_num_"+row,o.PO_NUM);setValue("rcvd_qty_"+row,o.OS_QTY);
+            setValue("pod_price_"+row,o.POD_PRICE);
+            hideAC();
+            var q=byId("rcvd_qty_"+row);if(q){q.focus();q.select();}
+        }
+
+        function addRow(){
+            var tbody=byId("detailBody");var row=rowSeq;rowSeq++;
+            var tr=document.createElement("tr");
+            tr.onclick=function(){selectDetailRow(this);};
+            tr.innerHTML=
+                '<td class="text-center align-middle row-no"></td>' +
+                '<td>' +
+                    '<input type="hidden" name="item_id[]" id="item_id_'+row+'">' +
+                    '<input type="hidden" name="po_id[]" id="po_id_'+row+'">' +
+                    '<input type="text" class="form-control form-control-sm table-input-transparent" name="item_code[]" id="item_code_'+row+'" autocomplete="off" oninput="showPOItemAC(this, '+row+')" onkeydown="poItemKey(event, this, '+row+')">' +
+                '</td>' +
+                '<td><input type="text" class="form-control form-control-sm table-input-transparent bg-light" name="item_name[]" id="item_name_'+row+'" readonly></td>' +
+                '<td><input type="text" class="form-control form-control-sm table-input-transparent text-right" name="rcvd_qty[]" id="rcvd_qty_'+row+'" onkeydown="fieldEnterSave(event)"></td>' +
+                '<td><input type="text" class="form-control form-control-sm table-input-transparent text-right bg-light" name="pod_price[]" id="pod_price_'+row+'" readonly></td>' +
+                '<td><input type="text" class="form-control form-control-sm table-input-transparent bg-light" name="po_num[]" id="po_num_'+row+'" readonly></td>' +
+                '<td class="text-center"><button type="button" class="btn btn-danger btn-xs" onclick="deleteRow(this); event.stopPropagation();" title="Delete"><i class="fas fa-times"></i></button></td>';
+
+            tbody.appendChild(tr);
+            renumberRows();selectDetailRow(tr);byId("item_code_"+row).focus();
+        }
+
+        function deleteRow(btn){
+            var tr=btn.closest("tr");
+            if(!confirm("Hapus baris detail ini?"))return;
+            tr.parentNode.removeChild(tr);renumberRows();
+            var id=byId("rcv_id").value;if(id!=""&&id!="0")submitSave(true);
+        }
+        function renumberRows(){
+            var rows=byId("detailBody").getElementsByTagName("tr");
+            for(var i=0;i<rows.length;i++){
+                var c=rows[i].getElementsByClassName("row-no")[0];
+                if(c)c.innerHTML=i+1;
+            }
+        }
+
+        // Trigger & Action Custom Buttons
+        function triggerAction(actionName) {
+            if(!confirm("Jalankan aksi " + actionName.toUpperCase() + "?")) return;
+            byId("exec_action").value = actionName;
+            byId("execForm").submit();
+        }
+
+        function triggerUpdatePrice() {
+            var rcvId = byId("rcv_id").value;
+            if(!rcvId || rcvId == "0") { alert("Pilih / simpan Receive terlebih dahulu."); return; }
+            
+            var tr = selectedDetailRow;
+            if(!tr){
+                var rows=byId("detailBody").getElementsByTagName("tr");
+                if(rows.length>0) tr=rows[0];
+            }
+            if(!tr) { alert("Pilih baris detail item dulu."); return; }
+            
+            var itemInput = tr.querySelector('input[name="item_id[]"]');
+            var poInput = tr.querySelector('input[name="po_id[]"]');
+            var itemId = itemInput ? itemInput.value : "";
+            var poId = poInput ? poInput.value : "";
+            
+            if(!itemId || !poId) { alert("Pilih detail item yang valid."); return; }
+            
+            if(confirm("Jalankan Update Price untuk item yang dipilih?")) {
+                byId("exec_action").value = "update_price";
+                byId("upd_rcv_id").value = rcvId;
+                byId("upd_item_id").value = itemId;
+                byId("upd_po_id").value = poId;
+                byId("execForm").submit();
+            }
+        }
+
+        // Aksi Tombol Cetak ICL
+        function cetakICL() {
+            var rcvId = byId("rcv_id").value;
+            if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
+            window.open("print_icl.php?id=" + encodeURIComponent(rcvId), "CETAK_ICL", "width=900,height=700,scrollbars=yes");
+        }
+
+        // Aksi Tombol ICL OTO
+        function cetakICLOto() {
+            var rcvId = byId("rcv_id").value;
+            if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
+            window.open("print_icl_oto.php?id=" + encodeURIComponent(rcvId), "CETAK_OTO", "width=900,height=700,scrollbars=yes");
+        }
+
+        // Aksi Tombol Sch Material
+        function cetakSchedule() {
+            var rcvNo = document.querySelector('.rcv-no').value;
+            if (!rcvNo) { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
+            var shortNo = rcvNo.substring(0, 6);
+            window.open("print_schedule.php?no=" + encodeURIComponent(shortNo), "CETAK_SCH", "width=900,height=700,scrollbars=yes");
+        }
+
+        // Aksi Tombol SET NEXT ICL
+        function setNextICL() {
+            var nextNum = prompt("Masukkan nilai antrian untuk ICL selanjutnya:", "");
+            if (nextNum !== null && nextNum.trim() !== "") {
+                if (isNaN(nextNum)) {
+                    alert("Format harus berupa angka!");
+                    return;
+                }
+                byId("exec_action").value = "set_next_icl";
+                byId("upd_rcv_id").value = nextNum; 
+                byId("execForm").submit();
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded",function(){
+            var rows=document.querySelectorAll("#detailBody tr");
+            for(var i=0;i<rows.length;i++){rows[i].onclick=function(){selectDetailRow(this);};}
+        });
+        document.addEventListener("click",function(e){
+            initAC();if(acBox&&!acBox.contains(e.target)){if(!e.target||!e.target.getAttribute||e.target.getAttribute("autocomplete")!=="off")hideAC();}
+        });
+    </script>
 </head>
-<body>
-<div class="page-title">Purchase Receive</div>
-<div class="wrap">
-<?php if ($message != "") { ?><div class="msg"><?php echo h($message); ?></div><?php } ?>
-<?php if ($error != "") { ?><div class="err"><?php echo h($error); ?></div><?php } ?>
+<body class="hold-transition layout-top-nav">
+<div class="wrapper">
 
-<div class="top-buttons">
-<button type="button" class="btn" onclick="newData()">NEW</button>
-<button type="submit" form="rcvForm" class="btn btn-save">SAVE RECEIVE</button>
-<button type="button" class="btn btn-del" onclick="deleteCurrent()">DELETE</button>
-<a href="dashboard_purchasing.php" class="btn">CLOSE</a>
-</div>
-
-<form id="rcvForm" method="post" action="receive.php">
-<input type="hidden" name="action" value="save">
-<input type="hidden" name="rcv_id" id="rcv_id" value="<?php echo h($header["RCV_ID"]); ?>">
-<input type="hidden" name="sup_id" id="sup_id" value="<?php echo h($header["SUP_ID"]); ?>">
-<input type="hidden" name="allow_empty_detail" id="allow_empty_detail" value="0">
-
-<!-- Panel 1: Receive Header -->
-<table class="form-table">
-<tr>
-<!-- FIX: Hapus readonly pada rcv_no agar dapat diedit manual -->
-<td style="width:25%"><span class="label">I.C.L No.</span><input type="text" name="rcv_no" class="rcv-no" value="<?php echo h($header["RCV_NO"]); ?>"></td>
-<td style="width:25%"><span class="label">Date</span><input type="date" name="rcv_date" class="date" value="<?php echo h($header["RCV_DATE"]); ?>"></td>
-<td style="width:50%"><span class="label">D.O #</span><input type="text" name="rcv_dono" value="<?php echo h($header["RCV_DONO"]); ?>"></td>
-</tr>
-<tr>
-<td><span class="label">Sup.Code</span><input type="text" name="sup_code" id="sup_code" class="supplier-code" value="<?php echo h($header["SUP_CODE"]); ?>" autocomplete="off" oninput="showSupplierAC(this)" onkeydown="supplierKey(event, this)"></td>
-<td colspan="2"><span class="label">Sup.Company</span><input type="text" name="sup_comp" id="sup_comp" class="supplier-name" value="<?php echo h($header["SUP_COMP"]); ?>" style="background:#ddd;" readonly></td>
-</tr>
-<tr>
-<td><span class="label">PIC</span><input type="text" name="rcv_pic" id="rcv_pic" value="<?php echo h($header["RCV_PIC"]); ?>" autocomplete="off" oninput="showPicAC(this)" onkeydown="picKey(event, this)"></td>
-<td colspan="2"><span class="label">TYPE</span>
-    <select name="rcv_type">
-        <option value="1" <?php echo $header["RCV_TYPE"]=="1"?"selected":""; ?>>Material - Supplier</option>
-        <option value="2" <?php echo $header["RCV_TYPE"]=="2"?"selected":""; ?>>Spare Part - Supplier</option>
-        <option value="3" <?php echo $header["RCV_TYPE"]=="3"?"selected":""; ?>>Part - Vendor</option>
-        <option value="4" <?php echo $header["RCV_TYPE"]=="4"?"selected":""; ?>>Others</option>
-    </select>
-</td>
-</tr>
-</table>
-
-<!-- Panel 2: Bea Cukai -->
-<table class="bc-table">
-<tr>
-<td style="width:25%"><span class="label">Jenis BC</span>
-    <select name="jenis_bc">
-        <option value="">- Pilih BC -</option>
-        <?php foreach($bcList as $b) { ?>
-            <option value="<?php echo h($b); ?>" <?php echo $header["JENIS_BC"]==$b?"selected":""; ?>><?php echo h($b); ?></option>
-        <?php } ?>
-    </select>
-</td>
-<td style="width:45%"><span class="label">Nomor BC</span><input type="text" name="nomor_bc" value="<?php echo h($header["NOMOR_BC"]); ?>"></td>
-<td style="width:30%"><span class="label">Tanggal BC</span><input type="date" name="bc_date" value="<?php echo h($header["BC_DATE"]); ?>"></td>
-</tr>
-</table>
-
-<div class="header-toolbar">
-    <button type="button" class="btn" onclick="cetakICL()">Cetak ICL</button>
-    <button type="button" class="btn" onclick="cetakICLOto()">ICL OTO</button>
-    <button type="button" class="btn" onclick="cetakSchedule()">Sch Material</button>
-    <button type="button" class="btn" onclick="setNextICL()">SET NEXT ICL</button>
-</div>
-
-<table class="detail">
-<thead>
-<tr>
-<th style="width:30px;" class="center">No</th>
-<th style="width:110px;">Item Code</th>
-<th style="width:280px;">Item Name</th>
-<th style="width:80px;">Recv Qty</th>
-<th style="width:80px;">Price</th>
-<th style="width:140px;">PO #</th>
-<th style="width:30px;" class="center">X</th>
-</tr>
-</thead>
-<tbody id="detailBody">
-<?php for($i=0;$i<count($details);$i++){ ?>
-<?php
-$d=$details[$i];
-$qty=isset($d["RCVD_QTY"])?floatval($d["RCVD_QTY"]):0;
-$price=isset($d["POD_PRICE"])?floatval($d["POD_PRICE"]):0;
-?>
-<tr>
-<td class="center row-no"><?php echo h($i+1); ?></td>
-<td>
-<input type="hidden" name="item_id[]" id="item_id_<?php echo h($i); ?>" value="<?php echo h($d["ITEM_ID"]); ?>">
-<input type="hidden" name="po_id[]" id="po_id_<?php echo h($i); ?>" value="<?php echo h($d["PO_ID"]); ?>">
-<input type="text" name="item_code[]" id="item_code_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_CODE"])?$d["ITEM_CODE"]:""); ?>" autocomplete="off" oninput="showPOItemAC(this, <?php echo h($i); ?>)" onkeydown="poItemKey(event, this, <?php echo h($i); ?>)">
-</td>
-<td><input type="text" name="item_name[]" id="item_name_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_NAME"])?$d["ITEM_NAME"]:""); ?>" readonly style="background:#f9f9f9"></td>
-<td><input type="text" name="rcvd_qty[]" id="rcvd_qty_<?php echo h($i); ?>" class="num" value="<?php echo h($qty==0?"":$qty); ?>" onkeydown="fieldEnterSave(event, <?php echo h($i); ?>)"></td>
-<td><input type="text" name="pod_price[]" id="pod_price_<?php echo h($i); ?>" class="num" value="<?php echo h($price==0?"":$price); ?>" readonly style="background:#f9f9f9"></td>
-<td><input type="text" name="po_num[]" id="po_num_<?php echo h($i); ?>" value="<?php echo h(isset($d["PO_NUM"])?$d["PO_NUM"]:""); ?>" readonly style="background:#f9f9f9"></td>
-<td><div class="action-cell"><button type="button" class="btn btn-x" onclick="deleteRow(this); event.stopPropagation();">X</button></div></td>
-</tr>
-<?php } ?>
-</tbody>
-</table>
-
-<div class="bottom-buttons">
-    <div>
-        <button type="button" class="btn" onclick="addRow()">+ Tambah Baris</button>
-    </div>
-    <div style="text-align: right;">
-        <div>
-            <button type="button" class="btn" style="background:#f2dede;color:#900;border-color:#900;" onclick="triggerAction('trigger_off')">OFF</button>
-            <button type="button" class="btn" style="background:#ffeb3b;color:#000;border-color:#b99d00;" onclick="triggerUpdatePrice()">UPDATE</button>
-            <button type="button" class="btn" style="background:#dff0d8;color:#006100;border-color:#006100;" onclick="triggerAction('trigger_on')">ON</button>
+    <!-- Navbar -->
+    <nav class="main-header navbar navbar-expand-md navbar-light navbar-white">
+        <div class="container-fluid">
+            <a href="dashboard_home.php" class="navbar-brand">
+                <span class="brand-text font-weight-light"><i class="fas fa-truck-loading text-primary mr-2"></i> Purchasing System</span>
+            </a>
+            <ul class="navbar-nav ml-auto">
+                <li class="nav-item">
+                    <a href="dashboard_home.php" class="nav-link"><i class="fas fa-sign-out-alt"></i> Close</a>
+                </li>
+            </ul>
         </div>
-        <div style="margin-top: 6px; color: #cc0000; font-weight: bold; border: 2px solid #cc0000; padding: 4px 8px; display: inline-block; background: #ffffff; font-size: 11px;">
-            JANGAN LUPA KLIK TOMBOL ON LAGI SETELAH KLIK TOMBOL OFF
+    </nav>
+
+    <div class="content-wrapper">
+        <div class="content-header">
+            <div class="container-fluid">
+                <div class="row mb-2">
+                    <div class="col-sm-6">
+                        <h1 class="m-0">Purchase Receive</h1>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="content">
+            <div class="container-fluid">
+
+                <?php if ($message != "") { ?>
+                    <div class="alert alert-success alert-dismissible">
+                        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+                        <h5><i class="icon fas fa-check"></i> Success!</h5>
+                        <?php echo h($message); ?>
+                    </div>
+                <?php } ?>
+
+                <?php if ($error != "") { ?>
+                    <div class="alert alert-danger alert-dismissible">
+                        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
+                        <h5><i class="icon fas fa-ban"></i> Error!</h5>
+                        <?php echo h($error); ?>
+                    </div>
+                <?php } ?>
+
+                <div class="card card-primary card-outline">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h3 class="card-title mb-0">
+                            <button type="button" class="btn btn-sm btn-default mr-1" onclick="newData()"><i class="fas fa-file"></i> New</button>
+                            <button type="button" class="btn btn-sm btn-success mr-1" onclick="submitSave(false)"><i class="fas fa-save"></i> Save Receive</button>
+                            <button type="button" class="btn btn-sm btn-danger" onclick="deleteCurrent()"><i class="fas fa-trash"></i> Delete</button>
+                        </h3>
+                        
+                        <div class="card-tools">
+                            <form method="get" action="receive.php" class="form-inline m-0" id="searchFormTop">
+                                <div class="input-group input-group-sm" style="width: 300px;">
+                                    <input type="text" name="q" class="form-control float-right" value="<?php echo h($q); ?>" placeholder="Search RCV No / DO / Sup" autocomplete="off" oninput="showRcvAC(this)" onkeydown="rcvKey(event, this)">
+                                    <div class="input-group-append">
+                                        <button type="submit" class="btn btn-default"><i class="fas fa-search"></i></button>
+                                        <a href="receive.php" class="btn btn-default" title="Reset"><i class="fas fa-sync"></i></a>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <form id="rcvForm" method="post" action="receive.php">
+                        <input type="hidden" name="action" value="save">
+                        <input type="hidden" name="rcv_id" id="rcv_id" value="<?php echo h($header["RCV_ID"]); ?>">
+                        <input type="hidden" name="sup_id" id="sup_id" value="<?php echo h($header["SUP_ID"]); ?>">
+                        <input type="hidden" name="allow_empty_detail" id="allow_empty_detail" value="0">
+
+                        <div class="card-body">
+                            <!-- Panel 1: Receive Header -->
+                            <div class="p-3 rounded mb-3" style="background-color: #008080;">
+                                <div class="row">
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label class="text-warning">I.C.L No.</label>
+                                            <input type="text" class="form-control form-control-sm rcv-no" name="rcv_no" value="<?php echo h($header["RCV_NO"]); ?>">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label class="text-warning">Date</label>
+                                            <input type="date" class="form-control form-control-sm" name="rcv_date" value="<?php echo h($header["RCV_DATE"]); ?>">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-group">
+                                            <label class="text-warning">D.O #</label>
+                                            <input type="text" class="form-control form-control-sm" name="rcv_dono" value="<?php echo h($header["RCV_DONO"]); ?>">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-5">
+                                        <div class="form-group">
+                                            <label class="text-warning">Supplier</label>
+                                            <div class="input-group input-group-sm">
+                                                <input type="text" class="form-control" style="max-width:100px;" name="sup_code" id="sup_code" value="<?php echo h($header["SUP_CODE"]); ?>" autocomplete="off" oninput="showSupplierAC(this)" onkeydown="supplierKey(event, this)">
+                                                <input type="text" class="form-control bg-light" name="sup_comp" id="sup_comp" value="<?php echo h($header["SUP_COMP"]); ?>" readonly>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <div class="form-group">
+                                            <label class="text-warning">PIC</label>
+                                            <input type="text" class="form-control form-control-sm" name="rcv_pic" id="rcv_pic" value="<?php echo h($header["RCV_PIC"]); ?>" autocomplete="off" oninput="showPicAC(this)" onkeydown="picKey(event, this)">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group">
+                                            <label class="text-warning">TYPE</label>
+                                            <select class="form-control form-control-sm" name="rcv_type">
+                                                <option value="1" <?php echo $header["RCV_TYPE"]=="1"?"selected":""; ?>>Material - Supplier</option>
+                                                <option value="2" <?php echo $header["RCV_TYPE"]=="2"?"selected":""; ?>>Spare Part - Supplier</option>
+                                                <option value="3" <?php echo $header["RCV_TYPE"]=="3"?"selected":""; ?>>Part - Vendor</option>
+                                                <option value="4" <?php echo $header["RCV_TYPE"]=="4"?"selected":""; ?>>Others</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Panel 2: Bea Cukai -->
+                            <div class="p-3 rounded mb-3" style="background-color: #008000;">
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="form-group mb-0">
+                                            <label class="text-warning">Jenis BC</label>
+                                            <select class="form-control form-control-sm" name="jenis_bc">
+                                                <option value="">- Pilih BC -</option>
+                                                <?php foreach($bcList as $b) { ?>
+                                                    <option value="<?php echo h($b); ?>" <?php echo $header["JENIS_BC"]==$b?"selected":""; ?>><?php echo h($b); ?></option>
+                                                <?php } ?>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group mb-0">
+                                            <label class="text-warning">Nomor BC</label>
+                                            <input type="text" class="form-control form-control-sm" name="nomor_bc" value="<?php echo h($header["NOMOR_BC"]); ?>">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="form-group mb-0">
+                                            <label class="text-warning">Tanggal BC</label>
+                                            <input type="date" class="form-control form-control-sm" name="bc_date" value="<?php echo h($header["BC_DATE"]); ?>">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="mb-2">
+                                <button type="button" class="btn btn-sm btn-outline-primary mr-1" onclick="cetakICL()"><i class="fas fa-print"></i> Cetak ICL</button>
+                                <button type="button" class="btn btn-sm btn-outline-primary mr-1" onclick="cetakICLOto()"><i class="fas fa-print"></i> ICL OTO</button>
+                                <button type="button" class="btn btn-sm btn-outline-primary mr-1" onclick="cetakSchedule()"><i class="fas fa-calendar-alt"></i> Sch Material</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setNextICL()"><i class="fas fa-cogs"></i> SET NEXT ICL</button>
+                            </div>
+
+                            <div class="table-responsive p-0 border mt-3">
+                                <table class="table table-bordered table-sm text-sm m-0" id="detailTable">
+                                    <thead class="bg-light">
+                                        <tr>
+                                            <th class="text-center" style="width:40px;">No</th>
+                                            <th style="width:140px;">Item Code</th>
+                                            <th>Item Name</th>
+                                            <th style="width:100px;">Recv Qty</th>
+                                            <th style="width:120px;">Price</th>
+                                            <th style="width:150px;">PO #</th>
+                                            <th class="text-center" style="width:50px;">ACT</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="detailBody">
+                                        <?php for($i=0;$i<count($details);$i++){ 
+                                            $d=$details[$i];
+                                            $qty=isset($d["RCVD_QTY"])?floatval($d["RCVD_QTY"]):0;
+                                            $price=isset($d["POD_PRICE"])?floatval($d["POD_PRICE"]):0;
+                                        ?>
+                                            <tr>
+                                                <td class="text-center align-middle row-no"><?php echo h($i+1); ?></td>
+                                                <td>
+                                                    <input type="hidden" name="item_id[]" id="item_id_<?php echo h($i); ?>" value="<?php echo h($d["ITEM_ID"]); ?>">
+                                                    <input type="hidden" name="po_id[]" id="po_id_<?php echo h($i); ?>" value="<?php echo h($d["PO_ID"]); ?>">
+                                                    <input type="text" class="form-control form-control-sm table-input-transparent" name="item_code[]" id="item_code_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_CODE"])?$d["ITEM_CODE"]:""); ?>" autocomplete="off" oninput="showPOItemAC(this, <?php echo h($i); ?>)" onkeydown="poItemKey(event, this, <?php echo h($i); ?>)">
+                                                </td>
+                                                <td><input type="text" class="form-control form-control-sm table-input-transparent bg-light" name="item_name[]" id="item_name_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_NAME"])?$d["ITEM_NAME"]:""); ?>" readonly></td>
+                                                <td><input type="text" class="form-control form-control-sm table-input-transparent text-right" name="rcvd_qty[]" id="rcvd_qty_<?php echo h($i); ?>" value="<?php echo h($qty==0?"":$qty); ?>" onkeydown="fieldEnterSave(event)"></td>
+                                                <td><input type="text" class="form-control form-control-sm table-input-transparent text-right bg-light" name="pod_price[]" id="pod_price_<?php echo h($i); ?>" value="<?php echo h($price==0?"":$price); ?>" readonly></td>
+                                                <td><input type="text" class="form-control form-control-sm table-input-transparent bg-light" name="po_num[]" id="po_num_<?php echo h($i); ?>" value="<?php echo h(isset($d["PO_NUM"])?$d["PO_NUM"]:""); ?>" readonly></td>
+                                                <td class="text-center"><button type="button" class="btn btn-danger btn-xs" onclick="deleteRow(this); event.stopPropagation();" title="Delete"><i class="fas fa-times"></i></button></td>
+                                            </tr>
+                                        <?php } ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="card-footer bg-white d-flex justify-content-between align-items-center">
+                            <div>
+                                <button type="button" class="btn btn-primary btn-sm" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+                            </div>
+                            <div class="text-right">
+                                <div class="mb-1">
+                                    <button type="button" class="btn btn-sm btn-danger mr-1" onclick="triggerAction('trigger_off')">OFF</button>
+                                    <button type="button" class="btn btn-sm btn-warning mr-1" onclick="triggerUpdatePrice()">UPDATE</button>
+                                    <button type="button" class="btn btn-sm btn-success" onclick="triggerAction('trigger_on')">ON</button>
+                                </div>
+                                <span class="text-danger font-weight-bold border border-danger px-2 py-1 bg-white d-inline-block rounded" style="font-size: 11px;">
+                                    JANGAN LUPA KLIK TOMBOL ON LAGI SETELAH KLIK TOMBOL OFF
+                                </span>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+
+                <form id="deleteForm" method="post" action="receive.php">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="rcv_id" id="delete_rcv_id" value="">
+                </form>
+
+                <form id="execForm" method="post" action="receive.php">
+                    <input type="hidden" name="action" id="exec_action" value="">
+                    <input type="hidden" name="upd_rcv_id" id="upd_rcv_id" value="">
+                    <input type="hidden" name="upd_item_id" id="upd_item_id" value="">
+                    <input type="hidden" name="upd_po_id" id="upd_po_id" value="">
+                    <input type="hidden" name="edit" value="<?php echo h($editId); ?>">
+                </form>
+
+                <div class="card">
+                    <div class="card-body p-0 table-responsive" style="max-height: 400px;">
+                        <table class="table table-striped table-hover table-head-fixed text-nowrap table-sm text-sm">
+                            <thead>
+                                <tr>
+                                    <th style="width:30px;"></th>
+                                    <th>RCV NO</th>
+                                    <th>Date</th>
+                                    <th>DO #</th>
+                                    <th>PIC</th>
+                                    <th>Sup.Code</th>
+                                    <th>Supplier</th>
+                                    <th class="text-right">Detail</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rcvListBody">
+                                <?php while($r=sqlsrv_fetch_array($stmtList, SQLSRV_FETCH_ASSOC)){ ?>
+                                    <?php $rcvIdLink=intval($r["RCV_ID"]); ?>
+                                    <tr class="pointer po-row" onclick="goEdit('<?php echo h($rcvIdLink); ?>')">
+                                        <td class="text-center text-primary"><i class="fas fa-caret-right"></i></td>
+                                        <td class="font-weight-bold text-dark"><?php echo h($r["RCV_NO"]); ?></td>
+                                        <td><?php echo h(fmt_date_view($r["RCV_DATE"])); ?></td>
+                                        <td><?php echo h($r["RCV_DONO"]); ?></td>
+                                        <td><?php echo h($r["RCV_PIC"]); ?></td>
+                                        <td><?php echo h($r["SUP_CODE"]); ?></td>
+                                        <td><?php echo h($r["SUP_COMP"]); ?></td>
+                                        <td class="text-right"><?php echo h(number_format(floatval($r["DETAIL_COUNT"]),0,".",",")); ?></td>
+                                    </tr>
+                                <?php } ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
         </div>
     </div>
 </div>
-</form>
 
-<form id="deleteForm" method="post" action="receive.php">
-<input type="hidden" name="action" value="delete">
-<input type="hidden" name="rcv_id" id="delete_rcv_id" value="">
-</form>
-
-<form id="execForm" method="post" action="receive.php">
-<input type="hidden" name="action" id="exec_action" value="">
-<input type="hidden" name="upd_rcv_id" id="upd_rcv_id" value="">
-<input type="hidden" name="upd_item_id" id="upd_item_id" value="">
-<input type="hidden" name="upd_po_id" id="upd_po_id" value="">
-<input type="hidden" name="edit" value="<?php echo h($editId); ?>">
-</form>
-
-<div class="search-area">
-<form method="get" action="receive.php" id="searchForm">
-Search:
-<input type="text" name="q" value="<?php echo h($q); ?>" style="width:250px;" placeholder="RCV No / DO No / Supplier">
-<button type="submit" class="btn">SEARCH</button>
-<a href="receive.php" class="btn">ALL</a>
-</form>
-</div>
-
-<div class="grid-wrap">
-<table class="grid">
-<thead>
-<tr>
-<th style="width:22px;"></th>
-<th style="width:130px;">RCV NO</th>
-<th style="width:80px;">Date</th>
-<th style="width:110px;">DO #</th>
-<th style="width:80px;">PIC</th>
-<th style="width:70px;">Sup.Code</th>
-<th style="width:200px;">Supplier</th>
-<th style="width:50px;">Detail</th>
-</tr>
-</thead>
-<!-- FIX: List Navigasi tidak menggunakan tag <a> agar fungsi OnClick Baris berfungsi penuh -->
-<tbody id="rcvListBody">
-<?php while($r=sqlsrv_fetch_array($stmtList, SQLSRV_FETCH_ASSOC)){ ?>
-<?php $rcvIdLink=intval($r["RCV_ID"]); ?>
-<tr class="po-row" onclick="goEdit('<?php echo h($rcvIdLink); ?>')" style="cursor:pointer;">
-<td class="center go-btn" style="color:#000080;font-weight:bold;">▶</td>
-<td><?php echo h($r["RCV_NO"]); ?></td>
-<td><?php echo h(fmt_date_view($r["RCV_DATE"])); ?></td>
-<td><?php echo h($r["RCV_DONO"]); ?></td>
-<td><?php echo h($r["RCV_PIC"]); ?></td>
-<td><?php echo h($r["SUP_CODE"]); ?></td>
-<td><?php echo h($r["SUP_COMP"]); ?></td>
-<td class="num"><?php echo h(number_format(floatval($r["DETAIL_COUNT"]),0,".",",")); ?></td>
-</tr>
-<?php } ?>
-</tbody>
-</table>
-</div>
-
-</div>
 <div id="acBox" class="ac-box"></div>
+
+<!-- jQuery -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<!-- Bootstrap 4 -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+<!-- AdminLTE App -->
+<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
 </body>
 </html>

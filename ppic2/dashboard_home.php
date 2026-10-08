@@ -44,7 +44,10 @@ $rawReports = [
     ["name" => "LOGICAL STOCK", "url" => "logical.php", "category" => "Inventory & Stock", "target" => "_blank"], // Berbeda dengan PPIC P1
     ["name" => "STOK PLAN VS ACTUAL", "url" => "report_stok_actual.php", "category" => "Inventory & Stock", "target" => "_blank"],
     ["name" => "STOK PLAN VS ACTUAL PART COMMON", "url" => "part_common.php", "category" => "Inventory & Stock", "target" => "_blank"],
-    ["name" => "DEAD STOCK", "url" => "dead_stok.php", "category" => "Inventory & Stock", "target" => "_blank"]
+    ["name" => "DEAD STOCK", "url" => "dead_stok.php", "category" => "Inventory & Stock", "target" => "_blank"],
+
+    // Kategori: Packing (TAMBAHAN BARU)
+    ["name" => "PACKING OUT/RETURN", "url" => "pack_inout.php", "category" => "Packing", "target" => "_blank"]
 ];
 
 // 2. URUTKAN A-Z BERDASARKAN NAMA REPORT

@@ -115,7 +115,6 @@ if (isset($_POST['action']) && $_POST['action'] === 'load_ng') {
     header('Content-Type: application/json');
     $pd_id = (int)$_POST['pd_id'];
     
-    // Menggunakan JOIN sesuai struktur tabel yang Anda berikan
     $sql = "SELECT NP.NGT_ID, NP.NGP_QTY, NT.NGT_DESC 
             FROM dbo.NG_PROD NP 
             INNER JOIN dbo.NG_TYPE NT ON NP.NGT_ID = NT.NGT_ID 
@@ -126,7 +125,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'load_ng') {
     $data = [];
     if ($stmt) {
         while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-            $row['NGT_DESC'] = trim($row['NGT_DESC']); // Bersihkan spasi dari tipe data CHAR
+            $row['NGT_DESC'] = trim($row['NGT_DESC']); 
             $data[] = $row;
         }
         echo json_encode(['status' => 'success', 'data' => $data]);
@@ -143,18 +142,15 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_ng') {
     $old_ngt_id = isset($_POST['old_ngt_id']) ? (int)$_POST['old_ngt_id'] : 0;
     $qty = (float)$_POST['qty'];
 
-    // Cek apakah defect ini sudah pernah diinput di Lot/PD_ID ini
     $check_id = ($old_ngt_id > 0) ? $old_ngt_id : $ngt_id;
     $sql_check = "SELECT COUNT(*) as cnt FROM dbo.NG_PROD WHERE PD_ID = ? AND NGT_ID = ?";
     $stmt_check = sqlsrv_query($db, $sql_check, array($pd_id, $check_id));
     $row_check = sqlsrv_fetch_array($stmt_check, SQLSRV_FETCH_ASSOC);
 
     if ($row_check['cnt'] > 0) {
-        // UPDATE: Jika diubah, perbarui NGT_ID dan QTY nya
         $sql = "UPDATE dbo.NG_PROD SET NGT_ID = ?, NGP_QTY = ? WHERE PD_ID = ? AND NGT_ID = ?";
         $stmt = sqlsrv_query($db, $sql, array($ngt_id, $qty, $pd_id, $check_id));
     } else {
-        // INSERT: Tambah defect baru untuk Lot/PD_ID ini
         $sql = "INSERT INTO dbo.NG_PROD (PD_ID, NGT_ID, NGP_QTY) VALUES (?, ?, ?)";
         $stmt = sqlsrv_query($db, $sql, array($pd_id, $ngt_id, $qty));
     }
@@ -169,7 +165,6 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_ng') {
     $pd_id = (int)$_POST['pd_id'];
     $ngt_id = (int)$_POST['ngt_id'];
     
-    // DELETE berdasarkan PD_ID dan NGT_ID
     $sql = "DELETE FROM dbo.NG_PROD WHERE PD_ID = ? AND NGT_ID = ?";
     $stmt = sqlsrv_query($db, $sql, array($pd_id, $ngt_id));
     
@@ -177,262 +172,215 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_ng') {
     else { echo json_encode(['status' => 'error', 'errors' => sqlsrv_errors()]); }
     exit;
 }
-
 ?>
-
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Production Entry System</title>
+    <!-- AdminLTE & Bootstrap CSS -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
+    
     <style>
-        body { font-family: Tahoma, sans-serif; background-color: #e0e0e0; margin: 10px; font-size: 11px; }
-        .container { width: 100%; max-width: 1400px; margin: auto; background: #f0f0f0; padding: 10px; border: 1px solid #999; box-shadow: 2px 2px 5px rgba(0,0,0,0.2); box-sizing: border-box;}
-        
-        .top-panel { display: flex; gap: 10px; margin-bottom: 10px; }
-        .top-left { flex: 0 0 350px; background: #e8e8e8; padding: 10px; border: 1px solid #ccc; }
-        .top-right { flex: 1; background: #fff; border: 1px solid #999; height: 260px; overflow-y: auto; }
-        
-        .bottom-panel { background: #fff; padding: 10px; border: 1px solid #999; margin-top: 5px; }
-        
-        .form-group { margin-bottom: 6px; }
-        label { display: block; margin-bottom: 2px; color: #333; font-weight: normal;}
-        
-        input[type="text"], input[type="number"], input[type="date"], select { padding: 3px 5px; border: 1px solid #a0a0a0; font-family: Tahoma, sans-serif; font-size: 11px; }
-        input[readonly] { background-color: #d8e4f8; cursor: default; border: 1px solid #8ba0bc; }
-        
-        .w-full { width: 100%; box-sizing: border-box; }
-        .w-120 { width: 120px; }
-        .w-150 { width: 150px; }
-        
-        .radio-group { padding-top: 2px; }
-        .radio-group label { display: inline-block; margin-right: 10px; cursor: pointer; }
-        .radio-group input { margin-right: 3px; vertical-align: middle; }
-
-        .data-table { width: 100%; border-collapse: collapse; font-size: 11px; white-space: nowrap; }
-        .data-table th, .data-table td { padding: 4px 6px; border: 1px solid #999; text-align: left; }
-        
-        .wo-table th { background: #d0d0d0; color: #000; position: sticky; top: 0; z-index: 10; border-bottom: 2px solid #999;}
-        .wo-table tr:hover { background-color: #e2f0ff; cursor: pointer; }
-        .wo-table tr.selected { background-color: #0078d7; color: white; }
-        
-        .history-panel { max-height: 400px; overflow-y: auto; border: 1px solid #999; background-color: #fff; }
-        .history-table th { background: #e0e0e0; color: #000; position: sticky; top: 0; z-index: 10; font-weight: normal;}
-        .history-table th.sub-head { top: 23px; }
-        
-        .history-table tbody tr.main-row:nth-child(4n+1) { background-color: #ffffff; } 
-        .history-table tbody tr.main-row:nth-child(4n+3) { background-color: #cde4c4; } 
-        .history-table td { border: 1px solid #c0c0c0; }
-        .history-table td.text-right { text-align: right; }
+        /* Custom Styles specifically for maintaining the fast data-entry grid feel */
+        body { background-color: #f4f6f9; font-size: 12px; }
+        .table-responsive { max-height: 400px; }
+        .wo-table th, .history-table th { background: #f4f6f9; position: sticky; top: 0; z-index: 10; box-shadow: inset 0 -1px 0 #dee2e6;}
+        .history-table th.sub-head { top: 32px; }
+        .wo-table tr:hover { cursor: pointer; }
+        .wo-table tr.selected { background-color: #007bff !important; color: white; }
         
         .p-0 { padding: 0 !important; }
         .grid-input, .grid-input-act { 
-            width: 100%; height: 100%; min-height: 20px; box-sizing: border-box; 
-            border: none; background: transparent; font-family: inherit; font-size: inherit; 
-            text-align: inherit; padding: 4px 6px; outline: none;
+            width: 100%; height: 100%; min-height: 28px; box-sizing: border-box; 
+            border: none; background: transparent; padding: 4px 8px; outline: none;
         }
-        .grid-input:focus, .grid-input-act:focus { background: #fff; box-shadow: inset 0 0 0 2px #0078d7; }
+        .grid-input:focus, .grid-input-act:focus { background: #fff; box-shadow: inset 0 0 0 2px #007bff; }
         input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         
-        .box-icon { display: inline-block; border: 1px solid #666; width: 11px; height: 11px; line-height: 9px; text-align: center; font-size: 10px; background: #fff; color: #000; cursor: pointer; user-select: none;}
+        .box-icon { display: inline-block; border: 1px solid #6c757d; width: 16px; height: 16px; line-height: 14px; text-align: center; font-size: 12px; background: #fff; cursor: pointer; user-select: none; border-radius: 2px;}
+        .history-table tbody tr.main-row:nth-child(4n+1) { background-color: #ffffff; } 
+        .history-table tbody tr.main-row:nth-child(4n+3) { background-color: #f2f7ec; } 
         
-        /* Tombol Tambahan */
-        button { padding: 5px 15px; background-color: #0078d7; color: white; border: 1px solid #005a9e; cursor: pointer; font-size: 11px; font-weight: bold; }
-        button:hover { background-color: #005a9e; }
-        .btn-delete { padding: 3px 6px; background-color: #dc3545; color: white; border: 1px solid #c82333; border-radius: 3px; cursor: pointer; font-size: 9px; font-weight: bold; width:100%;}
-        .btn-delete:hover { background-color: #c82333; }
+        .ng-panel { background: #f8f9fa; border: 1px solid #ced4da; padding: 10px; border-radius: 4px;}
+        .ng-grid th { background: #e9ecef; }
         
-        .header-title { font-size: 12px; font-weight: bold; margin: 0 0 10px 0; border-bottom: 1px solid #ccc; padding-bottom: 5px;}
+        /* Modifikasi Jarak & Ukuran agar sama persis dengan referensi (Horizontal Layout) */
+        .content-wrapper { padding-top: 8px !important; } 
+        .text-xs { font-size: 11px !important; font-weight: bold; color: #333; margin-bottom: 2px; }
+        .form-control-xs { height: 26px !important; padding: 2px 6px !important; font-size: 12px !important; border-radius: 3px !important; }
+        .compact-form .row { margin-bottom: 6px; }
+        .radio-inline-label { font-size: 11px; margin-right: 10px; cursor: pointer; font-weight: normal !important; }
+        .radio-inline-label input { vertical-align: middle; margin-right: 3px; }
         
-        /* SUB-TABLE (ACTUAL DATA) */
-        .actual-container { display: flex; gap: 0px; background: #e8e8e8; padding: 5px; border-top: none; }
-        .actual-table { border-collapse: collapse; background: #fff; width: 150px; font-size: 11px; margin-right: 10px;}
-        .actual-table td { border: 1px solid #ccc; padding: 0; }
-        .actual-table td:first-child { background: #f0f0f0; padding: 2px 4px;}
-        .actual-header { background: #d0d0d0; padding: 2px 5px; font-weight: normal; border: 1px solid #ccc; border-bottom: none; width: 140px;}
-        
-        /* SUB-TABLE (NG DATA) - DESKTOP STYLE */
-        .ng-panel-wrapper {
-            padding: 6px 10px 6px 365px; /* Mengatur margin kiri agar sejajar di bawah kolom NG */
-            background-color: #e8e8e8;
-        }
-        .ng-panel {
-            width: 350px;
-            background: #f0f0f0;
-            border: 1px solid #a0a0a0;
-            border-right: 2px solid #808080;
-            border-bottom: 2px solid #808080;
-            padding: 4px;
-        }
-        .ng-grid {
-            width: 100%;
-            border-collapse: collapse;
-            background: #fff;
-            border: 1px solid #999;
-        }
-        .ng-grid th {
-            background: #e4e4e4;
-            color: #000;
-            padding: 3px 5px;
-            font-weight: normal;
-            border: 1px solid #999;
-            text-align: left;
-        }
-        .ng-grid td {
-            border: 1px solid #999;
-            padding: 0;
-        }
-        .ng-grid input {
-            width: 100%;
-            box-sizing: border-box;
-            border: none;
-            padding: 3px 5px;
-            font-family: inherit;
-            font-size: inherit;
-            outline: none;
-            background: transparent;
-        }
-        .ng-grid input:focus {
-            background-color: #e2f0ff;
-        }
-        .ng-toolbar-bottom {
-            display: flex;
-            gap: 10px;
-            padding: 6px 4px 2px 4px;
-            align-items: center;
-            background: #f0f0f0;
-            color: #888;
-        }
-        .icon-btn {
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: bold;
-            color: #000;
-            user-select: none;
-        }
-        .icon-btn:hover {
-            color: #0078d7;
+        .wo-table-container { 
+            max-height: 205px; /* Tinggi dibatasi drastis menyesuaikan form kiri yang horizontal */
+            overflow-y: auto; 
         }
     </style>
 </head>
-<body>
+<body class="hold-transition layout-top-nav">
+<div class="wrapper">
+    <div class="content-wrapper">
+        <section class="content pt-0">
+            <div class="container-fluid">
+                
+                <div class="row">
+                    <!-- Left Panel: Form Setup (HORIZONTAL LAYOUT) -->
+                    <div class="col-md-5">
+                        <div class="card card-primary card-outline h-100 mb-2">
+                            <div class="card-header py-1 bg-light">
+                                <h3 class="card-title text-sm"><i class="fas fa-list mr-1"></i> Item Data & Setup</h3>
+                            </div>
+                            <div class="card-body p-2 compact-form">
+                                
+                                <!-- Baris 1: Date Prod, Group, Shift -->
+                                <div class="row">
+                                    <div class="col-4">
+                                        <label class="text-xs">Date Prod:</label>
+                                        <input type="date" id="input_date" class="form-control form-control-xs" value="<?php echo date('Y-m-d'); ?>">
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="text-xs">Group:</label>
+                                        <div>
+                                            <label class="radio-inline-label"><input type="radio" name="group" value="A" checked> A</label>
+                                            <label class="radio-inline-label"><input type="radio" name="group" value="B"> B</label>
+                                            <label class="radio-inline-label"><input type="radio" name="group" value="C"> C</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="text-xs">Shift:</label>
+                                        <div>
+                                            <label class="radio-inline-label"><input type="radio" name="shift" value="1" checked> 1</label>
+                                            <label class="radio-inline-label"><input type="radio" name="shift" value="2"> 2</label>
+                                            <label class="radio-inline-label"><input type="radio" name="shift" value="3"> 3</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Baris 2: Search Part, Item Code -->
+                                <div class="row">
+                                    <div class="col-6">
+                                        <label class="text-xs"><i class="fas fa-search text-muted"></i> Cari Part / WO:</label>
+                                        <input type="text" id="search_item" class="form-control form-control-xs" placeholder="Ketik kode / WO...">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="text-xs">Part / Item Code:</label>
+                                        <input type="text" id="item_code" class="form-control form-control-xs bg-light" readonly>
+                                    </div>
+                                </div>
 
-<div class="container">
-    <div class="top-panel">
-        <div class="top-left">
-            <div class="header-title">Item Data & Setup</div>
-            <div class="form-group">
-                <label>Date production:</label>
-                <input type="date" id="input_date" class="w-150" value="<?php echo date('Y-m-d'); ?>">
-            </div>
-            <div class="form-group" style="display:flex; gap:10px;">
-                <div>
-                    <label>Group:</label>
-                    <div class="radio-group">
-                        <label><input type="radio" name="group" value="A" checked> A</label>
-                        <label><input type="radio" name="group" value="B"> B</label>
-                        <label><input type="radio" name="group" value="C"> C</label>
+                                <!-- Baris 3: Part Name -->
+                                <div class="row">
+                                    <div class="col-12">
+                                        <label class="text-xs">Part Name:</label>
+                                        <input type="text" id="item_name" class="form-control form-control-xs bg-light" readonly>
+                                    </div>
+                                </div>
+
+                                <!-- Baris 4: Process, Machine -->
+                                <div class="row mb-0">
+                                    <div class="col-6">
+                                        <label class="text-xs">Process:</label>
+                                        <input type="text" id="proc_name" class="form-control form-control-xs bg-light" readonly>
+                                        <input type="hidden" id="proc_id">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="text-xs">Machine (M/C):</label>
+                                        <input type="text" id="mac_code" class="form-control form-control-xs bg-light" readonly>
+                                        <input type="hidden" id="mac_code_hidden">
+                                    </div>
+                                </div>
+                                
+                                <input type="hidden" id="wo_id">
+                                <input type="hidden" id="wo_number">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Right Panel: WO Grid -->
+                    <div class="col-md-7">
+                        <div class="card card-outline card-secondary h-100 mb-2">
+                            <div class="card-header py-1 bg-light">
+                                <h3 class="card-title text-sm"><i class="fas fa-list-alt mr-1"></i> Daftar Work Order (Tersedia)</h3>
+                            </div>
+                            <div class="card-body p-0 wo-table-container">
+                                <table class="table table-sm table-hover table-bordered wo-table text-nowrap m-0">
+                                    <thead>
+                                        <tr>
+                                            <th>WO NUMBER</th>
+                                            <th>ITEM CODE</th>
+                                            <th>QTY</th>
+                                            <th>M/C</th>
+                                            <th>CAP/DAY</th>
+                                            <th>START</th>
+                                            <th>END</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="wo_table_body">
+                                        <tr><td colspan="7" class="text-center text-muted py-4 font-italic text-sm">Ketik kode / nama barang di sebelah kiri untuk menampilkan daftar WO...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
-                <div>
-                    <label>Shift:</label>
-                    <div class="radio-group">
-                        <label><input type="radio" name="shift" value="1" checked> 1</label>
-                        <label><input type="radio" name="shift" value="2"> 2</label>
-                        <label><input type="radio" name="shift" value="3"> 3</label>
+
+                <!-- Bottom Panel: Production History Grid -->
+                <div class="row mt-1">
+                    <div class="col-md-12">
+                        <div class="card card-success card-outline mb-0">
+                            <div class="card-header py-1 d-flex justify-content-between align-items-center bg-light">
+                                <h3 class="card-title text-sm font-weight-bold"><i class="fas fa-boxes text-muted mr-1"></i> Production Result (Grid Mode)</h3>
+                                <div class="card-tools d-flex align-items-center">
+                                    <input type="text" id="pd_lot_new" class="form-control form-control-xs mr-2 text-center text-bold" readonly placeholder="Auto Lot..." style="width: 150px;">
+                                    <button type="button" id="btn_insert_lot" class="btn btn-xs btn-success"><i class="fas fa-plus"></i> Tambah Baris Lot</button>
+                                </div>
+                            </div>
+                            <div class="card-body p-0 table-responsive">
+                                <table class="table table-sm table-bordered history-table text-nowrap m-0" style="min-width: 1200px;">
+                                    <thead>
+                                        <tr>
+                                            <th rowspan="2" style="width: 30px;" class="text-center">#</th>
+                                            <th rowspan="2" class="align-middle">LOT #</th>
+                                            <th rowspan="2" class="align-middle text-center">Act</th>
+                                            <th colspan="6" class="text-center align-middle bg-lightblue">Result</th>
+                                            <th rowspan="2" class="align-middle text-right">Purging (kg)</th>
+                                            <th rowspan="2" class="align-middle">Remark</th>
+                                            <th rowspan="2" class="align-middle">Operator</th>
+                                            <th rowspan="2" class="align-middle">PIC Line / Leader</th>
+                                            <th rowspan="2" class="align-middle">Input Date</th>
+                                            <th rowspan="2" style="width: 40px;" class="text-center align-middle">Aksi</th>
+                                        </tr>
+                                        <tr>
+                                            <th class="sub-head text-right bg-lightblue">OK</th>
+                                            <th class="sub-head text-right bg-lightblue">Hold</th>
+                                            <th class="sub-head text-center bg-lightblue" style="width: 25px;">+</th>
+                                            <th class="sub-head text-right bg-lightblue">NG</th>
+                                            <th class="sub-head text-center bg-lightblue" style="width: 25px;">+</th>
+                                            <th class="sub-head text-right bg-lightblue">DT</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="history_table_body">
+                                        <tr><td colspan="15" class="text-center text-muted py-4 font-italic text-sm">Pilih Work Order di atas untuk memuat data produksi.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div class="form-group" style="margin-top: 10px; border-top: 1px solid #ccc; padding-top: 5px;">
-                <label><strong>Cari Part Code / Part Name:</strong></label>
-                <input type="text" id="search_item" class="w-full" placeholder="Ketik minimal 2 karakter...">
-            </div>
-            <div class="form-group" style="margin-top: 5px;">
-                <label>Part Code / Item Code:</label>
-                <input type="text" id="item_code" class="w-full" readonly>
-            </div>
-            <div class="form-group">
-                <label>Part Name / Item Name:</label>
-                <input type="text" id="item_name" class="w-full" readonly>
-            </div>
-            <div class="form-group" style="display:flex; gap:10px;">
-                <div style="flex:1;">
-                    <label>Process:</label>
-                    <input type="text" id="proc_name" class="w-full" readonly>
-                    <input type="hidden" id="proc_id">
-                </div>
-                <div style="flex:1;">
-                    <label>Mac Code:</label>
-                    <input type="text" id="mac_code" class="w-full" readonly>
-                    <input type="hidden" id="mac_code_hidden">
-                </div>
-            </div>
-            <input type="hidden" id="wo_id">
-            <input type="hidden" id="wo_number">
-        </div>
-
-        <div class="top-right">
-            <table class="data-table wo-table">
-                <thead>
-                    <tr>
-                        <th>WO</th>
-                        <th>Qty</th>
-                        <th>MC</th>
-                        <th>Cap/Day</th>
-                        <th>Start</th>
-                        <th>End</th>
-                        <th>#</th>
-                    </tr>
-                </thead>
-                <tbody id="wo_table_body">
-                    <tr><td colspan="7" style="text-align:center; padding: 20px; color:#666;">Cari item di sebelah kiri...</td></tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
-
-    <div class="bottom-panel">
-        <div class="header-title" style="display:flex; justify-content:space-between; align-items:center;">
-            <span>Production Result (Grid Mode)</span>
-            <div style="display:flex; gap:5px; align-items:center;">
-                <input type="text" id="pd_lot_new" class="w-120" readonly placeholder="Auto Lot..." style="background:#fff; text-align:center; font-weight:bold;">
-                <button type="button" id="btn_insert_lot" style="background-color:#28a745; border-color:#218838;">➕ Tambah Baris Lot</button>
-            </div>
-        </div>
-
-        <div class="history-panel">
-            <table class="data-table history-table">
-                <thead>
-                    <tr>
-                        <th rowspan="2" style="width: 20px;"></th>
-                        <th rowspan="2">LOT #</th>
-                        <th rowspan="2">Act.</th>
-                        <th colspan="6" style="text-align:center;">Result</th>
-                        <th rowspan="2">Purging (kg)</th>
-                        <th rowspan="2">Remark</th>
-                        <th rowspan="2">Operator</th>
-                        <th rowspan="2">PIC LINE / LEADER</th>
-                        <th rowspan="2">Input Date</th>
-                        <th rowspan="2" style="width: 30px;">Act</th>
-                    </tr>
-                    <tr>
-                        <th class="sub-head">OK</th>
-                        <th class="sub-head">Hold</th>
-                        <th class="sub-head" style="width: 15px;">+</th>
-                        <th class="sub-head">NG</th>
-                        <th class="sub-head" style="width: 15px;">+</th>
-                        <th class="sub-head">DT</th>
-                    </tr>
-                </thead>
-                <tbody id="history_table_body">
-                    <tr><td colspan="15" style="text-align:center; color:#666;">Pilih WO untuk memuat data...</td></tr>
-                </tbody>
-            </table>
-        </div>
+        </section>
     </div>
 </div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.1/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
+
 <script>
 // Load Master Data NG Type dari PHP ke Javascript Array
 const ngMasterData = <?php echo json_encode($ng_types); ?>;
@@ -481,7 +429,7 @@ $(document).ready(function() {
         if (query.length >= 2) {
             delayTimer = setTimeout(function() {
                 $.ajax({
-                    url: 'get_wo_list.php', // Pastikan file ini sesuai di server Anda
+                    url: 'get_wo_list.php', 
                     type: 'GET',
                     data: { item_code: query },
                     dataType: 'json',
@@ -497,17 +445,17 @@ $(document).ready(function() {
                                              data-itemname="${wo.ITEM_NAME}" 
                                              data-maccode="${wo.MAC_CODE}">
                                             <td>${wo.WO_NUMBER}</td>
+                                            <td>${wo.ITEM_CODE ? wo.ITEM_CODE : '-'}</td>
                                             <td class="text-right">${wo.WO_QTY ? wo.WO_QTY : '-'}</td> 
                                             <td>${wo.MAC_CODE}</td>
                                             <td class="text-right">${wo.WO_CAP ? wo.WO_CAP : '-'}</td>
                                             <td>${wo.WO_START}</td>
                                             <td>${wo.WO_END}</td>
-                                            <td style="text-align:center;"><input type="checkbox" disabled></td>
                                          </tr>`;
                             });
                             $('#wo_table_body').html(html);
                         } else {
-                            $('#wo_table_body').html('<tr><td colspan="7" style="text-align:center;">Tidak ada data ditemukan.</td></tr>');
+                            $('#wo_table_body').html('<tr><td colspan="7" class="text-center font-italic">Tidak ada data ditemukan.</td></tr>');
                         }
                     }
                 });
@@ -519,8 +467,8 @@ $(document).ready(function() {
         let woid = $(this).data('woid');
         if(!woid) return; 
 
-        $('.wo-table tbody tr').removeClass('selected');
-        $(this).addClass('selected');
+        $('.wo-table tbody tr').removeClass('selected text-white bg-primary');
+        $(this).addClass('selected text-white bg-primary');
 
         $('#wo_id').val(woid);
         $('#wo_number').val($(this).data('wonumber'));
@@ -537,7 +485,7 @@ $(document).ready(function() {
 
     function loadHistoryGrid(woid) {
         $.ajax({
-            url: 'get_prod_history.php', // Pastikan file ini sesuai di server Anda
+            url: 'get_prod_history.php', 
             type: 'GET',
             data: { wo_id: woid },
             dataType: 'json',
@@ -545,94 +493,90 @@ $(document).ready(function() {
                 let histHtml = '';
                 if(historyData.length > 0) {
                     $.each(historyData, function(i, h) {
-                        let rowIcon = (i === 0) ? '▶' : '';
+                        let rowIcon = (i === 0) ? '<i class="fas fa-caret-right text-primary"></i>' : '';
                         
-                        let valOk = cekNol(h.PD_OK);
-                        let valHo = cekNol(h.PD_HO);
-                        let valNg = cekNol(h.PD_NG);
-                        let valDt = cekNol(h.PD_LOSTHOUR);
-                        let valSc = cekNol(h.PD_SC);
-                        
-                        let valWkh = cekNol(h.PD_WKH);
-                        let valLostHr = cekNol(h.PD_LOSTHOUR);
-                        let valSetHr = cekNol(h.PD_SETUPHOUR);
-                        let valCav = cekNol(h.PD_CAV);
-                        let valWeight = cekNol(h.PD_WEIGHT_S);
-                        let valRun = cekNol(h.PD_RUN_S);
-                        let valCytm = cekNol(h.PD_CYTM);
+                        let valOk = cekNol(h.PD_OK); let valHo = cekNol(h.PD_HO);
+                        let valNg = cekNol(h.PD_NG); let valDt = cekNol(h.PD_LOSTHOUR);
+                        let valSc = cekNol(h.PD_SC); let valWkh = cekNol(h.PD_WKH);
+                        let valLostHr = cekNol(h.PD_LOSTHOUR); let valSetHr = cekNol(h.PD_SETUPHOUR);
+                        let valCav = cekNol(h.PD_CAV); let valWeight = cekNol(h.PD_WEIGHT_S);
+                        let valRun = cekNol(h.PD_RUN_S); let valCytm = cekNol(h.PD_CYTM);
                         
                         histHtml += `<tr class="main-row" data-pdid="${h.PD_ID}">
-                                        <td style="text-align:center;" class="row-indicator">${rowIcon}</td>
-                                        <td>${h.PD_LOT}</td>
-                                        <td style="text-align:center;"><span class="box-icon btn-expand-act">+</span></td>
+                                        <td class="text-center align-middle row-indicator">${rowIcon}</td>
+                                        <td class="align-middle">${h.PD_LOT}</td>
+                                        <td class="text-center align-middle"><span class="box-icon btn-expand-act"><i class="fas fa-plus fa-xs"></i></span></td>
                                         
-                                        <td class="text-right p-0"><input type="number" class="grid-input in-ok" value="${valOk}"></td>
-                                        <td class="text-right p-0"><input type="number" class="grid-input in-ho" value="${valHo}"></td>
-                                        <td style="text-align:center;"><span class="box-icon">+</span></td>
-                                        <td class="text-right p-0"><input type="number" class="grid-input in-ng" value="${valNg}"></td>
+                                        <td class="text-right p-0"><input type="number" class="grid-input in-ok text-right" value="${valOk}"></td>
+                                        <td class="text-right p-0"><input type="number" class="grid-input in-ho text-right" value="${valHo}"></td>
+                                        <td class="text-center align-middle"><span class="box-icon"><i class="fas fa-plus fa-xs"></i></span></td>
+                                        <td class="text-right p-0"><input type="number" class="grid-input in-ng text-right" value="${valNg}"></td>
                                         
-                                        <td style="text-align:center;"><span class="box-icon btn-expand-ng">+</span></td>
+                                        <td class="text-center align-middle"><span class="box-icon btn-expand-ng"><i class="fas fa-plus fa-xs"></i></span></td>
                                         
-                                        <td class="text-right p-0"><input type="number" step="any" class="grid-input in-dt" value="${valDt}"></td>
-                                        <td class="text-right p-0"><input type="number" step="any" class="grid-input in-purging" value="${valSc}"></td>
+                                        <td class="text-right p-0"><input type="number" step="any" class="grid-input in-dt text-right" value="${valDt}"></td>
+                                        <td class="text-right p-0"><input type="number" step="any" class="grid-input in-purging text-right" value="${valSc}"></td>
                                         
                                         <td class="p-0"><input type="text" class="grid-input in-rem" value="${h.PD_REM}"></td>
                                         <td class="p-0"><input type="text" class="grid-input in-opr" value="${h.PD_OPR}"></td>
                                         <td class="p-0"><input type="text" class="grid-input in-pic" value="${h.PD_PIC_LINE}"></td>
-                                        <td>${h.PD_INPUT}</td>
-                                        <td style="text-align:center; padding: 2px;"><button type="button" class="btn-delete" data-pdid="${h.PD_ID}">X</button></td>
+                                        <td class="align-middle">${h.PD_INPUT}</td>
+                                        <td class="text-center align-middle"><button type="button" class="btn btn-xs btn-danger btn-delete" data-pdid="${h.PD_ID}"><i class="fas fa-times"></i></button></td>
                                      </tr>`;
                         
-                        // ROW UNTUK ACTUAL DATA (EXPAND 1)
-                        histHtml += `<tr class="sub-row sub-row-${h.PD_ID}" style="display:none; background-color:#e8e8e8;">
-                                        <td colspan="15" class="p-0">
-                                            <div class="actual-container">
-                                                <div style="width: 150px;"></div>
-                                                <div>
-                                                    <div class="actual-header">Actual Data</div>
-                                                    <table class="actual-table">
-                                                        <tr><td>Work.Hr</td><td><input type="number" step="any" class="grid-input-act act-wkh" value="${valWkh}"></td></tr>
-                                                        <tr><td>Lost.Hr</td><td><input type="number" step="any" class="grid-input-act act-losthr" value="${valLostHr}"></td></tr>
-                                                        <tr><td>Set.Hr</td><td><input type="number" step="any" class="grid-input-act act-sethr" value="${valSetHr}"></td></tr>
-                                                        <tr><td>Cav.</td><td><input type="number" class="grid-input-act act-cav" value="${valCav}"></td></tr>
-                                                        <tr><td>Weight.S</td><td><input type="number" step="any" class="grid-input-act act-weights" value="${valWeight}"></td></tr>
-                                                        <tr><td>Runner.S</td><td><input type="number" step="any" class="grid-input-act act-runs" value="${valRun}"></td></tr>
-                                                        <tr><td>Cyl.Tm.</td><td><input type="number" step="any" class="grid-input-act act-cytm" value="${valCytm}"></td></tr>
+                        // ROW UNTUK ACTUAL DATA
+                        histHtml += `<tr class="sub-row sub-row-${h.PD_ID}" style="display:none; background-color:#f8f9fa;">
+                                        <td colspan="15" class="p-2">
+                                            <div class="row align-items-center">
+                                                <div class="col-md-2 offset-md-1">
+                                                    <table class="table table-sm table-bordered m-0 bg-white">
+                                                        <thead class="bg-light"><tr><th colspan="2" class="text-center py-1">Actual Data</th></tr></thead>
+                                                        <tbody>
+                                                            <tr><td>Work.Hr</td><td class="p-0"><input type="number" step="any" class="grid-input-act act-wkh" value="${valWkh}"></td></tr>
+                                                            <tr><td>Lost.Hr</td><td class="p-0"><input type="number" step="any" class="grid-input-act act-losthr" value="${valLostHr}"></td></tr>
+                                                            <tr><td>Set.Hr</td><td class="p-0"><input type="number" step="any" class="grid-input-act act-sethr" value="${valSetHr}"></td></tr>
+                                                        </tbody>
                                                     </table>
                                                 </div>
-                                                <div style="flex:1;">
-                                                    <div class="actual-header" style="width: 98%;">Reasons</div>
-                                                    <input type="text" class="grid-input-act act-reason" style="width: 98%; border: 1px solid #ccc; border-top: none; padding: 5px; outline: none; background: #fff;" value="${h.PD_LOST_REASON}">
+                                                <div class="col-md-2">
+                                                    <table class="table table-sm table-bordered m-0 bg-white">
+                                                        <thead class="bg-light"><tr><th colspan="2" class="text-center py-1">Machine Params</th></tr></thead>
+                                                        <tbody>
+                                                            <tr><td>Cav.</td><td class="p-0"><input type="number" class="grid-input-act act-cav" value="${valCav}"></td></tr>
+                                                            <tr><td>Weight.S</td><td class="p-0"><input type="number" step="any" class="grid-input-act act-weights" value="${valWeight}"></td></tr>
+                                                            <tr><td>Run.S</td><td class="p-0"><input type="number" step="any" class="grid-input-act act-runs" value="${valRun}"></td></tr>
+                                                            <tr><td>Cyl.Tm</td><td class="p-0"><input type="number" step="any" class="grid-input-act act-cytm" value="${valCytm}"></td></tr>
+                                                        </tbody>
+                                                    </table>
                                                 </div>
-                                                <div style="padding-top: 15px; margin-right: 15px;">
-                                                    <button type="button" class="btn-save-act" data-pdid="${h.PD_ID}">Save<br>Actual Data</button>
+                                                <div class="col-md-5">
+                                                    <label class="text-xs">Reasons</label>
+                                                    <textarea class="form-control act-reason mb-2" rows="3">${h.PD_LOST_REASON}</textarea>
+                                                </div>
+                                                <div class="col-md-2 text-center">
+                                                    <button type="button" class="btn btn-sm btn-primary btn-save-act w-100" data-pdid="${h.PD_ID}"><i class="fas fa-save mr-1"></i> Save Data</button>
                                                 </div>
                                             </div>
                                         </td>
                                      </tr>`;
 
-                        // ROW UNTUK NG DATA DENGAN DESAIN MIRIP DESKTOP (EXPAND 2)
-                        histHtml += `<tr class="sub-row-ng sub-row-ng-${h.PD_ID}" style="display:none;">
-                                        <td colspan="15" class="p-0">
-                                            <div class="ng-panel-wrapper">
-                                                <div class="ng-panel">
-                                                    <table class="ng-grid">
-                                                        <thead>
-                                                            <tr>
-                                                                <th style="width: 220px;">NG Type</th>
-                                                                <th style="width: 90px;">NG Qty</th>
-                                                                <th style="width: 40px; text-align:center;"></th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody id="ng-tbody-${h.PD_ID}">
-                                                            <!-- Diisi via AJAX -->
-                                                        </tbody>
-                                                    </table>
-                                                    <div class="ng-toolbar-bottom">
-                                                        <!-- Ikon visual seperti di aplikasi desktop -->
-                                                        <span style="font-size:10px; letter-spacing:2px;">|◄ ◄ ► ►|</span>
-                                                        <span class="icon-btn btn-add-ng-row" data-pdid="${h.PD_ID}" title="Tambah Defect">➕</span>
-                                                        <span style="font-size:10px; letter-spacing:2px;">➖ ▲ ▼ ❌ ↻</span>
+                        // ROW UNTUK NG DATA
+                        histHtml += `<tr class="sub-row-ng sub-row-ng-${h.PD_ID}" style="display:none; background-color:#f8f9fa;">
+                                        <td colspan="15" class="p-2">
+                                            <div class="row">
+                                                <div class="col-md-5 offset-md-4">
+                                                    <div class="ng-panel shadow-sm">
+                                                        <table class="table table-sm table-bordered ng-grid mb-2 bg-white">
+                                                            <thead>
+                                                                <tr>
+                                                                    <th>NG Type</th>
+                                                                    <th style="width: 100px;">NG Qty</th>
+                                                                    <th style="width: 50px; text-align:center;"></th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody id="ng-tbody-${h.PD_ID}"></tbody>
+                                                        </table>
+                                                        <button class="btn btn-xs btn-outline-secondary btn-add-ng-row w-100" data-pdid="${h.PD_ID}"><i class="fas fa-plus"></i> Tambah Defect</button>
                                                     </div>
                                                 </div>
                                             </div>
@@ -640,7 +584,7 @@ $(document).ready(function() {
                                      </tr>`;
                     });
                 } else {
-                    histHtml = '<tr><td colspan="15" style="text-align:center; color:#666;">Data kosong. Klik "Tambah Baris Lot" untuk memulai.</td></tr>';
+                    histHtml = '<tr><td colspan="15" class="text-center py-4 text-muted font-italic text-sm">Data kosong. Klik "Tambah Baris Lot" untuk memulai.</td></tr>';
                 }
                 $('#history_table_body').html(histHtml);
                 $('#history_table_body .in-ok').first().focus();
@@ -666,19 +610,18 @@ $(document).ready(function() {
     });
 
     $(document).on('click', '.btn-delete', function() {
-        if ($(this).hasClass('btn-del-ng')) return; // Lewati jika tombol ini adalah delete untuk detail NG
+        if ($(this).hasClass('btn-del-ng')) return;
         
         let pdId = $(this).data('pdid');
-        let $trMain = $(this).closest('.main-row');
-        let $trSubAct = $('.sub-row-' + pdId);
-        let $trSubNg = $('.sub-row-ng-' + pdId);
+        let $trMain =$(this).closest('.main-row');
+        let $trSubAct =$('.sub-row-' + pdId);
+        let $trSubNg =$('.sub-row-ng-' + pdId);
 
         if (confirm("Apakah Anda yakin ingin menghapus data Lot ini?")) {
             $.post(window.location.href, { action: 'delete_detail', pd_id: pdId }, function(res) {
                 if(res.status === 'success') {
-                    $trMain.fadeOut(300, function() { $(this).remove(); });
-                    $trSubAct.remove();
-                    $trSubNg.remove();
+                    $trMain.fadeOut(300, function() {$(this).remove(); });
+                    $trSubAct.remove();$trSubNg.remove();
                 } else {
                     let msg = (res.errors && res.errors[0]) ? res.errors[0].message : "";
                     alert("Gagal menghapus data!\n" + msg);
@@ -688,39 +631,36 @@ $(document).ready(function() {
     });
 
     $(document).on('click', '.btn-expand-act', function() {
-        let $tr = $(this).closest('tr');
+        let $tr =$(this).closest('tr');
         let pdId = $tr.data('pdid');
-        let $subRow = $('.sub-row-' + pdId);
+        let $subRow =$('.sub-row-' + pdId);
         
-        $('.sub-row-ng-' + pdId).hide();
-        $tr.find('.btn-expand-ng').text('+');
+        $('.sub-row-ng-' + pdId).hide();$tr.find('.btn-expand-ng').html('<i class="fas fa-plus fa-xs"></i>');
 
         if ($subRow.is(':visible')) {
-            $subRow.hide();
-            $(this).text('+');
+            $subRow.hide();$(this).html('<i class="fas fa-plus fa-xs"></i>');
         } else {
-            $subRow.show();
-            $(this).text('-');
+            $subRow.show();$(this).html('<i class="fas fa-minus fa-xs"></i>');
             $subRow.find('.act-wkh').focus();
         }
     });
 
     $(document).on('click', '.btn-save-act', function() {
         let pdId = $(this).data('pdid');
-        let $subRow = $('.sub-row-' + pdId);
+        let $subRow =$('.sub-row-' + pdId);
         
         let postData = {
             action: 'update_actual', pd_id: pdId,
-            pd_wkh: $subRow.find('.act-wkh').val(), pd_losthr: $subRow.find('.act-losthr').val(),
-            pd_sethr: $subRow.find('.act-sethr').val(), pd_cav: $subRow.find('.act-cav').val(),
-            pd_weights: $subRow.find('.act-weights').val(), pd_runs: $subRow.find('.act-runs').val(),
-            pd_cytm: $subRow.find('.act-cytm').val(), pd_reason: $subRow.find('.act-reason').val()
+            pd_wkh: $subRow.find('.act-wkh').val(), pd_losthr:$subRow.find('.act-losthr').val(),
+            pd_sethr: $subRow.find('.act-sethr').val(), pd_cav:$subRow.find('.act-cav').val(),
+            pd_weights: $subRow.find('.act-weights').val(), pd_runs:$subRow.find('.act-runs').val(),
+            pd_cytm: $subRow.find('.act-cytm').val(), pd_reason:$subRow.find('.act-reason').val()
         };
         
         $.post(window.location.href, postData, function(res) {
             if(res.status === 'success') {
-                $subRow.find('.actual-container').css('background', '#90ee90');
-                setTimeout(() => $subRow.find('.actual-container').css('background', '#e8e8e8'), 600);
+                $subRow.find('.btn-save-act').removeClass('btn-primary').addClass('btn-success').html('<i class="fas fa-check"></i> Saved');
+                setTimeout(() => $subRow.find('.btn-save-act').removeClass('btn-success').addClass('btn-primary').html('<i class="fas fa-save mr-1"></i> Save Data'), 1500);
                 $subRow.prev('.main-row').find('.in-dt').val(postData.pd_losthr);
             } else { 
                 let msg = (res.errors && res.errors[0]) ? res.errors[0].message : "";
@@ -729,31 +669,24 @@ $(document).ready(function() {
         });
     });
 
-    
-// ==========================================
-    // NG DATA EXPAND, AUTOCOMPLETE, ENTER SAVE
-    // ==========================================
     $(document).on('click', '.btn-expand-ng', function() {
-        let $tr = $(this).closest('tr');
+        let $tr =$(this).closest('tr');
         let pdId = $tr.data('pdid');
-        let $subRowNg = $('.sub-row-ng-' + pdId);
+        let $subRowNg =$('.sub-row-ng-' + pdId);
         
-        $('.sub-row-' + pdId).hide();
-        $tr.find('.btn-expand-act').text('+');
+        $('.sub-row-' + pdId).hide();$tr.find('.btn-expand-act').html('<i class="fas fa-plus fa-xs"></i>');
 
         if ($subRowNg.is(':visible')) {
-            $subRowNg.hide();
-            $(this).text('+');
+            $subRowNg.hide();$(this).html('<i class="fas fa-plus fa-xs"></i>');
         } else {
-            $subRowNg.show();
-            $(this).text('-');
+            $subRowNg.show();$(this).html('<i class="fas fa-minus fa-xs"></i>');
             loadNgGrid(pdId);
         }
     });
 
     function loadNgGrid(pdId) {
-        let $tbody = $('#ng-tbody-' + pdId);
-        $tbody.html('<tr><td colspan="4" style="text-align:center; padding:10px; color:#666;">Loading...</td></tr>');
+        let $tbody =$('#ng-tbody-' + pdId);
+        $tbody.html('<tr><td colspan="4" class="text-center py-2 text-muted">Loading...</td></tr>');
         
         $.ajax({
             url: window.location.href,
@@ -765,26 +698,25 @@ $(document).ready(function() {
                     $tbody.empty();
                     if (res.data.length > 0) {
                         res.data.forEach(function(row) {
-                            // Lempar NGT_ID sebagai primary tracking ID (oldNgtId)
                             appendNgRow(pdId, row.NGT_ID, row.NGT_DESC, row.NGP_QTY);
                         });
                     } else {
-                        $tbody.html('<tr class="ng-empty"><td colspan="4" style="text-align:center; color:#999; font-style:italic; padding:5px;">Kosong. Klik ➕ di bawah.</td></tr>');
+                        $tbody.html('<tr class="ng-empty"><td colspan="4" class="text-center text-muted font-italic py-2">Kosong. Klik Tambah Defect di bawah.</td></tr>');
                     }
                 } else {
                     let errMsg = (res.errors && res.errors[0]) ? res.errors[0].message : "Terjadi kesalahan SQL.";
-                    $tbody.html(`<tr><td colspan="4" style="color:red; padding:10px;">${errMsg}</td></tr>`);
+                    $tbody.html(`<tr><td colspan="4" class="text-danger py-2">${errMsg}</td></tr>`);
                 }
             },
             error: function() {
-                $tbody.html('<tr><td colspan="4" style="color:red; padding:10px;">Gagal terhubung ke server.</td></tr>');
+                $tbody.html('<tr><td colspan="4" class="text-danger py-2">Gagal terhubung ke server.</td></tr>');
             }
         });
     }
 
     $(document).on('click', '.btn-add-ng-row', function() {
         let pdId = $(this).data('pdid');
-        let $tbody = $('#ng-tbody-' + pdId);
+        let $tbody =$('#ng-tbody-' + pdId);
         $tbody.find('.ng-empty').remove();
         
         appendNgRow(pdId, 0, '', '');
@@ -793,15 +725,14 @@ $(document).ready(function() {
     function appendNgRow(pdId, oldNgtId, ngDescVal, qtyVal) {
         let rowHtml = `
             <tr class="ng-row" data-oldngtid="${oldNgtId}" data-pdid="${pdId}">
-                <td style="text-align:center; font-size:10px;" class="ng-row-indicator"></td>
-                <td>
-                    <input type="text" class="ng-type-input" list="ng-datalist" value="${ngDescVal}" placeholder="...">
+                <td class="p-0">
+                    <input type="text" class="grid-input ng-type-input" list="ng-datalist" value="${ngDescVal}" placeholder="...">
                 </td>
-                <td>
-                    <input type="number" class="ng-qty-input" style="text-align:right;" value="${qtyVal}" step="any">
+                <td class="p-0">
+                    <input type="number" class="grid-input text-right ng-qty-input" value="${qtyVal}" step="any">
                 </td>
-                <td style="text-align:center; background:#f5f5f5;">
-                    <button type="button" class="btn-delete btn-del-ng" style="width: auto; padding: 2px 6px; font-size: 10px; border-radius:2px;" title="Hapus">X</button>
+                <td class="text-center align-middle p-0">
+                    <button type="button" class="btn btn-xs btn-danger btn-del-ng" title="Hapus"><i class="fas fa-times"></i></button>
                 </td>
             </tr>
         `;
@@ -812,13 +743,6 @@ $(document).ready(function() {
         }
     }
 
-    // Indikator panah dinamis saat grid di klik (Mimic Desktop)
-    $(document).on('focus', '.ng-type-input, .ng-qty-input', function() {
-        $(this).closest('tbody').find('.ng-row-indicator').text('');
-        $(this).closest('tr').find('.ng-row-indicator').text('▶');
-    });
-
-    // FUNGSI SIMPAN NG DENGAN ENTER
     function saveNgRow($tr) {
         let oldNgtId = $tr.data('oldngtid');
         let pdId = $tr.data('pdid');
@@ -827,7 +751,6 @@ $(document).ready(function() {
 
         if (!descInput) { alert("Pilih tipe NG (NG Type) terlebih dahulu!"); return; }
 
-        // Mencari ID berdasarkan ketikan (desc) dari array ngMasterData
         let ngObj = ngMasterData.find(x => x.desc.toLowerCase() === descInput.toLowerCase());
         if (!ngObj) {
             alert("Tipe NG '" + descInput + "' tidak ditemukan dalam Master Data!");
@@ -845,13 +768,13 @@ $(document).ready(function() {
             qty: qty 
         }, function(res) {
             if(res.status === 'success') {
-                $tr.css('background-color', '#90ee90');
-                setTimeout(() => { $tr.css('background-color', ''); }, 500);
+                $tr.addClass('bg-success');
+                setTimeout(() => { $tr.removeClass('bg-success'); }, 500);
                 
                 if (oldNgtId == 0) {
-                    loadNgGrid(pdId); // Refresh baris jika insert data baru
+                    loadNgGrid(pdId); 
                 } else {
-                    $tr.data('oldngtid', ngtId); // Update attribute dengan ID terbaru jika diubah
+                    $tr.data('oldngtid', ngtId); 
                 }
             } else {
                 let msg = (res.errors && res.errors[0]) ? res.errors[0].message : "";
@@ -860,15 +783,10 @@ $(document).ready(function() {
         });
     }
 
-    // Navigasi Keyboard Enter (NG Type -> Qty)
-    $(document).on('keydown', '.ng-type-input', function(e) {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            $(this).closest('tr').find('.ng-qty-input').focus();
+    $(document).on('keydown', '.ng-type-input', function(e) {         if (e.key === 'Enter') {             e.preventDefault();$(this).closest('tr').find('.ng-qty-input').focus();
         }
     });
 
-    // Navigasi Keyboard Enter (Qty -> Save ke Database)
     $(document).on('keydown', '.ng-qty-input', function(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -876,14 +794,13 @@ $(document).ready(function() {
         }
     });
 
-    // Hapus Data NG Detail
     $(document).on('click', '.btn-del-ng', function() {
-        let $tr = $(this).closest('tr');
+        let $tr =$(this).closest('tr');
         let oldNgtId = $tr.data('oldngtid');
         let pdId = $tr.data('pdid');
         
         if (oldNgtId == 0) {
-            $tr.remove(); // Hapus baris HTML jika belum pernah di-save ke DB
+            $tr.remove(); 
         } else {
             if (confirm("Yakin ingin menghapus defect ini?")) {
                 $.post(window.location.href, { action: 'delete_ng', pd_id: pdId, ngt_id: oldNgtId }, function(res) {
@@ -898,19 +815,14 @@ $(document).ready(function() {
         }
     });
 
-
-    // ==========================================
-    // KEYBOARD NAVIGATION GRID UTAMA (Sama Seperti Aslinya)
-    // ==========================================
     $(document).on('focus', '.grid-input', function() {
-        $('.row-indicator').text('');
-        $(this).closest('tr').find('.row-indicator').text('▶');
+        $('.row-indicator').html('');$(this).closest('tr').find('.row-indicator').html('<i class="fas fa-caret-right text-primary"></i>');
     });
 
     $(document).on('keydown', '.grid-input', function(e) {
-        let $this = $(this);
-        let $td = $this.closest('td');
-        let $tr = $this.closest('tr.main-row'); 
+        let $this =$(this);
+        let $td =$this.closest('td');
+        let $tr =$this.closest('tr.main-row'); 
         let colIndex = $tr.children('td').index($td);
 
         if (e.key === 'ArrowUp') {
@@ -918,9 +830,9 @@ $(document).ready(function() {
         } else if (e.key === 'ArrowDown') {
             e.preventDefault(); $tr.nextAll('.main-row').first().children('td').eq(colIndex).find('.grid-input').focus();
         } else if (e.key === 'ArrowLeft') {
-            if ($this[0].selectionStart === 0 || $this.attr('type') === 'number') { e.preventDefault(); $td.prevAll().find('.grid-input').first().focus(); }
+            if ($this[0].selectionStart === 0 || $this.attr('type') === 'number') { e.preventDefault();$td.prevAll().find('.grid-input').first().focus(); }
         } else if (e.key === 'ArrowRight') {
-            if ($this[0].selectionStart === $this.val().length || $this.attr('type') === 'number') { e.preventDefault(); $td.nextAll().find('.grid-input').first().focus(); }
+            if ($this[0].selectionStart ===$this.val().length || $this.attr('type') === 'number') { e.preventDefault();$td.nextAll().find('.grid-input').first().focus(); }
         } else if (e.key === 'Enter') {
             e.preventDefault();
             let pdId = $tr.data('pdid');
@@ -928,16 +840,15 @@ $(document).ready(function() {
             
             let postData = {
                 action: 'update_detail', pd_id: pdId,
-                pd_ok: $tr.find('.in-ok').val(), pd_ho: $tr.find('.in-ho').val(), pd_ng: $tr.find('.in-ng').val(),
-                pd_dt: dtValue, pd_purging: $tr.find('.in-purging').val(), pd_rem: $tr.find('.in-rem').val(),
-                pd_opr: $tr.find('.in-opr').val(), pd_pic: $tr.find('.in-pic').val()
+                pd_ok: $tr.find('.in-ok').val(), pd_ho: $tr.find('.in-ho').val(), pd_ng:$tr.find('.in-ng').val(),
+                pd_dt: dtValue, pd_purging: $tr.find('.in-purging').val(), pd_rem:$tr.find('.in-rem').val(),
+                pd_opr: $tr.find('.in-opr').val(), pd_pic:$tr.find('.in-pic').val()
             };
             
             $.post(window.location.href, postData, function(res) {
                 if(res.status === 'success') {
-                    $tr.css('background-color', '#90ee90');
-                    setTimeout(() => $tr.css('background-color', ''), 500);
-                    $('.sub-row-' + pdId).find('.act-losthr').val(dtValue);
+                    $tr.css('background-color', '#d4edda');
+                    setTimeout(() => $tr.css('background-color', ''), 500);$('.sub-row-' + pdId).find('.act-losthr').val(dtValue);
                 } else { 
                     let msg = (res.errors && res.errors[0]) ? res.errors[0].message : "";
                     alert("Gagal mengupdate data!\n" + msg); 
@@ -949,8 +860,8 @@ $(document).ready(function() {
     });
 
     $(document).on('keydown', '.grid-input-act', function(e) {
-        let $this = $(this);
-        let $tr = $this.closest('tr'); 
+        let $this =$(this);
+        let $tr =$this.closest('tr'); 
 
         if (e.key === 'ArrowUp') {
             e.preventDefault(); $tr.prev().find('.grid-input-act').focus();
@@ -958,13 +869,12 @@ $(document).ready(function() {
             e.preventDefault(); $tr.next().find('.grid-input-act').focus();
         } else if (e.key === 'Enter') {
             e.preventDefault();
-            $this.closest('.actual-container').find('.btn-save-act').click();
-            let $nextInput = $tr.next().find('.grid-input-act');
-            if($nextInput.length) { $nextInput.focus(); } 
+            $this.closest('.row').find('.btn-save-act').click();
+            let $nextInput =$tr.next().find('.grid-input-act');
+            if($nextInput.length) {$nextInput.focus(); } 
         }
     });
 });
 </script>
-
 </body>
 </html>

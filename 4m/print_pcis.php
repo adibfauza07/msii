@@ -304,6 +304,7 @@ function renderBox($checked) {
         <table style="width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed;">
             <tr class="text-center lbl-bold" style="font-size: 8pt; background-color: #f1f5f9;">
                 <td width="35%">CUSTOMER JUDGEMENT</td>
+                <td colspan="2" width="30%">CUSTOMER </td>
                 
                 <td colspan="3" width="35%">PT. IMC Tekno Indonesia</td>
             </tr>
@@ -316,19 +317,23 @@ function renderBox($checked) {
                         <span style="font-weight:bold; font-size:10pt;"><?php echo renderBox(isset($d['CUSTOMER_JUDGEMENT']) && ($d['CUSTOMER_JUDGEMENT'] == 0 || $d['CUSTOMER_JUDGEMENT'] === false) && $d['CUSTOMER_JUDGEMENT'] !== null && $d['CUSTOMER_JUDGEMENT'] !== ''); ?> NG</span>
                     </div>
                 </td>
+                <td width="15%">Approved</td>
+                <td width="15%">Checked</td>
                 
                 <td width="11.66%">Approved</td>
                 <td width="11.66%">Checked</td>
                 <td width="11.68%">Prepared</td>
             </tr>
             <tr style="height: 60px;">
-                
+                <td>&nbsp;</td>
+                <td>&nbsp;</td>
                 <td>&nbsp;</td>
                 <td>&nbsp;</td>
                 <td>&nbsp;</td>
             </tr>
             <tr class="text-center" style="font-size: 8pt; font-weight: bold; background: #fff;">
-                
+                <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"></td>
+                <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"></td>
                 <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"><?php echo htmlspecialchars($d['IMC_APROVE'] ? $d['IMC_APROVE'] : ''); ?></td>
                 <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"><?php echo htmlspecialchars($d['IMC_CHECKED'] ? $d['IMC_CHECKED'] : ''); ?></td>
                 <td style="vertical-align: bottom; padding: 4px 2px; border-top: 1px dashed #94a3b8 !important;"><?php echo htmlspecialchars($d['IMC_PREPARED'] ? $d['IMC_PREPARED'] : ''); ?></td>

@@ -1,5 +1,5 @@
 <?php
-require_once dirname(__DIR__) . "/config/database_ordering.php";
+require_once dirname(__DIR__) . "/config/db_plant2.php";
 
 header("Content-Type: application/json; charset=UTF-8");
 

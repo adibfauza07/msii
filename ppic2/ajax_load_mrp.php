@@ -156,12 +156,12 @@ if ($stmtPlan !== false) {
         $ittyCodeMat = trim($rowPlan['ITTY_CODE']);
        $multiplier = 1;
 // MODIFIKASI: Hapus ITTY_CODE === '01', 03 dan 05 dikali langsung (tidak dibagi 1000)
-if ($ittyCodeMat === '02') { 
+// MODIFIKASI: ITTY_CODE 02 dan 13 dibagi 1000, 03 dan 05 dikali langsung
+if ($ittyCodeMat === '02' || $ittyCodeMat === '13') { 
     $multiplier = $nw / 1000; 
 } elseif ($ittyCodeMat === '03' || $ittyCodeMat === '05') { 
     $multiplier = $nw; 
 }
-
         $totalRow = 0;
         for ($i = 1; $i <= 31; $i++) {
             $val = round(((float)$rowPlan['D'.$i] * $multiplier), 4); 
@@ -212,12 +212,12 @@ if ($stmtAct !== false) {
         
         $multiplier = 1;
 // MODIFIKASI: Hapus ITTY_CODE === '01', 03 dan 05 dikali langsung (tidak dibagi 1000)
-if ($ittyCodeMat === '02') { 
+// MODIFIKASI: ITTY_CODE 02 dan 13 dibagi 1000, 03 dan 05 dikali langsung
+if ($ittyCodeMat === '02' || $ittyCodeMat === '13') { 
     $multiplier = $nw / 1000; 
 } elseif ($ittyCodeMat === '03' || $ittyCodeMat === '05') { 
     $multiplier = $nw; 
 }
-
         $val = round(((float)$rowAct['TOTAL_ACT'] * $multiplier), 4);
         $results[$matCode]['rows']['Used Act']['D'.$day] += $val;
         $results[$matCode]['rows']['Used Act']['G_TOTAL'] += $val;

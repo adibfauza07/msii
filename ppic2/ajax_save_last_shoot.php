@@ -34,22 +34,33 @@ if ($prevBulan == 0) {
 }
 
 try {
-    // --- LOGIKA UPSERT (UPDATE OR INSERT) UNTUK SQL SERVER 2008 ---
+    // --- LOGIKA UPSERT (UPDATE OR INSERT) YANG SOLID UNTUK SQL SERVER ---
+    // SET NOCOUNT ON mencegah PHP bingung membaca result set jumlah baris
     $sql = "
-        UPDATE MATRIX_LAST_SHOOT 
-        SET LAST_SHOOT = ? 
-        WHERE TAHUN = ? AND BULAN = ? AND MAC_CODE = ? AND ITEM_CODE = ?;
-        
-        IF @@ROWCOUNT = 0
+        SET NOCOUNT ON;
+        IF EXISTS (SELECT 1 FROM MATRIX_LAST_SHOOT WHERE TAHUN = ? AND BULAN = ? AND MAC_CODE = ? AND ITEM_CODE = ?)
+        BEGIN
+            UPDATE MATRIX_LAST_SHOOT 
+            SET LAST_SHOOT = ? 
+            WHERE TAHUN = ? AND BULAN = ? AND MAC_CODE = ? AND ITEM_CODE = ?;
+        END
+        ELSE
         BEGIN
             INSERT INTO MATRIX_LAST_SHOOT (TAHUN, BULAN, MAC_CODE, ITEM_CODE, LAST_SHOOT)
             VALUES (?, ?, ?, ?, ?);
         END
     ";
     
-    // Parameter diulang dua kali: 5 untuk UPDATE, 5 untuk INSERT
+    // Total 14 Parameter (?)
+    // 4 Param untuk IF EXISTS
+    // 5 Param untuk UPDATE
+    // 5 Param untuk INSERT
     $params = array(
+        // Untuk IF EXISTS
+        $prevTahun, $prevBulan, $macCode, $itemCode,
+        // Untuk UPDATE
         $lastShoot, $prevTahun, $prevBulan, $macCode, $itemCode,
+        // Untuk INSERT
         $prevTahun, $prevBulan, $macCode, $itemCode, $lastShoot
     );
     

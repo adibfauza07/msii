@@ -498,15 +498,18 @@ if ($action === 'excel') {
 
     echo "\xEF\xBB\xBF";
     echo '<html><head><meta charset="UTF-8"><style>';
-    echo 'table{border-collapse:collapse;font-family:Arial;font-size:10pt}td,th{border:1px solid #999;padding:4px;mso-number-format:"\\@"}.title{font-size:16pt;font-weight:bold;text-align:center}.customer{background:#dbeafe;color:#1e3a8a;font-weight:bold}.part{background:#e8eaf6;color:#1a237e;font-weight:bold}.head{background:#37474f;color:#fff;font-weight:bold}.subtotal{background:#f3f4f6;font-weight:bold}.money{mso-number-format:"#,##0.00"}</style></head><body>';
+    // Garis Excel tipis standar (.5pt solid #000000)
+    echo 'table{border-collapse:collapse;font-family:Arial;font-size:10pt}td,th{border:.5pt solid #000000;padding:4px;mso-number-format:"\\@"}.title{font-size:16pt;font-weight:bold;text-align:center}.customer{background:#dbeafe;color:#1e3a8a;font-weight:bold}.part{background:#e8eaf6;color:#1a237e;font-weight:bold}.head{background:#37474f;color:#fff;font-weight:bold}.subtotal{background:#f3f4f6;font-weight:bold}.money{mso-number-format:"#,##0.00"}</style></head><body>';
     echo '<table>';
-    echo '<tr><td colspan="25" class="title">MCS PRODUCTION - ' . h($plantDisplay) . '</td></tr>';
-    echo '<tr><td colspan="25">Harga material dikonversi ke IDR berdasarkan PO terakhir dan kurs pada tanggal PO.</td></tr>';
+    
+    // Total kolom = 22 (karena Customer Code, Abbr, dan Comp sudah dihilangkan)
+    echo '<tr><td colspan="22" class="title">MCS PRODUCTION - ' . h($plantDisplay) . '</td></tr>';
+    echo '<tr><td colspan="22">Harga material dikonversi ke IDR berdasarkan PO terakhir dan kurs pada tanggal PO.</td></tr>';
     echo '<tr class="head">';
 
+    // Susunan kolom dibuat mendatar seperti tampilan di web
     $headers = array(
-        'No', 'Customer Code', 'Customer Abbr', 'Customer Company', 'Part Code', 'Part Name',
-        'Tonase', 'Cycle Time', 'Cavity', 'Part Weight', 'Runner Weight', 'RCLY', 'Prod Unit',
+        'No', 'Part Code', 'Part Name', 'Tonase', 'Cycle', 'Cavity', 'Part Weight', 'Runner Weight', 'RCLY', 'Prod Unit',
         'Material Code', 'Material Name', 'ITTY', 'BOM Qty', 'BOM Unit', 'Harga Asli', 'Curr',
         'Kurs', 'Harga IDR', 'Total Material IDR', 'Trial Date', 'Trial Remark'
     );
@@ -516,37 +519,29 @@ if ($action === 'excel') {
     $currentCustomer = null;
     $currentPart = null;
     $no = 1;
-    $subtotalPart = 0;
 
     foreach ($dataRows as $row) {
         $ckey = customer_key($row);
         $pkey = isset($row['PART_ID']) ? (string)$row['PART_ID'] : '';
 
         if ($ckey !== $currentCustomer) {
-            if ($currentPart !== null) {
-                echo '<tr class="subtotal"><td colspan="22">TOTAL HARGA SATUAN PART</td><td class="money">' . number_format($subtotalPart, 2, '.', '') . '</td><td colspan="2"></td></tr>';
-            }
             $currentCustomer = $ckey;
             $currentPart = null;
-            $subtotalPart = 0;
-            echo '<tr class="customer"><td colspan="25">CUSTOMER: ' . h(customer_label($row)) . '</td></tr>';
+            echo '<tr class="customer"><td colspan="22">CUSTOMER: ' . h(customer_label($row)) . '</td></tr>';
         }
 
         if ($pkey !== $currentPart) {
-            if ($currentPart !== null) {
-                echo '<tr class="subtotal"><td colspan="22">TOTAL HARGA SATUAN PART</td><td class="money">' . number_format($subtotalPart, 2, '.', '') . '</td><td colspan="2"></td></tr>';
-            }
             $currentPart = $pkey;
-            $subtotalPart = 0;
             $no = 1;
-            echo '<tr class="part"><td colspan="25">PART: ' . h($row['PART_CODE']) . ' - ' . h($row['PART_NAME']) . '</td></tr>';
+            // Header PART dibuat rapi, cukup Code & Name seperti di web
+            echo '<tr class="part"><td colspan="22">PART: ' . h($row['PART_CODE']) . ' - ' . h($row['PART_NAME']) . '</td></tr>';
         }
-
-        $subtotalPart += (float)$row['TOTAL_MATERIAL_IDR'];
 
         echo '<tr>';
         $values = array(
-            $no++, $row['CUST_CODE'], $row['CUST_ABBR'], $row['CUST_COMP'], $row['PART_CODE'], $row['PART_NAME'],
+            $no++, 
+            $row['PART_CODE'], 
+            $row['PART_NAME'],
             number_format((float)$row['TONASE'], 0, '', ''),
             number_format((float)$row['ITEM_CYTM'], 2, '.', ''),
             number_format((float)$row['ITEM_CAVT'], 2, '.', ''),
@@ -554,24 +549,34 @@ if ($action === 'excel') {
             number_format((float)$row['ITEM_RWEIGHT'], 2, '.', ''),
             number_format((float)$row['ITEM_RCLY'], 2, '.', ''),
             $row['PROD_UNIT'],
-            $row['MAT_CODE'], $row['MAT_NAME'], $row['MAT_ITTY_CODE'], $row['BOM_QTY'], $row['BOM_UNIT'], $row['HARGA_ASLI'], $row['MATA_UANG'],
-            $row['KURS_VRATE'], $row['HARGA_IDR'], $row['TOTAL_MATERIAL_IDR'], fmt_date($row['TRIAL_DATE']), $row['TRIAL_REM']
+            $row['MAT_CODE'], 
+            $row['MAT_NAME'], 
+            $row['MAT_ITTY_CODE'], 
+            $row['BOM_QTY'], 
+            $row['BOM_UNIT'], 
+            $row['HARGA_ASLI'], 
+            $row['MATA_UANG'],
+            $row['KURS_VRATE'], 
+            $row['HARGA_IDR'], 
+            $row['TOTAL_MATERIAL_IDR'], 
+            fmt_date($row['TRIAL_DATE']), 
+            $row['TRIAL_REM']
         );
+        
         foreach ($values as $index => $value) {
-            $class = in_array($index, array(18, 20, 21, 22), true) ? ' class="money"' : '';
+            // Index format uang disesuaikan: Harga Asli (15), Kurs (17), Harga IDR (18), Total Material (19)
+            $class = in_array($index, array(15, 17, 18, 19), true) ? ' class="money"' : '';
             echo '<td' . $class . '>' . h($value) . '</td>';
         }
         echo '</tr>';
     }
 
-    if ($currentPart !== null) {
-        echo '<tr class="subtotal"><td colspan="22">TOTAL HARGA SATUAN PART</td><td class="money">' . number_format($subtotalPart, 2, '.', '') . '</td><td colspan="2"></td></tr>';
-    }
-
-    echo '<tr class="subtotal"><td colspan="22">GRAND TOTAL IDR</td><td class="money">' . number_format($totalHarga, 2, '.', '') . '</td><td colspan="2"></td></tr>';
+    // Colspan 19 akan mendorong sel Grand Total tepat di bawah kolom "Total Material IDR" (Kolom ke-20)
+    echo '<tr class="subtotal"><td colspan="19">GRAND TOTAL IDR</td><td class="money">' . number_format($totalHarga, 2, '.', '') . '</td><td colspan="2"></td></tr>';
     echo '</table></body></html>';
     exit;
 }
+
 
 function build_query_string($overrides) {
     $data = $_GET;

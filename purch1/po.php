@@ -487,6 +487,32 @@ if ($stmtSup !== false) {
     }
 }
 
+/* PO AUTO COMPLETE UNTUK SEARCH */
+$poAuto = array();
+$sqlPoAuto = "
+    SELECT TOP 500
+        P.PO_ID,
+        P.PO_NUM,
+        P.PO_DATE,
+        S.SUP_CODE,
+        S.SUP_COMP
+    FROM dbo.PO P
+    LEFT JOIN dbo.SUPPLIER S ON P.SUP_ID = S.SUP_ID
+    ORDER BY P.PO_DATE DESC, P.PO_NUM DESC
+";
+$stmtPoAuto = sqlsrv_query($conn, $sqlPoAuto);
+if ($stmtPoAuto !== false) {
+    while ($pa = sqlsrv_fetch_array($stmtPoAuto, SQLSRV_FETCH_ASSOC)) {
+        $poAuto[] = array(
+            "PO_ID" => intval($pa["PO_ID"]),
+            "PO_NUM" => trim((string)$pa["PO_NUM"]),
+            "PO_DATE" => fmt_date_view($pa["PO_DATE"]),
+            "SUP_CODE" => trim((string)$pa["SUP_CODE"]),
+            "SUP_COMP" => trim((string)$pa["SUP_COMP"])
+        );
+    }
+}
+
 /* OS REQ DATA FILTER BY QUOTATION */
 $osReqAuto = array();
 $sqlOS = "
@@ -644,165 +670,156 @@ if (count($details) == 0) {
 <meta charset="utf-8">
 <title>Purchase Order</title>
 <style>
-        /* ==== CSS UNIVERSAL - RESPONSIVE, SIMPLE & MENARIK ==== */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-        html, body { 
-            margin: 0; padding: 0; 
-            background-color: #f0f2f5; 
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            font-size: 13px; color: #374151; 
-        }
-        
-        /* Container Responsif */
-        .wrap { 
-            padding: 20px; 
-            max-width: 100%; 
-            margin: 0 auto; 
-            box-sizing: border-box; 
-            overflow-x: auto; /* Memungkinkan scroll horizontal jika layar terlalu kecil */
+        /* ==== CSS UNIVERSAL - COMPACT, MINIMALIS, FIT TO FONT ==== */
+        html, body {
+            margin: 0; padding: 0;
+            background-color: #f4f6f9;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 11px; color: #333;
         }
 
-        .page-title { 
-            background: #ffffff; color: #1f2937; 
-            font-size: 22px; font-weight: 700; 
-            padding: 15px 25px; margin: -20px -20px 20px -20px; 
-            border-bottom: 1px solid #e5e7eb; 
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05); 
+        .wrap {
+            background: #fff;
+            padding: 15px 20px;
+            margin: 15px auto;
+            max-width: 98%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            overflow-x: auto;
         }
-        
-        /* Tombol Modern & Sederhana */
-        .top-buttons, .bottom-buttons, .header-toolbar { 
-            display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; align-items: center;
+
+        .page-title {
+            font-size: 15px; font-weight: bold; color: #333;
+            border-bottom: 2px solid #28a745;
+            padding-bottom: 8px; margin: -5px -5px 15px -5px;
+            text-transform: uppercase;
         }
-        .bottom-buttons { margin-top: 20px; justify-content: space-between; background: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb; }
-        
-        .btn { 
-            height: 36px; padding: 0 16px; border: 1px solid transparent; border-radius: 6px; 
-            background: #ffffff; color: #4b5563; font-family: inherit; font-size: 13px; font-weight: 600; 
-            cursor: pointer; display: inline-flex; align-items: center; justify-content: center; 
-            transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.05); border-color: #d1d5db;
-            text-decoration: none;
+        .page-title::before { content: "🛒 Manajemen "; } 
+
+        /* === GABUNGAN ACTION BUTTON & SEARCH BOX === */
+        .top-action-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;
+            padding: 8px 12px; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;
         }
-        .btn:hover { background: #f3f4f6; color: #111827; }
+        .action-buttons { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
         
-        .btn-save { background: #10b981; color: #ffffff; border-color: #10b981; }
-        .btn-save:hover { background: #059669; border-color: #059669; color: #ffffff; }
-        
-        .btn-del { background: #ef4444; color: #ffffff; border-color: #ef4444; }
-        .btn-del:hover { background: #dc2626; border-color: #dc2626; color: #ffffff; }
-        
-        .btn-x { background: #fee2e2; color: #ef4444; width: 32px; padding: 0; font-weight: bold; border-color: transparent; }
-        .btn-x:hover { background: #ef4444; color: #ffffff; }
-        
-        .btn-po, .btn-os { background: #e0f2fe; color: #0284c7; border-color: transparent; }
-        .btn-po:hover, .btn-os:hover { background: #0284c7; color: #ffffff; }
+        .search-box form { display: flex; align-items: center; gap: 5px; margin: 0; white-space: nowrap; }
+        .search-box input { width: 220px !important; margin: 0; }
+
+        .bottom-buttons { margin-top: 15px; justify-content: space-between; border-top: 1px solid #ddd; padding-top: 10px; display: flex; gap: 5px; }
+        .header-toolbar { display: flex; gap: 5px; margin-bottom: 15px; align-items: center; flex-wrap: wrap; }
+
+        .btn {
+            height: 24px; padding: 0 10px; border: 1px solid #ccc; border-radius: 3px;
+            background: #fff; color: #333; font-family: inherit; font-size: 11px; font-weight: bold;
+            cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+            text-decoration: none; text-transform: uppercase; transition: background 0.1s;
+        }
+        .btn:hover { background: #e2e6ea; }
+
+        .btn-save { background: #28a745; color: #fff; border-color: #28a745; }
+        .btn-save:hover { background: #218838; }
+
+        .btn-del { background: #dc3545; color: #fff; border-color: #dc3545; }
+        .btn-del:hover { background: #c82333; }
+
+        .btn-x { background: #dc3545; color: #fff; width: 22px; padding: 0; border: none; border-radius: 3px; }
+        .btn-x:hover { background: #c82333; }
+
+        .btn-po, .btn-os { background: #17a2b8; color: #fff; border-color: #17a2b8; }
+        .btn-po:hover, .btn-os:hover { background: #138496; }
 
         /* Notifikasi */
-        .msg { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; }
-        .err { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; white-space: pre-wrap; }
-        
-        /* Area Form Header */
-        .label { display: block; margin-bottom: 6px; font-weight: 600; color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-        
-        table.form-table, table.bc-table { 
-            width: 100%; border-collapse: separate; border-spacing: 12px; 
-            background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; 
-            padding: 10px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
-        }
-        table.form-table td, table.bc-table td { vertical-align: top; padding: 0; }
-        
-        /* Input Field Styling (Fluid Width) */
-        input[type=text], input[type=date], select, textarea { 
-            width: 100% !important; /* Paksa responsif mengikuti lebar TD */
-            height: 36px; border: 1px solid #d1d5db; border-radius: 6px; 
-            padding: 6px 12px; font-family: inherit; font-size: 13px; box-sizing: border-box; 
-            background: #ffffff; color: #1f2937; transition: all 0.2s ease; 
-        }
-        input[type=text]:focus, input[type=date]:focus, select:focus, textarea:focus { 
-            outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); 
-        }
-        textarea { height: 60px; resize: vertical; line-height: 1.5; }
-        
-        input[readonly], input[style*="background:#f9f9f9"], input[style*="background:#ddd;"] { 
-            background: #f3f4f6 !important; color: #6b7280; cursor: not-allowed; 
-        }
-        input[type=checkbox] { width: 16px; height: 16px; accent-color: #3b82f6; vertical-align: middle; cursor: pointer; }
-        label { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+        .msg { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 8px 12px; border-radius: 3px; margin-bottom: 15px; }
+        .err { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 8px 12px; border-radius: 3px; margin-bottom: 15px; white-space: pre-wrap; }
 
-        /* Area Tabel Data (Detail & Grid) */
-        table.detail, table.grid { 
-            width: 100%; min-width: 900px; /* Minimal lebar agar tidak hancur di HP, akan otomatis bisa di-scroll berkat .wrap / .grid-wrap */
-            border-collapse: collapse; background: #ffffff; 
-            border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; 
+        /* Area Form Header */
+        .label { display: block; margin-bottom: 3px; font-weight: normal; color: #555; font-size: 10px; text-transform: capitalize; }
+
+        table.form-table, table.bc-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+        table.form-table td, table.bc-table td { padding: 0 15px 10px 0; vertical-align: top; }
+
+        /* Input Field Styling */
+        input[type=text], input[type=date], select, textarea {
+            width: 100% !important;
+            height: 24px; border: 1px solid #ccc; border-radius: 3px;
+            padding: 2px 6px; font-family: inherit; font-size: 11px; box-sizing: border-box;
+            background: #fff; color: #333;
         }
-        table.detail th, table.grid th { 
-            background: #f9fafb; color: #4b5563; border: 1px solid #e5e7eb; 
-            padding: 10px 12px; text-align: left; font-weight: 600; font-size: 12px; 
+        input[type=text]:focus, input[type=date]:focus, select:focus, textarea:focus {
+            outline: none; border-color: #80bdff; box-shadow: 0 0 0 0.1rem rgba(0,123,255,.25);
         }
-        table.detail td, table.grid td { 
-            border: 1px solid #e5e7eb; padding: 4px 6px; vertical-align: middle; 
+        textarea { height: 35px; resize: vertical; }
+
+        input[readonly], input[style*="background:#f9f9f9"], input[style*="background:#ddd;"] {
+            background: #e9ecef !important; color: #495057; cursor: not-allowed;
         }
-        
-        /* Input transparan di dalam tabel */
-        table.detail input { 
-            width: 100%; height: 30px; border: 1px solid transparent; 
-            padding: 4px 8px; border-radius: 4px; background: transparent; 
+        input[type=checkbox] { width: 12px; height: 12px; vertical-align: middle; cursor: pointer; margin: 0 4px 0 0; }
+        label { cursor: pointer; display: inline-flex; align-items: center; font-weight: normal; color: #333; margin-right: 10px; font-size: 11px; }
+
+        /* Batasi lebar maksimal input header */
+        .po-no, .rcv-no, .reqno { max-width: 150px; }
+        .date { max-width: 120px; }
+        .supplier-code, .sup-code { max-width: 100px; }
+        .cur, .curr { max-width: 80px; }
+        .term { max-width: 250px; }
+
+        /* Area Tabel Data */
+        table.detail, table.grid {
+            width: 100%; min-width: 800px;
+            border-collapse: collapse; background: #fff;
+            border: 1px solid #dee2e6; margin-bottom: 10px;
         }
-        table.detail input:focus { border-color: #3b82f6; background: #ffffff; }
-        table.detail input:hover:not([readonly]) { border-color: #d1d5db; }
-        
-        tr.detail-selected td { background: #eff6ff; }
-        table.grid tr:hover td { background: #f3f4f6; cursor: pointer; }
-        
+        table.detail th, table.grid th {
+            background: #e9ecef; color: #495057; border: 1px solid #dee2e6;
+            padding: 4px 6px; text-align: left; font-weight: bold; font-size: 11px;
+        }
+        table.detail td, table.grid td {
+            border: 1px solid #dee2e6; padding: 2px 4px; vertical-align: middle; font-size: 11px;
+        }
+        table.detail input {
+            width: 100%; height: 20px; border: 1px solid transparent;
+            padding: 0 4px; background: transparent; border-radius: 2px;
+        }
+        table.detail input:focus { border-color: #80bdff; background: #fff; }
+        table.detail input:hover:not([readonly]) { border-color: #ccc; }
+
+        tr.detail-selected td { background: #f8f9fa; }
+        table.grid tr:hover td { background: #f4f6f9; cursor: pointer; }
+
         .num { text-align: right; }
         .center { text-align: center; }
-        .action-cell { display: flex; justify-content: center; align-items: center; gap: 6px; }
+        .action-cell { display: flex; justify-content: center; align-items: center; gap: 4px; }
 
-        /* Area Pencarian */
-        .search-area { 
-            margin-top: 30px; background: #ffffff; padding: 15px; border-radius: 8px; 
-            border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; 
+        .grid-wrap {
+            width: 100%; max-height: 250px; overflow: auto;
+            border: 1px solid #dee2e6; margin-top: 10px; background: #fff;
         }
-        .search-area input { max-width: 350px; }
-        
-        .grid-wrap { 
-            width: 100%; max-height: 400px; overflow: auto; border-radius: 8px; 
-            border: 1px solid #e5e7eb; margin-top: 15px; background: #ffffff; 
-        }
-        .go-btn { color: #3b82f6; font-weight: bold; font-size: 14px; }
+        .go-btn { color: #007bff; font-weight: bold; font-size: 12px; }
 
-        /* Autocomplete Modern */
-        .ac-box { 
-            position: absolute; z-index: 9999; background: #ffffff; border: 1px solid #d1d5db; 
-            border-radius: 6px; max-height: 250px; overflow-y: auto; min-width: 320px; 
-            display: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 5px 0; 
+        /* Autocomplete */
+        .ac-box {
+            position: absolute; z-index: 9999; background: #fff; border: 1px solid #ccc;
+            border-radius: 3px; max-height: 200px; overflow-y: auto; min-width: 250px;
+            display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 0;
         }
-        .ac-item { padding: 8px 12px; cursor: pointer; transition: background 0.1s; }
-        .ac-item:hover, .ac-item.active { background: #3b82f6; color: #ffffff; }
-        
-        /* === MEDIA QUERY UNTUK HP / LAYAR KECIL === */
-        @media (max-width: 768px) {
-            table.form-table td, table.bc-table td { 
-                display: block; width: 100% !important; padding-bottom: 10px; 
-            }
-            table.form-table tr, table.bc-table tr { 
-                display: block; margin-bottom: 0; 
-            }
-            .search-area input { max-width: 100%; }
-        }
+        .ac-item { padding: 4px 8px; cursor: pointer; border-bottom: 1px solid #f4f4f4; font-size: 11px; }
+        .ac-item:hover, .ac-item.active { background: #007bff; color: #fff; }
 
         /* Mode Print */
         @media print {
-            body { background: #ffffff; padding: 0; }
-            .no-print, .top-buttons, .bottom-buttons, .search-area, .header-toolbar { display: none !important; }
-            .wrap { padding: 0; }
-            table.form-table, table.detail { border: none; box-shadow: none; }
+            body { background: #fff; padding: 0; }
+            .no-print, .top-action-bar, .bottom-buttons, .header-toolbar { display: none !important; }
+            .wrap { border: none; padding: 0; margin: 0; box-shadow: none; }
         }
 </style>
 <script>
 var supplierData = <?php echo json_encode($supplierAuto); ?>;
 var osReqData = <?php echo json_encode($osReqAuto); ?>;
+var poData = <?php echo json_encode($poAuto); ?>;
+
 var acBox=null, acItems=[], acIndex=-1, acMode="", acRow=-1, supplierTarget="sup";
 var rowSeq=<?php echo count($details); ?>;
 var selectedDetailRow=null;
@@ -842,6 +859,31 @@ function renumberRows(){var rows=byId("detailBody").getElementsByTagName("tr");f
 function showReceive(){var poNum=byId("po_num").value;if(!poNum){alert("Pilih / simpan PO dulu.");return;}var tr=selectedDetailRow;if(!tr){var rows=byId("detailBody").getElementsByTagName("tr");if(rows.length>0)tr=rows[0];}if(!tr){alert("Pilih detail item dulu.");return;}var itemInput=tr.querySelector('input[name="item_id[]"]');var itemId=itemInput?itemInput.value:"";if(!itemId||itemId=="0"){alert("Pilih detail item dulu.");return;}window.open("po.php?action=receive_view&po_num="+encodeURIComponent(poNum)+"&item_id="+encodeURIComponent(itemId),"RECEIVE_LIST","width=760,height=420,scrollbars=yes,resizable=yes");}
 function printPO(){var poId=byId("po_id").value;if(!poId||poId=="0"){alert("Pilih / simpan PO dulu.");return;}window.open("print_po.php?po_id="+encodeURIComponent(poId),"PRINT_PO","width=900,height=700,scrollbars=yes,resizable=yes");}
 
+/* Fungsi Autocomplete untuk PO Search */
+function showPOAC(input) {
+    initAC();
+    var key = (input.value || "").toUpperCase();
+    acMode = "po"; acItems = []; acIndex = -1;
+    if(key.length < 1){ hideAC(); return; }
+
+    for(var i=0; i<poData.length; i++) {
+        var p = poData[i];
+        var text = (p.PO_NUM || "") + " " + (p.PO_DATE || "") + " " + (p.SUP_CODE || "") + " " + (p.SUP_COMP || "");
+        if(text.toUpperCase().indexOf(key) >= 0) { acItems.push(p); }
+        if(acItems.length >= 30) break;
+    }
+    
+    positionAC(input);
+    renderAC(function(p){ return "<b>"+p.PO_NUM+"</b> - "+p.PO_DATE+" - "+p.SUP_CODE+" "+p.SUP_COMP; }, pickPO);
+}
+function poSearchKey(e, input) {
+    if(e.key === "ArrowDown") { e.preventDefault(); if(acMode !== "po" || acItems.length == 0) showPOAC(input); acMove(1, function(p){ return "<b>"+p.PO_NUM+"</b> - "+p.PO_DATE+" - "+p.SUP_CODE+" "+p.SUP_COMP; }, pickPO); return false; }
+    if(e.key === "ArrowUp") { e.preventDefault(); if(acMode !== "po" || acItems.length == 0) showPOAC(input); acMove(-1, function(p){ return "<b>"+p.PO_NUM+"</b> - "+p.PO_DATE+" - "+p.SUP_CODE+" "+p.SUP_COMP; }, pickPO); return false; }
+    if(e.key === "Enter") { if(acMode === "po" && acItems.length > 0) { e.preventDefault(); acEnter(pickPO); return false; } return true; }
+    if(e.key === "Escape") { hideAC(); }
+}
+function pickPO(p) { hideAC(); window.location.href = "po.php?edit=" + encodeURIComponent(p.PO_ID); }
+
 document.addEventListener("DOMContentLoaded",function(){var rows=document.querySelectorAll("#detailBody tr");for(var i=0;i<rows.length;i++){rows[i].onclick=function(){selectDetailRow(this);};}});
 document.addEventListener("click",function(e){initAC();if(acBox&&!acBox.contains(e.target)){if(!e.target||!e.target.getAttribute||e.target.getAttribute("autocomplete")!=="off")hideAC();}});
 </script>
@@ -852,11 +894,22 @@ document.addEventListener("click",function(e){initAC();if(acBox&&!acBox.contains
 <?php if ($message != "") { ?><div class="msg"><?php echo h($message); ?></div><?php } ?>
 <?php if ($error != "") { ?><div class="err"><?php echo h($error); ?></div><?php } ?>
 
-<div class="top-buttons">
-<button type="button" class="btn" onclick="newData()">NEW</button>
-<button type="submit" form="poForm" class="btn btn-save">SAVE PO</button>
-<button type="button" class="btn btn-del" onclick="deleteCurrent()">DELETE</button>
-<a href="dashboard_purch.php" class="btn">CLOSE</a>
+<div class="top-action-bar no-print">
+    <div class="action-buttons">
+        <button type="button" class="btn" onclick="newData()">NEW</button>
+        <button type="submit" form="poForm" class="btn btn-save">SAVE PO</button>
+        <button type="button" class="btn btn-del" onclick="deleteCurrent()">DELETE</button>
+        <a href="dashboard_purch.php" class="btn">CLOSE</a>
+    </div>
+    <div class="search-box">
+        <form method="get" action="po.php" id="searchForm">
+            <span style="font-weight:bold; margin-right:5px; color:#555;">Search:</span>
+            <!-- FIX: Tambahkan autocomplete="off" oninput="showPOAC(this)" onkeydown="poSearchKey(event, this)" id="po_search" -->
+            <input type="text" name="q" id="po_search" value="<?php echo h($q); ?>" placeholder="PO No / Supplier" autocomplete="off" oninput="showPOAC(this)" onkeydown="poSearchKey(event, this)">
+            <button type="submit" class="btn">SEARCH</button>
+            <a href="po.php" class="btn">ALL</a>
+        </form>
+    </div>
 </div>
 
 <form id="poForm" method="post" action="po.php">
@@ -956,15 +1009,6 @@ $amount=isset($d["POD_AMOUNT"])?floatval($d["POD_AMOUNT"]):($qty*$price);
 <input type="hidden" name="action" value="delete">
 <input type="hidden" name="po_id" id="delete_po_id" value="">
 </form>
-
-<div class="search-area">
-<form method="get" action="po.php" id="searchForm">
-Search:
-<input type="text" name="q" value="<?php echo h($q); ?>" style="width:250px;" placeholder="PO No / Supplier">
-<button type="submit" class="btn">SEARCH</button>
-<a href="po.php" class="btn">ALL</a>
-</form>
-</div>
 
 <div class="grid-wrap">
 <table class="grid">

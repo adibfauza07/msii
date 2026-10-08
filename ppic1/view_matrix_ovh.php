@@ -433,9 +433,15 @@ $(document).ready(function() {
                 success: function(res) {
                     inputField.prop('disabled', false);
                     if(res.status === 'success') {
+                        // Beri tanda warna hijau bahwa data berhasil disimpan
                         inputField.addClass('edit-success');
-                        setTimeout(function(){ inputField.removeClass('edit-success'); }, 2000);
-                        $('#btnLoadMatrix').click(); 
+                        inputField.blur(); // Hilangkan kursor dari input setelah save
+                        
+                        setTimeout(function(){ 
+                            inputField.removeClass('edit-success'); 
+                        }, 2000);
+                        
+                        // $('#btnLoadMatrix').click(); <-- BARIS INI DIHAPUS AGAR TIDAK RELOAD
                     } else {
                         alert("Gagal: " + res.message);
                         inputField.addClass('edit-error');
@@ -450,6 +456,7 @@ $(document).ready(function() {
             });
         }
     });
+	
 
     // --- 6. EVENT KLIK MODAL: RINCIAN DOKUMEN ---
     $('#tblMatrix').on('click', '.ovh-link', function(e) {

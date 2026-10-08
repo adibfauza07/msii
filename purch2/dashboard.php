@@ -18,212 +18,153 @@ function h($value) {
 }
 ?>
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>PURCHASING System - Plant 2</title>
+
+    <!-- Google Font: Source Sans Pro -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <!-- Theme style (AdminLTE 3) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
 
     <style>
         html, body {
-            margin: 0;
-            padding: 0;
-            width: 100%;
             height: 100%;
-            background: #d4d0c8;
-            font-family: Tahoma, Arial, sans-serif;
-            font-size: 12px;
-            color: #000000;
-            overflow: hidden;
+            margin: 0;
+            overflow: hidden; /* Mencegah scroll ganda dengan iframe */
+            background-color: #f4f6f9;
         }
 
-        .layout {
-            display: flex;
-            width: 100%;
-            height: 100vh;
-        }
-
-        .sidebar {
-            width: 230px;
-            min-width: 230px;
-            height: 100vh;
-            background: #1d2a3d;
-            color: #ffffff;
-            box-sizing: border-box;
-            padding: 18px 14px;
-            overflow-y: auto;
-        }
-
-        .sidebar-title {
-            font-size: 16px;
-            font-weight: bold;
-            margin-bottom: 18px;
-            text-align: center;
-            line-height: 23px;
-            letter-spacing: 1px;
-        }
-
-        .user-box {
-            background: #263850;
-            border: 1px solid #425a78;
-            border-radius: 4px;
-            padding: 8px;
-            margin-bottom: 16px;
-            font-size: 11px;
-            line-height: 17px;
-        }
-
-        .menu-section {
-            font-size: 11px;
-            color: #b8c7dd;
-            margin: 14px 0 6px 2px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-
-        .menu-link {
-            display: block;
-            color: #ffffff;
-            text-decoration: none;
-            padding: 11px 10px;
-            margin-bottom: 6px;
-            border-radius: 4px;
-            font-size: 12px;
-            background: transparent;
-        }
-
-        .menu-link:hover {
-            background: #2f65d9;
-        }
-
-        .menu-link.active {
-            background: #2f65d9;
-            font-weight: bold;
-        }
-
-        .menu-link.logout {
-            background: #7a1f1f;
-            margin-top: 14px;
-        }
-
-        .menu-link.logout:hover {
-            background: #b32626;
-        }
-
-        .main {
-            flex: 1;
-            height: 100vh;
+        .wrapper {
+            height: 100%;
             display: flex;
             flex-direction: column;
-            background: #d4d0c8;
-            overflow: hidden;
         }
 
-        .topbar {
-            height: 38px;
-            line-height: 38px;
-            background: #000080;
-            color: #ffffff;
-            font-weight: bold;
-            text-align: center;
-            font-size: 16px;
-            letter-spacing: 1px;
-            flex-shrink: 0;
-            position: relative;
+        .main-header {
+            flex-shrink: 0; /* Mencegah navbar menyusut */
         }
 
-        .topbar-right {
-            position: absolute;
-            right: 12px;
-            top: 0;
-            font-size: 11px;
-            font-weight: normal;
-            letter-spacing: 0;
-        }
-
-        .frame-area {
-            flex: 1;
-            overflow: hidden;
-            background: #d4d0c8;
+        .content-wrapper {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            margin: 0;
+            height: calc(100vh - 57px); /* Sisa tinggi layar setelah navbar */
         }
 
         #mainFrame {
+            flex: 1;
             width: 100%;
             height: 100%;
             border: none;
-            background: #d4d0c8;
+            background: #d4d0c8; /* Warna background bawaan sebelumnya */
+        }
+
+        /* Penyesuaian agar teks menu dropdown tidak terlalu besar */
+        .dropdown-menu {
+            font-size: 14px;
         }
     </style>
 </head>
+<body class="hold-transition layout-top-nav">
+<div class="wrapper">
 
-<body>
+    <!-- Navbar Atas -->
+    <nav class="main-header navbar navbar-expand-md navbar-dark navbar-primary">
+        <div class="container-fluid">
+            <a href="dashboard_home.php" target="mainFrame" class="navbar-brand">
+                <span class="brand-text font-weight-light"><i class="fas fa-industry mr-2"></i><b>Purchasing</b> Plant 2</span>
+            </a>
 
-<div class="layout">
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
 
-    <div class="sidebar">
-        <div class="sidebar-title">
-            MENU<br>
-            PURCHASING SYSTEM
-        </div>
+            <div class="collapse navbar-collapse" id="navbarCollapse">
+                <!-- Left navbar links -->
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a href="dashboard_home.php" target="mainFrame" class="nav-link menu-link active">Dashboard / Report</a>
+                    </li>
+                    
+                    <!-- Dropdown Menu Entry -->
+                    <li class="nav-item dropdown">
+                        <a id="dropdownEntry" href="#" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" class="nav-link dropdown-toggle">Purchasing Entry</a>
+                        <ul aria-labelledby="dropdownEntry" class="dropdown-menu border-0 shadow">
+                            <li><a href="requisition.php" target="mainFrame" class="dropdown-item menu-link">Purchase Requisition</a></li>
+                            <li><a href="quotation.php" target="mainFrame" class="dropdown-item menu-link">Quotation</a></li>
+                            <li><a href="po.php" target="mainFrame" class="dropdown-item menu-link">Purchase Order</a></li>
+                            <li><a href="receive.php" target="mainFrame" class="dropdown-item menu-link">Receive</a></li>
+                        </ul>
+                    </li>
 
-        <div class="user-box">
-            User: <?php echo h($dbUser); ?><br>
-            Login: <?php echo h($loginTime); ?>
-        </div>
+                    <!-- Dropdown Menu Master -->
+                    <li class="nav-item dropdown">
+                        <a id="dropdownMaster" href="#" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false" class="nav-link dropdown-toggle">Master Data</a>
+                        <ul aria-labelledby="dropdownMaster" class="dropdown-menu border-0 shadow">
+                            <li><a href="master_supplier.php" target="mainFrame" class="dropdown-item menu-link">Master Supplier</a></li>
+                        </ul>
+                    </li>
+                </ul>
 
-        <div class="menu-section">Main</div>
-        <a class="menu-link active" href="dashboard_home.php" target="mainFrame">Dashboard / Report</a>
-
-        <div class="menu-section">PURCHASING Entry</div>
-        <a class="menu-link" href="requisition.php" target="mainFrame">PURCHASE REQUESTION</a>
-        <a class="menu-link" href="quotation.php" target="mainFrame">QUOTATION</a>
-        <a class="menu-link" href="po.php" target="mainFrame">PURCHASE ORDER</a>
-		 <!-- <a class="menu-link" href="label_plant2.php" target="mainFrame">RECEIVE</a> -->
-         <a class="menu-link" href="receive.php" target="mainFrame">RECEIVE</a>
-        
-        <div class="menu-section">Master</div>
-        <a class="menu-link" href="master_supplier.php" target="mainFrame">MASTER SUPPLIER </a>
-        
-
-       
-
-        <a class="menu-link logout" href="logout.php" target="_top">Logout</a>
-    </div>
-
-    <div class="main">
-        <div class="topbar">
-            PURCHASING SYSTEM - PLANT 2
-            <div class="topbar-right">
-                <?php echo h(date("d-M-Y H:i")); ?>
+                <!-- Right navbar links -->
+                <ul class="navbar-nav ml-auto">
+                    <!-- Menampilkan info login User -->
+                    <li class="nav-item d-none d-lg-flex align-items-center mr-3">
+                        <span class="text-white-50 text-sm">
+                            <i class="fas fa-user-circle mr-1"></i> <?php echo h($dbUser); ?> &nbsp;|&nbsp; <i class="fas fa-clock mr-1"></i> <?php echo h($loginTime); ?>
+                        </span>
+                    </li>
+                    <li class="nav-item">
+                        <a href="logout.php" class="nav-link text-white" style="background-color: rgba(255,0,0,0.2); border-radius: 4px;" title="Logout">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
+                    </li>
+                </ul>
             </div>
         </div>
+    </nav>
+    <!-- /.navbar -->
 
-        <div class="frame-area">
-            <iframe id="mainFrame" name="mainFrame" src="dashboard_home.php"></iframe>
-        </div>
+    <!-- Iframe Content Area -->
+    <div class="content-wrapper">
+        <iframe id="mainFrame" name="mainFrame" src="dashboard_home.php"></iframe>
     </div>
+    <!-- /.content-wrapper -->
 
 </div>
+<!-- ./wrapper -->
+
+<!-- jQuery -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+<!-- Bootstrap 4 -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
+<!-- AdminLTE App -->
+<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
 
 <script>
-var menuLinks = document.getElementsByClassName("menu-link");
+    $(document).ready(function() {
+        // Script untuk mengatur menu yang aktif (highlight)
+        $('.menu-link').on('click', function() {
+            // Hapus kelas aktif dari semua link
+            $('.menu-link').removeClass('active');
+            $('.nav-item.dropdown .nav-link').removeClass('active');
+            
+            // Tambahkan kelas aktif ke link yang diklik
+            $(this).addClass('active');
 
-for (var i = 0; i < menuLinks.length; i++) {
-    menuLinks[i].onclick = function () {
-        if (this.getAttribute("target") == "_top") {
-            return true;
-        }
-
-        for (var j = 0; j < menuLinks.length; j++) {
-            menuLinks[j].className = menuLinks[j].className.replace(" active", "");
-        }
-
-        if (this.className.indexOf("active") < 0) {
-            this.className = this.className + " active";
-        }
-
-        return true;
-    };
-}
+            // Jika link tersebut berada di dalam dropdown, highlight juga tab dropdown induknya
+            if($(this).hasClass('dropdown-item')) {
+                $(this).closest('.dropdown').find('.nav-link.dropdown-toggle').addClass('active');
+            }
+        });
+    });
 </script>
 
 </body>

@@ -1,22 +1,22 @@
 <?php
-// Kompatibilitas PHP 5.4: Gunakan pemeriksaan session yang aman
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
-
-// Pastikan koneksi global dimuat untuk mendeteksi active_plant
 require_once __DIR__ . "/../config/global.php";
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Material Incoming Scan</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.11.3/jquery.min.js"></script>
-    <!-- Tambahkan jQuery UI untuk Autocomplete -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
     <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
     
@@ -25,7 +25,6 @@ require_once __DIR__ . "/../config/global.php";
         .main-card { max-width: 1100px; margin: 30px auto; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
         .table-compact th, .table-compact td { padding: 4px 8px !important; vertical-align: middle; font-size: 11px; }
         
-        /* Modifikasi Input Default */
         .qr-input { 
             font-size: 16px; 
             letter-spacing: 1px; 
@@ -33,7 +32,6 @@ require_once __DIR__ . "/../config/global.php";
             height: 55px; 
         }
         
-        /* Tambahan CSS untuk Efek Form Scan (Sukses) */
         .scan-success { 
             background-color: #d4edda !important; 
             border-color: #c3e6cb !important; 
@@ -45,7 +43,6 @@ require_once __DIR__ . "/../config/global.php";
             font-weight: bold; 
         }
 
-        /* Tambahan CSS untuk Efek Form Scan (Gagal) */
         .scan-error { 
             background-color: #f8d7da !important; 
             border-color: #f5c6cb !important; 
@@ -56,17 +53,28 @@ require_once __DIR__ . "/../config/global.php";
             font-size: 32px !important; 
             font-weight: bold; 
         }
-		/* Perbaikan Dropdown Autocomplete jQuery UI */
-.ui-autocomplete {
-    position: absolute;
-    z-index: 9999 !important; /* Memaksa dropdown selalu di atas elemen lain termasuk sticky-top */
-    max-height: 250px;        /* Membatasi tinggi maksimal dropdown */
-    overflow-y: auto;         /* Menambahkan scrollbar jika data pencarian banyak */
-    overflow-x: hidden;
-    background-color: #ffffff !important;
-    border: 1px solid #ccc;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
+
+        .ui-autocomplete {
+            position: absolute;
+            z-index: 9999 !important;
+            max-height: 250px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            background-color: #ffffff !important;
+            border: 1px solid #ccc;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        #camera-reader {
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+        }
+        #camera-reader video {
+            object-fit: cover;
+            border-radius: 8px;
+        }
     </style>
 </head>
 <body>
@@ -81,16 +89,20 @@ require_once __DIR__ . "/../config/global.php";
 
         <div class="row mb-3">
             <div class="col-md-12">
-                <label class="fw-bold text-secondary mb-1">Arahkan Scanner ke Kotak Ini (Auto-Scan):</label>
-                <input type="text" id="qrcode" class="form-control qr-input border-primary shadow-sm" placeholder="Scan QR Code..." autocomplete="off" autofocus>
+                <label class="fw-bold text-secondary mb-1">Pindai Barcode / QR Code:</label>
+                <div class="input-group">
+                    <input type="text" id="qrcode" class="form-control qr-input border-primary shadow-sm" placeholder="Arahkan scanner fisik atau klik kamera..." autocomplete="off" autofocus>
+                    <button class="btn btn-primary px-3 fs-5" type="button" id="btn-open-camera" title="Buka Kamera Video Langsung">
+                        <i class="bi bi-camera-video-fill"></i>
+                    </button>
+                </div>
             </div>
         </div>
 
-        <!-- Header Riwayat & Pencarian RCV_NO / ITEM -->
         <div class="d-flex justify-content-between align-items-center mb-2 mt-4">
             <h6 class="fw-bold text-secondary m-0"><i class="bi bi-list-check me-1"></i>Riwayat & Pencarian Berdasarkan RCV No</h6>
             <div class="input-group" style="width: 250px;">
-                <input type="text" id="search_history" class="form-control form-control-sm" placeholder="Cari RCV No, Item Code, atau Nama Item..." autocomplete="off">
+                <input type="text" id="search_history" class="form-control form-control-sm" placeholder="Cari RCV No, Item Code..." autocomplete="off">
                 <button class="btn btn-outline-secondary btn-sm" type="button"><i class="bi bi-search"></i></button>
             </div>
         </div>
@@ -116,6 +128,25 @@ require_once __DIR__ . "/../config/global.php";
     </div>
 </div>
 
+<!-- Modal Live Scanner -->
+<div class="modal fade" id="cameraModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header py-2">
+                <h6 class="modal-title fw-bold"><i class="bi bi-camera-video me-1"></i> Kamera Live Scanning</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-2 text-center">
+                <div id="camera-reader"></div>
+                <small class="text-muted d-block mt-2">Arahkan kamera ke QR code, sistem akan membaca secara instan.</small>
+            </div>
+            <div class="modal-footer py-1">
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Tutup</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <audio id="audio-success" src="assets/sounds/beep-success.mp3" preload="auto"></audio>
 <audio id="audio-error" src="assets/sounds/beep-error.mp3" preload="auto"></audio>
 
@@ -124,12 +155,12 @@ function playSound(type) {
     var audioEl = document.getElementById(type === 'success' ? 'audio-success' : 'audio-error');
     if (audioEl) {
         audioEl.currentTime = 0; 
-        audioEl.play().catch(function(error) { console.log("Audio failed: " + error); });
+        audioEl.play().catch(function(error) { console.log("Audio: " + error); });
     }
 }
 
 $(document).ready(function() {
-    var baseUrl = '<?php echo "http://" . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['PHP_SELF']), '/\\') . "/"; ?>';
+    var baseUrl = '<?php echo ((isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? "https://" : "http://") . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['PHP_SELF']), '/\\') . "/"; ?>';
     var activePlant = '<?php echo isset($_SESSION['active_plant']) ? strtolower(trim($_SESSION['active_plant'])) : "p1"; ?>';
 
     var $qr = $('#qrcode');
@@ -177,7 +208,6 @@ $(document).ready(function() {
     loadHistory();
     $qr.focus(); 
 
-    // Inisialisasi jQuery UI Autocomplete
     $('#search_history').autocomplete({
         source: baseUrl + 'search_item.php', 
         minLength: 2,
@@ -195,15 +225,11 @@ $(document).ready(function() {
     });
 
     $(document).on('click', function(e) {
-        // Jangan auto-focus ke $qr jika sedang mengklik di dalam elemen autocomplete UI
-        if (!$(e.target).closest('#search_history, .btn-cetak, .btn-delete, a, button, .ui-menu-item').length) {
+        if (!$(e.target).closest('#search_history, .btn-cetak, .btn-delete, #btn-open-camera, #cameraModal, a, button, .ui-menu-item').length) {
             $qr.focus();
         }
     });
 
-    // ==========================================
-    // FUNGSI FEEDBACK & ALERT
-    // ==========================================
     function setInputFeedback(status) {
         clearTimeout(colorResetTimer);
         $qr.removeClass('scan-success scan-error').val('').attr('placeholder', 'Scan QR Code...');
@@ -225,14 +251,11 @@ $(document).ready(function() {
               .html('<strong>' + (type === 'success' ? 'Info:' : 'Peringatan!') + '</strong> ' + text)
               .show(); 
               
-        setTimeout(function() { $alert.hide(); }, 1000); 
+        setTimeout(function() { $alert.hide(); }, 2000); 
     }
 
-    // ==========================================
-    // LOGIKA SCAN
-    // ==========================================
     function processQRCode(rawString) {
-        if (rawString.trim() === '') return;
+        if (!rawString || rawString.trim() === '') return;
 
         $qr.val('').prop('readonly', true); 
 
@@ -299,7 +322,68 @@ $(document).ready(function() {
     });
 
     // ==========================================
-    // EVENT CETAK ICL & HAPUS
+    // LOGIKA LIVE STREAM CAMERA
+    // ==========================================
+    var html5QrCode = null;
+    var cameraModalEl = document.getElementById('cameraModal');
+    var cameraModal = new bootstrap.Modal(cameraModalEl);
+
+    $('#btn-open-camera').on('click', function() {
+        cameraModal.show();
+    });
+
+    cameraModalEl.addEventListener('shown.bs.modal', function () {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            cameraModal.hide();
+            alert("Akses kamera video streaming membutuhkan koneksi HTTPS.");
+            return;
+        }
+
+        if (!html5QrCode) {
+            html5QrCode = new Html5Qrcode("camera-reader");
+        }
+        
+        var config = { 
+            fps: 20, 
+            qrbox: { width: 260, height: 260 },
+            aspectRatio: 1.0 
+        };
+
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            config, 
+            function (decodedText) {
+                // Begitu barcode/QR masuk frame, langsung tutup dan eksekusi
+                html5QrCode.stop().then(function() {
+                    cameraModal.hide();
+                    processQRCode(decodedText);
+                }).catch(function() {
+                    cameraModal.hide();
+                    processQRCode(decodedText);
+                });
+            },
+            function (errorMessage) {
+                // Frame scanning loop
+            }
+        ).catch(function(err) {
+            cameraModal.hide();
+            showAlert('danger', 'Gagal menyalakan video kamera: ' + err);
+        });
+    });
+
+    cameraModalEl.addEventListener('hidden.bs.modal', function () {
+        if (html5QrCode && html5QrCode.isScanning) {
+            html5QrCode.stop().then(function() {
+                html5QrCode.clear();
+            }).catch(function(err) {
+                console.error("Gagal stop kamera:", err);
+            });
+        }
+        $qr.focus();
+    });
+
+    // ==========================================
+    // CETAK ICL & HAPUS
     // ==========================================
     $(document).on('click', '.btn-cetak', function(e) {
         e.preventDefault();
@@ -340,8 +424,8 @@ $(document).ready(function() {
             complete: function() { $qr.focus(); }
         });
     });
-
 });
+
 </script>
 
 </body>

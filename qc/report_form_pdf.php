@@ -342,7 +342,7 @@ $pdf->DataField('Isi Revisi', safeText($data['ISI_REVISI']), 90.5);
 $pdf->DataField('Alasan Revisi', safeText($data['ALASAN_REVISI']), 97); 
 
 $pdf->DataField('PLAN DATE', safeDate($data['PLANT_DATE']), 103.5); 
-$pdf->DataField('TARGET DATE', safeDate($data['TARGET_DATE']), 110); 
+$pdf->DataField('ACTUAL DATE', safeDate($data['TARGET_DATE']), 110); 
 
 // === BAGIAN DOKUMEN TERKAIT ===
 $pdf->SectionTitle("DOKUMEN TERKAIT PERUBAHAN");

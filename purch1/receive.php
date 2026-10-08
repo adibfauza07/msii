@@ -148,12 +148,11 @@ if ($action == "save") {
 
     if ($rcvDate == "") $rcvDate = date("Y-m-d");
 
-    // Jika ICL NO dikosongkan oleh user, generate ulang
     if ($rcvNo == "") {
         $rcvNo = generate_rcv_no($conn);
     }
 
-    $isNewRecord = ($rcvId == 0); // Penanda apakah ini data baru
+    $isNewRecord = ($rcvId == 0); 
 
     if ($supId <= 0) $error = "Supplier wajib dipilih.";
 
@@ -176,22 +175,17 @@ if ($action == "save") {
             sqlsrv_begin_transaction($conn);
             $ok = true;
 
-            // 1. HEADER (Menggunakan SET NOCOUNT ON untuk mengatasi Error Trigger pada SQL Server)
-            // 1. HEADER
             if (!$isNewRecord) {
                 $sqlH = "UPDATE dbo.RECEIVE SET RCV_NO=?, RCV_DONO=?, RCV_DATE=?, RCV_PIC=?, SUP_ID=?, RCV_TYPE=? WHERE RCV_ID=?";
                 $stmtH = sqlsrv_query($conn, $sqlH, array($rcvNo, $rcvDono, $rcvDate, $rcvPic, $supId, $rcvType, $rcvId));
                 if ($stmtH === false) { $ok=false; $error="Simpan header gagal:\n".sql_error_text(); }
             } else {
-                // Solusi Standar SQL Server untuk Insert tabel yang memiliki Trigger aktif
                 $sqlH = "
                     SET NOCOUNT ON;
                     DECLARE @OutputTbl TABLE (NEW_ID INT);
-                    
                     INSERT INTO dbo.RECEIVE (RCV_NO, RCV_DONO, RCV_DATE, RCV_PIC, SUP_ID, RCV_TYPE) 
                     OUTPUT INSERTED.RCV_ID INTO @OutputTbl
                     VALUES (?, ?, ?, ?, ?, ?);
-                    
                     SELECT NEW_ID FROM @OutputTbl;
                 ";
                 $stmtH = sqlsrv_query($conn, $sqlH, array($rcvNo, $rcvDono, $rcvDate, $rcvPic, $supId, $rcvType));
@@ -203,7 +197,6 @@ if ($action == "save") {
                     if ($new && isset($new['NEW_ID'])) {
                         $rcvId = intval($new['NEW_ID']);
                     } else { 
-                        // Jika driver PDO/SQLSRV butuh skip result pembacaan struktur, kita next_result()
                         if (sqlsrv_next_result($stmtH)) {
                             $new = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_ASSOC);
                             if ($new && isset($new['NEW_ID'])) {
@@ -218,7 +211,6 @@ if ($action == "save") {
                 }
             }
 
-            // 2. BC TRANS
             if ($ok) {
                 sqlsrv_query($conn, "DELETE FROM dbo.BC_TRANS WHERE NO_TRANS=?", array($rcvNo));
                 if ($jenisBc != "" || $nomorBc != "") {
@@ -228,7 +220,6 @@ if ($action == "save") {
                 }
             }
 
-            // 3. DETAILS
             if ($ok) {
                 $stmtDel = sqlsrv_query($conn, "DELETE FROM dbo.RECEIVE_DETAIL WHERE RCV_ID = ?", array($rcvId));
                 if ($stmtDel === false) { $ok=false; $error="Hapus detail lama gagal:\n".sql_error_text(); }
@@ -251,7 +242,6 @@ if ($action == "save") {
 
             if ($ok) {
                 sqlsrv_commit($conn);
-                // Selalu increment ICL jika data baru berhasil disave (Meskipun diedit manual oleh user)
                 if ($isNewRecord) inc_next_rcv_no($conn); 
                 header("Location: receive.php?edit=".$rcvId."&msg=saved");
                 exit;
@@ -301,7 +291,6 @@ if ($editId > 0) {
     $stmtD = sqlsrv_query($conn,$sqlD,array($editId));
     if ($stmtD !== false) while ($rd = sqlsrv_fetch_array($stmtD, SQLSRV_FETCH_ASSOC)) $details[] = $rd;
 } else {
-    // Generate ICL baru jika form mode Add New
     $header["RCV_NO"] = generate_rcv_no($conn);
 }
 
@@ -309,7 +298,7 @@ if (getv("msg") == "saved") $message = "Receive berhasil disimpan.";
 if (getv("msg") == "deleted") $message = "Receive berhasil dihapus.";
 
 /* ======================================================
-   SUPPLIER & DEPT DATA (Untuk Autocomplete)
+   SUPPLIER & DEPT DATA
 ====================================================== */
 $supplierAuto = array();
 $sqlSup = "SELECT TOP 1000 SUP_ID, SUP_CODE, SUP_COMP FROM dbo.SUPPLIER WHERE ISNULL(SUP_CODE,'') <> '' ORDER BY SUP_CODE";
@@ -367,160 +356,149 @@ if (count($details) == 0) {
 <meta charset="utf-8">
 <title>Items Receive</title>
 <style>
-        /* ==== CSS UNIVERSAL - RESPONSIVE, SIMPLE & MENARIK ==== */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-
-        html, body { 
-            margin: 0; padding: 0; 
-            background-color: #f0f2f5; 
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
-            font-size: 13px; color: #374151; 
-        }
-        
-        /* Container Responsif */
-        .wrap { 
-            padding: 20px; 
-            max-width: 100%; 
-            margin: 0 auto; 
-            box-sizing: border-box; 
-            overflow-x: auto; /* Memungkinkan scroll horizontal jika layar terlalu kecil */
+        /* ==== CSS UNIVERSAL - COMPACT, MINIMALIS, FIT TO FONT ==== */
+        html, body {
+            margin: 0; padding: 0;
+            background-color: #f4f6f9;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 11px; color: #333;
         }
 
-        .page-title { 
-            background: #ffffff; color: #1f2937; 
-            font-size: 22px; font-weight: 700; 
-            padding: 15px 25px; margin: -20px -20px 20px -20px; 
-            border-bottom: 1px solid #e5e7eb; 
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05); 
+        .wrap {
+            background: #fff;
+            padding: 15px 20px;
+            margin: 15px auto;
+            max-width: 98%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            overflow-x: auto;
         }
-        
-        /* Tombol Modern & Sederhana */
-        .top-buttons, .bottom-buttons, .header-toolbar { 
-            display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; align-items: center;
+
+        .page-title {
+            font-size: 15px; font-weight: bold; color: #333;
+            border-bottom: 2px solid #28a745;
+            padding-bottom: 8px; margin: -5px -5px 15px -5px;
+            text-transform: uppercase;
         }
-        .bottom-buttons { margin-top: 20px; justify-content: space-between; background: #ffffff; padding: 15px; border-radius: 8px; border: 1px solid #e5e7eb; }
-        
-        .btn { 
-            height: 36px; padding: 0 16px; border: 1px solid transparent; border-radius: 6px; 
-            background: #ffffff; color: #4b5563; font-family: inherit; font-size: 13px; font-weight: 600; 
-            cursor: pointer; display: inline-flex; align-items: center; justify-content: center; 
-            transition: all 0.2s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.05); border-color: #d1d5db;
-            text-decoration: none;
+        .page-title::before { content: "🛒 Manajemen "; } 
+
+        /* === GABUNGAN ACTION BUTTON & SEARCH BOX === */
+        .top-action-bar {
+            display: flex; justify-content: space-between; align-items: center;
+            background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;
+            padding: 8px 12px; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;
         }
-        .btn:hover { background: #f3f4f6; color: #111827; }
+        .action-buttons { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
         
-        .btn-save { background: #10b981; color: #ffffff; border-color: #10b981; }
-        .btn-save:hover { background: #059669; border-color: #059669; color: #ffffff; }
-        
-        .btn-del { background: #ef4444; color: #ffffff; border-color: #ef4444; }
-        .btn-del:hover { background: #dc2626; border-color: #dc2626; color: #ffffff; }
-        
-        .btn-x { background: #fee2e2; color: #ef4444; width: 32px; padding: 0; font-weight: bold; border-color: transparent; }
-        .btn-x:hover { background: #ef4444; color: #ffffff; }
-        
-        .btn-po, .btn-os { background: #e0f2fe; color: #0284c7; border-color: transparent; }
-        .btn-po:hover, .btn-os:hover { background: #0284c7; color: #ffffff; }
+        .search-box form { display: flex; align-items: center; gap: 5px; margin: 0; white-space: nowrap; }
+        .search-box input { width: 220px !important; margin: 0; }
+
+        .bottom-buttons { margin-top: 15px; justify-content: space-between; border-top: 1px solid #ddd; padding-top: 10px; display: flex; gap: 5px; }
+        .header-toolbar { display: flex; gap: 5px; margin-bottom: 15px; align-items: center; flex-wrap: wrap; }
+
+        .btn {
+            height: 24px; padding: 0 10px; border: 1px solid #ccc; border-radius: 3px;
+            background: #fff; color: #333; font-family: inherit; font-size: 11px; font-weight: bold;
+            cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+            text-decoration: none; text-transform: uppercase; transition: background 0.1s;
+        }
+        .btn:hover { background: #e2e6ea; }
+
+        .btn-save { background: #28a745; color: #fff; border-color: #28a745; }
+        .btn-save:hover { background: #218838; }
+
+        .btn-del { background: #dc3545; color: #fff; border-color: #dc3545; }
+        .btn-del:hover { background: #c82333; }
+
+        .btn-x { background: #dc3545; color: #fff; width: 22px; padding: 0; border: none; border-radius: 3px; }
+        .btn-x:hover { background: #c82333; }
+
+        .btn-po, .btn-os { background: #17a2b8; color: #fff; border-color: #17a2b8; }
+        .btn-po:hover, .btn-os:hover { background: #138496; }
 
         /* Notifikasi */
-        .msg { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; }
-        .err { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; padding: 12px 16px; border-radius: 6px; margin-bottom: 20px; font-weight: 500; white-space: pre-wrap; }
-        
-        /* Area Form Header */
-        .label { display: block; margin-bottom: 6px; font-weight: 600; color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-        
-        table.form-table, table.bc-table { 
-            width: 100%; border-collapse: separate; border-spacing: 12px; 
-            background: #ffffff; border: 1px solid #e5e7eb; border-radius: 8px; 
-            padding: 10px; margin-bottom: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
-        }
-        table.form-table td, table.bc-table td { vertical-align: top; padding: 0; }
-        
-        /* Input Field Styling (Fluid Width) */
-        input[type=text], input[type=date], select, textarea { 
-            width: 100% !important; /* Paksa responsif mengikuti lebar TD */
-            height: 36px; border: 1px solid #d1d5db; border-radius: 6px; 
-            padding: 6px 12px; font-family: inherit; font-size: 13px; box-sizing: border-box; 
-            background: #ffffff; color: #1f2937; transition: all 0.2s ease; 
-        }
-        input[type=text]:focus, input[type=date]:focus, select:focus, textarea:focus { 
-            outline: none; border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); 
-        }
-        textarea { height: 60px; resize: vertical; line-height: 1.5; }
-        
-        input[readonly], input[style*="background:#f9f9f9"], input[style*="background:#ddd;"] { 
-            background: #f3f4f6 !important; color: #6b7280; cursor: not-allowed; 
-        }
-        input[type=checkbox] { width: 16px; height: 16px; accent-color: #3b82f6; vertical-align: middle; cursor: pointer; }
-        label { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+        .msg { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 8px 12px; border-radius: 3px; margin-bottom: 15px; }
+        .err { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 8px 12px; border-radius: 3px; margin-bottom: 15px; white-space: pre-wrap; }
 
-        /* Area Tabel Data (Detail & Grid) */
-        table.detail, table.grid { 
-            width: 100%; min-width: 900px; /* Minimal lebar agar tidak hancur di HP, akan otomatis bisa di-scroll berkat .wrap / .grid-wrap */
-            border-collapse: collapse; background: #ffffff; 
-            border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; 
+        /* Area Form Header */
+        .label { display: block; margin-bottom: 3px; font-weight: normal; color: #555; font-size: 10px; text-transform: capitalize; }
+
+        table.form-table, table.bc-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
+        table.form-table td, table.bc-table td { padding: 0 15px 10px 0; vertical-align: top; }
+
+        /* Input Field Styling */
+        input[type=text], input[type=date], select, textarea {
+            width: 100% !important;
+            height: 24px; border: 1px solid #ccc; border-radius: 3px;
+            padding: 2px 6px; font-family: inherit; font-size: 11px; box-sizing: border-box;
+            background: #fff; color: #333;
         }
-        table.detail th, table.grid th { 
-            background: #f9fafb; color: #4b5563; border: 1px solid #e5e7eb; 
-            padding: 10px 12px; text-align: left; font-weight: 600; font-size: 12px; 
+        input[type=text]:focus, input[type=date]:focus, select:focus, textarea:focus {
+            outline: none; border-color: #80bdff; box-shadow: 0 0 0 0.1rem rgba(0,123,255,.25);
         }
-        table.detail td, table.grid td { 
-            border: 1px solid #e5e7eb; padding: 4px 6px; vertical-align: middle; 
+        textarea { height: 35px; resize: vertical; }
+
+        input[readonly], input[style*="background:#f9f9f9"], input[style*="background:#ddd;"] {
+            background: #e9ecef !important; color: #495057; cursor: not-allowed;
         }
-        
-        /* Input transparan di dalam tabel */
-        table.detail input { 
-            width: 100%; height: 30px; border: 1px solid transparent; 
-            padding: 4px 8px; border-radius: 4px; background: transparent; 
+        input[type=checkbox] { width: 12px; height: 12px; vertical-align: middle; cursor: pointer; margin: 0 4px 0 0; }
+        label { cursor: pointer; display: inline-flex; align-items: center; font-weight: normal; color: #333; margin-right: 10px; font-size: 11px; }
+
+        /* Batasi lebar maksimal input header */
+        .po-no, .rcv-no, .reqno { max-width: 150px; }
+        .date { max-width: 120px; }
+        .supplier-code, .sup-code { max-width: 100px; }
+        .cur, .curr { max-width: 80px; }
+        .term { max-width: 250px; }
+
+        /* Area Tabel Data */
+        table.detail, table.grid {
+            width: 100%; min-width: 800px;
+            border-collapse: collapse; background: #fff;
+            border: 1px solid #dee2e6; margin-bottom: 10px;
         }
-        table.detail input:focus { border-color: #3b82f6; background: #ffffff; }
-        table.detail input:hover:not([readonly]) { border-color: #d1d5db; }
-        
-        tr.detail-selected td { background: #eff6ff; }
-        table.grid tr:hover td { background: #f3f4f6; cursor: pointer; }
-        
+        table.detail th, table.grid th {
+            background: #e9ecef; color: #495057; border: 1px solid #dee2e6;
+            padding: 4px 6px; text-align: left; font-weight: bold; font-size: 11px;
+        }
+        table.detail td, table.grid td {
+            border: 1px solid #dee2e6; padding: 2px 4px; vertical-align: middle; font-size: 11px;
+        }
+        table.detail input {
+            width: 100%; height: 20px; border: 1px solid transparent;
+            padding: 0 4px; background: transparent; border-radius: 2px;
+        }
+        table.detail input:focus { border-color: #80bdff; background: #fff; }
+        table.detail input:hover:not([readonly]) { border-color: #ccc; }
+
+        tr.detail-selected td { background: #f8f9fa; }
+        table.grid tr:hover td { background: #f4f6f9; cursor: pointer; }
+
         .num { text-align: right; }
         .center { text-align: center; }
-        .action-cell { display: flex; justify-content: center; align-items: center; gap: 6px; }
+        .action-cell { display: flex; justify-content: center; align-items: center; gap: 4px; }
 
-        /* Area Pencarian */
-        .search-area { 
-            margin-top: 30px; background: #ffffff; padding: 15px; border-radius: 8px; 
-            border: 1px solid #e5e7eb; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; 
+        .grid-wrap {
+            width: 100%; max-height: 250px; overflow: auto;
+            border: 1px solid #dee2e6; margin-top: 10px; background: #fff;
         }
-        .search-area input { max-width: 350px; }
-        
-        .grid-wrap { 
-            width: 100%; max-height: 400px; overflow: auto; border-radius: 8px; 
-            border: 1px solid #e5e7eb; margin-top: 15px; background: #ffffff; 
-        }
-        .go-btn { color: #3b82f6; font-weight: bold; font-size: 14px; }
+        .go-btn { color: #007bff; font-weight: bold; font-size: 12px; }
 
-        /* Autocomplete Modern */
-        .ac-box { 
-            position: absolute; z-index: 9999; background: #ffffff; border: 1px solid #d1d5db; 
-            border-radius: 6px; max-height: 250px; overflow-y: auto; min-width: 320px; 
-            display: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 5px 0; 
+        /* Autocomplete */
+        .ac-box {
+            position: absolute; z-index: 9999; background: #fff; border: 1px solid #ccc;
+            border-radius: 3px; max-height: 200px; overflow-y: auto; min-width: 250px;
+            display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 0;
         }
-        .ac-item { padding: 8px 12px; cursor: pointer; transition: background 0.1s; }
-        .ac-item:hover, .ac-item.active { background: #3b82f6; color: #ffffff; }
-        
-        /* === MEDIA QUERY UNTUK HP / LAYAR KECIL === */
-        @media (max-width: 768px) {
-            table.form-table td, table.bc-table td { 
-                display: block; width: 100% !important; padding-bottom: 10px; 
-            }
-            table.form-table tr, table.bc-table tr { 
-                display: block; margin-bottom: 0; 
-            }
-            .search-area input { max-width: 100%; }
-        }
+        .ac-item { padding: 4px 8px; cursor: pointer; border-bottom: 1px solid #f4f4f4; font-size: 11px; }
+        .ac-item:hover, .ac-item.active { background: #007bff; color: #fff; }
 
         /* Mode Print */
         @media print {
-            body { background: #ffffff; padding: 0; }
-            .no-print, .top-buttons, .bottom-buttons, .search-area, .header-toolbar { display: none !important; }
-            .wrap { padding: 0; }
-            table.form-table, table.detail { border: none; box-shadow: none; }
+            body { background: #fff; padding: 0; }
+            .no-print, .top-action-bar, .bottom-buttons, .header-toolbar { display: none !important; }
+            .wrap { border: none; padding: 0; margin: 0; box-shadow: none; }
         }
     </style>
 <script>
@@ -548,22 +526,18 @@ function fieldEnterSave(e){if(e.key==="Enter"){e.preventDefault();submitSave(fal
 
 function selectDetailRow(tr){var rows=document.querySelectorAll("#detailBody tr");for(var i=0;i<rows.length;i++) rows[i].classList.remove("detail-selected");selectedDetailRow=tr;if(tr)tr.classList.add("detail-selected");}
 
-// Supplier Autocomplete
 function showSupplierAC(input){initAC();var key=(input.value||"").toUpperCase();acMode="supplier";acItems=[];acIndex=-1;if(key.length<1){hideAC();return;}for(var i=0;i<supplierData.length;i++){var s=supplierData[i];var t=(s.SUP_CODE||"")+" "+(s.SUP_COMP||"");if(t.toUpperCase().indexOf(key)>=0)acItems.push(s);if(acItems.length>=40)break;}positionAC(input);renderAC(function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);}
 function supplierKey(e,input){if(e.key==="ArrowDown"){e.preventDefault();if(acMode!=="supplier"||acItems.length==0)showSupplierAC(input);acMove(1,function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);return false;}if(e.key==="ArrowUp"){e.preventDefault();if(acMode!=="supplier"||acItems.length==0)showSupplierAC(input);acMove(-1,function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);return false;}if(e.key==="Enter"){if(acMode==="supplier"&&acItems.length>0){e.preventDefault();acEnter(pickSupplier);return false;}e.preventDefault();submitSave(false);return false;}if(e.key==="Escape")hideAC();}
 function pickSupplier(s){setValue("sup_id",s.SUP_ID);setValue("sup_code",s.SUP_CODE);setValue("sup_comp",s.SUP_COMP);hideAC();}
 
-// PIC / Dept Autocomplete
 function showPicAC(input){initAC();var key=(input.value||"").toUpperCase();acMode="pic";acItems=[];acIndex=-1;if(key.length<1){hideAC();return;}for(var i=0;i<deptData.length;i++){var d=deptData[i];if((d.DEP_NAME||"").toUpperCase().indexOf(key)>=0)acItems.push(d);if(acItems.length>=40)break;}positionAC(input);renderAC(function(d){return d.DEP_NAME;},pickPic);}
 function picKey(e,input){if(e.key==="ArrowDown"){e.preventDefault();if(acMode!=="pic"||acItems.length==0)showPicAC(input);acMove(1,function(d){return d.DEP_NAME;},pickPic);return false;}if(e.key==="ArrowUp"){e.preventDefault();if(acMode!=="pic"||acItems.length==0)showPicAC(input);acMove(-1,function(d){return d.DEP_NAME;},pickPic);return false;}if(e.key==="Enter"){if(acMode==="pic"&&acItems.length>0){e.preventDefault();acEnter(pickPic);return false;}e.preventDefault();return false;}if(e.key==="Escape")hideAC();}
 function pickPic(d){setValue("rcv_pic",d.DEP_NAME);hideAC();}
 
-// PO Item Autocomplete (AJAX Request)
 function showPOItemAC(input, row) {
     initAC();
     var supId = byId("sup_id").value;
     if(!supId || supId == "0") { alert("Pilih supplier dulu."); input.value = ""; return; }
-    
     var key = (input.value || "").toUpperCase();
     acMode = "poitem"; acRow = row; acItems = []; acIndex = -1;
     if(key.length < 1){ hideAC(); return; }
@@ -588,7 +562,6 @@ function addRow(){var tbody=byId("detailBody");var row=rowSeq;rowSeq++;var tr=do
 function deleteRow(btn){var tr=btn.parentNode.parentNode.parentNode;if(!confirm("Hapus baris detail ini?"))return;tr.parentNode.removeChild(tr);renumberRows();var id=byId("rcv_id").value;if(id!=""&&id!="0")submitSave(true);}
 function renumberRows(){var rows=byId("detailBody").getElementsByTagName("tr");for(var i=0;i<rows.length;i++){var c=rows[i].getElementsByClassName("row-no")[0];if(c)c.innerHTML=i+1;else rows[i].cells[0].innerHTML=i+1;}}
 
-// Trigger & Action Custom Buttons
 function triggerAction(actionName) {
     if(!confirm("Jalankan aksi " + actionName.toUpperCase() + "?")) return;
     byId("exec_action").value = actionName;
@@ -598,19 +571,16 @@ function triggerAction(actionName) {
 function triggerUpdatePrice() {
     var rcvId = byId("rcv_id").value;
     if(!rcvId || rcvId == "0") { alert("Pilih / simpan Receive terlebih dahulu."); return; }
-    
     var tr = selectedDetailRow;
     if(!tr){
         var rows=byId("detailBody").getElementsByTagName("tr");
         if(rows.length>0) tr=rows[0];
     }
     if(!tr) { alert("Pilih baris detail item dulu."); return; }
-    
     var itemInput = tr.querySelector('input[name="item_id[]"]');
     var poInput = tr.querySelector('input[name="po_id[]"]');
     var itemId = itemInput ? itemInput.value : "";
     var poId = poInput ? poInput.value : "";
-    
     if(!itemId || !poId) { alert("Pilih detail item yang valid."); return; }
     
     if(confirm("Jalankan Update Price untuk item yang dipilih?")) {
@@ -622,21 +592,18 @@ function triggerUpdatePrice() {
     }
 }
 
-// Aksi Tombol Cetak ICL
 function cetakICL() {
     var rcvId = byId("rcv_id").value;
     if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
     window.open("print_icl.php?id=" + encodeURIComponent(rcvId), "CETAK_ICL", "width=900,height=700,scrollbars=yes");
 }
 
-// Aksi Tombol ICL OTO
 function cetakICLOto() {
     var rcvId = byId("rcv_id").value;
     if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
     window.open("print_icl_oto.php?id=" + encodeURIComponent(rcvId), "CETAK_OTO", "width=900,height=700,scrollbars=yes");
 }
 
-// Aksi Tombol Sch Material
 function cetakSchedule() {
     var rcvNo = document.querySelector('.rcv-no').value;
     if (!rcvNo) { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
@@ -644,14 +611,10 @@ function cetakSchedule() {
     window.open("print_schedule.php?no=" + encodeURIComponent(shortNo), "CETAK_SCH", "width=900,height=700,scrollbars=yes");
 }
 
-// Aksi Tombol SET NEXT ICL
 function setNextICL() {
     var nextNum = prompt("Masukkan nilai antrian untuk ICL selanjutnya:", "");
     if (nextNum !== null && nextNum.trim() !== "") {
-        if (isNaN(nextNum)) {
-            alert("Format harus berupa angka!");
-            return;
-        }
+        if (isNaN(nextNum)) { alert("Format harus berupa angka!"); return; }
         byId("exec_action").value = "set_next_icl";
         byId("upd_rcv_id").value = nextNum; 
         byId("execForm").submit();
@@ -668,11 +631,21 @@ document.addEventListener("click",function(e){initAC();if(acBox&&!acBox.contains
 <?php if ($message != "") { ?><div class="msg"><?php echo h($message); ?></div><?php } ?>
 <?php if ($error != "") { ?><div class="err"><?php echo h($error); ?></div><?php } ?>
 
-<div class="top-buttons">
-<button type="button" class="btn" onclick="newData()">NEW</button>
-<button type="submit" form="rcvForm" class="btn btn-save">SAVE RECEIVE</button>
-<button type="button" class="btn btn-del" onclick="deleteCurrent()">DELETE</button>
-<a href="dashboard_purchasing.php" class="btn">CLOSE</a>
+<div class="top-action-bar no-print">
+    <div class="action-buttons">
+        <button type="button" class="btn" onclick="newData()">NEW</button>
+        <button type="submit" form="rcvForm" class="btn btn-save">SAVE RECEIVE</button>
+        <button type="button" class="btn btn-del" onclick="deleteCurrent()">DELETE</button>
+        <a href="dashboard_purchasing.php" class="btn">CLOSE</a>
+    </div>
+    <div class="search-box">
+        <form method="get" action="receive.php" id="searchForm">
+            <span style="font-weight:bold; margin-right:5px; color:#555;">Search:</span>
+            <input type="text" name="q" value="<?php echo h($q); ?>" placeholder="RCV No / DO No / Supplier">
+            <button type="submit" class="btn">SEARCH</button>
+            <a href="receive.php" class="btn">ALL</a>
+        </form>
+    </div>
 </div>
 
 <form id="rcvForm" method="post" action="receive.php">
@@ -681,10 +654,8 @@ document.addEventListener("click",function(e){initAC();if(acBox&&!acBox.contains
 <input type="hidden" name="sup_id" id="sup_id" value="<?php echo h($header["SUP_ID"]); ?>">
 <input type="hidden" name="allow_empty_detail" id="allow_empty_detail" value="0">
 
-<!-- Panel 1: Receive Header -->
 <table class="form-table">
 <tr>
-<!-- FIX: Hapus readonly pada rcv_no agar dapat diedit manual -->
 <td style="width:25%"><span class="label">I.C.L No.</span><input type="text" name="rcv_no" class="rcv-no" value="<?php echo h($header["RCV_NO"]); ?>"></td>
 <td style="width:25%"><span class="label">Date</span><input type="date" name="rcv_date" class="date" value="<?php echo h($header["RCV_DATE"]); ?>"></td>
 <td style="width:50%"><span class="label">D.O #</span><input type="text" name="rcv_dono" value="<?php echo h($header["RCV_DONO"]); ?>"></td>
@@ -706,7 +677,6 @@ document.addEventListener("click",function(e){initAC();if(acBox&&!acBox.contains
 </tr>
 </table>
 
-<!-- Panel 2: Bea Cukai -->
 <table class="bc-table">
 <tr>
 <td style="width:25%"><span class="label">Jenis BC</span>
@@ -795,15 +765,6 @@ $price=isset($d["POD_PRICE"])?floatval($d["POD_PRICE"]):0;
 <input type="hidden" name="edit" value="<?php echo h($editId); ?>">
 </form>
 
-<div class="search-area">
-<form method="get" action="receive.php" id="searchForm">
-Search:
-<input type="text" name="q" value="<?php echo h($q); ?>" style="width:250px;" placeholder="RCV No / DO No / Supplier">
-<button type="submit" class="btn">SEARCH</button>
-<a href="receive.php" class="btn">ALL</a>
-</form>
-</div>
-
 <div class="grid-wrap">
 <table class="grid">
 <thead>
@@ -818,7 +779,6 @@ Search:
 <th style="width:50px;">Detail</th>
 </tr>
 </thead>
-<!-- FIX: List Navigasi tidak menggunakan tag <a> agar fungsi OnClick Baris berfungsi penuh -->
 <tbody id="rcvListBody">
 <?php while($r=sqlsrv_fetch_array($stmtList, SQLSRV_FETCH_ASSOC)){ ?>
 <?php $rcvIdLink=intval($r["RCV_ID"]); ?>

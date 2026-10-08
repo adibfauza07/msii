@@ -1,4 +1,5 @@
 <?php
+//ajax_customer_autocomplete.php
 require_once __DIR__ . "/../config/database_ppic.php";
 
 header("Content-Type: application/json");

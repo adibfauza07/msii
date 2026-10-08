@@ -46,7 +46,10 @@ if ($rcvId <= 0) {
     die("Data Receive belum dipilih atau ID tidak valid.");
 }
 
-// Mengambil Data Header dan Detail Receive
+// =========================================================================
+// QUERY DIPERBARUI: Menggunakan SUM() dan GROUP BY agar item kembar 
+// langsung dijumlahkan Quantity-nya oleh Database.
+// =========================================================================
 $sql = "
     SELECT
         R.RCV_ID,
@@ -58,7 +61,7 @@ $sql = "
         I.ITEM_CODE,
         I.ITEM_NAME,
         I.ITEM_UNIT,
-        RD.RCVD_QTY,
+        SUM(RD.RCVD_QTY) AS RCVD_QTY,
         P.PO_NUM
     FROM dbo.RECEIVE R
     INNER JOIN dbo.RECEIVE_DETAIL RD ON R.RCV_ID = RD.RCV_ID
@@ -66,6 +69,17 @@ $sql = "
     INNER JOIN dbo.PO P ON RD.PO_ID = P.PO_ID
     INNER JOIN dbo.SUPPLIER S ON R.SUP_ID = S.SUP_ID
     WHERE R.RCV_ID = ?
+    GROUP BY 
+        R.RCV_ID, 
+        R.RCV_NO, 
+        R.RCV_DATE, 
+        R.RCV_DONO,
+        S.SUP_CODE, 
+        S.SUP_COMP,
+        I.ITEM_CODE, 
+        I.ITEM_NAME, 
+        I.ITEM_UNIT, 
+        P.PO_NUM
     ORDER BY I.ITEM_CODE
 ";
 
@@ -77,25 +91,76 @@ if ($stmt === false) {
 
 $rows = array();
 $head = null;
+$totalQty = 0;
 
+// Fetch data yang sudah di-sum oleh SQL
 while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     if ($head === null) {
         $head = $r;
     }
     $rows[] = $r;
+    $totalQty += floatval($r["RCVD_QTY"]);
 }
 
 if ($head === null) {
     die("Data Receive tidak ditemukan atau tidak memiliki detail item.");
 }
 
-$totalQty = 0;
-foreach ($rows as $r) {
-    $totalQty += floatval($r["RCVD_QTY"]);
+// =========================================================================
+// LOGIKA PAGINASI DINAMIS (Mencegah ruang kosong & keluar garis)
+// =========================================================================
+$maxRowsWithoutFooter = 26; // Tabel full memanjang jika tidak ada TTD
+$maxRowsWithFooter = 16;    // Tabel lebih pendek jika ada TTD di bawahnya
+
+$pages = array();
+$totalRows = count($rows);
+$i = 0;
+
+while ($i < $totalRows) {
+    $remaining = $totalRows - $i;
+    
+    if ($remaining <= $maxRowsWithFooter) {
+        // Cukup untuk masuk 1 halaman sekalian TTD
+        $chunk = array_slice($rows, $i, $remaining);
+        $pages[] = array(
+            'rows' => $chunk,
+            'has_footer' => true,
+            'empty_fill' => $maxRowsWithFooter - $remaining,
+            'start_index' => $i
+        );
+        $i += $remaining;
+    } else if ($remaining > $maxRowsWithFooter && $remaining <= $maxRowsWithoutFooter) {
+        // Bisa ditarik full 1 halaman, tapi TTD harus pindah ke halaman berikutnya
+        $chunk = array_slice($rows, $i, $maxRowsWithoutFooter);
+        $pages[] = array(
+            'rows' => $chunk,
+            'has_footer' => false,
+            'empty_fill' => $maxRowsWithoutFooter - count($chunk),
+            'start_index' => $i
+        );
+        $i += count($chunk);
+    } else {
+        // Lebih dari kapasitas, potong penuh 1 halaman tanpa TTD
+        $chunk = array_slice($rows, $i, $maxRowsWithoutFooter);
+        $pages[] = array(
+            'rows' => $chunk,
+            'has_footer' => false,
+            'empty_fill' => 0,
+            'start_index' => $i
+        );
+        $i += $maxRowsWithoutFooter;
+    }
 }
 
-$linesPerPage = 15;
-$pages = array_chunk($rows, $linesPerPage);
+// Jika halaman terakhir nge-pas full tabel (tidak ada TTD), buat 1 halaman kosong khusus TTD
+if (count($pages) == 0 || !$pages[count($pages) - 1]['has_footer']) {
+    $pages[] = array(
+        'rows' => array(),
+        'has_footer' => true,
+        'empty_fill' => $maxRowsWithFooter,
+        'start_index' => $totalRows
+    );
+}
 $totalPages = count($pages);
 ?>
 <!DOCTYPE html>
@@ -136,15 +201,18 @@ $totalPages = count($pages);
         }
 
         .page {
-            width: 194mm;
-            min-height: 277mm;
-            margin: 12px auto;
+            width: 194mm; 
+            height: 275mm; 
+            margin: 4px auto; 
             background: #ffffff;
             padding: 8mm;
             box-sizing: border-box;
             border: 1px solid #000000;
             position: relative;
             page-break-after: always;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
 
         .header-company {
@@ -157,8 +225,8 @@ $totalPages = count($pages);
             text-align: center;
             font-size: 18px;
             font-weight: bold;
-            margin-top: 5mm;
-            margin-bottom: 5mm;
+            margin-top: 4mm;
+            margin-bottom: 4mm;
             letter-spacing: 1px;
             text-decoration: underline;
         }
@@ -169,7 +237,7 @@ $totalPages = count($pages);
         }
 
         .info-table {
-            margin-bottom: 5mm;
+            margin-bottom: 4mm;
             font-size: 12px;
         }
         
@@ -178,36 +246,46 @@ $totalPages = count($pages);
             vertical-align: top;
         }
 
+        .detail-wrapper {
+            flex-grow: 1; 
+        }
+
+        .detail {
+            border-bottom: 1px solid #000000; 
+        }
+
         .detail th {
             border: 1px solid #000000;
-            font-size: 11px;
+            font-size: 12px;
             text-align: center;
-            padding: 5px;
+            padding: 6px;
             background-color: #f0f0f0;
         }
 
         .detail td {
             border-left: 1px solid #000000;
             border-right: 1px solid #000000;
-            padding: 4px 5px;
-            height: 20px;
-        }
-
-        .detail .last-line td {
-            border-bottom: 1px solid #000000;
+            padding: 3px 5px;
+            height: 23px; 
+            vertical-align: middle;
         }
 
         .center { text-align: center; }
         .right { text-align: right; }
         .bold { font-weight: bold; }
 
+        .footer-section {
+            margin-top: auto; 
+        }
+
         .footer-table td {
             border: 1px solid #000000;
             padding: 4px 5px;
+            background-color: #f9f9f9;
         }
 
         .sign-table {
-            margin-top: 10mm;
+            margin-top: 5mm;
             width: 100%;
             text-align: center;
         }
@@ -225,7 +303,7 @@ $totalPages = count($pages);
             position: absolute;
             right: 8mm;
             top: 8mm;
-            font-size: 10px;
+            font-size: 11px;
         }
 
         @media print {
@@ -238,9 +316,9 @@ $totalPages = count($pages);
             .page {
                 margin: 0;
                 border: none;
+                width: 100%;
+                height: 277mm; 
                 page-break-after: always;
-                width: auto;
-                min-height: auto;
             }
         }
     </style>
@@ -254,8 +332,11 @@ $totalPages = count($pages);
 
 <?php for ($p = 0; $p < $totalPages; $p++) { ?>
     <?php
-        $pageRows = $pages[$p];
-        $isLastPage = ($p == $totalPages - 1);
+        $pageData = $pages[$p];
+        $pageRows = $pageData['rows'];
+        $hasFooter = $pageData['has_footer'];
+        $emptyFill = $pageData['empty_fill'];
+        $startIndex = $pageData['start_index'];
     ?>
 
     <div class="page">
@@ -291,54 +372,53 @@ $totalPages = count($pages);
             </tr>
         </table>
 
-        <table class="detail">
-            <thead>
-                <tr>
-                    <th style="width:5%;">No</th>
-                    <th style="width:15%;">Item Code</th>
-                    <th style="width:35%;">Description</th>
-                    <th style="width:20%;">PO Number</th>
-                    <th style="width:15%;">Quantity</th>
-                    <th style="width:10%;">Unit</th>
-                </tr>
-            </thead>
-
-            <tbody>
-                <?php
-                    $printed = 0;
-                    $startIndex = $p * $linesPerPage;
-                    foreach ($pageRows as $idx => $r) {
-                        $qty = floatval($r["RCVD_QTY"]);
-                        $printed++;
-                ?>
+        <div class="detail-wrapper">
+            <table class="detail">
+                <thead>
                     <tr>
-                        <td class="center"><?php echo ($startIndex + $idx + 1); ?></td>
-                        <td><?php echo h($r["ITEM_CODE"]); ?></td>
-                        <td><?php echo h($r["ITEM_NAME"]); ?></td>
-                        <td class="center"><?php echo h($r["PO_NUM"]); ?></td>
-                        <td class="right"><?php echo h(num($qty, 2)); ?></td>
-                        <td class="center"><?php echo h($r["ITEM_UNIT"]); ?></td>
+                        <th style="width:5%;">No</th>
+                        <th style="width:15%;">Item Code</th>
+                        <th style="width:35%;">Description</th>
+                        <th style="width:20%;">PO Number</th>
+                        <th style="width:15%;">Quantity</th>
+                        <th style="width:10%;">Unit</th>
                     </tr>
-                <?php } ?>
+                </thead>
 
-                <?php
-                    // Fill empty rows to keep the layout height consistent
-                    for ($i = $printed; $i < $linesPerPage; $i++) {
-                        $cls = ($i == $linesPerPage - 1) ? "last-line" : "";
-                ?>
-                    <tr class="<?php echo $cls; ?>">
-                        <td>&nbsp;</td>
-                        <td>&nbsp;</td>
-                        <td>&nbsp;</td>
-                        <td>&nbsp;</td>
-                        <td>&nbsp;</td>
-                        <td>&nbsp;</td>
-                    </tr>
-                <?php } ?>
-            </tbody>
-        </table>
+                <tbody>
+                    <?php
+                        foreach ($pageRows as $idx => $r) {
+                            $qty = floatval($r["RCVD_QTY"]);
+                    ?>
+                        <tr>
+                            <td class="center"><?php echo ($startIndex + $idx + 1); ?></td>
+                            <td><?php echo h($r["ITEM_CODE"]); ?></td>
+                            <td><?php echo h($r["ITEM_NAME"]); ?></td>
+                            <td class="center"><?php echo h($r["PO_NUM"]); ?></td>
+                            <td class="right"><?php echo h(num($qty, 2)); ?></td>
+                            <td class="center"><?php echo h($r["ITEM_UNIT"]); ?></td>
+                        </tr>
+                    <?php } ?>
 
-        <?php if ($isLastPage) { ?>
+                    <?php
+                        // Membuat baris kosong agar tabel menyentuh bawah
+                        for ($i = 0; $i < $emptyFill; $i++) {
+                    ?>
+                        <tr>
+                            <td>&nbsp;</td>
+                            <td>&nbsp;</td>
+                            <td>&nbsp;</td>
+                            <td>&nbsp;</td>
+                            <td>&nbsp;</td>
+                            <td>&nbsp;</td>
+                        </tr>
+                    <?php } ?>
+                </tbody>
+            </table>
+        </div>
+
+        <?php if ($hasFooter) { ?>
+        <div class="footer-section">
             <table class="footer-table">
                 <tr>
                     <td style="width:75%;" class="right bold">Total Quantity</td>
@@ -369,6 +449,11 @@ $totalPages = count($pages);
                     </td>
                 </tr>
             </table>
+        </div>
+        <?php } else { ?>
+            <div class="footer-section">
+                <table style="border-top: 1px solid #000; width: 100%;"><tr><td></td></tr></table>
+            </div>
         <?php } ?>
     </div>
 <?php } ?>

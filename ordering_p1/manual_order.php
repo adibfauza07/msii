@@ -23,6 +23,66 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
     <title>Manual Delivery Instruction</title>
 
     <style>
+        /* --- Style untuk Inline Edit saat double-click di tabel --- */
+.inline-edit-input {
+    width: 100%;
+    height: 100%;
+    border: 1px solid #316ac5; /* Border biru fokus ala Windows */
+    background: #ffffff;
+    font-family: Tahoma, Arial, sans-serif;
+    font-size: 12px;
+    padding: 2px;
+    box-sizing: border-box;
+    outline: none;
+    color: #000;
+}
+
+/* --- Style untuk DB Navigator Modal Standar Epson --- */
+.modal-navigator {
+    background: #d4d0c8;
+    padding: 4px;
+    border: 1px solid #808080;
+    margin-top: 5px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.nav-btn {
+    background: #d4d0c8;
+    border: 2px outset #ffffff;
+    min-width: 26px;
+    height: 24px;
+    cursor: pointer;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    font-weight: bold;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0 4px;
+    color: #000;
+}
+
+.nav-btn:active {
+    border: 2px inset #ffffff;
+}
+
+.nav-search-wrapper {
+    display: flex;
+    align-items: center;
+    margin-left: auto; /* Mendorong pencarian ke sebelah kanan */
+    gap: 5px;
+}
+
+.nav-search-wrapper input {
+    width: 120px;
+    height: 22px;
+    border: 1px solid #808080;
+    padding: 2px 4px;
+}
+
+
         body {
             margin: 0;
             padding: 0;
@@ -361,6 +421,67 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
     background: #316ac5;
     color: #ffffff;
 }
+
+/* --- Modal Standar Epson Styles --- */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    z-index: 999999;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.4); /* Efek gelap di belakang modal */
+}
+
+.modal-window {
+    background-color: #d4d0c8; /* Warna abu-abu klasik Windows */
+    margin: 5% auto;
+    border: 2px outset #ffffff;
+    width: 450px;
+    box-shadow: 2px 2px 10px rgba(0,0,0,0.5);
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-title-bar {
+    background: #000080; /* Warna biru gelap klasik Windows */
+    color: #ffffff;
+    padding: 4px 8px;
+    font-weight: bold;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+}
+
+.modal-close-btn {
+    background: #d4d0c8;
+    color: #000000;
+    border: 2px outset #ffffff;
+    font-weight: bold;
+    font-size: 10px;
+    cursor: pointer;
+    padding: 0 4px;
+}
+
+.modal-close-btn:active {
+    border: 2px inset #ffffff;
+}
+
+.modal-content-area {
+    padding: 8px;
+    background: #d4d0c8;
+}
+
+.modal-table-container {
+    height: 350px;
+    overflow-y: auto;
+    background: #ffffff;
+    border: 2px inset #ffffff;
+}
+
+
     </style>
 </head>
 
@@ -447,6 +568,7 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
         </div>
 
         <div class="button-row">
+            <button type="button" id="btnUpdateEpsonLocation" style="margin-right: 20px; font-weight: bold;">UPDATE EPSON LOCATION</button>
             <button type="button" id="btnNew">NEW</button>
             <button type="button" id="btnSaveHeader">SAVE HEADER</button>
 			<button type="button" id="btnDeleteHeader">DELETE HEADER</button>
@@ -612,6 +734,56 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
 
     </form>
 
+</div>
+
+
+<!-- Pop Up Modal Standar Epson -->
+<!-- Pop Up Modal Standar Epson -->
+<div id="modalEpsonLocation" class="modal-overlay">
+    <div class="modal-window" style="width: 550px;"> <!-- Lebar sedikit ditambah agar navigator muat -->
+        <!-- Title Bar ala Windows Classic -->
+        <div class="modal-title-bar">
+            <span>Standar Epson</span>
+            <button type="button" class="modal-close-btn" id="btnCloseEpsonModal">X</button>
+        </div>
+        
+        <!-- Content Area -->
+        <div class="modal-content-area">
+            <div class="modal-table-container">
+                <table class="grid" id="tblStandarEpson" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="width:25%;">Item Code</th>
+                            <th style="width:30%;">Item No</th>
+                            <th style="width:25%;">Location</th>
+                            <th style="width:20%;">Polybag QTY</th>
+                        </tr>
+                    </thead>
+                    <tbody id="epsonLocationBody">
+                        <tr><td colspan="4" style="text-align:center;">Loading data...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Baris Navigator & Fitur Cari yang Baru Ditambahkan -->
+            <div class="modal-navigator">
+                <button type="button" class="nav-btn" title="First">|&lt;</button>
+                <button type="button" class="nav-btn" title="Prior">&lt;</button>
+                <button type="button" class="nav-btn" title="Next">&gt;</button>
+                <button type="button" class="nav-btn" title="Last">&gt;|</button>
+                <button type="button" class="nav-btn" title="Insert" id="btnInsertEpson">+</button>
+<button type="button" class="nav-btn" title="Delete" id="btnDeleteEpson">-</button>
+                <button type="button" class="nav-btn" title="Refresh" onclick="loadEpsonLocationData()">↻</button>
+                
+                <div class="nav-search-wrapper">
+                    <span style="font-weight:bold;">Cari Item Code:</span>
+                    <input type="text" id="inputSearchItemCode" placeholder="Ketik code...">
+                    <button type="button" class="nav-btn" title="Search">🔍</button>
+                </div>
+            </div>
+            
+        </div>
+    </div>
 </div>
 
 <script>
@@ -3698,7 +3870,363 @@ document.getElementById("btnDeleteHeader").onclick = function () {
         document.getElementById("LabelStatus").innerHTML = "Header berhasil dihapus.";
     });
 };
+/* --- Logika Load Data & Inline Edit Standar Epson --- */
+var modalEpson = document.getElementById("modalEpsonLocation");
+var btnUpdateEpson = document.getElementById("btnUpdateEpsonLocation");
+var btnCloseEpson = document.getElementById("btnCloseEpsonModal");
+var epsonTableBody = document.getElementById("epsonLocationBody");
 
+function loadEpsonLocationData() {
+    epsonTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Loading data...</td></tr>';
+
+    ajaxPost("ajax_get_epson_std.php", "", function(status, response) {
+        if (status === 200) {
+            try {
+                var res = JSON.parse(response);
+                if (res.success) {
+                    epsonTableBody.innerHTML = ""; 
+                    var data = res.data;
+                    
+                    for (var i = 0; i < data.length; i++) {
+                        var tr = document.createElement("tr");
+                        tr.setAttribute("data-itemno", data[i].ITEM_NO);
+
+                        var tdCode = document.createElement("td");
+                        tdCode.innerText = data[i].ITEM_CODE;
+                        tdCode.setAttribute("data-column", "ITEM_CODE");
+
+                        var tdNo = document.createElement("td");
+                        tdNo.innerText = data[i].ITEM_NO;
+                        tdNo.setAttribute("data-column", "ITEM_NO");
+
+                        var tdLoc = document.createElement("td");
+                        tdLoc.innerText = data[i].LOCATION;
+                        tdLoc.setAttribute("data-column", "LOCATION");
+
+                        var tdPoly = document.createElement("td");
+                        tdPoly.innerText = data[i].POLYBAG;
+                        tdPoly.setAttribute("data-column", "POLYBAG");
+
+                        tr.appendChild(tdCode);
+                        tr.appendChild(tdNo);
+                        tr.appendChild(tdLoc);
+                        tr.appendChild(tdPoly);
+                        epsonTableBody.appendChild(tr);
+                    }
+                } else {
+                    epsonTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center;">' + res.message + '</td></tr>';
+                }
+            } catch(e) {
+                // MODIFIKASI DISINI: Menampilkan response asli dari PHP ke dalam tabel agar letak errornya terlihat
+                epsonTableBody.innerHTML = '<tr><td colspan="4" style="color:red; text-align:left; padding:10px; background:#fff;"><b>Gagal Parsing JSON. Cek Error PHP Berikut:</b><br>' + response + '</td></tr>';
+            }
+        }
+    });
+}
+
+// Event buka modal & Load data
+btnUpdateEpson.onclick = function() {
+    modalEpson.style.display = "block";
+    loadEpsonLocationData();
+};
+
+btnCloseEpson.onclick = function() {
+    modalEpson.style.display = "none";
+};
+
+window.addEventListener("click", function(event) {
+    if (event.target == modalEpson) {
+        modalEpson.style.display = "none";
+    }
+});
+
+// Event Inline Edit (Double Click) terintegrasi Database
+epsonTableBody.addEventListener("dblclick", function(e) {
+    var target = e.target;
+    
+    if (target && target.nodeName === "TD" && target.children.length === 0) {
+        var columnToEdit = target.getAttribute("data-column");
+        
+        // Kita hanya mengizinkan modifikasi di LOCATION dan POLYBAG
+        if (columnToEdit === "LOCATION" || columnToEdit === "POLYBAG") {
+            var currentText = target.innerText;
+            var itemNo = target.parentNode.getAttribute("data-itemno"); // Ambil PK
+            
+            var input = document.createElement("input");
+            input.type = "text";
+            input.value = currentText;
+            input.className = "inline-edit-input";
+            
+            target.innerText = "";
+            target.appendChild(input);
+            input.focus();
+            
+            function saveEdit() {
+                var newValue = input.value;
+                target.innerText = newValue;
+                
+                // Jika data berubah, kirim ke database
+                if (newValue !== currentText) {
+                    var postData = "ITEM_NO=" + encodeURIComponent(itemNo) + 
+                                   "&COLUMN=" + encodeURIComponent(columnToEdit) + 
+                                   "&VALUE=" + encodeURIComponent(newValue);
+                                   
+                    ajaxPost("ajax_update_epson_std.php", postData, function(status, response) {
+                        if (status !== 200) {
+                            alert("Koneksi gagal saat menyimpan data.");
+                            target.innerText = currentText; // Kembalikan nilai awal
+                        } else {
+                            try {
+                                var res = JSON.parse(response);
+                                if (!res.success) {
+                                    alert("Gagal menyimpan: " + res.message);
+                                    target.innerText = currentText; // Kembalikan nilai awal
+                                }
+                            } catch(e) {
+                                alert("Terjadi kesalahan sistem saat menyimpan.");
+                                target.innerText = currentText;
+                            }
+                        }
+                    });
+                }
+            }
+            
+            input.addEventListener("blur", saveEdit);
+            input.addEventListener("keypress", function(event) {
+                if (event.key === "Enter") {
+                    saveEdit();
+                }
+            });
+        }
+    }
+});
+
+/* --- Logika Pencarian Item Code di Pop Up Standar Epson --- */
+document.getElementById("inputSearchItemCode").addEventListener("keyup", function() {
+    // Ambil nilai yang diketik dan ubah ke huruf besar agar tidak case-sensitive
+    var filter = this.value.toUpperCase();
+    var epsonTableBody = document.getElementById("epsonLocationBody");
+    var rows = epsonTableBody.getElementsByTagName("tr");
+
+    // Lakukan perulangan pada setiap baris data di tabel
+    for (var i = 0; i < rows.length; i++) {
+        // Karena kolom Item Code ada di kolom pertama, kita ambil kolom dengan data-column="ITEM_CODE"
+        var tdCode = rows[i].querySelector("td[data-column='ITEM_CODE']");
+        
+        if (tdCode) {
+            var txtValue = tdCode.textContent || tdCode.innerText;
+            // Jika teks sesuai dengan pencarian, tampilkan barisnya. Jika tidak, sembunyikan.
+            if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                rows[i].style.display = "";
+            } else {
+                rows[i].style.display = "none";
+            }
+        }
+    }
+});
+
+// Bersihkan kotak pencarian setiap kali modal dibuka kembali
+document.getElementById("btnUpdateEpsonLocation").addEventListener("click", function() {
+    document.getElementById("inputSearchItemCode").value = "";
+});
+
+
+/* --- Logika Load Locations, Insert & Delete Baris Standar Epson --- */
+var selectedEpsonRow = null;
+var epsonLocations = [];
+
+// Fungsi untuk menarik data Location dari EPSON_LOC saat modal dibuka
+function loadEpsonLocations() {
+    ajaxPost("ajax_get_locations.php", "", function(status, response) {
+        if (status === 200) {
+            try {
+                var res = JSON.parse(response);
+                if (res.success) {
+                    epsonLocations = res.data;
+                }
+            } catch(e) {}
+        }
+    });
+}
+
+// Buka Modal (Update fungsi ini agar memuat Location juga)
+document.getElementById("btnUpdateEpsonLocation").onclick = function() {
+    document.getElementById("modalEpsonLocation").style.display = "block";
+    loadEpsonLocations();
+    loadEpsonLocationData();
+};
+
+// 1. Logika untuk memilih baris (Highlight warna biru saat diklik)
+epsonTableBody.addEventListener("click", function(e) {
+    var el = e.target;
+    while (el && el.nodeName !== "TR") {
+        el = el.parentNode;
+    }
+    
+    if (el && el.parentNode === epsonTableBody) {
+        if (selectedEpsonRow) {
+            selectedEpsonRow.style.backgroundColor = "";
+            selectedEpsonRow.style.color = "";
+        }
+        selectedEpsonRow = el;
+        selectedEpsonRow.style.backgroundColor = "#316ac5";
+        selectedEpsonRow.style.color = "#ffffff";
+    }
+});
+
+// 2. Logika Tombol Insert (+) dengan Autocomplete & Dropdown
+document.getElementById("btnInsertEpson").addEventListener("click", function() {
+    var tr = document.createElement("tr");
+    tr.style.backgroundColor = "#fffbcc"; // Warna penanda baris baru
+    
+    // Siapkan list Dropdown Location
+    var locOptions = '<option value="">-- Pilih Location --</option>';
+    for(var i = 0; i < epsonLocations.length; i++) {
+        locOptions += '<option value="' + epsonLocations[i] + '">' + epsonLocations[i] + '</option>';
+    }
+
+    // Struktur form pada baris baru
+    tr.innerHTML = `
+        <td data-column="ITEM_CODE">
+            <div class="autocomplete-wrap">
+                <input type="text" class="inline-edit-input" placeholder="Cari Item Code..." id="new_item_code" autocomplete="off">
+                <div id="newItemSuggest" class="autocomplete-list" style="width: 250px;"></div>
+            </div>
+        </td>
+        <td data-column="ITEM_NO"><input type="text" class="inline-edit-input" id="new_item_no" readonly style="background-color: #eeeeee;" placeholder="Otomatis terisi..."></td>
+        <td data-column="LOCATION">
+            <select class="inline-edit-input" id="new_location">
+                ${locOptions}
+            </select>
+        </td>
+        <td data-column="POLYBAG"><input type="number" class="inline-edit-input" placeholder="0" id="new_polybag"></td>
+    `;
+    
+    epsonTableBody.insertBefore(tr, epsonTableBody.firstChild);
+    
+    var inputCode = document.getElementById("new_item_code");
+    var inputNo = document.getElementById("new_item_no");
+    var suggestBox = document.getElementById("newItemSuggest");
+    var selectLoc = document.getElementById("new_location");
+    var inputPoly = document.getElementById("new_polybag");
+
+    inputCode.focus();
+
+    // Logika Autocomplete Pencarian Item Code
+    inputCode.addEventListener("keyup", function(e) {
+        var q = this.value;
+        if(e.key === 'Enter') return;
+        
+        if (q.length < 1) {
+            suggestBox.style.display = "none";
+            inputNo.value = "";
+            return;
+        }
+
+        ajaxPost("ajax_get_items_autocomplete.php", "q=" + encodeURIComponent(q), function(status, res) {
+            if (status === 200) {
+                try {
+                    var items = JSON.parse(res);
+                    suggestBox.innerHTML = "";
+                    if(items.length > 0) {
+                        for(var i=0; i<items.length; i++) {
+                            var div = document.createElement("div");
+                            div.className = "autocomplete-item";
+                            div.innerHTML = items[i].ITEM_CODE + " - " + items[i].ITEM_NO;
+                            div.dataset.code = items[i].ITEM_CODE;
+                            div.dataset.no = items[i].ITEM_NO;
+                            
+                            // Saat diklik, isi input code dan no
+                            div.onmousedown = function(ev) {
+                                if(ev.preventDefault) ev.preventDefault();
+                                inputCode.value = this.dataset.code;
+                                inputNo.value = this.dataset.no;
+                                suggestBox.style.display = "none";
+                                selectLoc.focus(); 
+                            };
+                            suggestBox.appendChild(div);
+                        }
+                        suggestBox.style.display = "block";
+                    } else {
+                        suggestBox.style.display = "none";
+                    }
+                } catch(err){}
+            }
+        });
+    });
+    
+    inputCode.addEventListener("blur", function() {
+        setTimeout(function() { suggestBox.style.display = "none"; }, 200);
+    });
+
+    // Simpan ke database saat menekan tombol "Enter" pada kolom Polybag
+    inputPoly.addEventListener("keypress", function(e) {
+        if (e.key === "Enter") {
+            var itemNoValue = inputNo.value;
+            var locValue = selectLoc.value;
+            var polyValue = inputPoly.value;
+
+            if (itemNoValue.trim() === "") {
+                alert("Item Code belum dipilih dari daftar pencarian!");
+                inputCode.focus();
+                return;
+            }
+
+            var postData = "ITEM_NO=" + encodeURIComponent(itemNoValue) + 
+                           "&LOCATION=" + encodeURIComponent(locValue) + 
+                           "&POLYBAG=" + encodeURIComponent(polyValue);
+
+            ajaxPost("ajax_insert_epson_std.php", postData, function(status, response) {
+                if (status === 200) {
+                    try {
+                        var r = JSON.parse(response);
+                        if (r.success) {
+                            loadEpsonLocationData();
+                        } else {
+                            alert("Gagal Menambahkan: " + r.message);
+                        }
+                    } catch(err) {
+                        alert("Gagal memproses respon dari server.");
+                    }
+                }
+            });
+        }
+    });
+});
+
+// 3. Logika Tombol Delete (-)
+document.getElementById("btnDeleteEpson").addEventListener("click", function() {
+    if (!selectedEpsonRow) {
+        alert("Silakan klik/pilih baris yang akan dihapus terlebih dahulu!");
+        return;
+    }
+    
+    var itemNo = selectedEpsonRow.getAttribute("data-itemno");
+    
+    if (!itemNo) {
+        selectedEpsonRow.parentNode.removeChild(selectedEpsonRow);
+        selectedEpsonRow = null;
+        return;
+    }
+    
+    if (confirm("Apakah Anda yakin ingin menghapus Item No: " + itemNo + " ?")) {
+        ajaxPost("ajax_delete_epson_std.php", "ITEM_NO=" + encodeURIComponent(itemNo), function(status, response) {
+            if (status === 200) {
+                try {
+                    var res = JSON.parse(response);
+                    if (res.success) {
+                        selectedEpsonRow.parentNode.removeChild(selectedEpsonRow);
+                        selectedEpsonRow = null;
+                    } else {
+                        alert("Gagal menghapus: " + res.message);
+                    }
+                } catch(err) {
+                    alert("Gagal memproses respon dari server.");
+                }
+            }
+        });
+    }
+});
 </script>
 
 </body>
