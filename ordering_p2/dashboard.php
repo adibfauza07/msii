@@ -209,6 +209,8 @@ function h($value) {
                             <li><a href="forecast.php" class="dropdown-item iframe-link"><i class="fas fa-chart-line text-info mr-2"></i> Forecast</a></li>
                             <li><a href="schedule.php" class="dropdown-item iframe-link"><i class="fas fa-calendar-alt text-danger mr-2"></i> Schedule</a></li>
                             <li><a href="schedule1.php" class="dropdown-item iframe-link"><i class="fas fa-th text-secondary mr-2"></i> Schedule Matrix</a></li>
+							 <li><a href="import_po.php" class="dropdown-item iframe-link"><i class="fas fa-th text-secondary mr-2"></i> IMPORT PO</a></li>
+							
                         </ul>
                     </li>
 
@@ -219,8 +221,12 @@ function h($value) {
                         </a>
                         <ul aria-labelledby="dropLogistik" class="dropdown-menu border-0 shadow">
                             <li><a href="pack_return.php" class="dropdown-item iframe-link"><i class="fas fa-undo-alt text-danger mr-2"></i> Input Pack Return</a></li>
-                            <li><a href="depresiasi.php" class="dropdown-item iframe-link"><i class="fas fa-balance-scale text-secondary mr-2"></i> Depresiasi</a></li>
+                            <li><a href="edit_pack_by_customer.php" class="dropdown-item iframe-link"><i class="fas fa-file-contract text-primary mr-2"></i> Report pack </a></li>
+							 <li><a href="mps_box.php" class="dropdown-item iframe-link"><i class="fas fa-file-contract text-primary mr-2"></i> MRP BOX PER CUSTOMER </a></li>
+							<li><a href="depresiasi.php" class="dropdown-item iframe-link"><i class="fas fa-balance-scale text-secondary mr-2"></i> Depresiasi</a></li>
                             <li><a href="quotation.php" class="dropdown-item iframe-link"><i class="fas fa-file-contract text-primary mr-2"></i> List Quotation</a></li>
+							 
+							
                         </ul>
                     </li>
 

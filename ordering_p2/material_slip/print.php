@@ -67,12 +67,18 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
     <style>
         /* Pengaturan Dasar Font dan Margin */
         body {
-            font-family: Arial, Helvetica, sans-serif;
-            font-size: 12px;
-            color: #000;
+            /* PERBAIKAN: Gunakan font standar seperti Arial yang lebih tebal dibaca jarum printer */
+            font-family: Arial, Helvetica, sans-serif; 
+            /* PERBAIKAN: Gunakan ukuran pt (point), bukan px agar pas di ukuran cetak kertas */
+            font-size: 11pt; 
+            color: #000000;
             margin: 0;
             padding: 15px;
             background-color: #f9f9f9;
+            
+            /* PERBAIKAN: Matikan anti-aliasing browser agar font tercetak sebagai blok hitam solid */
+            -webkit-font-smoothing: none;
+            text-rendering: optimizeSpeed;
         }
 
         /* Container Pembungkus Kertas */
@@ -94,23 +100,23 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
         }
         .company-info h3 {
             margin: 0 0 3px 0;
-            font-size: 16px;
+            font-size: 14pt;
             font-weight: bold;
         }
         .company-info p {
             margin: 0;
             line-height: 1.3;
-            font-size: 11px;
+            font-size: 10pt;
         }
         .time-info {
-            font-size: 11px;
+            font-size: 10pt;
             margin-top: 5px;
         }
 
         /* Judul Dokumen */
         .doc-title {
             text-align: center;
-            font-size: 16px;
+            font-size: 14pt;
             font-weight: bold;
             margin-bottom: 10px;
         }
@@ -120,10 +126,10 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 10px;
-            font-size: 12px;
+            font-size: 11pt;
         }
         .info-table td {
-            border: 1px solid #000;
+            border: 1px solid #000000;
             padding: 5px 8px;
             vertical-align: top;
         }
@@ -137,10 +143,10 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 20px;
-            font-size: 11px;
+            font-size: 10pt;
         }
         .items-table th, .items-table td {
-            border: 1px solid #000;
+            border: 1px solid #000000;
             padding: 5px 8px;
         }
         .items-table th {
@@ -157,7 +163,7 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
             justify-content: space-between;
             text-align: center;
             margin-bottom: 15px;
-            font-size: 11px;
+            font-size: 10pt;
         }
         .signature-box {
             width: 30%;
@@ -168,31 +174,35 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
 
         /* Catatan Kaki */
         .footer-notes {
-            font-size: 10px;
+            font-size: 9pt;
             display: flex;
             justify-content: space-between;
             margin-top: 10px;
         }
         .doc-control {
             margin-top: 5px;
-            font-size: 10px;
+            font-size: 9pt;
             text-align: left;
         }
 
        /* --- SETTING KHUSUS SAAT DIPRINT --- */
         @media print {
             @page {
-                /* PERBAIKAN: Margin atas disesuaikan jadi 10mm agar jaraknya pas, tidak mepet ke atas kertas */
                 /* Format: Atas Kanan Bawah Kiri */
-                margin: 10mm 5mm 5mm 5mm; 
+                margin: 5mm 5mm 5mm 5mm; 
             }
             .no-print { display: none !important; }
             
+            * {
+                font-weight: normal !important;
+                color: #000000 !important; /* Paksa hitam pekat ke printer */
+            }
+
             body { 
                 padding: 0; 
                 margin: 0;
                 background-color: #fff;
-                font-size: 10px; 
+                font-size: 11pt; /* Dipertahankan ukurannya agar tegas */
                 -webkit-print-color-adjust: exact;
             }
             .page-container { 
@@ -208,8 +218,9 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
                 page-break-after: auto; /* Hilangkan page-break di halaman terakhir */
             }
             
-            /* Merapatkan tabel agar muat 1 lembar */
+            /* Merapatkan tabel agar muat 1 lembar dan garis lebih hitam */
             .info-table td, .items-table th, .items-table td {
+                border: 1px solid #000000 !important;
                 padding: 3px 5px;
             }
             .signature-space { margin-top: 30px; } /* Jarak tanda tangan dikurangi saat print */
@@ -239,7 +250,7 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
                 <?php $instansi = get_instansi(); ?>
                  <h3><?= $instansi['nama_instansi'] ?> PLANT 2</h3>
                 <p>Kawasan Industry Kota Bukit Indah ST-1<br>
-                Blok A-III Lot No.15E-15F,Purwakarta, Jawa Barat 41181, Indonesia.<br>			
+                Blok A-III Lot No.15E-15F,Purwakarta, Jawa Barat 41181, Indonesia.<br>          
                 </p>
             </div>
             <div class="time-info">
@@ -252,7 +263,7 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
         <div class="doc-title">
             SURAT PENGANTAR BARANG
             <?php if ($total_pages > 1): ?>
-                <div style="font-size: 10px; margin-top: 3px;">(Halaman <?= $page + 1 ?> dari <?= $total_pages ?>)</div>
+                <div style="font-size: 10pt; margin-top: 3px;">(Halaman <?= $page + 1 ?> dari <?= $total_pages ?>)</div>
             <?php endif; ?>
         </div>
 
@@ -260,10 +271,10 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
         <table class="info-table">
             <tr>
                 <td class="col-label" style="width: 15%;">Nomor</td>
-                <td class="col-value" style="width: 35%;">: <strong><?= htmlspecialchars($header['TRAN_DOC']) ?></strong></td>
+                <td class="col-value" style="width: 35%;">: <?= htmlspecialchars($header['TRAN_DOC']) ?></td>
                 <td class="col-recipient" colspan="2" style="width: 50%;" rowspan="2">
                     Kepada Yth.<br><br>
-                    <strong><?= htmlspecialchars((isset($header['RECIPIENT']) && $header['RECIPIENT'] !== '') ? $header['RECIPIENT'] : 'PT. IMC TEKNO INDONESIA (Plan 2)') ?></strong>
+                    <?= htmlspecialchars((isset($header['RECIPIENT']) && $header['RECIPIENT'] !== '') ? $header['RECIPIENT'] : 'PT. IMC TEKNO INDONESIA (Plan 2)') ?>
                 </td>
             </tr>
             <tr>
@@ -349,10 +360,10 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
                     }
                 ?>
                 <!-- Baris Total -->
-                <tr style="font-weight:bold; background-color:#f9f9f9;">
-                    <td colspan="4" class="kanan">TOTAL KESELURUHAN</td>
-                    <td class="kanan"><?= number_format($total_qty, 0) ?></td>
-                    <td class="kanan"><?= $total_box > 0 ? number_format($total_box, 0) : '' ?></td>
+                <tr style="background-color:#f9f9f9;">
+                    <td colspan="4" class="kanan" style="font-weight: bold;">TOTAL KESELURUHAN</td>
+                    <td class="kanan" style="font-weight: bold;"><?= number_format($total_qty, 0) ?></td>
+                    <td class="kanan" style="font-weight: bold;"><?= $total_box > 0 ? number_format($total_box, 0) : '' ?></td>
                     <td></td>
                 </tr>
                 <?php endif; ?>

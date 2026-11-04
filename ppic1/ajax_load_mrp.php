@@ -48,14 +48,14 @@ if ($action === 'get_item_list') {
 
 $sopDate = sprintf('%04d-%02d-01', $tahun, $bulan);
 
-// MODIFIKASI: Filter I.ITTY_CODE <> '01' di query utama agar material ini tidak diproses sama sekali
+// MODIFIKASI: BegStockCTE memfilter LOC_ID IN (2, 27) dan CAST tanggal
 $sqlMain = "
     WITH BegStockCTE AS (
-        SELECT T.ITEM_ID, SUM(T.TAG_QTY) AS begining_stok
-        FROM TAGS T
-        INNER JOIN SOP S ON T.SOP_ID = S.SOP_ID
-        INNER JOIN LOC L ON T.LOC_ID = L.LOC_ID
-        WHERE L.LOC_CODE IN ('WHS', 'PRD') AND S.SOP_SDATE = ? 
+        SELECT T.ITEM_ID, SUM(ISNULL(T.TAG_QTY, 0)) AS begining_stok
+        FROM dbo.TAGS T
+        INNER JOIN dbo.SOP S ON T.SOP_ID = S.SOP_ID
+        WHERE T.LOC_ID IN (2, 27) 
+          AND CAST(S.SOP_SDATE AS DATE) = CAST(? AS DATE)
         GROUP BY T.ITEM_ID
     )
     SELECT 
@@ -63,8 +63,8 @@ $sqlMain = "
         SI.SUP_COMP, 
         ISNULL(BS.begining_stok, 0) AS BEG_STOCK
     FROM dbo.RPT_MUS M
-    INNER JOIN ITEMS I ON M.ITEM_ID = I.ITEM_ID
-    OUTER APPLY (SELECT TOP 1 SUP_COMP FROM SUP_ITEMS WHERE ITEM_ID = I.ITEM_ID) SI
+    INNER JOIN dbo.ITEMS I ON M.ITEM_ID = I.ITEM_ID
+    OUTER APPLY (SELECT TOP 1 SUP_COMP FROM dbo.SUP_ITEMS WHERE ITEM_ID = I.ITEM_ID) SI
     LEFT JOIN BegStockCTE BS ON I.ITEM_ID = BS.ITEM_ID
     WHERE M.DOC_YEAR = ? 
       AND M.DOC_MONTH = ?

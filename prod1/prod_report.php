@@ -826,6 +826,52 @@ while ($rowNg = sqlsrv_fetch_array($stmtTopNgType, SQLSRV_FETCH_ASSOC)) {
 sqlsrv_free_stmt($stmtTopNgType);
 
 /*
+    TOP 5 ITEM DENGAN NG TERBANYAK
+*/
+$sqlTopNgItem = "
+SELECT TOP 5
+    ITEM_CUSTINFO_VIEW.part_code AS ITEM_CODE,
+    ITEM_CUSTINFO_VIEW.part_name AS ITEM_NAME,
+    SUM(ISNULL(PRODUCTION.PD_NG, 0)) AS TOTAL_NG
+FROM PRODUCTION
+INNER JOIN WO ON PRODUCTION.WO_ID = WO.WO_ID
+INNER JOIN MAC ON WO.MAC_ID = MAC.MAC_ID
+INNER JOIN MAG ON MAC.MAG_ID = MAG.MAG_ID
+INNER JOIN ITEM_CUSTINFO_VIEW ON WO.ITEM_ID = ITEM_CUSTINFO_VIEW.ITEM_ID
+WHERE
+    PRODUCTION.PD_DATE >= ?
+    AND PRODUCTION.PD_DATE < ?
+    $where
+GROUP BY
+    ITEM_CUSTINFO_VIEW.part_code,
+    ITEM_CUSTINFO_VIEW.part_name
+HAVING
+    SUM(ISNULL(PRODUCTION.PD_NG, 0)) > 0
+ORDER BY
+    TOTAL_NG DESC
+";
+
+$stmtTopNgItem = sqlsrv_query($conn, $sqlTopNgItem, $params);
+
+if ($stmtTopNgItem === false) {
+    echo "<pre>";
+    print_r(sqlsrv_errors());
+    echo "</pre>";
+    exit;
+}
+
+$topNgItemRows = array();
+while ($rowTopItem = sqlsrv_fetch_array($stmtTopNgItem, SQLSRV_FETCH_ASSOC)) {
+    $topNgItemRows[] = array(
+        "ITEM_CODE" => safeText(isset($rowTopItem["ITEM_CODE"]) ? $rowTopItem["ITEM_CODE"] : ""),
+        "ITEM_NAME" => safeText(isset($rowTopItem["ITEM_NAME"]) ? $rowTopItem["ITEM_NAME"] : ""),
+        "TOTAL_NG"  => floatval(isset($rowTopItem["TOTAL_NG"]) ? $rowTopItem["TOTAL_NG"] : 0)
+    );
+}
+
+sqlsrv_free_stmt($stmtTopNgItem);
+
+/*
     DETAIL NG YANG DIKLIK
 */
 $selectedNgDesc = "";
@@ -1780,7 +1826,7 @@ $clearNgUrl = "prod_report.php?" . http_build_query($clearNgParams);
             font-weight: bold;
         }
 
-        .table-item-ng .item-code {
+        .table-item-ng .item-code, .table-ng .item-code {
             color: #c0392b;
             font-weight: bold;
         }
@@ -2250,6 +2296,42 @@ $clearNgUrl = "prod_report.php?" . http_build_query($clearNgParams);
 
             <div class="click-note">Klik kode atau deskripsi NG untuk drilldown.</div>
         </div>
+
+        <!-- START: PANEL BARU TOP 5 ITEM NG -->
+        <div class="panel">
+            <h3>Daftar Top 5 Item Code (NG Terbanyak)</h3>
+
+            <table class="table-ng">
+                <thead>
+                    <tr>
+                        <th>No</th>
+                        <th>Item Code</th>
+                        <th>Item Name</th>
+                        <th>Qty NG</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (count($topNgItemRows) > 0): ?>
+                        <?php $noTopItem = 1; ?>
+                        <?php foreach ($topNgItemRows as $tItem): ?>
+                            <tr>
+                                <td><?php echo $noTopItem; ?></td>
+                                <td class="item-code"><?php echo h($tItem["ITEM_CODE"]); ?></td>
+                                <td><?php echo h($tItem["ITEM_NAME"]); ?></td>
+                                <td class="qty"><?php echo angka($tItem["TOTAL_NG"]); ?></td>
+                            </tr>
+                            <?php $noTopItem++; ?>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <tr>
+                            <td colspan="4">Tidak ada data NG.</td>
+                        </tr>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <!-- END: PANEL BARU TOP 5 ITEM NG -->
+
     </div>
 </div>
 

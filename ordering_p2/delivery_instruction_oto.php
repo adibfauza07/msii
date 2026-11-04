@@ -20,30 +20,17 @@ function get_param($name, $default = "") {
     return $default;
 }
 
-function to_yyyymmdd($value) {
-    $value = trim($value);
-    if ($value == "") {
-        return "";
+// Helper untuk format tanggal dari object DateTime SQLSRV
+function format_sqlsrv_date($dateObj) {
+    if (empty($dateObj)) return "";
+    if ($dateObj instanceof DateTime) {
+        return strtoupper($dateObj->format("d M Y"));
     }
-    if (preg_match('/^\d{8}$/', $value)) {
-        return $value;
+    $ts = strtotime($dateObj);
+    if ($ts !== false) {
+        return strtoupper(date("d M Y", $ts));
     }
-    $ts = strtotime($value);
-    if ($ts === false) {
-        return "";
-    }
-    return date("Ymd", $ts);
-}
-
-function fmt_date_id($yyyymmdd) {
-    if ($yyyymmdd == "") {
-        return "";
-    }
-    $ts = strtotime($yyyymmdd);
-    if ($ts === false) {
-        return $yyyymmdd;
-    }
-    return strtoupper(date("d M Y", $ts));
+    return $dateObj;
 }
 
 function fmt_print_date() {
@@ -57,26 +44,18 @@ function fmt_num($value, $decimal = 0) {
     return number_format((float)$value, $decimal, ".", ",");
 }
 
-// Ambil parameter Customer
-$cust_code = get_param("CUST_CODE", "");
-$start_raw = get_param("START_DATE", "");
-$end_raw   = get_param("END_DATE", "");
+// Ambil parameter PRINT_IDS (kumpulan ID yang dipisahkan koma)
+$print_ids_raw = get_param("PRINT_IDS", "");
 
-if ($cust_code == "") {
-    $cust_code = get_param("CUSTOMER", "");
+if ($print_ids_raw === "") {
+    die("<div style='font-family: Arial; padding: 20px;'><h3>Tidak ada data yang dipilih untuk diprint.</h3><p>Tutup tab ini dan pastikan Anda menceklis data pada tabel sebelum menekan tombol Print.</p></div>");
 }
 
-// Jika CUST_CODE kosong, set ke '%' untuk menampilkan SEMUA
-if ($cust_code == "") {
-    $cust_code = "%";
-}
+// Bersihkan input agar HANYA berisi angka dan koma (Mencegah SQL Injection)
+$safe_ids = preg_replace('/[^0-9,]/', '', $print_ids_raw);
 
-$start_date = to_yyyymmdd($start_raw);
-$end_date   = to_yyyymmdd($end_raw);
-
-// Validasi Tanggal
-if ($start_date == "" || $end_date == "") {
-    die("START_DATE / END_DATE tidak valid.");
+if ($safe_ids === "") {
+    die("Format ID tidak valid.");
 }
 
 // Menambahkan DP.DI_ORDERNO dari DI_PART_TEMP
@@ -92,17 +71,11 @@ $sql = "
     INNER JOIN dbo.DI_TEMP DT ON DP.DI_ID = DT.DI_ID
     INNER JOIN dbo.CUST C ON DT.CUST_ID = C.CUST_ID
     LEFT JOIN dbo.ITEMS P ON DP.PART_ID = P.ITEM_ID
-    WHERE C.CUST_CODE LIKE ? 
-      AND DT.DI_START_DATE = ? 
-      AND DT.DI_DATE = ?
+    WHERE DP.DI_ID IN ($safe_ids)
     ORDER BY DP.DI_ID ASC, P.ITEM_NO ASC
 ";
 
-$stmt = sqlsrv_query($conn, $sql, array(
-    $cust_code,
-    $start_raw, 
-    $end_raw
-));
+$stmt = sqlsrv_query($conn, $sql);
 
 if ($stmt === false) {
     die("<pre>Query Gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
@@ -113,8 +86,9 @@ while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $rows[] = $r;
 }
 
-$displayStart = fmt_date_id($start_date);
-$displayEnd   = fmt_date_id($end_date);
+if (count($rows) === 0) {
+    die("<div style='font-family: Arial; padding: 20px;'><h3>Data tidak ditemukan atau sudah ditransfer.</h3></div>");
+}
 
 $documentPages = array();
 
@@ -126,13 +100,15 @@ for ($i = 0; $i < count($rows); $i++) {
 
     if (!isset($documentPages[$key])) {
         $documentPages[$key] = array(
-            "CUST_CODE" => isset($r["CUST_CODE"]) ? trim((string)$r["CUST_CODE"]) : "",
-            "CUST_COMP" => isset($r["CUST_COMP"]) ? trim((string)$r["CUST_COMP"]) : "",
-            "DI_NO"     => isset($r["DI_NO"]) ? trim((string)$r["DI_NO"]) : "",
-            "DI_DSNO"   => isset($r["DI_DSNO"]) ? trim((string)$r["DI_DSNO"]) : "",
-            "DI_INVNO"  => isset($r["DI_INVNO"]) ? trim((string)$r["DI_INVNO"]) : "",
-            "LOCATION"  => isset($r["LOCATION"]) ? trim((string)$r["LOCATION"]) : "",
-            "ROWS"      => array()
+            "CUST_CODE"     => isset($r["CUST_CODE"]) ? trim((string)$r["CUST_CODE"]) : "",
+            "CUST_COMP"     => isset($r["CUST_COMP"]) ? trim((string)$r["CUST_COMP"]) : "",
+            "DI_NO"         => isset($r["DI_NO"]) ? trim((string)$r["DI_NO"]) : "",
+            "DI_DSNO"       => isset($r["DI_DSNO"]) ? trim((string)$r["DI_DSNO"]) : "",
+            "DI_INVNO"      => isset($r["DI_INVNO"]) ? trim((string)$r["DI_INVNO"]) : "",
+            "LOCATION"      => isset($r["LOCATION"]) ? trim((string)$r["LOCATION"]) : "",
+            "DI_START_DATE" => isset($r["DI_START_DATE"]) ? $r["DI_START_DATE"] : "",
+            "DI_DATE"       => isset($r["DI_DATE"]) ? $r["DI_DATE"] : "",
+            "ROWS"          => array()
         );
     }
 
@@ -210,21 +186,7 @@ foreach ($documentPages as $page) {
 }
 
 if (count($pages) == 0) {
-    $pages[] = array(
-        "CUST_CODE"    => "",
-        "CUST_COMP"    => "",
-        "DI_NO"        => "",
-        "DI_DSNO"      => "",
-        "DI_INVNO"     => "",
-        "LOCATION"     => "",
-        "ROWS"         => array(),
-        "IS_LAST_PAGE" => true,
-        "GRAND_PO_BAL" => 0,
-        "GRAND_PLAN"   => 0,
-        "GRAND_DIPA"   => 0,
-        "PAGE_NO"      => 1,
-        "TOTAL_PAGES"  => 1
-    );
+    die("Data tidak ditemukan.");
 }
 
 $totalPages = count($pages);
@@ -496,6 +458,10 @@ for ($p = 0; $p < count($pages); $p++) {
     $diInvno    = $pageData["DI_INVNO"];
     $location   = $pageData["LOCATION"];
     $detailRows = $pageData["ROWS"];
+    
+    // Format Periode Tanggal per Dokumen
+    $displayStart = format_sqlsrv_date($pageData["DI_START_DATE"]);
+    $displayEnd   = format_sqlsrv_date($pageData["DI_DATE"]);
 ?>
 
     <div class="page">

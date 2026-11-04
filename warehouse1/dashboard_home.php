@@ -178,6 +178,16 @@ function h($value) {
                 <div class="report-name">STOCK </div>
                 <a class="button" href="stok.php" target="_blank">STOCK ANALYSIS</a>
             </div>
+			
+			 <div class="report-item">
+                <div class="report-name">STOCK TRIWULAN</div>
+                <a class="button" href="stok_all.php" target="_blank">STOCK TRIWULAN</a>
+            </div>
+			
+			 <div class="report-item">
+                <div class="report-name">SALES TRIWULAN</div>
+                <a class="button" href="sales_all.php" target="_blank">SALES TRIWULAN</a>
+            </div>
 
             
 

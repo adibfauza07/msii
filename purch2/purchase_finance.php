@@ -4,13 +4,6 @@
  * PHP 5.4 + SQL Server sqlsrv + Bootstrap 3 + jQuery UI Autocomplete
  *
  * Report Purchase gabungan Plant 1 / Plant 2 / All.
- * Stored procedure:
- *   dbo.RPT_PURCHASE_YEAR2(@CODE, @SUP_CODE, @RCV_NOMOR)
- *
- * Autocomplete sudah built-in dalam file ini:
- *   purchase_finance_gabungan.php?ajax=item_code&plant=all&term=100
- *   purchase_finance_gabungan.php?ajax=receive_no&plant=p1&term=260
- *   purchase_finance_gabungan.php?ajax=sup_code&plant=all&term=whs
  */
 
 set_time_limit(180);
@@ -165,7 +158,6 @@ function right_like_param($value, $maxLength)
     }
 
     // Penting: @CODE di SP varchar(8).
-    // Jangan kirim %100184-0% karena akan kepotong menjadi %100184-.
     if (strlen($value) >= $maxLength) {
         return substr($value, 0, $maxLength);
     }
@@ -198,9 +190,9 @@ function contains_like_param($value, $maxLength)
     return substr($value, 0, $maxLength);
 }
 
-function has_main_filter($itemCode, $receiveNo)
+function has_main_filter($itemCode, $receiveNo, $supCode = '', $startDate = '', $endDate = '')
 {
-    return (clean_lookup_value($itemCode) !== '' || clean_lookup_value($receiveNo) !== '');
+    return (clean_lookup_value($itemCode) !== '' || clean_lookup_value($receiveNo) !== '' || clean_lookup_value($supCode) !== '' || ($startDate !== '' && $endDate !== ''));
 }
 
 function sort_date_value($value)
@@ -378,8 +370,17 @@ $itemCode = isset($_GET['item_code']) ? trim((string) $_GET['item_code']) : '';
 $supCode = isset($_GET['sup_code']) ? trim((string) $_GET['sup_code']) : '';
 $receiveNo = isset($_GET['receive_no']) ? trim((string) $_GET['receive_no']) : '';
 
-$submitted = isset($_GET['show_report']);
-$hasMainFilter = has_main_filter($itemCode, $receiveNo);
+// Tambahan filter date
+$startDate = isset($_GET['start_date']) ? trim((string) $_GET['start_date']) : '';
+$endDate = isset($_GET['end_date']) ? trim((string) $_GET['end_date']) : '';
+
+// Handle export trigger
+$isExport = isset($_GET['export_excel']) && $_GET['export_excel'] == '1';
+
+// Kita submit dari tombol tampilkan atau tombol export
+$submitted = isset($_GET['show_report']) || $isExport;
+
+$hasMainFilter = has_main_filter($itemCode, $receiveNo, $supCode, $startDate, $endDate);
 $errorMessages = array();
 $warningMessages = array();
 $reportRows = array();
@@ -391,7 +392,7 @@ $pageSelf = basename(isset($_SERVER['PHP_SELF']) ? $_SERVER['PHP_SELF'] : 'purch
 |--------------------------------------------------------------------------
 */
 if ($submitted && !$hasMainFilter) {
-    $errorMessages[] = 'Isi Item Code atau Receive No terlebih dahulu, supaya report tidak menarik semua data.';
+    $errorMessages[] = 'Isi Item Code, Supplier, Receive No, atau Filter Tanggal terlebih dahulu, supaya report tidak menarik semua data.';
 }
 
 if ($submitted && $hasMainFilter) {
@@ -411,6 +412,10 @@ if ($submitted && $hasMainFilter) {
         $supCodeParam,
         $receiveNoParam
     );
+    
+    // Timestamp for date filtering
+    $tsStart = $startDate !== '' ? strtotime($startDate . ' 00:00:00') : 0;
+    $tsEnd = $endDate !== '' ? strtotime($endDate . ' 23:59:59') : PHP_INT_MAX;
 
     $serversForReport = selected_servers($plant);
     foreach ($serversForReport as $serverKey) {
@@ -429,6 +434,11 @@ if ($submitted && $hasMainFilter) {
         }
 
         while ($reportRow = sqlsrv_fetch_array($reportStmt, SQLSRV_FETCH_ASSOC)) {
+            // Apply Date Filter post-query
+            $rcvDateTs = isset($reportRow['RCV_DATE']) ? sort_date_value($reportRow['RCV_DATE']) : 0;
+            if ($tsStart > 0 && $rcvDateTs < $tsStart) continue;
+            if ($tsEnd < PHP_INT_MAX && $rcvDateTs > $tsEnd) continue;
+
             $reportRow['PLANT_KEY'] = $serverKey;
             $reportRow['PLANT_SHORT'] = isset($servers_config[$serverKey]['short']) ? $servers_config[$serverKey]['short'] : strtoupper($serverKey);
             $reportRow['PLANT_LABEL'] = isset($servers_config[$serverKey]['label']) ? $servers_config[$serverKey]['label'] : strtoupper($serverKey);
@@ -440,7 +450,6 @@ if ($submitted && $hasMainFilter) {
     }
 
     // Sort terbaru di atas berdasarkan Receive Date.
-    // Jika tanggal sama, Receive No terbesar di atas, lalu Plant, lalu PO Date terbaru.
     usort($reportRows, function ($a, $b) {
         $dateA = isset($a['RCV_DATE']) ? sort_date_value($a['RCV_DATE']) : 0;
         $dateB = isset($b['RCV_DATE']) ? sort_date_value($b['RCV_DATE']) : 0;
@@ -471,6 +480,63 @@ if ($submitted && $hasMainFilter) {
 
         return ($poDateA < $poDateB) ? 1 : -1;
     });
+}
+
+/*
+|--------------------------------------------------------------------------
+| Export Excel Handling
+|--------------------------------------------------------------------------
+*/
+if ($isExport && $hasMainFilter && count($reportRows) > 0) {
+    header("Content-Type: application/vnd.ms-excel; charset=UTF-8");
+    header("Content-Disposition: attachment; filename=Purchase_Report_" . date('Ymd_His') . ".xls");
+    header("Pragma: no-cache");
+    header("Expires: 0");
+
+    echo '<table border="1">';
+    echo '<tr>';
+    if ($plant === 'all') echo '<th style="background:#e0e0e0;">Plant</th>';
+    echo '<th style="background:#e0e0e0;">No.</th><th style="background:#e0e0e0;">PO Date</th><th style="background:#e0e0e0;">PO No.</th><th style="background:#e0e0e0;">Item Code</th><th style="background:#e0e0e0;">Item Name</th><th style="background:#e0e0e0;">Supplier</th><th style="background:#e0e0e0;">Qty PO</th><th style="background:#e0e0e0;">Qty Receive</th><th style="background:#e0e0e0;">Unit</th><th style="background:#e0e0e0;">PO Price</th><th style="background:#e0e0e0;">Receive Price</th><th style="background:#e0e0e0;">Currency</th><th style="background:#e0e0e0;">Due Date</th><th style="background:#e0e0e0;">Receive No.</th><th style="background:#e0e0e0;">Receive Date</th>';
+    echo '</tr>';
+
+    $no = 1;
+    $totalQtyPo = 0;
+    $totalQtyReceive = 0;
+    foreach ($reportRows as $row) {
+        $qtyPo = isset($row['QTY']) ? (float) $row['QTY'] : 0;
+        $qtyReceive = isset($row['RCVD_QTY']) ? (float) $row['RCVD_QTY'] : 0;
+        $totalQtyPo += $qtyPo;
+        $totalQtyReceive += $qtyReceive;
+
+        echo '<tr>';
+        if ($plant === 'all') echo '<td>' . h(isset($row['PLANT_SHORT']) ? $row['PLANT_SHORT'] : '') . '</td>';
+        echo '<td>' . $no . '</td>';
+        echo '<td>' . h(date_display(isset($row['PO_DATE']) ? $row['PO_DATE'] : '')) . '</td>';
+        echo '<td style="mso-number-format:\'@\';">' . h(isset($row['PO_NUM']) ? $row['PO_NUM'] : '') . '</td>';
+        echo '<td style="mso-number-format:\'@\';">' . h(isset($row['ITEM_CODE']) ? $row['ITEM_CODE'] : '') . '</td>';
+        echo '<td>' . h(isset($row['ITEM_NAME']) ? $row['ITEM_NAME'] : '') . '</td>';
+        echo '<td>' . h(trim(isset($row['SUP_CODE']) ? $row['SUP_CODE'] : '') . ' - ' . trim(isset($row['SUP_COMP']) ? $row['SUP_COMP'] : '')) . '</td>';
+        echo '<td>' . $qtyPo . '</td>';
+        echo '<td>' . $qtyReceive . '</td>';
+        echo '<td>' . h(isset($row['POD_UNIT']) ? $row['POD_UNIT'] : '') . '</td>';
+        echo '<td>' . h(isset($row['POD_PRICE']) ? $row['POD_PRICE'] : '') . '</td>';
+        echo '<td>' . h(isset($row['RCV_PRICE']) ? $row['RCV_PRICE'] : '') . '</td>';
+        echo '<td>' . h(isset($row['PO_CUR']) ? $row['PO_CUR'] : '') . '</td>';
+        echo '<td>' . h(date_display(isset($row['POD_DUE']) ? $row['POD_DUE'] : '')) . '</td>';
+        echo '<td style="mso-number-format:\'@\';">' . h(isset($row['RCV_NOMOR']) ? $row['RCV_NOMOR'] : '') . '</td>';
+        echo '<td>' . h(date_display(isset($row['RCV_DATE']) ? $row['RCV_DATE'] : '')) . '</td>';
+        echo '</tr>';
+        $no++;
+    }
+    echo '<tr>';
+    $colspan = ($plant === 'all') ? 7 : 6;
+    echo '<th colspan="' . $colspan . '" align="right">TOTAL</th>';
+    echo '<th>' . $totalQtyPo . '</th>';
+    echo '<th>' . $totalQtyReceive . '</th>';
+    echo '<th colspan="7"></th>';
+    echo '</tr>';
+    echo '</table>';
+    exit;
 }
 ?>
 <!DOCTYPE html>
@@ -666,38 +732,74 @@ if ($submitted && $hasMainFilter) {
                     </div>
                 </div>
 
-                <div class="filter-note">
-                    Isi <strong>Item Code</strong> atau <strong>Receive No</strong> terlebih dahulu, baru klik Tampilkan.
-                    Ini mencegah report menarik semua data dari server gabungan.
+                <!-- Tambahan Row untuk Filter Tanggal -->
+                <div class="row" style="margin-top: 5px;">
+                    <div class="col-sm-3">
+                        <div class="form-group">
+                            <label for="start_date">Receive Start Date</label>
+                            <input type="text"
+                                   class="form-control datepicker"
+                                   id="start_date"
+                                   name="start_date"
+                                   value="<?php echo h($startDate); ?>"
+                                   placeholder="YYYY-MM-DD">
+                        </div>
+                    </div>
+                    <div class="col-sm-3">
+                        <div class="form-group">
+                            <label for="end_date">Receive End Date</label>
+                            <input type="text"
+                                   class="form-control datepicker"
+                                   id="end_date"
+                                   name="end_date"
+                                   value="<?php echo h($endDate); ?>"
+                                   placeholder="YYYY-MM-DD">
+                        </div>
+                    </div>
                 </div>
 
-                <button type="submit"
-                        class="btn btn-primary"
-                        id="btnTampilkan"
-                        name="show_report"
-                        value="1"
-                        <?php echo $hasMainFilter ? '' : 'disabled="disabled"'; ?>>
-                    <span class="glyphicon glyphicon-search"></span>
-                    Tampilkan
-                </button>
-
-                <a href="<?php echo h($pageSelf); ?>" class="btn btn-default">
-                    <span class="glyphicon glyphicon-refresh"></span>
-                    Reset
-                </a>
-
-                <?php if ($submitted && $hasMainFilter) { ?>
-                    <button type="button"
-                            class="btn btn-success"
-                            onclick="window.print();">
-                        <span class="glyphicon glyphicon-print"></span>
-                        Cetak
+                <div class="filter-note">
+                    Isi <strong>Item Code</strong>, <strong>Supplier</strong>, <strong>Receive No</strong>, atau <strong>Range Tanggal</strong> terlebih dahulu, baru klik Tampilkan.
+                </div>
+                
+                <div style="margin-top: 10px;">
+                    <button type="submit"
+                            class="btn btn-primary"
+                            id="btnTampilkan"
+                            name="show_report"
+                            value="1"
+                            <?php echo $hasMainFilter ? '' : 'disabled="disabled"'; ?>>
+                        <span class="glyphicon glyphicon-search"></span>
+                        Tampilkan
                     </button>
-                <?php } ?>
+
+                    <a href="<?php echo h($pageSelf); ?>" class="btn btn-default">
+                        <span class="glyphicon glyphicon-refresh"></span>
+                        Reset
+                    </a>
+
+                    <?php if ($submitted && $hasMainFilter) { ?>
+                        <button type="submit"
+                                class="btn btn-success"
+                                name="export_excel"
+                                value="1"
+                                id="btnExport">
+                            <span class="glyphicon glyphicon-export"></span>
+                            Export Excel
+                        </button>
+                        
+                        <button type="button"
+                                class="btn btn-info"
+                                onclick="window.print();">
+                            <span class="glyphicon glyphicon-print"></span>
+                            Cetak
+                        </button>
+                    <?php } ?>
+                </div>
             </form>
         </div>
 
-        <?php if ($submitted && $hasMainFilter) { ?>
+        <?php if ($submitted && $hasMainFilter && !$isExport) { ?>
             <div class="panel-body">
                 <div class="filter-summary">
                     <strong>Server:</strong>
@@ -714,6 +816,12 @@ if ($submitted && $hasMainFilter) {
                     &nbsp; | &nbsp;
                     <strong>Receive:</strong>
                     <?php echo $receiveNo === '' ? 'Semua' : h($receiveNo); ?>
+
+                    <?php if($startDate !== '' || $endDate !== '') { ?>
+                        &nbsp; | &nbsp;
+                        <strong>Tanggal:</strong>
+                        <?php echo $startDate === '' ? 'Awal' : h($startDate); ?> s/d <?php echo $endDate === '' ? 'Akhir' : h($endDate); ?>
+                    <?php } ?>
 
                     &nbsp; | &nbsp;
                     <strong>Jumlah data:</strong>
@@ -824,8 +932,19 @@ if ($submitted && $hasMainFilter) {
 
 <script type="text/javascript">
     $(function () {
+        // Init Datepicker
+        $(".datepicker").datepicker({
+            dateFormat: "yy-mm-dd",
+            changeMonth: true,
+            changeYear: true
+        }).on("change", function() {
+            updateSubmitButton();
+        });
+
         function hasMainFilterClient() {
-            return $.trim($("#item_code").val()) !== "" || $.trim($("#receive_no").val()) !== "";
+            var hasItemOrRcv = $.trim($("#item_code").val()) !== "" || $.trim($("#receive_no").val()) !== "" || $.trim($("#sup_code").val()) !== "";
+            var hasDate = $.trim($("#start_date").val()) !== "" && $.trim($("#end_date").val()) !== "";
+            return hasItemOrRcv || hasDate;
         }
 
         function updateSubmitButton() {
@@ -862,7 +981,6 @@ if ($submitted && $hasMainFilter) {
                     });
                 },
                 focus: function (event, ui) {
-                    // Jangan otomatis menimpa text saat list autocomplete baru muncul.
                     event.preventDefault();
                     return false;
                 },
@@ -879,17 +997,11 @@ if ($submitted && $hasMainFilter) {
         bindAutocomplete("#receive_no", "receive_no", 3);
         bindAutocomplete("#sup_code", "sup_code", 2);
 
-        $("#item_code, #receive_no").on("keyup change paste input", function () {
+        $("#item_code, #receive_no, #sup_code, #start_date, #end_date").on("keyup change paste input", function () {
             window.setTimeout(updateSubmitButton, 0);
         });
 
         updateSubmitButton();
-
-        // Refresh URL ketika drop down plant diganti dihilangkan
-        // karena supplier sekarang sudah via autocomplete yang me-listen ke $("#plant").val() secara dinamis.
-        // $("#plant").on("change", function () {
-        //     ...
-        // });
     });
 </script>
 </body>

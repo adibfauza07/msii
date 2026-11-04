@@ -39,6 +39,10 @@ $currentMonth = (int)date('n');
         .btn-report { background-color: #28a745; }
         .btn-report:hover { background-color: #218838; }
         
+        /* Tambahan Tombol Sync */
+        .btn-sync { background-color: #17a2b8; margin-left: 5px; }
+        .btn-sync:hover { background-color: #138496; }
+        
         /* Grid Table Structure & Sticky Columns */
         .table-container { width: 100%; overflow: auto; max-height: 60vh; border: 1px solid #bbb; background-color: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         table.grid-table { border-collapse: separate; border-spacing: 0; white-space: nowrap; table-layout: fixed; min-width: 100%; }
@@ -66,7 +70,7 @@ $currentMonth = (int)date('n');
         .reach-target::after { content: " 🔧"; font-size: 10px; }
 
         /* Hyperlink Modal */
-        .ovh-link { color: #0056b3; text-decoration: none; font-weight: bold; border-bottom: 1px dashed #0056b3; cursor: pointer; display: block; width: 100%; height: 100%; }
+        .ovh-link { color: #0056b3; text-decoration: none; font-weight: bold; border-bottom: 1px dashed #0056b3; cursor: pointer; display: inline-block; width: 100%; padding-bottom: 3px; margin-bottom: 3px; }
         .ovh-link:hover { color: #d9534f; border-bottom: 1px solid #d9534f; }
         .reach-target .ovh-link { color: #b45309; border-bottom-color: #b45309; }
 
@@ -124,12 +128,15 @@ $currentMonth = (int)date('n');
         <button type="button" class="btn-report"><i class="fa fa-file-text-o"></i> Report Plan & Actual OVH</button>
     </a>
     
+    <!-- TAMBAHAN TOMBOL CARRY OVER DI SINI -->
+    <button type="button" id="btnSyncNextMonth" class="btn-sync"><i class="fa fa-share-square-o"></i> Carry Over Actual ke Bulan Depan</button>
+
     <!-- Legend Info -->
     <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #ccc;">
         <span style="color: #666; font-style: italic; margin-right: 20px;">* Ketik angka di kolom Last Shoot lalu tekan <b>Enter</b> untuk menyimpan.</span>
         <span style="display:inline-block; width:15px; height:15px; background-color:#fef08a; border: 1px solid #eab308; vertical-align:middle; margin-right:5px;"></span>
-        <b>Jadwal OVH/Maintenance (Tercapai kelipatan 25.000)</b>
-        <span style="margin-left: 20px; color: #0056b3; font-weight:bold;">* Centang kotak kecil bertuliskan 'Actual' di setiap kolom tanggal pada baris Actual untuk menandai tanggal pelaksanaan OVH.</span>
+        <b>Jadwal OVH/Maintenance (Tercapai > 25.000)</b>
+        <span style="margin-left: 20px; color: #0056b3; font-weight:bold;">* Centang kotak kecil Plan/Actual untuk me-reset hitungan akumulasi menjadi 0.</span>
     </div>
 </div>
 
@@ -156,7 +163,6 @@ $currentMonth = (int)date('n');
                 <th class="fix-lastshoot">Last Shoot</th>
                 <th class="fix-desc">Keterangan</th>
                 <th class="fix-total">Total Shots</th>
-                <!-- Kolom Tanggal akan digenerate via jQuery -->
             </tr>
         </thead>
         <tbody>
@@ -285,16 +291,12 @@ $(document).ready(function() {
                         html += '</tr>';
                         
                         $.each(items, function(itemKey, row) {
-                            var sumPlanOvh = 0, sumActOvh = 0;
+                            var sumPlanOvh = 0; 
                             var tdPlan = '', tdAct = '';
                             
                             var initialLastShoot = parseFloat(row.last_shoot) || 0;
-                            
                             var cumulativePlan = initialLastShoot;
-                            var nextTargetPlan = (Math.floor(initialLastShoot / stdLimit) + 1) * stdLimit;
-                            
                             var cumulativeAct = initialLastShoot;
-                            var nextTargetAct = (Math.floor(initialLastShoot / stdLimit) + 1) * stdLimit;
                             
                             var hasReachTargetThisItem = false;
                             
@@ -303,42 +305,61 @@ $(document).ready(function() {
                                 var dAct  = (row.days && row.days[d]) ? parseFloat(row.days[d].act_ovh) || 0 : 0;
                                 
                                 sumPlanOvh += dPlan;
-                                sumActOvh += dAct;
                                 
+                                var isCheckedDatePlan = (row.checked_dates_plan && row.checked_dates_plan[d] == '1') ? 'checked' : '';
+                                var isCheckedDateAct  = (row.checked_dates && row.checked_dates[d] == '1') ? 'checked' : '';
+                                
+                                // --- 1. HITUNGAN PLAN ---
+                                if (dPlan > 0) { cumulativePlan += dPlan; }
+                                
+                                var historyPlanValue = cumulativePlan;
+                                var planTooltipVal = cumulativePlan;
                                 var isReachTargetPlan = false;
-                                if (dPlan > 0) {
-                                    cumulativePlan += dPlan; 
-                                    if (cumulativePlan >= nextTargetPlan) {
+                                var valDisplayPlan = (dPlan > 0) ? formatMatrixNumber(dPlan) : '-';
+                                
+                                if (isCheckedDatePlan === 'checked') {
+                                    valDisplayPlan = '<span style="color:#d35400; font-weight:bold;" title="Total Plan saat di-reset: ' + formatMatrixNumber(historyPlanValue) + '"><i class="fa fa-wrench"></i> ' + formatMatrixNumber(historyPlanValue) + '</span>';
+                                    cumulativePlan = 0; 
+                                    isReachTargetPlan = false;
+                                } else {
+                                    if (cumulativePlan >= stdLimit) {
                                         isReachTargetPlan = true;
                                         hasReachTargetThisItem = true;
-                                        nextTargetPlan = (Math.floor(cumulativePlan / stdLimit) + 1) * stdLimit;
                                     }
                                 }
                                 
+                                // --- 2. HITUNGAN ACTUAL ---
+                                if (dAct > 0) { cumulativeAct += dAct; }
+                                
+                                var historyActValue = cumulativeAct;
+                                var actTooltipVal = cumulativeAct; 
                                 var isReachTargetAct = false;
-                                if (dAct > 0) {
-                                    cumulativeAct += dAct; 
-                                    if (cumulativeAct >= nextTargetAct) {
+                                var valDisplayAct = (dAct > 0) ? formatMatrixNumber(dAct) : '-';
+                                
+                                if (isCheckedDateAct === 'checked') {
+                                    valDisplayAct = '<span style="color:#d35400; font-weight:bold;" title="Total Actual saat di-reset: ' + formatMatrixNumber(historyActValue) + '"><i class="fa fa-wrench"></i> ' + formatMatrixNumber(historyActValue) + '</span>';
+                                    cumulativeAct = 0; 
+                                    isReachTargetAct = false; 
+                                } else {
+                                    if (cumulativeAct >= stdLimit) {
                                         isReachTargetAct = true;
                                         hasReachTargetThisItem = true;
-                                        nextTargetAct = (Math.floor(cumulativeAct / stdLimit) + 1) * stdLimit;
                                     }
                                 }
                                 
                                 var clsPlan = isReachTargetPlan ? 'reach-target' : (dPlan > stdLimit ? 'ovh-alert' : '');
                                 var clsAct  = isReachTargetAct  ? 'reach-target' : (dAct  > stdLimit ? 'ovh-alert' : '');
                                 
-                                var titlePlan = isReachTargetPlan ? 'Target 25K Tercapai! (Plan Kumulatif: ' + formatMatrixNumber(cumulativePlan) + ')' : 'Plan Tgl ' + d;
-                                var titleAct  = isReachTargetAct  ? 'Target 25K Tercapai! (Actual Kumulatif: ' + formatMatrixNumber(cumulativeAct) + ')' : 'Actual Tgl ' + d;
+                                var titlePlan = isReachTargetPlan ? 'Target OVH! (Sisa Plan: ' + formatMatrixNumber(cumulativePlan) + ')' : 'Plan Tgl ' + d + ' (Kumulatif: ' + formatMatrixNumber(planTooltipVal) + ')';
+                                var titleAct  = isReachTargetAct  ? 'Target OVH! (Sisa Aktual: ' + formatMatrixNumber(cumulativeAct) + ')' : 'Actual Tgl ' + d + ' (Kumulatif: ' + formatMatrixNumber(actTooltipVal) + ')';
                                 
-                                var linkPlan = (dPlan > 0) ? '<a class="ovh-link" data-type="plan" data-mc="'+escapeHtml(row.mc_no)+'" data-item="'+escapeHtml(row.item_code)+'" data-day="'+d+'" data-reach="'+(isReachTargetPlan ? '1':'0')+'">' + formatMatrixNumber(dPlan) + '</a>' : '-';
+                                // Checkbox & Link PLAN
+                                var dateCheckboxPlan = '<br><label style="font-size:9px; color:#0284c7; cursor:pointer;" title="Centang tanggal Reset Plan"><input type="checkbox" class="chk-ovh-date" data-jenis="plan" data-mc="'+escapeHtml(row.mc_no)+'" data-item="'+escapeHtml(row.item_code)+'" data-day="'+d+'" ' + isCheckedDatePlan + '> <span class="status-text">Plan</span></label>';
+                                var linkPlan = '<a class="ovh-link" data-type="plan" data-mc="'+escapeHtml(row.mc_no)+'" data-item="'+escapeHtml(row.item_code)+'" data-day="'+d+'" data-reach="'+(isReachTargetPlan ? '1':'0')+'">' + valDisplayPlan + '</a>' + dateCheckboxPlan;
                                 
-                                // Checkbox penanda tanggal aktual OVH di SEMUA kolom tanggal baris Actual (baik ada data maupun kosong)
-                                var isCheckedDate = (row.checked_dates && row.checked_dates[d] == '1') ? 'checked' : '';
-                                var valDisplay = (dAct > 0) ? formatMatrixNumber(dAct) : '-';
-                                var dateCheckbox = '<br><label style="font-size:9px; color:#166534; cursor:pointer;" title="Centang tanggal aktual pelaksanaan OVH"><input type="checkbox" class="chk-ovh-date" data-mc="'+escapeHtml(row.mc_no)+'" data-item="'+escapeHtml(row.item_code)+'" data-day="'+d+'" ' + isCheckedDate + '> Actual</label>';
-                                
-                                var linkAct = '<a class="ovh-link" data-type="act" data-mc="'+escapeHtml(row.mc_no)+'" data-item="'+escapeHtml(row.item_code)+'" data-day="'+d+'" data-reach="'+(isReachTargetAct ? '1':'0')+'">' + valDisplay + '</a>' + dateCheckbox;
+                                // Checkbox & Link ACTUAL
+                                var dateCheckboxAct = '<br><label style="font-size:9px; color:#166534; cursor:pointer;" title="Centang tanggal aktual pelaksanaan OVH"><input type="checkbox" class="chk-ovh-date" data-jenis="act" data-mc="'+escapeHtml(row.mc_no)+'" data-item="'+escapeHtml(row.item_code)+'" data-day="'+d+'" ' + isCheckedDateAct + '> <span class="status-text">Actual</span></label>';
+                                var linkAct = '<a class="ovh-link" data-type="act" data-mc="'+escapeHtml(row.mc_no)+'" data-item="'+escapeHtml(row.item_code)+'" data-day="'+d+'" data-reach="'+(isReachTargetAct ? '1':'0')+'">' + valDisplayAct + '</a>' + dateCheckboxAct;
 
                                 tdPlan += '<td class="day-col ' + clsPlan + '" title="' + titlePlan + '">' + linkPlan + '</td>';
                                 tdAct  += '<td class="day-col ' + clsAct  + '" title="' + titleAct + '">' + linkAct + '</td>';
@@ -346,8 +367,8 @@ $(document).ready(function() {
                             
                             if (hasReachTargetThisItem) countItemOvh++;
                             
-                            var grandTotalPlan = initialLastShoot + sumPlanOvh;
-                            var grandTotalAct  = initialLastShoot + sumActOvh;
+                            var grandTotalPlan = cumulativePlan; 
+                            var grandTotalAct  = cumulativeAct; 
                             
                             var strItemDetail = '<b>' + escapeHtml(row.item_code) + '</b><br>' +
                                                 '<span style="color:#0056b3;">' + escapeHtml(row.item_no) + '</span><br>' +
@@ -366,7 +387,7 @@ $(document).ready(function() {
                             html += '<td class="fix-desc"><i class="fa fa-file-text-o"></i> Plan Shots</td>';
                             html += '<td class="fix-total" style="color:#0284c7; font-weight:bold;">' + formatMatrixNumber(grandTotalPlan) + '</td>' + tdPlan + '</tr>';
                             
-                            html += '<tr class="'+trActClass+'">';
+                            html += '<tr class="'+trActClass+'" data-mc="' + escapeHtml(row.mc_no) + '" data-item="' + escapeHtml(row.item_code) + '" data-totalact="' + grandTotalAct + '">';
                             html += '<td class="fix-desc"><i class="fa fa-industry"></i> Actual Shots</td>';
                             html += '<td class="fix-total" style="color:#166534; font-weight:bold;">' + formatMatrixNumber(grandTotalAct) + '</td>' + tdAct + '</tr>';
                         });
@@ -378,7 +399,7 @@ $(document).ready(function() {
                     tbody.html(html);
 
                     if(countItemOvh > 0) {
-                        $('#summaryAlertText').html('⚠️ PERHATIAN: Terdapat <b>' + countItemOvh + ' Item/Mesin</b> yang mencapai jadwal Maintenance/OVH (Kelipatan 25.000 Shots) bulan ini!');
+                        $('#summaryAlertText').html('⚠️ PERHATIAN: Terdapat <b>' + countItemOvh + ' Item/Mesin</b> yang mencapai batas Maintenance/OVH bulan ini!');
                         $('#summaryAlertContainer').slideDown();
                     }
                 } else {
@@ -433,15 +454,11 @@ $(document).ready(function() {
                 success: function(res) {
                     inputField.prop('disabled', false);
                     if(res.status === 'success') {
-                        // Beri tanda warna hijau bahwa data berhasil disimpan
                         inputField.addClass('edit-success');
-                        inputField.blur(); // Hilangkan kursor dari input setelah save
-                        
+                        inputField.blur(); 
                         setTimeout(function(){ 
                             inputField.removeClass('edit-success'); 
                         }, 2000);
-                        
-                        // $('#btnLoadMatrix').click(); <-- BARIS INI DIHAPUS AGAR TIDAK RELOAD
                     } else {
                         alert("Gagal: " + res.message);
                         inputField.addClass('edit-error');
@@ -456,8 +473,7 @@ $(document).ready(function() {
             });
         }
     });
-	
-
+    
     // --- 6. EVENT KLIK MODAL: RINCIAN DOKUMEN ---
     $('#tblMatrix').on('click', '.ovh-link', function(e) {
         e.preventDefault();
@@ -505,52 +521,116 @@ $(document).ready(function() {
         });
     });
 
-   // --- 7. EVENT CHECKBOX PER TANGGAL: SIMPAN STATUS AKTUAL OVH ---
+   // --- 7. EVENT CHECKBOX PER TANGGAL: SIMPAN STATUS ---
     $('#tblMatrix').on('change', '.chk-ovh-date', function() {
         var chk = $(this);
         var mcCode = chk.data('mc');
         var itemCode = chk.data('item');
         var day = chk.data('day');
+        var jenis = chk.data('jenis'); // Membedakan plan atau act
         var thn = $('#cbTahun').val();
         var bln = $('#cbBulan').val();
         var statusVal = chk.is(':checked') ? 1 : 0;
         
         var labelEl = chk.closest('label');
-        var origText = labelEl.text();
+        var textEl = labelEl.find('.status-text'); // Manipulasi span, bukan menimpa checkbox
+        var origText = (jenis === 'plan') ? 'Plan' : 'Actual';
 
-        // Berikan indikator visual sedang menyimpan
         chk.prop('disabled', true);
-        labelEl.css('color', '#d9534f').text(' Saving...');
+        textEl.css('color', '#d9534f').text('Saving...');
 
         $.ajax({
             url: 'ajax_save_ovh_date_status.php',
             type: 'POST',
             dataType: 'json',
-            data: { tahun: thn, bulan: bln, hari: day, mac_code: mcCode, item_code: itemCode, status: statusVal },
+            data: { tahun: thn, bulan: bln, hari: day, mac_code: mcCode, item_code: itemCode, status: statusVal, jenis: jenis },
             success: function(res) {
                 chk.prop('disabled', false);
                 if(res.status === 'success') {
-                    // Berikan indikator sukses tersimpan
-                    labelEl.css('color', '#28a745').text(' Saved!');
+                    textEl.css('color', '#28a745').text('Saved!');
                     setTimeout(function() {
-                        labelEl.css('color', '#166534');
-                        labelEl.html('').append(chk).append(' Actual');
-                        // Kembalikan status centangnya
-                        chk.prop('checked', statusVal === 1);
-                    }, 1200);
+                        $('#btnLoadMatrix').click();
+                    }, 800);
                 } else {
-                    alert("Gagal menyimpan tanggal aktual OVH: " + res.message);
+                    alert("Gagal menyimpan tanggal OVH: " + res.message);
                     chk.prop('checked', !statusVal); 
-                    labelEl.css('color', '#166534');
-                    labelEl.html('').append(chk).append(' Actual');
+                    textEl.css('color', (jenis === 'plan' ? '#0284c7' : '#166534')).text(origText);
                 }
             },
             error: function() {
                 chk.prop('disabled', false);
                 alert("Terjadi kesalahan koneksi server.");
                 chk.prop('checked', !statusVal);
-                labelEl.css('color', '#166534');
-                labelEl.html('').append(chk).append(' Actual');
+                textEl.css('color', (jenis === 'plan' ? '#0284c7' : '#166534')).text(origText);
+            }
+        });
+    });
+
+    // --- 8. EVENT CARRY OVER ACTUAL SHOTS KE LAST SHOOT BULAN DEPAN ---
+    $('#btnSyncNextMonth').click(function() {
+        var thn = parseInt($('#cbTahun').val());
+        var bln = parseInt($('#cbBulan').val());
+        
+        var nextBln = bln + 1;
+        var nextThn = thn;
+        if (nextBln > 12) {
+            nextBln = 1;
+            nextThn = thn + 1;
+        }
+
+        var dataToSync = [];
+        
+        $('#tblMatrix tbody tr.row-act').each(function() {
+            var mc = $(this).data('mc');
+            var item = $(this).data('item');
+            var totalAct = $(this).data('totalact');
+            
+            if(mc !== undefined && item !== undefined && totalAct !== undefined) {
+                dataToSync.push({ 
+                    mc_code: mc, 
+                    item_code: item, 
+                    last_shoot: totalAct 
+                });
+            }
+        });
+
+        if(dataToSync.length === 0) {
+            alert("Tidak ada data matrix untuk disinkronisasi. Silakan klik 'Load Matrix Data' terlebih dahulu.");
+            return;
+        }
+
+        var msg = "Anda akan memindahkan Total Actual Shots dari bulan " + bln + "/" + thn + 
+                  " menjadi nilai Last Shoot untuk bulan " + nextBln + "/" + nextThn + ".\n\nTotal item yang diproses: " + dataToSync.length + "\n\nLanjutkan?";
+        if (!confirm(msg)) return;
+
+        var btn = $(this);
+        var originalBtnHtml = btn.html();
+        btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Menyimpan...');
+
+        // --- BAGIAN INI YANG SUDAH DIBENARKAN MENGGUNAKAN STRINGIFY JSON ---
+        $.ajax({
+            url: 'ajax_sync_last_shoot_next_month.php',
+            type: 'POST',
+            contentType: 'application/json', // Mencegah batas 1000 input_vars PHP
+            dataType: 'json',
+            timeout: 0,
+            data: JSON.stringify({           // Data dibungkus jadi JSON tunggal
+                tahun_depan: nextThn, 
+                bulan_depan: nextBln, 
+                items: dataToSync 
+            }),
+            success: function(res) {
+                if(res.status === 'success') {
+                    alert("Berhasil: " + res.message);
+                } else {
+                    alert("Gagal: " + res.message);
+                }
+            },
+            error: function(xhr) {
+                alert("Pesan Asli dari Server:\n\n" + xhr.responseText);
+            },
+            complete: function() {
+                btn.prop('disabled', false).html(originalBtnHtml);
             }
         });
     });

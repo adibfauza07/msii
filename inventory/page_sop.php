@@ -5,6 +5,9 @@ require_once __DIR__ . '/../config/database_p1.php';
 // FITUR BARU: HAPUS TAG SATUAN VIA AJAX (Menggantikan Hapus Massal)
 // ==================================================================================
 if (isset($_POST['ajax_delete_tag'])) {
+    // 1. Bersihkan semua output HTML dari template dashboard sebelumnya agar murni
+    while (ob_get_level()) ob_end_clean(); 
+    
     header('Content-Type: application/json');
     $delSopId = (int)$_POST['sop_id'];
     $delTagNo = $_POST['tag_no'];
@@ -29,20 +32,31 @@ if (isset($_POST['ajax_delete_tag'])) {
 if (isset($_POST['btnHapusSOP'])) {
     $idToDelete = $_POST['hapus_id'];
     if ($idToDelete) {
-        sqlsrv_begin_transaction($conn);
-        try {
-            sqlsrv_query($conn, "DELETE FROM TAGS WHERE SOP_ID = ?", array($idToDelete));
-            $stmtDel = sqlsrv_query($conn, "DELETE FROM SOP WHERE SOP_ID = ?", array($idToDelete));
-            
-            if ($stmtDel) {
-                sqlsrv_commit($conn);
-                echo "<script>alert('Data SOP Berhasil Dihapus!'); window.location.href='?page=sop';</script>";
-            } else {
-                throw new Exception(print_r(sqlsrv_errors(), true));
+        
+        // --- SECURITY CHECK: Cek apakah SOP sudah punya Tag / Detail ---
+        $sqlCekDetail = "SELECT COUNT(*) as total_tag FROM TAGS WHERE SOP_ID = ?";
+        $stmtCek = sqlsrv_query($conn, $sqlCekDetail, array($idToDelete));
+        $rowCek = sqlsrv_fetch_array($stmtCek);
+        
+        if ($rowCek['total_tag'] > 0) {
+            // Jika ada tag/detail, batalkan proses dan tampilkan alert
+            echo "<script>alert('GAGAL MENGHAPUS: SOP tidak dapat dihapus karena sudah memiliki data Tag/Detail. Hapus semua Tag terlebih dahulu!'); window.history.back();</script>";
+        } else {
+            // Jika kosong (tidak ada tag), lanjutkan proses hapus SOP
+            sqlsrv_begin_transaction($conn);
+            try {
+                $stmtDel = sqlsrv_query($conn, "DELETE FROM SOP WHERE SOP_ID = ?", array($idToDelete));
+                
+                if ($stmtDel) {
+                    sqlsrv_commit($conn);
+                    echo "<script>alert('Data SOP Berhasil Dihapus!'); window.location.href='?page=sop';</script>";
+                } else {
+                    throw new Exception(print_r(sqlsrv_errors(), true));
+                }
+            } catch (Exception $e) {
+                sqlsrv_rollback($conn);
+                echo "<script>alert('Gagal Hapus: ".$e->getMessage()."');</script>";
             }
-        } catch (Exception $e) {
-            sqlsrv_rollback($conn);
-            echo "<script>alert('Gagal Hapus: ".$e->getMessage()."');</script>";
         }
     }
 }
@@ -186,8 +200,7 @@ if ($mode != 'new') {
         $totalPage = ceil($totalRow / $limit);
 
         // 3. Ambil Detail (REVISI: HINDARI KOLOM GANDA)
-        // Kita tidak pakai T.*, tapi pilih kolom manual agar tidak bentrok
-$sqlTags = "SELECT * FROM (
+        $sqlTags = "SELECT * FROM (
                         SELECT ROW_NUMBER() OVER (ORDER BY T.TAG_NO ASC) AS RowNum,
                                T.TAG_NO,
                                T.TAG_QTY,
@@ -195,8 +208,8 @@ $sqlTags = "SELECT * FROM (
                                
                                ISNULL(L.LOC_NAME, T.LOC_CODE) as LOC_NAME_DISPLAY,
                                ISNULL(I.ITEM_CODE, T.ITEM_CODE) as ITEM_CODE, 
-                               I.ITEM_NAME as ITEM_NAME_DISPLAY,  -- AMBIL DARI MASTER SAJA (Lebih Aman)
-                               I.ITEM_UNIT as ITEM_UNIT_DISPLAY   -- AMBIL DARI MASTER SAJA
+                               I.ITEM_NAME as ITEM_NAME_DISPLAY,
+                               I.ITEM_UNIT as ITEM_UNIT_DISPLAY
                         FROM TAGS T
                         LEFT JOIN LOC L ON T.LOC_ID = L.LOC_ID
                         LEFT JOIN ITEMS I ON (T.ITEM_ID = I.ITEM_ID OR T.ITEM_CODE = I.ITEM_CODE)
@@ -356,7 +369,6 @@ while($r=sqlsrv_fetch_array($qL)) {
                             if(!empty($dataDetail)) {
                                 foreach($dataDetail as $row) {
                                     if($isEntry) {
-                                        // PERBAIKAN: Sisipkan identitas Tag untuk AJAX Delete
                                         echo "<tr class='row-item' data-sop-id='{$currentID}' data-tag-no='{$row['TAG_NO']}'>
                                             <td><input type='hidden' name='loc_id[]' value='{$row['LOC_ID']}'>{$row['LOC_NAME_DISPLAY']}</td>
                                             <td class='cell-edit'><input type='hidden' name='tag_no[]' class='val-real' value='{$row['TAG_NO']}'><span class='val-txt'>{$row['TAG_NO']}</span><input type='text' class='form-control form-control-sm val-input d-none' value='{$row['TAG_NO']}'></td>
@@ -412,8 +424,8 @@ while($r=sqlsrv_fetch_array($qL)) {
                                 if($end < $totalPage) { echo '<li class="page-item disabled"><span class="page-link">...</span></li>'; }
                                 ?>
 
-                                <li class="page-item <?php echo ($pageNo >= $totalPage) ? 'disabled' : ''; ?>">
-                                    <a class="page-link" href="?page=sop&id=<?php echo $currentID; ?>&mode=<?php echo $mode; ?>&hal=<?php echo $pageNo + 1; ?>">Next</a>
+                                <li class="page-item <?php echo ($pageNo >=$totalPage) ? 'disabled' : ''; ?>">
+                                    <a class="page-link" href="?page=sop&id=<?php echo $currentID; ?>&mode=<?php echo $mode; ?>&hal=<?php echo$pageNo + 1; ?>">Next</a>
                                 </li>
                             </ul>
                         </nav>
@@ -467,9 +479,7 @@ while($r=sqlsrv_fetch_array($qL)) {
             $optSop = ""; 
             $qSop = sqlsrv_query($conn, "SELECT SOP_ID, SOP_REF, SOP_SDATE FROM SOP ORDER BY SOP_SDATE DESC");
             if ($qSop) {
-                while($rSop = sqlsrv_fetch_array($qSop)) { 
-                    $tglSop = ($rSop['SOP_SDATE'] instanceof DateTime) ? $rSop['SOP_SDATE']->format('d-M-Y') : $rSop['SOP_SDATE'];
-                    $optSop .= "<option value='{$rSop['SOP_ID']}'>{$rSop['SOP_REF']} ({$tglSop})</option>"; 
+                while($rSop = sqlsrv_fetch_array($qSop)) {$tglSop = ($rSop['SOP_SDATE'] instanceof DateTime) ?$rSop['SOP_SDATE']->format('d-M-Y') : $rSop['SOP_SDATE'];$optSop .= "<option value='{$rSop['SOP_ID']}'>{$rSop['SOP_REF']} ({$tglSop})</option>"; 
                 }
             }
             ?>
@@ -584,7 +594,7 @@ while($r=sqlsrv_fetch_array($qL)) {
                 $qSopList = sqlsrv_query($conn, "SELECT SOP_ID, SOP_REF, SOP_SDATE FROM SOP ORDER BY CONVERT(date, SOP_SDATE) DESC, SOP_ID DESC");
                 if ($qSopList) {
                     while($rSop = sqlsrv_fetch_array($qSopList)) { 
-                        $tglSop = ($rSop['SOP_SDATE'] instanceof DateTime) ? $rSop['SOP_SDATE']->format('d-M-Y') : $rSop['SOP_SDATE'];
+                        $tglSop = ($rSop['SOP_SDATE'] instanceof DateTime) ? $rSop['SOP_SDATE']->format('d-M-Y') :$rSop['SOP_SDATE'];
                         echo "<option value='{$rSop['SOP_ID']}'>{$rSop['SOP_REF']} ({$tglSop})</option>"; 
                     }
                 }
@@ -620,8 +630,7 @@ function cetakTagByType() {
 
 <?php if ($isEntry): ?>
 <script>
-$(document).ready(function() {
-    $('#inputBarang').on('select2:select', function (e) { 
+$(document).ready(function() {$('#inputBarang').on('select2:select', function (e) { 
         $('#inputUnit').text('Kg'); 
         $('#inputQty').focus(); 
     });
@@ -654,27 +663,32 @@ $(document).ready(function() {
         $('#inputTagNo').val(''); $('#inputBarang').val(null).trigger('change'); $('#inputQty').val(0); $('#inputTagNo').focus();
     });
 
-    // PERBAIKAN: HAPUS SATUAN VIA AJAX
+    // PERBAIKAN: HAPUS SATUAN VIA AJAX (Membaca Text agar tidak crash oleh HTML template)
     $(document).on('click', '.btn-hapus', function() { 
-        var $row = $(this).closest('tr');
+        var $row =$(this).closest('tr');
         var sopId = $row.attr('data-sop-id');
         var tagNo = $row.attr('data-tag-no');
 
         if (confirm('Yakin ingin menghapus Tag ini secara permanen?')) {
             if (sopId && tagNo) {
                 $.ajax({
-                    url: '?page=sop',
+                    url: window.location.href, // Target spesifik ke URL halaman ini
                     type: 'POST',
-                    dataType: 'json',
+                    dataType: 'text', // <-- UBAH KE TEXT
                     data: { ajax_delete_tag: 1, sop_id: sopId, tag_no: tagNo },
                     success: function(res) {
-                        if (res.success) {
+                        // Cek apakah ada output string json success
+                        if (res.includes('"success":true') || res.includes('"success": true')) {
                             $row.remove();
                         } else {
-                            alert('Gagal menghapus Tag: ' + res.message);
+                            console.log("Respon Server (Gagal Hapus):", res);
+                            alert('Gagal menghapus Tag. Lihat Console (F12) untuk detail.');
                         }
                     },
-                    error: function() { alert('Terjadi kesalahan jaringan.'); }
+                    error: function(xhr, status, error) { 
+                        console.log("Error Jaringan:", xhr.responseText);
+                        alert('Terjadi kesalahan jaringan. Cek Console (F12).'); 
+                    }
                 });
             } else {
                 $row.remove();
@@ -683,19 +697,17 @@ $(document).ready(function() {
     });
 
     $(document).on('dblclick', '.cell-edit', function() {
-        var $td = $(this); $td.find('.val-txt').addClass('d-none'); $td.find('.val-input').removeClass('d-none').focus().select(); $td.closest('tr').find('.btn-save-row').removeClass('d-none');
+        var $td = $(this);$td.find('.val-txt').addClass('d-none'); $td.find('.val-input').removeClass('d-none').focus().select();$td.closest('tr').find('.btn-save-row').removeClass('d-none');
     });
     $(document).on('click', '.btn-save-row', function() {
-        var $row = $(this).closest('tr');
-        $row.find('.cell-edit').each(function() {
-            var $td = $(this); var newVal = $td.find('.val-input').val();
-            $td.find('.val-real').val(newVal);
+        var $row = $(this).closest('tr');$row.find('.cell-edit').each(function() {
+            var $td =$(this); var newVal = $td.find('.val-input').val();$td.find('.val-real').val(newVal);
             if($td.hasClass('text-end')) newVal = parseFloat(newVal).toFixed(2);
-            $td.find('.val-txt').text(newVal).removeClass('d-none'); $td.find('.val-input').addClass('d-none');
+            $td.find('.val-txt').text(newVal).removeClass('d-none');$td.find('.val-input').addClass('d-none');
         });
         $(this).addClass('d-none');
     });
-    $(document).on('keypress', '.val-input', function(e) { if(e.which == 13) { e.preventDefault(); $(this).closest('tr').find('.btn-save-row').click(); } });
+    $(document).on('keypress', '.val-input', function(e) { if(e.which == 13) { e.preventDefault();$(this).closest('tr').find('.btn-save-row').click(); } });
 });
 </script>
 <?php endif; ?>

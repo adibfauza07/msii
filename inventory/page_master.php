@@ -3,11 +3,24 @@
 require_once __DIR__ . '/../config/database_p1.php';
 
 // ==================================================================================
+// CEK HAK AKSES (PROTEKSI EDIT & HAPUS HANYA UNTUK IT DEPARTEMENT)
+// ==================================================================================
+$current_user = isset($_SESSION['db_user']) ? strtolower(trim($_SESSION['db_user'])) : '';
+// Sesuaikan daftar username IT/Admin di bawah ini (misalnya: admin, it_dept, plan1, plan2 dll)
+$is_IT_Dept = ($current_user === 'admin' || $current_user === 'it' || $current_user === 'plan1' || $current_user === 'plan2') ? true : false;
+
+// ==================================================================================
 // BAGIAN 1: PROSES DATA (POST) - SIMPAN, UPDATE, HAPUS
 // ==================================================================================
 
 // A. HAPUS BARANG (-)
 if (isset($_POST['btnHapus'])) {
+    // Proteksi Backend
+    if (!$is_IT_Dept) {
+        echo "<script>alert('AKSES DITOLAK! Anda tidak memiliki izin untuk menghapus Item. Silakan hubungi IT Departement.'); window.location.href='?page=master';</script>";
+        exit;
+    }
+
     $idToDelete = $_POST['hapus_id'];
     if ($idToDelete) {
         // CEK 1: Apakah barang sudah dipakai di Transaksi?
@@ -42,6 +55,12 @@ if (isset($_POST['btnHapus'])) {
 // B. SIMPAN DATA (BARU / UPDATE)
 if (isset($_POST['btnSimpan']) || isset($_POST['btnUpdate'])) {
     $isUpdate = isset($_POST['btnUpdate']);
+    
+    // Proteksi Backend Mode Edit
+    if ($isUpdate && !$is_IT_Dept) {
+        echo "<script>alert('AKSES DITOLAK! Anda tidak memiliki izin untuk mengedit Item. Silakan hubungi IT Departement.'); window.location.href='?page=master';</script>";
+        exit;
+    }
     
     // Ambil Data Form
     $code = $_POST['ITEM_CODE'];
@@ -98,12 +117,18 @@ if (isset($_POST['btnSimpan']) || isset($_POST['btnUpdate'])) {
 }
 
 // ==================================================================================
-// BAGIAN 2: LOGIKA NAVIGASI & VIEW (SUDAH DIPERBAIKI)
+// BAGIAN 2: LOGIKA NAVIGASI & VIEW 
 // ==================================================================================
 
 $mode = isset($_GET['mode']) ? $_GET['mode'] : 'view';
 $currentID = isset($_GET['id']) ? $_GET['id'] : null;
 $isEntry = ($mode == 'new' || $mode == 'edit');
+
+// Jika User BUKAN IT mencoba memaksakan URL edit, tolak!
+if ($mode === 'edit' && !$is_IT_Dept) {
+    echo "<script>alert('AKSES DITOLAK! Silakan hubungi IT Departement untuk mengedit item.'); window.location.href='?page=master';</script>";
+    exit;
+}
 
 // Default Data (Kosong) // (PERBAIKAN 4: Masukkan default value ITEM_NO)
 $data = [
@@ -175,12 +200,21 @@ while($r=sqlsrv_fetch_array($qItty)) {
                         <a href="?page=master&mode=new" class="btn btn-success fw-bold <?php echo ($mode=='new')?'active':''; ?>">
                             <i class="bi bi-plus-lg"></i> BARU
                         </a>
-                        <a href="?page=master&mode=edit&id=<?php echo $currentID; ?>" class="btn btn-warning fw-bold <?php echo ($mode=='edit')?'active':''; ?> <?php echo (!$currentID || $isEntry)?'disabled':''; ?>">
-                            <i class="bi bi-pencil-square"></i> EDIT
-                        </a>
+                        
                         <?php if (!$isEntry && $currentID): ?>
-                            <button type="submit" name="btnHapus" class="btn btn-danger fw-bold" onclick="return confirm('Hapus Barang <?php echo $currentID; ?>?');"><i class="bi bi-dash-lg"></i> HAPUS</button>
+                            <!-- Proteksi Tombol Edit & Hapus -->
+                            <?php if ($is_IT_Dept): ?>
+                                <a href="?page=master&mode=edit&id=<?php echo $currentID; ?>" class="btn btn-warning fw-bold <?php echo ($mode=='edit')?'active':''; ?>">
+                                    <i class="bi bi-pencil-square"></i> EDIT
+                                </a>
+                                <button type="submit" name="btnHapus" class="btn btn-danger fw-bold" onclick="return confirm('Hapus Barang <?php echo $currentID; ?>?');"><i class="bi bi-dash-lg"></i> HAPUS</button>
+                            <?php else: ?>
+                                <button type="button" class="btn btn-warning fw-bold text-dark" onclick="alert('Silakan Hubungi Dept IT untuk melakukan pengeditan part.');"><i class="bi bi-lock-fill"></i> EDIT</button>
+                                <button type="button" class="btn btn-danger fw-bold" onclick="alert('Silakan Hubungi Dept IT untuk menghapus part yang salah.');"><i class="bi bi-lock-fill"></i> HAPUS</button>
+                            <?php endif; ?>
                         <?php else: ?>
+                            <!-- Mode Input/Edit Aktif, atau Kosong -->
+                            <button type="button" class="btn btn-warning fw-bold disabled"><i class="bi bi-pencil-square"></i> EDIT</button>
                             <button type="button" class="btn btn-secondary disabled"><i class="bi bi-dash-lg"></i> HAPUS</button>
                         <?php endif; ?>
                     </div>
@@ -196,7 +230,14 @@ while($r=sqlsrv_fetch_array($qItty)) {
             </div>
             <?php endif; ?>
 
-            <div class="card shadow-sm" style="background-color: <?php echo $isEntry ? '#fff3cd' : '#ffffff'; ?>;">
+            <?php if (!$is_IT_Dept && !$isEntry): ?>
+                <div class="alert alert-info py-2 px-3 small mt-3 border">
+                    <i class="bi bi-info-circle-fill me-2"></i> 
+                    <b>Information:</b> Hanya Dept IT yang memiliki akses untuk mengedit atau menghapus Master Item. Anda dapat menggunakan tombol "BARU" untuk menambah part baru.
+                </div>
+            <?php endif; ?>
+
+            <div class="card shadow-sm mt-3" style="background-color: <?php echo $isEntry ? '#fff3cd' : '#ffffff'; ?>;">
                 <div class="card-header fw-bold py-2 <?php echo $isEntry ? 'bg-warning text-dark' : 'bg-primary text-white'; ?>">
                     <i class="bi bi-box-seam"></i> INFORMASI BARANG <?php echo $isEntry ? '(MODE EDIT)' : '(READ ONLY)'; ?>
                 </div>

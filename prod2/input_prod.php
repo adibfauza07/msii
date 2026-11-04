@@ -185,183 +185,204 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_ng') {
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
     
     <style>
-        /* Custom Styles specifically for maintaining the fast data-entry grid feel */
-        body { background-color: #f4f6f9; font-size: 12px; }
-        .table-responsive { max-height: 400px; }
-        .wo-table th, .history-table th { background: #f4f6f9; position: sticky; top: 0; z-index: 10; box-shadow: inset 0 -1px 0 #dee2e6;}
-        .history-table th.sub-head { top: 32px; }
-        .wo-table tr:hover { cursor: pointer; }
-        .wo-table tr.selected { background-color: #007bff !important; color: white; }
+        body { background-color: #ecf0f5; }
         
-        .p-0 { padding: 0 !important; }
+        /* ============================================================= */
+        /* CSS HIDE NUMBER SPINNERS (TAMPILAN BERSIH UNTUK 4 DIGIT)      */
+        /* ============================================================= */
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+            appearance: none;
+        }
+
+        /* Styling Padat / Compact Header */
+        .compact-box { margin-bottom: 8px !important; box-shadow: 0 1px 1px rgba(0,0,0,0.1); }
+        .compact-box .card-header { padding: 5px 10px; border-bottom: 1px solid #f4f4f4; }
+        .compact-box .card-body { padding: 6px 10px; }
+        .compact-form .form-group { margin-bottom: 4px; }
+        .compact-form label { margin-bottom: 1px; font-size: 11px; font-weight: 600; color: #333; }
+        .compact-form .form-control { height: 24px; padding: 2px 6px; font-size: 11px; border-radius: 0; }
+        .compact-radio label { margin-right: 6px; font-size: 11px; cursor: pointer; font-weight: normal; }
+        
+        /* Tabel WO Kanan Padat */
+        .table-wo-container { height: 160px; overflow-y: auto; border: 1px solid #d2d6de; background: #fff; }
+        .table-wo { font-size: 11px; margin-bottom: 0; }
+        .table-wo th { background: #eaeaea; position: sticky; top: 0; z-index: 2; padding: 4px 6px !important; box-shadow: inset 0 -1px 0 #d2d6de;}
+        .table-wo td { padding: 3px 6px !important; border-top: 1px solid #f4f4f4; }
+        .table-wo tbody tr:hover { background-color: #d9edf7 !important; cursor: pointer; }
+        .table-wo tbody tr.selected { background-color: #337ab7 !important; color: #fff; font-weight: bold; }
+        .table-wo tbody tr.selected td { color: #fff; border-color: #337ab7; }
+
+        /* Grid Input Bawah */
         .grid-input, .grid-input-act { 
-            width: 100%; height: 100%; min-height: 28px; box-sizing: border-box; 
-            border: none; background: transparent; padding: 4px 8px; outline: none;
+            width: 100%; height: 24px; box-sizing: border-box; border: 1px solid transparent; 
+            background: transparent; font-family: inherit; font-size: 11px; padding: 2px 4px; outline: none;
         }
-        .grid-input:focus, .grid-input-act:focus { background: #fff; box-shadow: inset 0 0 0 2px #007bff; }
-        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .grid-input:focus, .grid-input-act:focus { background: #fff; border: 1px solid #3c8dbc; box-shadow: inset 0 0 3px rgba(60,141,188,0.5); }
+        .box-icon { display: inline-block; border: 1px solid #777; width: 14px; height: 14px; line-height: 12px; text-align: center; font-size: 10px; font-weight: bold; background: #fff; cursor: pointer; user-select: none; border-radius: 2px; }
+        .box-icon:hover { background: #3c8dbc; color: #fff; border-color: #367fa9; }
         
-        .box-icon { display: inline-block; border: 1px solid #6c757d; width: 16px; height: 16px; line-height: 14px; text-align: center; font-size: 12px; background: #fff; cursor: pointer; user-select: none; border-radius: 2px;}
-        .history-table tbody tr.main-row:nth-child(4n+1) { background-color: #ffffff; } 
-        .history-table tbody tr.main-row:nth-child(4n+3) { background-color: #f2f7ec; } 
+        .actual-container { display: flex; gap: 8px; background: #f4f4f4; padding: 6px 10px; border-left: 3px solid #f39c12; }
+        .actual-table { background: #fff; width: 200px; font-size: 10px; margin-bottom: 0; border: 1px solid #ddd; }
+        .actual-table td { padding: 1px 4px !important; vertical-align: middle; border: 1px solid #ddd; }
         
-        .ng-panel { background: #f8f9fa; border: 1px solid #ced4da; padding: 10px; border-radius: 4px;}
-        .ng-grid th { background: #e9ecef; }
+        .ng-panel-wrapper { padding: 6px 10px 6px 120px; background-color: #f9f9f9; border-left: 3px solid #dd4b39; }
+        .ng-panel { width: 420px; background: #fff; border: 1px solid #ccc; padding: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-radius: 3px; }
+        .ng-grid input { width: 100%; border: none; padding: 2px 4px; font-size: 11px; outline: none; }
+        .ng-grid input:focus { background-color: #e8f0fe; }
+        .btn-xs { padding: 1px 5px; font-size: 10px; line-height: 1.5; border-radius: 3px; margin: 1px; }
         
-        /* Modifikasi Jarak & Ukuran agar sama persis dengan referensi (Horizontal Layout) */
-        .content-wrapper { padding-top: 8px !important; } 
-        .text-xs { font-size: 11px !important; font-weight: bold; color: #333; margin-bottom: 2px; }
-        .form-control-xs { height: 26px !important; padding: 2px 6px !important; font-size: 12px !important; border-radius: 3px !important; }
-        .compact-form .row { margin-bottom: 6px; }
-        .radio-inline-label { font-size: 11px; margin-right: 10px; cursor: pointer; font-weight: normal !important; }
-        .radio-inline-label input { vertical-align: middle; margin-right: 3px; }
-        
-        .wo-table-container { 
-            max-height: 205px; /* Tinggi dibatasi drastis menyesuaikan form kiri yang horizontal */
-            overflow-y: auto; 
-        }
+        /* Tambahan custom supaya mirip box AdminLTE2 */
+        .card-primary.card-outline { border-top: 3px solid #3c8dbc; }
+        .card-secondary.card-outline { border-top: 3px solid #d2d6de; }
     </style>
 </head>
 <body class="hold-transition layout-top-nav">
 <div class="wrapper">
-    <div class="content-wrapper">
-        <section class="content pt-0">
+    <div class="content-wrapper" style="padding-top: 15px;">
+        <section class="content">
             <div class="container-fluid">
                 
+                <!-- ========================================== -->
+                <!-- BAGIAN ATAS (COMPACT & FIT TINGGI LAYAR) -->
+                <!-- ========================================== -->
                 <div class="row">
-                    <!-- Left Panel: Form Setup (HORIZONTAL LAYOUT) -->
+                    <!-- PANEL KIRI: ITEM DATA & SETUP -->
                     <div class="col-md-5">
-                        <div class="card card-primary card-outline h-100 mb-2">
-                            <div class="card-header py-1 bg-light">
-                                <h3 class="card-title text-sm"><i class="fas fa-list mr-1"></i> Item Data & Setup</h3>
+                        <div class="card card-outline card-primary compact-box">
+                            <div class="card-header">
+                                <h3 class="card-title" style="font-size: 12px; font-weight: bold;"><i class="fas fa-sliders-h"></i> Item Data & Setup</h3>
                             </div>
-                            <div class="card-body p-2 compact-form">
-                                
-                                <!-- Baris 1: Date Prod, Group, Shift -->
+                            <div class="card-body compact-form">
                                 <div class="row">
-                                    <div class="col-4">
-                                        <label class="text-xs">Date Prod:</label>
-                                        <input type="date" id="input_date" class="form-control form-control-xs" value="<?php echo date('Y-m-d'); ?>">
+                                    <div class="col-4 form-group">
+                                        <label>Date Prod:</label>
+                                        <input type="date" id="input_date" class="form-control" value="<?php echo date('Y-m-d'); ?>">
                                     </div>
-                                    <div class="col-4">
-                                        <label class="text-xs">Group:</label>
-                                        <div>
-                                            <label class="radio-inline-label"><input type="radio" name="group" value="A" checked> A</label>
-                                            <label class="radio-inline-label"><input type="radio" name="group" value="B"> B</label>
-                                            <label class="radio-inline-label"><input type="radio" name="group" value="C"> C</label>
-                                        </div>
+                                    <div class="col-4 form-group compact-radio">
+                                        <label>Group:</label><br>
+                                        <label><input type="radio" name="group" value="A" checked> A</label>
+                                        <label><input type="radio" name="group" value="B"> B</label>
+                                        <label><input type="radio" name="group" value="C"> C</label>
                                     </div>
-                                    <div class="col-4">
-                                        <label class="text-xs">Shift:</label>
-                                        <div>
-                                            <label class="radio-inline-label"><input type="radio" name="shift" value="1" checked> 1</label>
-                                            <label class="radio-inline-label"><input type="radio" name="shift" value="2"> 2</label>
-                                            <label class="radio-inline-label"><input type="radio" name="shift" value="3"> 3</label>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Baris 2: Search Part, Item Code -->
-                                <div class="row">
-                                    <div class="col-6">
-                                        <label class="text-xs"><i class="fas fa-search text-muted"></i> Cari Part / WO:</label>
-                                        <input type="text" id="search_item" class="form-control form-control-xs" placeholder="Ketik kode / WO...">
-                                    </div>
-                                    <div class="col-6">
-                                        <label class="text-xs">Part / Item Code:</label>
-                                        <input type="text" id="item_code" class="form-control form-control-xs bg-light" readonly>
+                                    <div class="col-4 form-group compact-radio">
+                                        <label>Shift:</label><br>
+                                        <label><input type="radio" name="shift" value="1" checked> 1</label>
+                                        <label><input type="radio" name="shift" value="2"> 2</label>
+                                        <label><input type="radio" name="shift" value="3"> 3</label>
                                     </div>
                                 </div>
 
-                                <!-- Baris 3: Part Name -->
                                 <div class="row">
-                                    <div class="col-12">
-                                        <label class="text-xs">Part Name:</label>
-                                        <input type="text" id="item_name" class="form-control form-control-xs bg-light" readonly>
+                                    <div class="col-6 form-group">
+                                        <label class="text-primary"><i class="fas fa-search"></i> Cari Part / WO:</label>
+                                        <input type="text" id="search_item" class="form-control font-weight-bold" placeholder="Ketik kode / WO..." autocomplete="off">
+                                    </div>
+                                    <div class="col-6 form-group">
+                                        <label>Part / Item Code:</label>
+                                        <input type="text" id="item_code" class="form-control font-weight-bold" readonly style="background:#eee; color:#0056b3;">
                                     </div>
                                 </div>
 
-                                <!-- Baris 4: Process, Machine -->
-                                <div class="row mb-0">
-                                    <div class="col-6">
-                                        <label class="text-xs">Process:</label>
-                                        <input type="text" id="proc_name" class="form-control form-control-xs bg-light" readonly>
+                                <div class="row">
+                                    <div class="col-12 form-group">
+                                        <label>Part Name:</label>
+                                        <input type="text" id="item_name" class="form-control" readonly style="background:#eee;">
+                                    </div>
+                                </div>
+
+                                <div class="row">
+                                    <div class="col-7 form-group">
+                                        <label>Process:</label>
+                                        <input type="text" id="proc_name" class="form-control" readonly style="background:#eee;">
                                         <input type="hidden" id="proc_id">
                                     </div>
-                                    <div class="col-6">
-                                        <label class="text-xs">Machine (M/C):</label>
-                                        <input type="text" id="mac_code" class="form-control form-control-xs bg-light" readonly>
+                                    <div class="col-5 form-group">
+                                        <label>Machine (M/C):</label>
+                                        <input type="text" id="mac_code" class="form-control font-weight-bold text-center" readonly style="background:#eee;">
                                         <input type="hidden" id="mac_code_hidden">
                                     </div>
                                 </div>
-                                
+
                                 <input type="hidden" id="wo_id">
                                 <input type="hidden" id="wo_number">
                             </div>
                         </div>
                     </div>
-                    
-                    <!-- Right Panel: WO Grid -->
+
+                    <!-- PANEL KANAN: DAFTAR WO -->
                     <div class="col-md-7">
-                        <div class="card card-outline card-secondary h-100 mb-2">
-                            <div class="card-header py-1 bg-light">
-                                <h3 class="card-title text-sm"><i class="fas fa-list-alt mr-1"></i> Daftar Work Order (Tersedia)</h3>
+                        <div class="card card-outline card-secondary compact-box">
+                            <div class="card-header" style="background:#f4f4f4;">
+                                <h3 class="card-title" style="font-size: 12px; font-weight: bold;"><i class="fas fa-list-alt"></i> Daftar Work Order (Tersedia)</h3>
                             </div>
-                            <div class="card-body p-0 wo-table-container">
-                                <table class="table table-sm table-hover table-bordered wo-table text-nowrap m-0">
-                                    <thead>
-                                        <tr>
-                                            <th>WO NUMBER</th>
-                                            <th>ITEM CODE</th>
-                                            <th>QTY</th>
-                                            <th>M/C</th>
-                                            <th>CAP/DAY</th>
-                                            <th>START</th>
-                                            <th>END</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="wo_table_body">
-                                        <tr><td colspan="7" class="text-center text-muted py-4 font-italic text-sm">Ketik kode / nama barang di sebelah kiri untuk menampilkan daftar WO...</td></tr>
-                                    </tbody>
-                                </table>
+                            <div class="card-body p-0">
+                                <div class="table-wo-container">
+                                    <table class="table table-bordered table-striped table-wo">
+                                        <thead>
+                                            <tr>
+                                                <th>WO NUMBER</th>
+                                                <th>ITEM CODE</th>
+                                                <th class="text-right">QTY</th>
+                                                <th class="text-center">M/C</th>
+                                                <th class="text-right">CAP/DAY</th>
+                                                <th>START</th>
+                                                <th>END</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="wo_table_body">
+                                            <tr><td colspan="7" class="text-center text-muted" style="padding: 20px;">Ketik kode / nama barang di sebelah kiri untuk menampilkan daftar WO...</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Bottom Panel: Production History Grid -->
+                <!-- ========================================== -->
+                <!-- BAGIAN BAWAH: PRODUCTION RESULT (GRID) -->
+                <!-- ========================================== -->
                 <div class="row mt-1">
                     <div class="col-md-12">
-                        <div class="card card-success card-outline mb-0">
-                            <div class="card-header py-1 d-flex justify-content-between align-items-center bg-light">
-                                <h3 class="card-title text-sm font-weight-bold"><i class="fas fa-boxes text-muted mr-1"></i> Production Result (Grid Mode)</h3>
-                                <div class="card-tools d-flex align-items-center">
-                                    <input type="text" id="pd_lot_new" class="form-control form-control-xs mr-2 text-center text-bold" readonly placeholder="Auto Lot..." style="width: 150px;">
-                                    <button type="button" id="btn_insert_lot" class="btn btn-xs btn-success"><i class="fas fa-plus"></i> Tambah Baris Lot</button>
+                        <div class="card card-outline card-primary" style="margin-bottom: 5px;">
+                            <div class="card-header" style="padding: 6px 10px;">
+                                <h3 class="card-title" style="font-size: 13px; font-weight: bold; margin-top:4px;"><i class="fas fa-cubes"></i> Production Result (Grid Mode)</h3>
+                                <div class="card-tools" style="display: flex; gap: 6px; align-items: center;">
+                                    <input type="text" id="pd_lot_new" class="form-control input-sm font-weight-bold text-center" readonly placeholder="Auto Lot..." style="background:#fff; width: 130px; height: 26px; padding: 2px;">
+                                    <button type="button" id="btn_insert_lot" class="btn btn-xs btn-success font-weight-bold" style="padding: 4px 8px; height: 26px;">
+                                        <i class="fas fa-plus-circle"></i> Tambah Baris Lot
+                                    </button>
                                 </div>
                             </div>
-                            <div class="card-body p-0 table-responsive">
-                                <table class="table table-sm table-bordered history-table text-nowrap m-0" style="min-width: 1200px;">
+
+                            <div class="card-body p-0 table-responsive" style="max-height: calc(100vh - 350px); min-height: 220px; overflow-y: auto;">
+                                <table class="table table-sm table-bordered history-table text-nowrap m-0" style="min-width: 1100px;">
                                     <thead>
-                                        <tr>
-                                            <th rowspan="2" style="width: 30px;" class="text-center">#</th>
-                                            <th rowspan="2" class="align-middle">LOT #</th>
-                                            <th rowspan="2" class="align-middle text-center">Act</th>
-                                            <th colspan="6" class="text-center align-middle bg-lightblue">Result</th>
-                                            <th rowspan="2" class="align-middle text-right">Purging (kg)</th>
-                                            <th rowspan="2" class="align-middle">Remark</th>
-                                            <th rowspan="2" class="align-middle">Operator</th>
-                                            <th rowspan="2" class="align-middle">PIC Line / Leader</th>
-                                            <th rowspan="2" class="align-middle">Input Date</th>
-                                            <th rowspan="2" style="width: 40px;" class="text-center align-middle">Aksi</th>
+                                        <tr style="background:#eaeaea;">
+                                            <th rowspan="2" style="width: 30px; vertical-align: middle; text-align: center;">#</th>
+                                            <th rowspan="2" style="vertical-align: middle; width: 120px;">LOT #</th>
+                                            <th rowspan="2" style="width: 30px; text-align: center; vertical-align: middle;">Act</th>
+                                            <th colspan="6" style="text-align: center; background:#d9edf7;">Result</th>
+                                            <th rowspan="2" style="vertical-align: middle; width: 80px; text-align: right;">Purging (kg)</th>
+                                            <th rowspan="2" style="vertical-align: middle;">Remark</th>
+                                            <th rowspan="2" style="vertical-align: middle; width: 90px;">Operator</th>
+                                            <th rowspan="2" style="vertical-align: middle; width: 120px;">PIC Line / Leader</th>
+                                            <th rowspan="2" style="vertical-align: middle; width: 85px;">Input Date</th>
+                                            <th rowspan="2" style="width: 75px; text-align: center; vertical-align: middle;">Aksi</th>
                                         </tr>
-                                        <tr>
-                                            <th class="sub-head text-right bg-lightblue">OK</th>
-                                            <th class="sub-head text-right bg-lightblue">Hold</th>
-                                            <th class="sub-head text-center bg-lightblue" style="width: 25px;">+</th>
-                                            <th class="sub-head text-right bg-lightblue">NG</th>
-                                            <th class="sub-head text-center bg-lightblue" style="width: 25px;">+</th>
-                                            <th class="sub-head text-right bg-lightblue">DT</th>
+                                        <tr style="background:#f4f4f4;">
+                                            <th style="width: 65px; text-align: right;" class="bg-lightblue">OK</th>
+                                            <th style="width: 65px; text-align: right;" class="bg-lightblue">Hold</th>
+                                            <th style="width: 25px; text-align: center;" class="bg-lightblue">+</th>
+                                            <th style="width: 65px; text-align: right;" class="bg-lightblue">NG</th>
+                                            <th style="width: 25px; text-align: center;" class="bg-lightblue">+</th>
+                                            <th style="width: 65px; text-align: right;" class="bg-lightblue">DT</th>
                                         </tr>
                                     </thead>
                                     <tbody id="history_table_body">
@@ -372,6 +393,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_ng') {
                         </div>
                     </div>
                 </div>
+
             </div>
         </section>
     </div>
@@ -382,13 +404,12 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_ng') {
 <script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
 
 <script>
-// Load Master Data NG Type dari PHP ke Javascript Array
 const ngMasterData = <?php echo json_encode($ng_types); ?>;
 
 $(document).ready(function() {
     let delayTimer;
 
-    // GENERATE DATALIST HTML5 UNTUK AUTOCOMPLETE NG_DESC
+    // Datalist Autocomplete Defect NG
     let datalistHTML = '<datalist id="ng-datalist">';
     ngMasterData.forEach(function(item) {
         datalistHTML += `<option value="${item.desc}">`;
@@ -447,7 +468,7 @@ $(document).ready(function() {
                                             <td>${wo.WO_NUMBER}</td>
                                             <td>${wo.ITEM_CODE ? wo.ITEM_CODE : '-'}</td>
                                             <td class="text-right">${wo.WO_QTY ? wo.WO_QTY : '-'}</td> 
-                                            <td>${wo.MAC_CODE}</td>
+                                            <td class="text-center">${wo.MAC_CODE}</td>
                                             <td class="text-right">${wo.WO_CAP ? wo.WO_CAP : '-'}</td>
                                             <td>${wo.WO_START}</td>
                                             <td>${wo.WO_END}</td>
@@ -455,7 +476,7 @@ $(document).ready(function() {
                             });
                             $('#wo_table_body').html(html);
                         } else {
-                            $('#wo_table_body').html('<tr><td colspan="7" class="text-center font-italic">Tidak ada data ditemukan.</td></tr>');
+                            $('#wo_table_body').html('<tr><td colspan="7" class="text-center font-italic text-muted">Tidak ada data ditemukan.</td></tr>');
                         }
                     }
                 });
@@ -463,11 +484,11 @@ $(document).ready(function() {
         }
     });
 
-    $(document).on('click', '.wo-table tbody tr', function() {
+    $(document).on('click', '.wo-table tbody tr, .table-wo tbody tr', function() {
         let woid = $(this).data('woid');
         if(!woid) return; 
 
-        $('.wo-table tbody tr').removeClass('selected text-white bg-primary');
+        $('.table-wo tbody tr').removeClass('selected text-white bg-primary');
         $(this).addClass('selected text-white bg-primary');
 
         $('#wo_id').val(woid);
@@ -484,6 +505,7 @@ $(document).ready(function() {
     });
 
     function loadHistoryGrid(woid) {
+        $('#history_table_body').html('<tr><td colspan="15" class="text-center text-primary py-4"><i class="fas fa-spinner fa-spin"></i> Memuat data produksi...</td></tr>');
         $.ajax({
             url: 'get_prod_history.php', 
             type: 'GET',
@@ -505,14 +527,14 @@ $(document).ready(function() {
                         histHtml += `<tr class="main-row" data-pdid="${h.PD_ID}">
                                         <td class="text-center align-middle row-indicator">${rowIcon}</td>
                                         <td class="align-middle">${h.PD_LOT}</td>
-                                        <td class="text-center align-middle"><span class="box-icon btn-expand-act"><i class="fas fa-plus fa-xs"></i></span></td>
+                                        <td class="text-center align-middle"><span class="box-icon btn-expand-act" title="Detail Actual"><i class="fas fa-plus fa-xs"></i></span></td>
                                         
                                         <td class="text-right p-0"><input type="number" class="grid-input in-ok text-right" value="${valOk}"></td>
                                         <td class="text-right p-0"><input type="number" class="grid-input in-ho text-right" value="${valHo}"></td>
                                         <td class="text-center align-middle"><span class="box-icon"><i class="fas fa-plus fa-xs"></i></span></td>
                                         <td class="text-right p-0"><input type="number" class="grid-input in-ng text-right" value="${valNg}"></td>
                                         
-                                        <td class="text-center align-middle"><span class="box-icon btn-expand-ng"><i class="fas fa-plus fa-xs"></i></span></td>
+                                        <td class="text-center align-middle"><span class="box-icon btn-expand-ng" title="Detail NG"><i class="fas fa-plus fa-xs"></i></span></td>
                                         
                                         <td class="text-right p-0"><input type="number" step="any" class="grid-input in-dt text-right" value="${valDt}"></td>
                                         <td class="text-right p-0"><input type="number" step="any" class="grid-input in-purging text-right" value="${valSc}"></td>
@@ -521,7 +543,10 @@ $(document).ready(function() {
                                         <td class="p-0"><input type="text" class="grid-input in-opr" value="${h.PD_OPR}"></td>
                                         <td class="p-0"><input type="text" class="grid-input in-pic" value="${h.PD_PIC_LINE}"></td>
                                         <td class="align-middle">${h.PD_INPUT}</td>
-                                        <td class="text-center align-middle"><button type="button" class="btn btn-xs btn-danger btn-delete" data-pdid="${h.PD_ID}"><i class="fas fa-times"></i></button></td>
+                                        <td class="text-center align-middle">
+                                            <button type="button" class="btn btn-xs btn-success btn-save-row" data-pdid="${h.PD_ID}" title="Simpan Baris"><i class="fas fa-save"></i></button>
+                                            <button type="button" class="btn btn-xs btn-danger btn-delete" data-pdid="${h.PD_ID}" title="Hapus Lot"><i class="fas fa-trash-alt"></i></button>
+                                        </td>
                                      </tr>`;
                         
                         // ROW UNTUK ACTUAL DATA
@@ -630,12 +655,40 @@ $(document).ready(function() {
         }
     });
 
+    function saveMainRow($tr) {
+        let pdId = $tr.data('pdid');
+        let dtValue = $tr.find('.in-dt').val();
+        
+        let postData = {
+            action: 'update_detail', pd_id: pdId,
+            pd_ok: $tr.find('.in-ok').val(), pd_ho: $tr.find('.in-ho').val(), pd_ng:$tr.find('.in-ng').val(),
+            pd_dt: dtValue, pd_purging: $tr.find('.in-purging').val(), pd_rem:$tr.find('.in-rem').val(),
+            pd_opr: $tr.find('.in-opr').val(), pd_pic:$tr.find('.in-pic').val()
+        };
+        
+        $.post(window.location.href, postData, function(res) {
+            if(res.status === 'success') {
+                $tr.css('background-color', '#d4edda');
+                setTimeout(() => $tr.css('background-color', ''), 500);
+                $('.sub-row-' + pdId).find('.act-losthr').val(dtValue);
+            } else { 
+                let msg = (res.errors && res.errors[0]) ? res.errors[0].message : "";
+                alert("Gagal mengupdate data!\n" + msg); 
+            }
+        });
+    }
+
+    $(document).on('click', '.btn-save-row', function() {
+        saveMainRow($(this).closest('.main-row'));
+    });
+
     $(document).on('click', '.btn-expand-act', function() {
         let $tr =$(this).closest('tr');
         let pdId = $tr.data('pdid');
         let $subRow =$('.sub-row-' + pdId);
         
-        $('.sub-row-ng-' + pdId).hide();$tr.find('.btn-expand-ng').html('<i class="fas fa-plus fa-xs"></i>');
+        $('.sub-row-ng-' + pdId).hide();
+        $tr.find('.btn-expand-ng').html('<i class="fas fa-plus fa-xs"></i>');
 
         if ($subRow.is(':visible')) {
             $subRow.hide();$(this).html('<i class="fas fa-plus fa-xs"></i>');
@@ -674,7 +727,8 @@ $(document).ready(function() {
         let pdId = $tr.data('pdid');
         let $subRowNg =$('.sub-row-ng-' + pdId);
         
-        $('.sub-row-' + pdId).hide();$tr.find('.btn-expand-act').html('<i class="fas fa-plus fa-xs"></i>');
+        $('.sub-row-' + pdId).hide();
+        $tr.find('.btn-expand-act').html('<i class="fas fa-plus fa-xs"></i>');
 
         if ($subRowNg.is(':visible')) {
             $subRowNg.hide();$(this).html('<i class="fas fa-plus fa-xs"></i>');
@@ -783,7 +837,10 @@ $(document).ready(function() {
         });
     }
 
-    $(document).on('keydown', '.ng-type-input', function(e) {         if (e.key === 'Enter') {             e.preventDefault();$(this).closest('tr').find('.ng-qty-input').focus();
+    $(document).on('keydown', '.ng-type-input', function(e) {         
+        if (e.key === 'Enter') {             
+            e.preventDefault();
+            $(this).closest('tr').find('.ng-qty-input').focus();
         }
     });
 
@@ -835,26 +892,7 @@ $(document).ready(function() {
             if ($this[0].selectionStart ===$this.val().length || $this.attr('type') === 'number') { e.preventDefault();$td.nextAll().find('.grid-input').first().focus(); }
         } else if (e.key === 'Enter') {
             e.preventDefault();
-            let pdId = $tr.data('pdid');
-            let dtValue = $tr.find('.in-dt').val();
-            
-            let postData = {
-                action: 'update_detail', pd_id: pdId,
-                pd_ok: $tr.find('.in-ok').val(), pd_ho: $tr.find('.in-ho').val(), pd_ng:$tr.find('.in-ng').val(),
-                pd_dt: dtValue, pd_purging: $tr.find('.in-purging').val(), pd_rem:$tr.find('.in-rem').val(),
-                pd_opr: $tr.find('.in-opr').val(), pd_pic:$tr.find('.in-pic').val()
-            };
-            
-            $.post(window.location.href, postData, function(res) {
-                if(res.status === 'success') {
-                    $tr.css('background-color', '#d4edda');
-                    setTimeout(() => $tr.css('background-color', ''), 500);$('.sub-row-' + pdId).find('.act-losthr').val(dtValue);
-                } else { 
-                    let msg = (res.errors && res.errors[0]) ? res.errors[0].message : "";
-                    alert("Gagal mengupdate data!\n" + msg); 
-                }
-            });
-            
+            saveMainRow($tr);
             $tr.nextAll('.main-row').first().children('td').eq(colIndex).find('.grid-input').focus();
         }
     });

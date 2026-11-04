@@ -1,56 +1,70 @@
 <?php
-error_reporting(E_ALL);
-ini_set('display_errors', 0);
-require_once __DIR__ . "/../config/global.php"; //[cite: 3]
+if (!isset($_SESSION)) {
+    session_start();
+}
+require_once __DIR__ . "/../config/global.php";
 
-header('Content-Type: application/json; charset=utf-8');
+header('Content-Type: application/json');
 
-if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    echo json_encode(array('status' => 'error', 'message' => 'Metode tidak diizinkan.'));
+if ($conn === false) {
+    echo json_encode(['status' => 'error', 'message' => 'Koneksi database gagal.']);
     exit;
 }
 
-$tranadate = isset($_POST['trandate']) ? trim($_POST['trandate']) : date('Y-m-d');
-$trty      = isset($_POST['trty']) ? trim($_POST['trty']) : '';
-$merchant  = isset($_POST['merchant']) && $_POST['merchant'] !== '' ? $_POST['merchant'] : null;
-$tbc       = isset($_POST['tbc']) ? $_POST['tbc'] : '';
+$trandate = isset($_POST['trandate']) ? $_POST['trandate'] : date('Y-m-d');
+$trty     = isset($_POST['trty']) ? $_POST['trty'] : '';
+$merchant = isset($_POST['merchant']) ? $_POST['merchant'] : '';
 
-$bcty = null; $bcno = null; $bcdate = null;
-if ($tbc === 'Y') {
-    $bcty   = isset($_POST['bcty']) ? $_POST['bcty'] : null;
-    $bcno   = isset($_POST['bcno']) ? $_POST['bcno'] : null;
-    $bcdate = isset($_POST['bcdate']) ? $_POST['bcdate'] : null;
+if (empty($trty)) {
+    echo json_encode(['status' => 'error', 'message' => 'Jenis transaksi belum dipilih.']);
+    exit;
 }
 
-sqlsrv_begin_transaction($conn);
-
-try {
-    // 1. Ambil nomor dokumen dari REFS[cite: 5, 3]
-    $sqlRef = "SELECT TOP 1 REF_ID, NEXT_PR FROM REFS ORDER BY REF_ID";
-    $stmtRef = sqlsrv_query($conn, $sqlRef);
-    $rowRef = sqlsrv_fetch_array($stmtRef, SQLSRV_FETCH_ASSOC);
-    $ref_id  = $rowRef['REF_ID'];
-    $trandoc = $rowRef['NEXT_PR'];
-
-    // 2. Update NEXT_PR +1[cite: 5, 3]
-    $sqlUpdateRef = "UPDATE REFS SET NEXT_PR = NEXT_PR + 1 WHERE REF_ID = ?";
-    sqlsrv_query($conn, $sqlUpdateRef, array($ref_id));
-
-    // 3. Insert ke TRANS (Source = 1)[cite: 5]
-    $trandate = date('Y-m-d H:i:s');
-    $source = 1;
-    $sqlInsertTrans = "INSERT INTO TRANS (TRAN_DATE, TRAN_ADATE, TRTY_CODE, TRAN_DOC, TRAN_SOURCE, SUP_CODE, BCTY_ID, BC_NO, BC_DATE) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-    sqlsrv_query($conn, $sqlInsertTrans, array($trandate, $tranadate, $trty, $trandoc, $source, $merchant, $bcty, $bcno, $bcdate));
-
-    // 4. Ambil TRAN_ID[cite: 5]
-    $stmtGetId = sqlsrv_query($conn, "SELECT TOP 1 TRAN_ID FROM TRANS ORDER BY TRAN_ID DESC");
-    $rowId = sqlsrv_fetch_array($stmtGetId, SQLSRV_FETCH_ASSOC);
-    
-    sqlsrv_commit($conn);
-    echo json_encode(array('status' => 'success', 'tranid' => $rowId['TRAN_ID'], 'trandoc' => $trandoc));
-
-} catch (Exception $e) {
-    sqlsrv_rollback($conn);
-    echo json_encode(array('status' => 'error', 'message' => $e->getMessage()));
+// Generate Nomor Dokumen (TRAN_DOC) Berdasarkan Tahun & Jenis Transaksi
+$tahun = date('Y', strtotime($trandate));
+$sqlDoc = "SELECT MAX(CAST(SUBSTRING(TRAN_DOC, 5, 5) AS INT)) as MaxNo FROM TRANS WHERE YEAR(TRAN_DATE) = ? AND TRTY_CODE = ?";
+$stmtDoc = sqlsrv_query($conn, $sqlDoc, array($tahun, $trty));
+$nextNo = 1;
+if ($stmtDoc !== false) {
+    $rowDoc = sqlsrv_fetch_array($stmtDoc, SQLSRV_FETCH_ASSOC);
+    if ($rowDoc && $rowDoc['MaxNo'] !== null) {
+        $nextNo = (int)$rowDoc['MaxNo'] + 1;
+    }
 }
+$trandoc = 'EX-' . $tahun . '-' . str_pad($nextNo, 5, '0', STR_PAD_LEFT);
+
+// Insert ke Tabel TRANS (Header) - Disesuaikan tanpa kolom TBC yang belum ada di database
+$sqlInsert = "
+    INSERT INTO TRANS (TRAN_DATE, TRAN_ADATE, TRTY_CODE, TRAN_DOC, SUP_CODE, TRAN_SOURCE)
+    VALUES (?, GETDATE(), ?, ?, ?, 1);
+    SELECT SCOPE_IDENTITY() AS TRAN_ID;
+";
+
+$params = array(
+    $trandate, 
+    $trty, 
+    $trandoc, 
+    empty($merchant) ? null : $merchant
+);
+
+$stmt = sqlsrv_query($conn, $sqlInsert, $params);
+
+if ($stmt === false) {
+    // Tampilkan pesan error SQL Server jika masih ada kendala
+    $errors = sqlsrv_errors();
+    echo json_encode(['status' => 'error', 'message' => isset($errors[0]['message']) ? $errors[0]['message'] : 'Gagal insert database.']);
+    exit;
+}
+
+sqlsrv_next_result($stmt);
+$tranid = 0;
+if ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+    $tranid = $row['TRAN_ID'];
+}
+
+echo json_encode([
+    'status'  => 'success',
+    'tranid'  => $tranid,
+    'trandoc' => $trandoc
+]);
 ?>

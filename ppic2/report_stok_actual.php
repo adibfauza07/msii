@@ -1,6 +1,6 @@
 <?php
 // Cek apakah tombol export ke excel diklik
- $is_export = isset($_POST['export']) && $_POST['export'] === 'excel';
+$is_export = isset($_POST['export']) && $_POST['export'] === 'excel';
 
 if ($is_export) {
     $filename = "Analisa_Stok_Aktual_" . date('Ymd') . ".xls";
@@ -19,11 +19,11 @@ if ($conn === false) {
 }
 
 // Inisialisasi variabel (Default awal bulan s/d akhir bulan)
- $from_date = isset($_POST['from_date']) ? $_POST['from_date'] : date('Y-m-01');
- $to_date   = isset($_POST['to_date']) ? $_POST['to_date'] : date('Y-m-t');
- $cust_code = isset($_POST['cust_code']) ? $_POST['cust_code'] : '';
- $groupedResults = array();
- $message   = "";
+$from_date = isset($_POST['from_date']) ? $_POST['from_date'] : date('Y-m-01');
+$to_date   = isset($_POST['to_date']) ? $_POST['to_date'] : date('Y-m-t');
+$cust_code = isset($_POST['cust_code']) ? $_POST['cust_code'] : '';
+$groupedResults = array();
+$message   = "";
 
 // Proses jika form disubmit
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -70,7 +70,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // SORTING ITEM NAME A-Z
             foreach ($groupedResults as $cCode => &$custData) {
                 usort($custData['items'], function($a, $b) {
-                    return strcasecmp(trim($a['item_name']), trim($b['item_name']));
+                    $nameA = isset($a['item_name']) ? $a['item_name'] : (isset($a['ITEM_NAME']) ? $a['ITEM_NAME'] : '');
+                    $nameB = isset($b['item_name']) ? $b['item_name'] : (isset($b['ITEM_NAME']) ? $b['ITEM_NAME'] : '');
+                    return strcasecmp(trim($nameA), trim($nameB));
                 });
             }
             unset($custData); 
@@ -199,7 +201,8 @@ function formatNum($val, $is_export = false) {
                         <th>Del Actual</th>
                         <th>Delivery Balance</th>
                         <th>NG / RW</th>
-                        <th>Sub Qty</th>
+                        <!-- PERUBAHAN HEADER: Sub Qty -> Hold OK -->
+                        <th>Hold OK</th>
                         <th>Forecast</th>
                         <th>Stok Plan</th>
                         <th>Stok Actual</th>
@@ -212,17 +215,23 @@ function formatNum($val, $is_export = false) {
                     <?php 
                     $no = 1; 
                     foreach ($custData['items'] as $row): 
+                        $item_code = isset($row['item_code']) ? trim($row['item_code']) : (isset($row['ITEM_CODE']) ? trim($row['ITEM_CODE']) : '');
+                        $item_name = isset($row['item_name']) ? $row['item_name'] : (isset($row['ITEM_NAME']) ? $row['ITEM_NAME'] : '');
+
                         $tags = isset($row['tags']) ? (float)$row['tags'] : 0;
                         $ps = isset($row['ps']) ? (float)$row['ps'] : 0;
                         $pd_actual = isset($row['pd_actual']) ? (float)$row['pd_actual'] : 0;
                         $del_sch = isset($row['del_sch']) ? (float)$row['del_sch'] : 0;
                         $del_actual = isset($row['del_actual']) ? (float)$row['del_actual'] : 0;
                         $ng_rw = isset($row['ng_rw']) ? (float)$row['ng_rw'] : 0;
-                        $sub_qty = isset($row['sub_qty']) ? (float)$row['sub_qty'] : 0;
                         $fore_qty = isset($row['fore_qty']) ? (float)$row['fore_qty'] : 0;
 
-                        $stok_plan = ($tags + $ps + $sub_qty) - $del_sch - $ng_rw;
-                        $stok_actual = ($tags + $pd_actual + $sub_qty) - ($del_actual + $ng_rw);
+                        // PERUBAHAN VARIABEL: Mengecek nilai hold_ok, jika belum diganti di SP maka ambil nilai sub_qty
+                        $hold_ok = isset($row['hold_ok']) ? (float)$row['hold_ok'] : (isset($row['sub_qty']) ? (float)$row['sub_qty'] : 0);
+
+                        // PERUBAHAN PERHITUNGAN KALKULASI STOK MENGGUNAKAN $hold_ok
+                        $stok_plan = ($tags + $ps + $hold_ok) - $del_sch - $ng_rw;
+                        $stok_actual = ($tags + $pd_actual + $hold_ok) - ($del_actual + $ng_rw);
                         $del_balance = $del_actual - $del_sch;
                         $prod_plan = $stok_plan - $fore_qty;
 
@@ -231,7 +240,6 @@ function formatNum($val, $is_export = false) {
                         // =========================================================
                         $shortage_date = "-";
                         $next_prod_date = "-";
-                        $item_code = trim($row['item_code']);
                         $param_start = $from_date;
                         $param_end   = $to_date;
                         
@@ -324,7 +332,7 @@ function formatNum($val, $is_export = false) {
                         <tr>
                             <td style="text-align: center;"><?= $no++ ?></td>
                             <td><?= $item_code_display ?></td>
-                            <td><?= htmlspecialchars($row['item_name']) ?></td>
+                            <td><?= htmlspecialchars($item_name) ?></td>
                             <td class="text-right"><?= formatNum($tags, $is_export) ?></td>
                             <td class="text-right"><?= formatNum($ps, $is_export) ?></td>
                             <td class="text-right"><?= formatNum($pd_actual, $is_export) ?></td>
@@ -334,7 +342,8 @@ function formatNum($val, $is_export = false) {
                             <td class="text-right calc-col"><?= formatNum($del_balance, $is_export) ?></td>
 
                             <td class="text-right"><?= formatNum($ng_rw, $is_export) ?></td>
-                            <td class="text-right"><?= formatNum($sub_qty, $is_export) ?></td>
+                            <!-- PERUBAHAN OUTPUT CELL: Menampilkan $hold_ok -->
+                            <td class="text-right"><?= formatNum($hold_ok, $is_export) ?></td>
                             <td class="text-right"><?= formatNum($fore_qty, $is_export) ?></td>
                             
                             <td class="text-right calc-col"><?= formatNum($stok_plan, $is_export) ?></td>

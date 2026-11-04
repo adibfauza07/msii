@@ -33,17 +33,18 @@ if ($resMasterMold === false) {
 }
 
 $arrMasterMold = [];
+$mapMoldIdByPart = [];
 while ($m = sqlsrv_fetch_array($resMasterMold, SQLSRV_FETCH_ASSOC)) {
-    $cleanNo = trim($m['PART_NO'], " \t\n\r\0\x0B'");
+    $cleanNo = strtoupper(trim($m['PART_NO'], " \t\n\r\0\x0B'"));
     $arrMasterMold[] = [
         'id'   => $m['MOLD_ID'],
         'no'   => $cleanNo,
         'name' => isset($m['PART_NAME']) ? trim($m['PART_NAME']) : '',
         'cust' => isset($m['CUST_ALIAS']) ? trim($m['CUST_ALIAS']) : ''
     ];
+    $mapMoldIdByPart[$cleanNo] = $m['MOLD_ID'];
 }
 
-// Master Dropdown Customer untuk Filter Laporan
 $sqlCust = "SELECT DISTINCT CUST_ALIAS FROM ITEM_CUST_MOLD WHERE CUST_ALIAS IS NOT NULL ORDER BY CUST_ALIAS ASC";
 $resCust = sqlsrv_query($conn, $sqlCust);
 
@@ -53,15 +54,23 @@ $resCust = sqlsrv_query($conn, $sqlCust);
 if (isset($_POST['btnDeleteTrans'])) {
     $delIdTrans = !empty($_POST['del_id_trans']) ? intval($_POST['del_id_trans']) : null;
     $delMoldId  = !empty($_POST['del_mold_id']) ? intval($_POST['del_mold_id']) : null;
-    $delDate    = !empty($_POST['del_date']) ? $_POST['del_date'] : null;
+    $delPartNo  = isset($_POST['del_part_no']) ? strtoupper(trim($_POST['del_part_no'], " \t\n\r\0\x0B'")) : '';
+    $delDateDay = !empty($_POST['del_date_day']) ? $_POST['del_date_day'] : null;
+    $delReason  = isset($_POST['del_reason']) ? trim($_POST['del_reason']) : '';
+
+    if (empty($delMoldId) && !empty($delPartNo) && isset($mapMoldIdByPart[$delPartNo])) {
+        $delMoldId = $mapMoldIdByPart[$delPartNo];
+    }
 
     if ($delIdTrans) {
         $sqlDelete = "DELETE FROM MOLD_TRANS_DETAIL WHERE ID_TRANS = ?";
         $stmtDel = sqlsrv_query($conn, $sqlDelete, [$delIdTrans]);
     } else {
         $sqlDelete = "DELETE FROM MOLD_TRANS_DETAIL 
-                      WHERE MOLD_ID = ? AND CONVERT(VARCHAR(19), [DATE], 120) = ?";
-        $stmtDel = sqlsrv_query($conn, $sqlDelete, [$delMoldId, $delDate]);
+                      WHERE MOLD_ID = ? 
+                        AND CONVERT(VARCHAR(10), [DATE], 120) = ? 
+                        AND (ISNULL(REASON, '') = ? OR ? = '')";
+        $stmtDel = sqlsrv_query($conn, $sqlDelete, [$delMoldId, $delDateDay, $delReason, $delReason]);
     }
 
     if ($stmtDel === false) {
@@ -69,8 +78,14 @@ if (isset($_POST['btnDeleteTrans'])) {
         $alertMsg = "Gagal menghapus transaksi: " . (isset($err[0]['message']) ? $err[0]['message'] : 'Kesalahan query');
         $alertType = "danger";
     } else {
-        $alertMsg = "Transaksi mutasi mold berhasil dihapus!";
-        $alertType = "success";
+        $rowsAffected = sqlsrv_rows_affected($stmtDel);
+        if ($rowsAffected > 0) {
+            $alertMsg = "Transaksi mutasi mold berhasil dihapus!";
+            $alertType = "success";
+        } else {
+            $alertMsg = "Peringatan: Data transaksi tidak ditemukan pada tabel fisik.";
+            $alertType = "danger";
+        }
     }
 }
 
@@ -80,11 +95,17 @@ if (isset($_POST['btnDeleteTrans'])) {
 if (isset($_POST['btnUpdateTrans'])) {
     $editIdTrans   = !empty($_POST['edit_id_trans']) ? intval($_POST['edit_id_trans']) : null;
     $editMoldId    = intval($_POST['edit_mold_id']);
+    $editPartNo    = isset($_POST['edit_part_no']) ? strtoupper(trim($_POST['edit_part_no'], " \t\n\r\0\x0B'")) : '';
+
+    if (empty($editMoldId) && !empty($editPartNo) && isset($mapMoldIdByPart[$editPartNo])) {
+        $editMoldId = $mapMoldIdByPart[$editPartNo];
+    }
     
+    // Normalisasi format datetime 24 Jam
     $editDateRaw   = !empty($_POST['edit_date']) ? str_replace('T', ' ', $_POST['edit_date']) : date('Y-m-d H:i:s');
     $editDate      = date('Y-m-d H:i:s', strtotime($editDateRaw));
 
-    $editJenis     = intval($_POST['edit_jenis_trans']); // 1 = IN, 2 = OUT
+    $editJenis     = intval($_POST['edit_jenis_trans']); 
     $editMoldIn    = ($editJenis === 1) ? 1 : 0;
     $editMoldOut   = ($editJenis === 2) ? 1 : 0;
     $editReason    = substr(trim($_POST['edit_reason']), 0, 30);
@@ -103,7 +124,8 @@ if (isset($_POST['btnUpdateTrans'])) {
                       WHERE ID_TRANS = ?";
         $paramsUpd = [$editDate, $editJenis, $editMoldIn, $editMoldOut, $editReason, $editVendor, $editSupplier, $editIdTrans];
     } else {
-        $editOrigDate = $_POST['edit_orig_date'];
+        $editOrigDay = $_POST['edit_orig_day'];
+        $editOrigReason = trim($_POST['edit_orig_reason']);
         $sqlUpdate = "UPDATE MOLD_TRANS_DETAIL 
                       SET [DATE] = ?,
                           JENIS_TRANSAKSI = ?,
@@ -112,8 +134,10 @@ if (isset($_POST['btnUpdateTrans'])) {
                           REASON = ?,
                           VENDOR = ?,
                           SUPPLIER = ?
-                      WHERE MOLD_ID = ? AND CONVERT(VARCHAR(19), [DATE], 120) = ?";
-        $paramsUpd = [$editDate, $editJenis, $editMoldIn, $editMoldOut, $editReason, $editVendor, $editSupplier, $editMoldId, $editOrigDate];
+                      WHERE MOLD_ID = ? 
+                        AND CONVERT(VARCHAR(10), [DATE], 120) = ? 
+                        AND (ISNULL(REASON, '') = ? OR ? = '')";
+        $paramsUpd = [$editDate, $editJenis, $editMoldIn, $editMoldOut, $editReason, $editVendor, $editSupplier, $editMoldId, $editOrigDay, $editOrigReason, $editOrigReason];
     }
 
     $stmtUpd = sqlsrv_query($conn, $sqlUpdate, $paramsUpd);
@@ -122,8 +146,14 @@ if (isset($_POST['btnUpdateTrans'])) {
         $alertMsg = "Gagal memperbarui data: " . (isset($err[0]['message']) ? $err[0]['message'] : 'Kesalahan query');
         $alertType = "danger";
     } else {
-        $alertMsg = "Data transaksi berhasil diperbarui!";
-        $alertType = "success";
+        $rowsAffected = sqlsrv_rows_affected($stmtUpd);
+        if ($rowsAffected > 0) {
+            $alertMsg = "Data transaksi berhasil diperbarui!";
+            $alertType = "success";
+        } else {
+            $alertMsg = "Peringatan: Baris transaksi lama tidak cocok di database.";
+            $alertType = "danger";
+        }
     }
 }
 
@@ -135,7 +165,7 @@ if (isset($_POST['btnSimpanTrans'])) {
     $rawDate        = !empty($_POST['in_date']) ? str_replace('T', ' ', $_POST['in_date']) : date('Y-m-d H:i:s');
     $transDate      = date('Y-m-d H:i:s', strtotime($rawDate));
 
-    $jenisTransaksi = !empty($_POST['in_jenis_trans']) ? intval($_POST['in_jenis_trans']) : 1; // 1 = IN, 2 = OUT
+    $jenisTransaksi = !empty($_POST['in_jenis_trans']) ? intval($_POST['in_jenis_trans']) : 1; 
     $moldIn         = ($jenisTransaksi === 1) ? 1 : 0;
     $moldOut        = ($jenisTransaksi === 2) ? 1 : 0;
     $reason         = !empty($_POST['in_reason']) ? substr(trim($_POST['in_reason']), 0, 30) : '';
@@ -168,21 +198,20 @@ if (isset($_POST['btnSimpanTrans'])) {
 // -------------------------------------------------------------
 $showReport = false;
 $reportData = [];
-$startDateForm = isset($_POST['start_date']) ? $_POST['start_date'] : date('Y-m-01');
-$endDateForm   = isset($_POST['end_date']) ? $_POST['end_date'] : date('Y-m-d');
+$startDateForm = isset($_REQUEST['start_date']) ? $_REQUEST['start_date'] : date('Y-m-01');
+$endDateForm   = isset($_REQUEST['end_date'])   ? $_REQUEST['end_date']   : date('Y-m-d');
 
 $isExport = isset($_POST['btnExport']);
 $isSubmit = isset($_POST['btnCetak']) || $isExport || isset($_POST['btnSimpanTrans']) || isset($_POST['btnUpdateTrans']) || isset($_POST['btnDeleteTrans']);
 
 if ($isSubmit) {
-    $startDate = !empty($_POST['start_date']) ? date('Ymd', strtotime($_POST['start_date'])) : date('Ym01');
-    $endDate   = !empty($_POST['end_date'])   ? date('Ymd', strtotime($_POST['end_date']))   : date('Ymt');
+    $startDate = !empty($startDateForm) ? date('Ymd', strtotime($startDateForm)) : date('Ym01');
+    $endDate   = !empty($endDateForm)   ? date('Ymd', strtotime($endDateForm . ' +1 day')) : date('Ymd', strtotime('+1 day'));
 
-    // Pembersihan otomatis karakter kutip (') dan spasi
-    $rawMoldNo = isset($_POST['mold_no']) ? trim($_POST['mold_no'], " \t\n\r\0\x0B'") : '';
+    $rawMoldNo = isset($_REQUEST['mold_no']) ? trim($_REQUEST['mold_no'], " \t\n\r\0\x0B'") : '';
     $moldNo    = ($rawMoldNo !== '') ? '%' . $rawMoldNo . '%' : '%';
 
-    $rawCust   = isset($_POST['cust_alias']) ? trim($_POST['cust_alias'], " \t\n\r\0\x0B'") : '';
+    $rawCust   = isset($_REQUEST['cust_alias']) ? trim($_REQUEST['cust_alias'], " \t\n\r\0\x0B'") : '';
     $custAlias = ($rawCust !== '') ? '%' . $rawCust . '%' : '%';
     
     $tsql = "{call sp_trans_mold_new(?, ?, ?, ?)}";
@@ -204,8 +233,28 @@ if ($isSubmit) {
         $reportData[] = $row;
     }
     sqlsrv_free_stmt($stmt);
+
+    // ==============================================================
+    // PENGURUTAN TRANSAKSI TANGGAL TERBARU KE TERLAMA (DESC)
+    // ==============================================================
+    if (!empty($reportData)) {
+        usort($reportData, function($a, $b) {
+            $rawDateA = isset($a['DATE']) ? $a['DATE'] : (isset($a['date']) ? $a['date'] : null);
+            $timeA = ($rawDateA instanceof DateTime) ? $rawDateA->getTimestamp() : strtotime($rawDateA);
+
+            $rawDateB = isset($b['DATE']) ? $b['DATE'] : (isset($b['date']) ? $b['date'] : null);
+            $timeB = ($rawDateB instanceof DateTime) ? $rawDateB->getTimestamp() : strtotime($rawDateB);
+
+            if ($timeB == $timeA) {
+                return 0;
+            }
+            return ($timeB > $timeA) ? 1 : -1;
+        });
+    }
+
     $showReport = true;
 
+    // Export Excel Langsung (Sudah Terurut Tanggal Terbaru)
     if ($isExport) {
         $fileName = "Laporan_Mutasi_Mold_" . date('Ymd_His') . ".xls";
         header("Content-Type: application/vnd.ms-excel; charset=utf-8");
@@ -271,8 +320,8 @@ if ($isSubmit) {
         .btn-save { background: #2980b9; color: #fff; border: 2px outset #5dade2; }
         .btn-save:hover { background: #1f618d; }
 
-        .btn-edit { background: #f39c12; color: #fff; border: 1px solid #d68910; padding: 2px 6px; font-size: 10px; font-weight: bold; cursor: pointer; border-radius: 2px; }
-        .btn-del { background: #c0392b; color: #fff; border: 1px solid #962d22; padding: 2px 6px; font-size: 10px; font-weight: bold; cursor: pointer; border-radius: 2px; margin-left: 2px; }
+        .btn-edit { background: #f39c12; color: #fff; border: 1px solid #d68910; padding: 3px 8px; font-size: 10px; font-weight: bold; cursor: pointer; border-radius: 2px; }
+        .btn-del { background: #c0392b; color: #fff; border: 1px solid #962d22; padding: 3px 8px; font-size: 10px; font-weight: bold; cursor: pointer; border-radius: 2px; margin-left: 2px; }
         .btn-edit:hover { background: #d68910; }
         .btn-del:hover { background: #962d22; }
 
@@ -289,7 +338,7 @@ if ($isSubmit) {
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 9999; justify-content: center; align-items: center; }
         .modal-content { background: #eeeeee; border: 2px solid #2c3e50; border-radius: 4px; width: 700px; max-width: 95%; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); font-family: Tahoma, Arial, sans-serif; font-size: 11px; }
         .modal-header { font-size: 13px; font-weight: bold; color: #2c3e50; border-bottom: 1px solid #808080; padding-bottom: 6px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
-        .modal-close { cursor: pointer; font-size: 16px; font-weight: bold; color: #c0392b; }
+        .modal-close { cursor: pointer; font-size: 18px; font-weight: bold; color: #c0392b; line-height: 1; }
 
         @media print { .box-container, .alert, .col-action, .modal-overlay { display: none !important; } body { background: #fff; padding: 0; } }
     </style>
@@ -375,7 +424,7 @@ if ($isSubmit) {
             
             <div class="form-group">
                 <label>Nomor Mold (Part No)</label>
-                <input type="text" name="mold_no" list="filter_part_list" value="<?php echo (isset($_POST['mold_no'])) ? h(trim($_POST['mold_no'], "'")) : ''; ?>" placeholder="Ketik atau pilih...">
+                <input type="text" name="mold_no" list="filter_part_list" value="<?php echo (isset($_REQUEST['mold_no'])) ? h(trim($_REQUEST['mold_no'], "'")) : ''; ?>" placeholder="Ketik atau pilih...">
                 <datalist id="filter_part_list">
                     <?php foreach ($arrMasterMold as $m): ?>
                         <option value="<?php echo h($m['no']); ?>"><?php echo h($m['name']); ?></option>
@@ -385,7 +434,7 @@ if ($isSubmit) {
             
             <div class="form-group">
                 <label>Alias Customer</label>
-                <input type="text" name="cust_alias" list="filter_cust_list" value="<?php echo (isset($_POST['cust_alias'])) ? h(trim($_POST['cust_alias'], "'")) : ''; ?>" placeholder="Ketik atau pilih...">
+                <input type="text" name="cust_alias" list="filter_cust_list" value="<?php echo (isset($_REQUEST['cust_alias'])) ? h(trim($_REQUEST['cust_alias'], "'")) : ''; ?>" placeholder="Ketik atau pilih...">
                 <datalist id="filter_cust_list">
                     <?php while($c = sqlsrv_fetch_array($resCust, SQLSRV_FETCH_ASSOC)): ?>
                         <option value="<?php echo h(trim($c['CUST_ALIAS'], "'")); ?>"></option>
@@ -433,16 +482,11 @@ if ($isSubmit) {
                         $idTrans  = isset($row['ID_TRANS']) ? intval($row['ID_TRANS']) : 0;
 
                         $strDateIso = ($rDate instanceof DateTime) ? $rDate->format('Y-m-d\TH:i') : '';
-                        $strDateSql = ($rDate instanceof DateTime) ? $rDate->format('Y-m-d H:i:s') : '';
+                        $strDateDay = ($rDate instanceof DateTime) ? $rDate->format('Y-m-d') : date('Y-m-d', strtotime($rDate));
                         $strDateDisplay = ($rDate instanceof DateTime) ? $rDate->format('d-M-Y H:i') : '-';
 
-                        $curMoldId = 0;
-                        foreach ($arrMasterMold as $mm) {
-                            if (strcasecmp($mm['no'], $partNo) === 0) {
-                                $curMoldId = $mm['id'];
-                                break;
-                            }
-                        }
+                        $cleanPartKey = strtoupper($partNo);
+                        $rowMoldId = isset($mapMoldIdByPart[$cleanPartKey]) ? $mapMoldIdByPart[$cleanPartKey] : 0;
                     ?>
                     <tr>
                         <td><?php echo h($partNo); ?></td>
@@ -461,29 +505,31 @@ if ($isSubmit) {
 
                         <td class="col-action text-center" style="white-space: nowrap;">
                             <button type="button" class="btn-edit" 
-                                onclick='openEditTransModal(<?php echo json_encode([
-                                    "id_trans"  => $idTrans,
-                                    "mold_id"   => $curMoldId,
-                                    "part_no"   => $partNo,
-                                    "part_name" => $partName,
-                                    "date"      => $strDateIso,
-                                    "date_sql"  => $strDateSql,
-                                    "jenis"     => ($rIn == 1) ? 1 : 2,
-                                    "reason"    => $rReason,
-                                    "vendor"    => $rVendor,
-                                    "supplier"  => $rSupplier
-                                ]); ?>)'>
+                                data-id-trans="<?php echo h($idTrans); ?>"
+                                data-mold-id="<?php echo h($rowMoldId); ?>"
+                                data-part-no="<?php echo h($partNo); ?>"
+                                data-part-name="<?php echo h($partName); ?>"
+                                data-date="<?php echo h($strDateIso); ?>"
+                                data-orig-day="<?php echo h($strDateDay); ?>"
+                                data-orig-reason="<?php echo h($rReason); ?>"
+                                data-jenis="<?php echo ($rIn == 1) ? '1' : '2'; ?>"
+                                data-reason="<?php echo h($rReason); ?>"
+                                data-vendor="<?php echo h($rVendor); ?>"
+                                data-supplier="<?php echo h($rSupplier); ?>"
+                                onclick="handleEditTransClick(this)">
                                 EDIT
                             </button>
 
                             <form method="POST" action="" style="display:inline;" onsubmit="return confirm('Apakah Anda yakin ingin menghapus transaksi ini?');">
                                 <input type="hidden" name="start_date" value="<?php echo h($startDateForm); ?>">
                                 <input type="hidden" name="end_date" value="<?php echo h($endDateForm); ?>">
-                                <input type="hidden" name="mold_no" value="<?php echo isset($_POST['mold_no']) ? h($_POST['mold_no']) : ''; ?>">
-                                <input type="hidden" name="cust_alias" value="<?php echo isset($_POST['cust_alias']) ? h($_POST['cust_alias']) : ''; ?>">
+                                <input type="hidden" name="mold_no" value="<?php echo isset($_REQUEST['mold_no']) ? h($_REQUEST['mold_no']) : ''; ?>">
+                                <input type="hidden" name="cust_alias" value="<?php echo isset($_REQUEST['cust_alias']) ? h($_REQUEST['cust_alias']) : ''; ?>">
                                 <input type="hidden" name="del_id_trans" value="<?php echo h($idTrans); ?>">
-                                <input type="hidden" name="del_mold_id" value="<?php echo h($curMoldId); ?>">
-                                <input type="hidden" name="del_date" value="<?php echo h($strDateSql); ?>">
+                                <input type="hidden" name="del_mold_id" value="<?php echo h($rowMoldId); ?>">
+                                <input type="hidden" name="del_part_no" value="<?php echo h($partNo); ?>">
+                                <input type="hidden" name="del_date_day" value="<?php echo h($strDateDay); ?>">
+                                <input type="hidden" name="del_reason" value="<?php echo h($rReason); ?>">
                                 <button type="submit" name="btnDeleteTrans" class="btn-del">HAPUS</button>
                             </form>
                         </td>
@@ -508,12 +554,14 @@ if ($isSubmit) {
         <form method="POST" action="">
             <input type="hidden" name="start_date" value="<?php echo h($startDateForm); ?>">
             <input type="hidden" name="end_date" value="<?php echo h($endDateForm); ?>">
-            <input type="hidden" name="mold_no" value="<?php echo isset($_POST['mold_no']) ? h($_POST['mold_no']) : ''; ?>">
-            <input type="hidden" name="cust_alias" value="<?php echo isset($_POST['cust_alias']) ? h($_POST['cust_alias']) : ''; ?>">
+            <input type="hidden" name="mold_no" value="<?php echo isset($_REQUEST['mold_no']) ? h($_REQUEST['mold_no']) : ''; ?>">
+            <input type="hidden" name="cust_alias" value="<?php echo isset($_REQUEST['cust_alias']) ? h($_REQUEST['cust_alias']) : ''; ?>">
 
             <input type="hidden" name="edit_id_trans" id="edit_id_trans">
             <input type="hidden" name="edit_mold_id" id="edit_mold_id">
-            <input type="hidden" name="edit_orig_date" id="edit_orig_date">
+            <input type="hidden" name="edit_part_no" id="edit_hidden_part_no">
+            <input type="hidden" name="edit_orig_day" id="edit_orig_day">
+            <input type="hidden" name="edit_orig_reason" id="edit_orig_reason">
 
             <div class="form-grid-3">
                 <div class="form-group">
@@ -582,18 +630,20 @@ if ($isSubmit) {
         }
     });
 
-    function openEditTransModal(data) {
-        document.getElementById('edit_id_trans').value = data.id_trans;
-        document.getElementById('edit_mold_id').value = data.mold_id;
-        document.getElementById('edit_orig_date').value = data.date_sql;
+    function handleEditTransClick(btn) {
+        document.getElementById('edit_id_trans').value = btn.dataset.idTrans;
+        document.getElementById('edit_mold_id').value = btn.dataset.moldId;
+        document.getElementById('edit_hidden_part_no').value = btn.dataset.partNo;
+        document.getElementById('edit_orig_day').value = btn.dataset.origDay;
+        document.getElementById('edit_orig_reason').value = btn.dataset.origReason;
 
-        document.getElementById('edit_part_no').value = data.part_no;
-        document.getElementById('edit_part_name').value = data.part_name;
-        document.getElementById('edit_date').value = data.date;
-        document.getElementById('edit_jenis_trans').value = data.jenis;
-        document.getElementById('edit_vendor').value = data.vendor;
-        document.getElementById('edit_supplier').value = data.supplier;
-        document.getElementById('edit_reason').value = data.reason;
+        document.getElementById('edit_part_no').value = btn.dataset.partNo;
+        document.getElementById('edit_part_name').value = btn.dataset.partName;
+        document.getElementById('edit_date').value = btn.dataset.date;
+        document.getElementById('edit_jenis_trans').value = btn.dataset.jenis;
+        document.getElementById('edit_vendor').value = btn.dataset.vendor;
+        document.getElementById('edit_supplier').value = btn.dataset.supplier;
+        document.getElementById('edit_reason').value = btn.dataset.reason;
 
         document.getElementById('modalEditTrans').style.display = 'flex';
     }

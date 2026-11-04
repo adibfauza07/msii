@@ -1,4 +1,7 @@
 <?php
+// Mencegah error timeout 30 detik saat eksekusi SP
+set_time_limit(0); 
+
 require_once __DIR__ . "/../config/database_ordering.php";
 
 if ($conn === false) {
@@ -19,18 +22,22 @@ if (isset($_POST['ajax_action'])) {
         exit;
     }
 
+    // Ambil 8 digit/karakter pertama dari Item Code untuk master STD_PACK
+    $item_code_master = substr($item_code, 0, 8);
+
     // A. Update STD_PACK_BOX
     if ($action === 'update_std_box') {
         $box_val = floatval($value);
         $sql = "UPDATE dbo.STD_PACK SET STD_PACK_BOX = ? WHERE ITEM_CODE = ?";
-        $stmt = sqlsrv_query($conn, $sql, array($box_val, $item_code));
+        // Gunakan $item_code_master
+        $stmt = sqlsrv_query($conn, $sql, array($box_val, $item_code_master));
         
         if ($stmt) {
             $rows_affected = sqlsrv_rows_affected($stmt);
             if ($rows_affected === 0) {
                 // Jika 0 baris terupdate (Item belum ada di STD_PACK), maka INSERT baru
                 $sql_ins = "INSERT INTO dbo.STD_PACK (ITEM_CODE, STD_PACK_BOX) VALUES (?, ?)";
-                $stmt_ins = sqlsrv_query($conn, $sql_ins, array($item_code, $box_val));
+                $stmt_ins = sqlsrv_query($conn, $sql_ins, array($item_code_master, $box_val));
                 
                 if ($stmt_ins) {
                     echo json_encode(array('status' => 'success', 'msg' => 'Inserted'));
@@ -58,14 +65,15 @@ if (isset($_POST['ajax_action'])) {
 
         if ($pack_id !== null) {
             $sql_upd = "UPDATE dbo.STD_PACK SET PACK_ID = ? WHERE ITEM_CODE = ?";
-            $stmt_upd = sqlsrv_query($conn, $sql_upd, array($pack_id, $item_code));
+            // Gunakan $item_code_master
+            $stmt_upd = sqlsrv_query($conn, $sql_upd, array($pack_id, $item_code_master));
             
             if ($stmt_upd) {
                 $rows_affected = sqlsrv_rows_affected($stmt_upd);
                 if ($rows_affected === 0) {
                     // Jika 0 baris terupdate (Item belum ada di STD_PACK), maka INSERT baru
                     $sql_ins = "INSERT INTO dbo.STD_PACK (ITEM_CODE, PACK_ID) VALUES (?, ?)";
-                    $stmt_ins = sqlsrv_query($conn, $sql_ins, array($item_code, $pack_id));
+                    $stmt_ins = sqlsrv_query($conn, $sql_ins, array($item_code_master, $pack_id));
                     
                     if ($stmt_ins) {
                         echo json_encode(array('status' => 'success', 'msg' => 'Inserted'));
@@ -141,11 +149,12 @@ if ($stmt_pack !== false) {
 // =========================================================================
 // 4. PARAMETER & EKSEKUSI SP
 // =========================================================================
-$cust_code  = get_param("CUST_CODE", "");
-$start_raw  = get_param("START_DATE", "");
-$end_raw    = get_param("END_DATE", "");
-$start_date = to_yyyymmdd($start_raw);
-$end_date   = to_yyyymmdd($end_raw);
+$cust_code       = get_param("CUST_CODE", "");
+$start_raw       = get_param("START_DATE", "");
+$end_raw         = get_param("END_DATE", "");
+$empty_pack_only = get_param("EMPTY_PACK_ONLY", ""); // Parameter filter centang
+$start_date      = to_yyyymmdd($start_raw);
+$end_date        = to_yyyymmdd($end_raw);
 
 $rows = array();
 $pages = array();
@@ -154,9 +163,30 @@ $displayEnd = "";
 $totalPages = 0;
 $rowsPerPage = 20;
 
-if ($cust_code !== "" && $start_date !== "" && $end_date !== "") {
+// HANYA Wajib Start Date dan End Date
+if ($start_date !== "" && $end_date !== "") {
+    
+    // --- Ambil data Master STD_PACK ke dalam Array PHP ---
+    // Override manual dari Master Table agar 8 digit tetap dikenali
+    $std_pack_data = array();
+    $sql_master_std = "SELECT S.ITEM_CODE, S.STD_PACK_BOX, P.PACK_CODE 
+                       FROM dbo.STD_PACK S 
+                       LEFT JOIN dbo.PACK P ON S.PACK_ID = P.PACK_ID";
+    $stmt_master_std = sqlsrv_query($conn, $sql_master_std);
+    if ($stmt_master_std !== false) {
+        while ($rm = sqlsrv_fetch_array($stmt_master_std, SQLSRV_FETCH_ASSOC)) {
+            $std_pack_data[trim($rm['ITEM_CODE'])] = array(
+                'box' => $rm['STD_PACK_BOX'],
+                'pack' => $rm['PACK_CODE']
+            );
+        }
+    }
+    
+    // --- Jika Customer Kosong, jadikan % untuk wildcard SP ---
+    $sp_cust_code = ($cust_code === "") ? "%" : $cust_code;
+
     $sql = "SET NOCOUNT ON; EXEC dbo.SP_DELIVERY_INSTRUCTION_PO2 ?, ?, ?";
-    $stmt = sqlsrv_query($conn, $sql, array($cust_code, $start_date, $end_date));
+    $stmt = sqlsrv_query($conn, $sql, array($sp_cust_code, $start_date, $end_date));
     if ($stmt === false) die("<pre>Query SP_DELIVERY_INSTRUCTION_PO2 gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
     
     while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) { $rows[] = $r; }
@@ -176,24 +206,55 @@ if ($cust_code !== "" && $start_date !== "" && $end_date !== "") {
         $cComp = isset($r["CUST_COMP"]) ? trim((string)$r["CUST_COMP"]) : "";
         $key = $cCode . "|" . $cComp;
     
+        // Ambil Item Code lengkap dari SP, dan buat versi 8 digit-nya
+        $item_code_full = isset($r["PART_NUM"]) ? trim((string)$r["PART_NUM"]) : "";
+        $item_code_8    = substr($item_code_full, 0, 8); 
+
+        // Cocokkan data dari Array Master (prioritas) jika ada, kalau tidak ada baru pakai data SP
+        $std_box = isset($std_pack_data[$item_code_8]['box']) ? $std_pack_data[$item_code_8]['box'] : (isset($r["STD_PACK_BOX"]) ? $r["STD_PACK_BOX"] : 0);
+        $pack_code = isset($std_pack_data[$item_code_8]['pack']) ? $std_pack_data[$item_code_8]['pack'] : (isset($r["PACK_CODE"]) ? trim((string)$r["PACK_CODE"]) : "");
+
+        // ==========================================================
+        // LOGIKA FILTER CENTANG KOSONG
+        // ==========================================================
+        if ($empty_pack_only === "1") {
+            $is_empty = false;
+            if (empty($std_box) || $std_box == 0) $is_empty = true;
+            if (empty($pack_code)) $is_empty = true;
+            
+            // Jika filter aktif, tapi datanya SUDAH LENGKAP (!is_empty), maka Lewati / Skip baris ini
+            if (!$is_empty) {
+                continue; 
+            }
+        }
+        // ==========================================================
+
         if (!isset($customerPages[$key])) {
             $customerPages[$key] = array("CUST_CODE" => $cCode, "CUST_COMP" => $cComp, "ROWS" => array());
         }
         $customerPages[$key]["ROWS"][] = array(
-            "ITEM_CODE"    => isset($r["PART_NUM"]) ? trim((string)$r["PART_NUM"]) : "",
+            "ITEM_CODE"    => $item_code_full,
             "ITEM_NO"      => isset($r["PART_NO"]) ? trim((string)$r["PART_NO"]) : "",
             "ITEM_NAME"    => isset($r["PART_NAME"]) ? trim((string)$r["PART_NAME"]) : "",
             "PBQTY"        => isset($r["PBQTY"]) ? $r["PBQTY"] : 0,
             "PLAN_QTY"     => isset($r["PLAN_QTY"]) ? $r["PLAN_QTY"] : 0,
             "PO"           => isset($r["PO"]) ? trim((string)$r["PO"]) : "",
-            "STD_PACK_BOX" => isset($r["STD_PACK_BOX"]) ? $r["STD_PACK_BOX"] : 0,
+            "STD_PACK_BOX" => $std_box,     
             "STD_BOX"      => isset($r["STD_BOX"]) ? $r["STD_BOX"] : 0,
-            "PACK_CODE"    => isset($r["PACK_CODE"]) ? trim((string)$r["PACK_CODE"]) : ""
+            "PACK_CODE"    => $pack_code    
         );
     }
     
-    foreach ($customerPages as $page) { $pages[] = $page; }
-    if (count($pages) == 0) { $pages[] = array("CUST_CODE" => $cust_code, "CUST_COMP" => "", "ROWS" => array()); }
+    foreach ($customerPages as $page) { 
+        // Jika ada filter, bisa jadi Customer punya Rows 0 setelah di-filter
+        if (count($page["ROWS"]) > 0) {
+            $pages[] = $page; 
+        }
+    }
+    // Jika tidak ada data yang valid sama sekali
+    if (count($pages) == 0 && $start_date != "" && $end_date != "") { 
+        $pages[] = array("CUST_CODE" => $cust_code, "CUST_COMP" => "", "ROWS" => array()); 
+    }
     $totalPages = count($pages);
 }
 ?>
@@ -262,6 +323,28 @@ if ($cust_code !== "" && $start_date !== "" && $end_date !== "") {
         .col-pcs { width: 6%; } .col-pack { width: 6%; } .col-initial { width: 6%; }
         .col-total { width: 7%; } .col-remark { width: 7%; } .col-check { width: 3%; }
 
+        /* ============================================================
+           CSS LOADING OVERLAY
+           ============================================================ */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        .loading-overlay i {
+            font-size: 3rem;
+            color: #007bff;
+            margin-bottom: 10px;
+        }
+
         /* Mencegah elemen UI AdminLTE tercetak saat CTRL+P */
         @media print {
             body, html { width: 297mm; height: 210mm; background: #ffffff; margin: 0; padding: 0; }
@@ -275,6 +358,13 @@ if ($cust_code !== "" && $start_date !== "" && $end_date !== "") {
     </style>
 </head>
 <body class="hold-transition layout-top-nav">
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay" id="loadingOverlay">
+    <i class="fas fa-spinner fa-spin"></i>
+    <h5>Memuat Data...</h5>
+</div>
+
 <div class="wrapper">
 
     <!-- DATALIST UNTUK AUTOCOMPLETE -->
@@ -323,24 +413,35 @@ if ($cust_code !== "" && $start_date !== "" && $end_date !== "") {
                     <div class="card-body">
                         <form method="GET" action="">
                             <div class="row">
-                                <div class="col-md-4">
+                                <div class="col-md-3">
                                     <div class="form-group">
                                         <label>Customer</label>
-                                        <input type="text" name="CUST_CODE" list="cust-list" class="form-control" value="<?php echo h($cust_code); ?>" placeholder="Ketik kode/nama..." required autocomplete="off">
+                                        <input type="text" name="CUST_CODE" list="cust-list" class="form-control" value="<?php echo h($cust_code); ?>" placeholder="Semua Customer..." autocomplete="off">
                                     </div>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <div class="form-group">
                                         <label>Start Date</label>
                                         <input type="date" name="START_DATE" class="form-control" value="<?php echo h($start_raw); ?>" required>
                                     </div>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <div class="form-group">
                                         <label>End Date</label>
                                         <input type="date" name="END_DATE" class="form-control" value="<?php echo h($end_raw); ?>" required>
                                     </div>
                                 </div>
+                                
+                                <!-- CHECKBOX FILTER KOSONG -->
+                                <div class="col-md-3 d-flex align-items-center">
+                                    <div class="form-group mb-0 w-100 mt-3">
+                                        <div class="custom-control custom-checkbox">
+                                            <input class="custom-control-input" type="checkbox" id="emptyPackOnly" name="EMPTY_PACK_ONLY" value="1" <?php if($empty_pack_only === "1") echo "checked"; ?>>
+                                            <label for="emptyPackOnly" class="custom-control-label">Tampilkan Pack Kosong Saja</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                
                                 <div class="col-md-2 d-flex align-items-end">
                                     <div class="form-group w-100">
                                         <button type="submit" class="btn btn-primary w-100"><i class="fas fa-sync"></i> LOAD</button>
@@ -391,7 +492,10 @@ if ($cust_code !== "" && $start_date !== "" && $end_date !== "") {
                                         </table>
 
                                         <div class="print-date">Print Date : &nbsp; <?php echo h(fmt_print_date()); ?></div>
-                                        <div class="customer-title"><?php echo h($cCode); ?> &nbsp;&nbsp; <?php echo h($cComp); ?></div>
+                                        <!-- JIKA CUSTOMER KOSONG, Judul Customer tidak dimunculkan -->
+                                        <?php if ($cCode != ""): ?>
+                                            <div class="customer-title"><?php echo h($cCode); ?> &nbsp;&nbsp; <?php echo h($cComp); ?></div>
+                                        <?php endif; ?>
 
                                         <table class="di-table">
                                             <thead>
@@ -405,7 +509,11 @@ if ($cust_code !== "" && $start_date !== "" && $end_date !== "") {
                                             </thead>
                                             <tbody>
                                                 <?php if (count($detailRows) == 0): ?>
-                                                    <tr><td colspan="12" class="center">Data tidak ditemukan.</td></tr>
+                                                    <tr>
+                                                        <td colspan="12" class="center">
+                                                            <?php echo ($empty_pack_only == "1") ? "Semua data untuk pelanggan ini sudah memiliki setting Packing lengkap." : "Data tidak ditemukan."; ?>
+                                                        </td>
+                                                    </tr>
                                                 <?php endif; ?>
 
                                                 <?php 
@@ -478,18 +586,27 @@ if ($cust_code !== "" && $start_date !== "" && $end_date !== "") {
     </div>
 </div>
 
-<!-- jQuery (Bawaan Wajib AdminLTE) -->
+<!-- jQuery -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 <!-- Bootstrap 4 -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
-<!-- AdminLTE App -->
-<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
 
-<!-- AJAX SCRIPT UNTUK UPDATE DATA DENGAN ENTER ATAU PINDAH BARIS -->
+<!-- INFO PENTING: Script adminlte.min.js DIHAPUS karena menyebabkan error 'autoIframeMode' pada iframe -->
+<!-- <script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script> -->
+
+<!-- AJAX SCRIPT & LOADING EFFECT -->
 <script>
 $(document).ready(function() {
+
+    // --- FITUR LOADING SAAT MENEKAN TOMBOL LOAD ---
+    $('form').on('submit', function() {
+        $('#loadingOverlay').css('display', 'flex');
+        var btn = $(this).find('button[type="submit"]');
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> LOADING...');
+    });
     
-    // 1. Mendeteksi event 'change' (aktif saat nilai diubah & kursor pindah)
+    // --- FITUR AUTO SAVE MENGGUNAKAN AJAX ---
+    // 1. Mendeteksi event 'change'
     $(document).on('change', '.std-box-trigger, .pack-code-trigger', function() {
         var inputElem = $(this);
         var actionName = inputElem.hasClass('std-box-trigger') ? 'update_std_box' : 'update_pack_code';
@@ -501,7 +618,7 @@ $(document).ready(function() {
     $(document).on('keydown', '.std-box-trigger, .pack-code-trigger', function(e) {
         if (e.key === 'Enter' || e.keyCode === 13) {
             e.preventDefault();
-            $(this).blur(); // Memicu event 'change' di atas
+            $(this).blur(); 
         }
     });
 
@@ -510,11 +627,10 @@ $(document).ready(function() {
         var itemCode = inputElem.data('item');
         var newValue = inputElem.val();
         
-        // Indikator loading (Abu-abu)
         inputElem.css('background-color', '#e0e0e0');
 
         $.ajax({
-            url: window.location.href, // Target URL mengikuti url browser saat ini (menghindari masalah iframe)
+            url: window.location.href, // Target URL mengikuti url browser saat ini
             type: 'POST',
             dataType: 'json',
             data: {
@@ -525,7 +641,7 @@ $(document).ready(function() {
             success: function(response) {
                 console.log("Respon Status:", response.status, "| Pesan:", response.msg);
                 if (response.status === 'success') {
-                    // Berhasil -> hijau sebentar, lalu kuning lagi
+                    // Berhasil -> hijau sebentar, lalu kembali kuning
                     inputElem.css('background-color', '#c8e6c9');
                     setTimeout(function() { inputElem.css('background-color', '#fff9c4'); }, 1500);
 

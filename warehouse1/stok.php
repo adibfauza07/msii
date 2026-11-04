@@ -157,9 +157,8 @@ if (
     $errors[] = 'Tanggal akhir harus lebih besar dari tanggal awal.';
 }
 
-$transactionEndDate = sap_valid_date($endDate)
-    ? date('Y-m-d', strtotime($endDate . ' -1 day'))
-    : $endDate;
+// PERBAIKAN 1: Tanggal transaksi akhir sama dengan End Date agar masuk mutasi periode
+$transactionEndDate = $endDate; 
 
 /* =========================================================
  * ITEM DATA QUERY
@@ -264,7 +263,8 @@ if (count($errors) == 0 && $queryError == '') {
             ORDER BY TL.LOC_ID
         ) AS W
         LEFT JOIN dbo.TRTY AS TY ON TY.TRTY_CODE = TR.TRTY_CODE
-        WHERE I.ITEM_ID = ? AND TR.TRAN_DATE >= ? AND TR.TRAN_DATE < ?
+        -- PERBAIKAN 2: TR.TRAN_DATE < DATEADD(day, 1, ?) agar masuk 23:59:59 pada hari tersebut
+        WHERE I.ITEM_ID = ? AND TR.TRAN_DATE >= ? AND TR.TRAN_DATE < DATEADD(day, 1, ?)
         GROUP BY
             TR.TRAN_ID, TR.TRAN_DATE, TR.TRAN_DOC, TR.TRAN_DOC2, TR.TRTY_CODE, ISNULL(TY.TRTY_DESC, ''),
             W.LOC_CODE, W.LOC_NAME, W.LOC_GROUP, W.TRTY_INOUT, W.TRTY_SIGN
@@ -301,7 +301,8 @@ if (count($errors) == 0 && $queryError == '') {
         INNER JOIN dbo.TRTY_LOC AS TL ON TL.TRTY_CODE = TR.TRTY_CODE
         INNER JOIN dbo.LOC AS L ON L.LOC_ID = TL.LOC_ID
         LEFT JOIN dbo.TRTY AS TY ON TY.TRTY_CODE = TR.TRTY_CODE
-        WHERE I.ITEM_ID = ? AND L.LOC_CODE <> 'WHS' AND TR.TRAN_DATE >= ? AND TR.TRAN_DATE < ?
+        -- PERBAIKAN 3: TR.TRAN_DATE < DATEADD(day, 1, ?) agar masuk 23:59:59 pada hari tersebut
+        WHERE I.ITEM_ID = ? AND L.LOC_CODE <> 'WHS' AND TR.TRAN_DATE >= ? AND TR.TRAN_DATE < DATEADD(day, 1, ?)
         GROUP BY
             TR.TRAN_ID, TR.TRAN_DATE, TR.TRAN_DOC, TR.TRAN_DOC2, TR.TRTY_CODE, ISNULL(TY.TRTY_DESC, ''),
             L.LOC_CODE, L.LOC_NAME, L.LOC_GROUP, TL.TRTY_INOUT, TL.TRTY_SIGN
@@ -654,9 +655,7 @@ $(function() {
         SELISIH = <?php echo sap_h(sap_number($stokOpname)); ?> - <?php echo sap_h(sap_number($saldoAkhir)); ?> = <strong><?php echo sap_h(sap_number($selisih)); ?></strong>
     </div>
 
-    <div class="note">
-        Transaksi tanggal <strong><?php echo sap_h(sap_date($endDate, 'd-M-y')); ?></strong> tidak masuk mutasi periode. Tanggal tersebut hanya digunakan sebagai tanggal stok akhir/opname.
-    </div>
+    <!-- PERBAIKAN 4: Blok peringatan (note) "Transaksi tanggal ... tidak masuk mutasi periode" telah dihapus karena sekarang sudah dihitung ke dalam mutasi -->
 
     <?php if ($selisih < -0.000001) { ?>
         <div class="danger">

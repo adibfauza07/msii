@@ -202,15 +202,15 @@ if ($resMaxKode) {
             </div>
 
             <div class="card card-qc">
-                <div class="card-header-qc"><i class="bi bi-calendar-check"></i> Target & Remark</div>
+                <div class="card-header-qc"><i class="bi bi-calendar-check"></i> Actual & Remark</div>
                 <div class="card-body p-3">
                     <div class="mb-3">
                         <label class="form-label">Plan Date</label>
                         <input type="date" name="plant_date" class="form-control form-control-sm">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Target (Finish) Date</label>
-                        <input type="date" name="target_date" class="form-control form-control-sm">
+                        <label class="form-label">Actual Date</label>
+                        <input type="date" name="actual_date" class="form-control form-control-sm">
                     </div>
                     <div class="mb-2">
                         <label class="form-label">Remark / Status</label>

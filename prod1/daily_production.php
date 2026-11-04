@@ -2,13 +2,6 @@
 /**
  * DAILY PRODUCTION REPORT
  * Compatible target: PHP 5.4 + Microsoft SQL Server 2008 + sqlsrv
- *
- * Features:
- * - Bootstrap 3 UI
- * - Autocomplete item  → ac_item.php
- * - Autocomplete customer → ac_customer.php
- * - Export XLS  → ?export=xls
- * - Print       → window.print()
  */
 
 require_once __DIR__ . "/../config/global.php";
@@ -121,11 +114,16 @@ if (strtotime($startDate) > strtotime($endDate)) {
 $code     = isset($_GET['code']) && $_GET['code'] !== '' ? trim($_GET['code']) : '%';
 $custCode = isset($_GET['cust_code']) && $_GET['cust_code'] !== '' ? trim($_GET['cust_code']) : '%';
 
+$lotGroup = isset($_GET['lot_group']) ? strtoupper(trim($_GET['lot_group'])) : '';
+if (!in_array($lotGroup, array('A', 'B', 'C'))) {
+    $lotGroup = '';
+}
+
 $startSql = $startDate . ' 00:00:00.000';
 $endSql   = $endDate . ' 23:59:59.997';
 
 /* =========================================================
- * 4. EXECUTE STORED PROCEDURE dbo.sp_daily_prod
+ * 4. EXECUTE STORED PROCEDURE
  * ========================================================= */
 $sql    = "{CALL dbo.sp_daily_prod(?, ?, ?, ?)}";
 $params = array($startSql, $endSql, $code, $custCode);
@@ -158,10 +156,21 @@ usort($rows, function ($a, $b) {
 });
 
 /* =========================================================
- * 6. GROUP BY CUSTOMER + PLAN / ACT
+ * 6. GROUP BY CUSTOMER + CALCULATE ACCUMULATIONS
  * ========================================================= */
 $groups = array();
 foreach ($rows as $r) {
+    $pdLot = isset($r['PD_LOT']) ? trim((string)$r['PD_LOT']) : '';
+
+    if ($lotGroup !== '') {
+        $groupChar = strlen($pdLot) >= 8 ? strtoupper(substr($pdLot, 7, 1)) : '';
+        if ($groupChar !== $lotGroup) {
+            if (strpos(strtoupper($pdLot), $lotGroup) === false) {
+                continue;
+            }
+        }
+    }
+
     $cust    = isset($r['CUST_CODE']) ? trim((string)$r['CUST_CODE']) : '';
     $comp    = isset($r['CUST_COMP']) ? trim((string)$r['CUST_COMP']) : '';
     $groupKey = $cust . '|' . $comp;
@@ -172,6 +181,10 @@ foreach ($rows as $r) {
             'cust_comp' => $comp,
             'plan'      => 0,
             'act'       => 0,
+            'cap'       => 0,
+            'ok'        => 0,
+            'hold'      => 0,
+            'ng'        => 0,
             'wo_seen'   => array(),
             'rows'      => array()
         );
@@ -185,35 +198,20 @@ foreach ($rows as $r) {
         $groups[$groupKey]['wo_seen'][$woKey] = true;
     }
 
-    $groups[$groupKey]['act'] += num(isset($r['PD_QTY']) ? $r['PD_QTY'] : 0);
+    $groups[$groupKey]['act']  += num(isset($r['PD_QTY']) ? $r['PD_QTY'] : 0);
+    $groups[$groupKey]['cap']  += num(isset($r['WO_CAP']) ? $r['WO_CAP'] : 0);
+    
+    // Akumulasi Output untuk hitung NG%
+    $groups[$groupKey]['ok']   += num(isset($r['PD_OK']) ? $r['PD_OK'] : 0);
+    $groups[$groupKey]['hold'] += num(isset($r['PD_HO']) ? $r['PD_HO'] : 0);
+    $groups[$groupKey]['ng']   += num(isset($r['NG']) ? $r['NG'] : 0);
+    
     $groups[$groupKey]['rows'][] = $r;
 }
 
 /* =========================================================
- * 7. FORMULA MODE
+ * 7. FORMULA NG
  * ========================================================= */
-$legacyFormulaMode = true;
-
-function productionPercentValue($r, $legacy)
-{
-    if ($legacy) {
-        return num(isset($r['PD_WKH']) ? $r['PD_WKH'] : 0);
-    }
-    $plan = num(isset($r['WO_QTY']) ? $r['WO_QTY'] : 0);
-    $act  = num(isset($r['PD_QTY']) ? $r['PD_QTY'] : 0);
-    return $plan != 0 ? ($act / $plan) * 100 : 0;
-}
-
-function efficiencyValue($r, $legacy)
-{
-    if ($legacy) {
-        return num(isset($r['WO_CAP']) ? $r['WO_CAP'] : 0);
-    }
-    $cap = num(isset($r['WO_CAP']) ? $r['WO_CAP'] : 0);
-    $act = num(isset($r['PD_QTY']) ? $r['PD_QTY'] : 0);
-    return $cap != 0 ? ($act / $cap) * 100 : 0;
-}
-
 function ngPercentValue($r)
 {
     $ok   = num(isset($r['PD_OK']) ? $r['PD_OK'] : 0);
@@ -222,6 +220,30 @@ function ngPercentValue($r)
     $total = $ok + $hold + $ng;
     return $total != 0 ? ($ng / $total) * 100 : 0;
 }
+
+/* =========================================================
+ * GRAND TOTAL CALCULATION
+ * ========================================================= */
+$grandPlan = 0;
+$grandAct  = 0;
+$grandCap  = 0;
+$grandOk   = 0;
+$grandHold = 0;
+$grandNg   = 0;
+
+foreach ($groups as $g) {
+    $grandPlan += $g['plan'];
+    $grandAct  += $g['act'];
+    $grandCap  += $g['cap'];
+    $grandOk   += $g['ok'];
+    $grandHold += $g['hold'];
+    $grandNg   += $g['ng'];
+}
+$grandProdPct = $grandPlan != 0 ? ($grandAct / $grandPlan) * 100 : 0;
+$grandEffPct  = $grandCap != 0 ? ($grandAct / $grandCap) * 100 : 0;
+
+$grandTotalOutput = $grandOk + $grandHold + $grandNg;
+$grandNgPct       = $grandTotalOutput != 0 ? ($grandNg / $grandTotalOutput) * 100 : 0;
 
 /* =========================================================
  * 8. EXPORT XLS
@@ -235,12 +257,11 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
     header('Cache-Control: max-age=0');
     header('Pragma: no-cache');
 
-    // FIX 1 (XLS FORMAT): mso-number-format kini TIDAK menggunakan tanda kutip sama sekali agar Excel tidak error membaca "\x22"
     echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="UTF-8"><style>td,th{mso-number-format:\@;vertical-align:middle;font-size:10px;font-family:Arial,sans-serif;}th{background-color:#d9e1f2;font-weight:bold;text-align:center;}.n{mso-number-format:\#\,\#\#0;text-align:right;}.n2{mso-number-format:\#\,\#\#0\.00;text-align:right;}.cust{background-color:#e8f0dc;font-weight:bold;font-size:11px;}.sum{background-color:#f2f2f2;font-weight:bold;}</style></head><body>';
 
     echo '<table border="1" cellspacing="0" cellpadding="2">';
-    echo '<tr><td colspan="21" style="font-size:14px;font-weight:bold;text-align:center;">DAILY PRODUCTION</td></tr>';
-    echo '<tr><td style="font-weight:bold;">DARI TANGGAL :</td><td>' . xlsSafe(dateDisplay($startDate)) . '</td><td style="font-weight:bold;">KE TANGGAL :</td><td>' . xlsSafe(dateDisplay($endDate)) . '</td><td colspan="17"></td></tr>';
+    echo '<tr><td colspan="19" style="font-size:14px;font-weight:bold;text-align:center;">DAILY PRODUCTION</td></tr>';
+    echo '<tr><td style="font-weight:bold;">DARI TANGGAL :</td><td>' . xlsSafe(dateDisplay($startDate)) . '</td><td style="font-weight:bold;">KE TANGGAL :</td><td>' . xlsSafe(dateDisplay($endDate)) . '</td><td colspan="15"></td></tr>';
 
     echo '<tr>';
     echo '<th rowspan="2">MC NO</th>';
@@ -255,29 +276,28 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
     echo '<th>OK</th><th>HOLD</th><th>NG</th>';
     echo '<th rowspan="2">PURG</th>';
     echo '<th rowspan="2">PROBLEM / ITEM NG</th>';
-    echo '<th rowspan="2">PERSENTASE PRODUKSI</th>';
-    echo '<th rowspan="2">EFF</th>';
     echo '<th rowspan="2">NG %</th>';
     echo '</tr>';
-    echo '<tr><th>ITEMS</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th></tr>';
+    echo '<tr><th>ITEMS</th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th><th></th></tr>';
 
     if (count($groups) === 0) {
-        echo '<tr><td colspan="21" style="text-align:center;">Data tidak ditemukan.</td></tr>';
+        echo '<tr><td colspan="19" style="text-align:center;">Data tidak ditemukan.</td></tr>';
     } else {
         foreach ($groups as $g) {
-            echo '<tr class="cust"><td colspan="21">' . xlsSafe($g['cust_code']) . '  ' . xlsSafe($g['cust_comp']) . '</td></tr>';
-            // Bagian Sum tetap bisa pakai string fmt0 karena bukan data kolom
-            echo '<tr class="sum"><td colspan="2">PLAN : ' . fmt0($g['plan']) . '</td><td colspan="19"></td></tr>';
-            echo '<tr class="sum"><td colspan="2">ACT  : ' . fmt0($g['act']) . '</td><td colspan="19"></td></tr>';
+            $gProdPct = $g['plan'] != 0 ? ($g['act'] / $g['plan']) * 100 : 0;
+            $gEffPct  = $g['cap'] != 0 ? ($g['act'] / $g['cap']) * 100 : 0;
+            
+            $gTotalOutput = $g['ok'] + $g['hold'] + $g['ng'];
+            $gNgPct = $gTotalOutput != 0 ? ($g['ng'] / $gTotalOutput) * 100 : 0;
+
+            echo '<tr class="cust"><td colspan="19">' . xlsSafe($g['cust_code']) . '  ' . xlsSafe($g['cust_comp']) . '</td></tr>';
+            echo '<tr class="sum"><td colspan="2">PLAN : ' . fmt0($g['plan']) . '</td><td colspan="17">PERSENTASE PRODUKSI : ' . fmtPct($gProdPct, 2) . '</td></tr>';
+            echo '<tr class="sum"><td colspan="2">ACT  : ' . fmt0($g['act']) . '</td><td colspan="17">EFFISIENSI : ' . fmtPct($gEffPct, 2) . ' &nbsp;&nbsp;|&nbsp;&nbsp; NG : ' . fmtPct($gNgPct, 2) . '</td></tr>';
 
             foreach ($g['rows'] as $r) {
-                $mc      = trim((isset($r['MAG_STATION']) ? (string)$r['MAG_STATION'] : '') . ' ' . (isset($r['MAC_CODE']) ? (string)$r['MAC_CODE'] : ''));
-                $prodPct = productionPercentValue($r, $legacyFormulaMode);
-                $eff     = efficiencyValue($r, $legacyFormulaMode);
-                $ngPct   = ngPercentValue($r);
+                $mc    = trim((isset($r['MAG_STATION']) ? (string)$r['MAG_STATION'] : '') . ' ' . (isset($r['MAC_CODE']) ? (string)$r['MAC_CODE'] : ''));
+                $ngPct = ngPercentValue($r);
 
-                // FIX 1 (XLS FORMAT Lanjutan): Gunakan num() (angka mentah) daripada fmt0() untuk kolom .n dan .n2
-                // Biarkan mso-number-format dari CSS yang bertugas mem-format koma di Excel agar bisa di-Sum()
                 echo '<tr>';
                 echo '<td>' . xlsSafe($mc) . '</td>';
                 echo '<td>' . xlsSafe(isset($r['ITEM_CODE']) ? $r['ITEM_CODE'] : '') . '</td>';
@@ -298,8 +318,6 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
                 echo '<td class="n">' . num(isset($r['NG']) ? $r['NG'] : 0) . '</td>';
                 echo '<td class="n2">' . num(isset($r['PUR']) ? $r['PUR'] : 0) . '</td>';
                 echo '<td>' . xlsSafe(isset($r['PD_REM']) ? $r['PD_REM'] : '') . '</td>';
-                echo '<td class="n2">' . ($legacyFormulaMode ? num($prodPct) : round($prodPct, 2)) . '</td>';
-                echo '<td class="n2">' . ($legacyFormulaMode ? num($eff) : round($eff, 2)) . '</td>';
                 echo '<td class="n2">' . round($ngPct, 3) . '</td>';
                 echo '</tr>';
             }
@@ -432,7 +450,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
             background: #fff;
             border: 1px solid #ddd;
             font-size: 8px;
-            table-layout: fixed;
+            width: 100%;
             margin-bottom: 0;
         }
         .table-report > thead > tr > th {
@@ -441,16 +459,14 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
             line-height: 1.15;
             background: #eef2f9 !important;
             border: 1px solid #999 !important;
-            padding: 3px 3px;
+            padding: 4px 5px; 
             white-space: nowrap;
             vertical-align: middle;
         }
         .table-report > tbody > td {
             border: 1px solid #999 !important;
-            padding: 2px 3px;
+            padding: 4px 5px;
             line-height: 1.2;
-            overflow: hidden;
-            text-overflow: ellipsis;
             vertical-align: middle;
         }
         .table-report .tr-cust td {
@@ -500,18 +516,10 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
         }
 
         /* Column widths */
-        .c-mc      { width: 54px; }
-        .c-item    { width: 172px; }
-        .c-lot     { width: 88px; }
-        .c-cap     { width: 48px; }
-        .c-small   { width: 34px; }
-        .c-tm      { width: 38px; }
-        .c-out     { width: 46px; }
-        .c-purg    { width: 40px; }
-        .c-problem { width: 95px; }
-        .c-prod    { width: 112px; }
-        .c-eff     { width: 78px; }
-        .c-ngpct   { width: 76px; }
+        .c-mc      { min-width: 60px; }
+        .c-item    { min-width: 180px; }
+        .c-lot     { min-width: 90px; }
+        .c-problem { min-width: 120px; }
 
         /* ---------- Print ---------- */
         @page { size: A3 landscape; margin: 8mm; }
@@ -530,7 +538,6 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
                 -webkit-print-color-adjust: exact;
                 print-color-adjust: exact;
             }
-            /* Zebra print styles */
             .table-report .tr-odd td {
                 background-color: #f4f6f9 !important;
                 -webkit-print-color-adjust: exact;
@@ -574,6 +581,16 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
                     <div class="ac-dropdown" id="ac_dropdown_item"></div>
                 </div>
 
+                <div class="form-group filter-group" style="margin-right:10px; width: 65px;">
+                    <label for="lot_group" class="control-label">Group</label>
+                    <select class="form-control" id="lot_group" name="lot_group" style="width:100%; padding: 3px 6px;">
+                        <option value="" <?php echo $lotGroup === '' ? 'selected' : ''; ?>>All</option>
+                        <option value="A" <?php echo $lotGroup === 'A' ? 'selected' : ''; ?>>A</option>
+                        <option value="B" <?php echo $lotGroup === 'B' ? 'selected' : ''; ?>>B</option>
+                        <option value="C" <?php echo $lotGroup === 'C' ? 'selected' : ''; ?>>C</option>
+                    </select>
+                </div>
+
                 <div class="form-group filter-group ac-wrap" style="margin-right:10px; min-width:260px;">
                     <label for="cust_code" class="control-label">Customer</label>
                     <input type="text" class="form-control" id="cust_code" name="cust_code"
@@ -601,6 +618,7 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
                             'start_date' => $startDate,
                             'end_date'   => $endDate,
                             'code'       => $code,
+                            'lot_group'  => $lotGroup,
                             'cust_code'  => $custCode,
                             'export'     => 'xls'
                         );
@@ -613,12 +631,32 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
         </div>
     </div>
 
+    <!-- GRAND TOTAL & PERIOD BAR -->
     <div class="period-bar">
         <span class="plabel">DARI TANGGAL :</span>
         <span class="pvalue"><?php echo h(dateDisplay($startDate)); ?></span>
         &nbsp;&nbsp;&nbsp;&nbsp;
         <span class="plabel">KE TANGGAL :</span>
         <span class="pvalue"><?php echo h(dateDisplay($endDate)); ?></span>
+        
+        <span style="float: right; border-left: 2px solid #ccc; padding-left: 15px;">
+            <span class="plabel">GRAND PLAN :</span>
+            <span class="pvalue"><?php echo fmt0($grandPlan); ?></span>
+            &nbsp;&nbsp;&nbsp;
+            <span class="plabel">GRAND ACT :</span>
+            <span class="pvalue"><?php echo fmt0($grandAct); ?></span>
+            &nbsp;&nbsp;&nbsp;
+            <span class="plabel">TOTAL PERSENTASE :</span>
+            <span class="pvalue" style="color: #0056b3;"><?php echo fmtPct($grandProdPct, 2); ?></span>
+            &nbsp;&nbsp;&nbsp;
+            <span class="plabel">TOTAL EFF :</span>
+            <span class="pvalue" style="color: #28a745;"><?php echo fmtPct($grandEffPct, 2); ?></span>
+            &nbsp;&nbsp;&nbsp;
+            <!-- TAMBAHAN: GRAND TOTAL NG % -->
+            <span class="plabel">TOTAL NG :</span>
+            <span class="pvalue" style="color: #dc3545;"><?php echo fmtPct($grandNgPct, 2); ?></span>
+        </span>
+        <div style="clear: both;"></div>
     </div>
 
     <div class="table-responsive">
@@ -629,21 +667,19 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
                     <th class="c-item" colspan="2">ITEMS</th>
                     <th class="c-lot" rowspan="2">LOT</th>
                     <th class="c-cap" rowspan="2">CAP/D</th>
-                    <th class="c-small" colspan="2">CAV</th>
-                    <th class="c-small" colspan="2">CT</th>
-                    <th class="c-small" colspan="2">WEIGHT</th>
-                    <th class="c-small" colspan="2">RUNNER</th>
-                    <th class="c-tm" rowspan="2">TM</th>
-                    <th class="c-out" colspan="3">OUTPUT</th>
-                    <th class="c-purg" rowspan="2">PURG</th>
+                    <th colspan="2">CAV</th>
+                    <th colspan="2">CT</th>
+                    <th colspan="2">WEIGHT</th>
+                    <th colspan="2">RUNNER</th>
+                    <th rowspan="2">TM</th>
+                    <th colspan="3">OUTPUT</th>
+                    <th rowspan="2">PURG</th>
                     <th class="c-problem" rowspan="2">PROBLEM / ITEM NG</th>
-                    <th class="c-prod" rowspan="2">PERSENTASE PRODUKSI</th>
-                    <th class="c-eff" rowspan="2">EFF</th>
-                    <th class="c-ngpct" rowspan="2">NG %</th>
+                    <th rowspan="2">NG %</th>
                 </tr>
                 <tr>
-                    <th style="width:80px;">CODE</th>
-                    <th style="width:92px;">NAME</th>
+                    <th style="min-width:80px;">CODE</th>
+                    <th style="min-width:92px;">NAME</th>
                     <th>STD</th><th>ACT</th>
                     <th>STD</th><th>ACT</th>
                     <th>STD</th><th>ACT</th>
@@ -653,30 +689,42 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
             </thead>
             <tbody>
             <?php if (count($groups) === 0): ?>
-                <tr><td colspan="21" class="empty-msg">Data tidak ditemukan untuk filter yang dipilih.</td></tr>
+                <tr><td colspan="19" class="empty-msg">Data tidak ditemukan untuk filter yang dipilih.</td></tr>
             <?php else: ?>
                 <?php foreach ($groups as $g): ?>
+                    <?php 
+                        // Perhitungan Grup: Prod, Eff, dan NG
+                        $gProdPct = $g['plan'] != 0 ? ($g['act'] / $g['plan']) * 100 : 0;
+                        $gEffPct  = $g['cap'] != 0 ? ($g['act'] / $g['cap']) * 100 : 0;
+                        
+                        $gTotalOutput = $g['ok'] + $g['hold'] + $g['ng'];
+                        $gNgPct = $gTotalOutput != 0 ? ($g['ng'] / $gTotalOutput) * 100 : 0;
+                    ?>
                     <tr class="tr-cust">
-                        <td colspan="21">
+                        <td colspan="19">
                             <span class="glyphicon glyphicon-user" style="margin-right:4px;"></span>
                             <?php echo h($g['cust_code']); ?> &nbsp;&mdash;&nbsp; <?php echo h($g['cust_comp']); ?>
                         </td>
                     </tr>
                     <tr class="tr-sum">
                         <td colspan="2">PLAN : <span class="num"><?php echo fmt0($g['plan']); ?></span></td>
-                        <td colspan="19"></td>
+                        <td colspan="17">
+                            <span style="margin-left: 15px;">PERSENTASE PRODUKSI : <b style="color:#0056b3;"><?php echo fmtPct($gProdPct, 2); ?></b></span>
+                        </td>
                     </tr>
                     <tr class="tr-sum tr-sum-last">
                         <td colspan="2">ACT&nbsp;&nbsp;: <span class="num"><?php echo fmt0($g['act']); ?></span></td>
-                        <td colspan="19"></td>
+                        <td colspan="17">
+                            <span style="margin-left: 15px;">EFFISIENSI : <b style="color:#28a745;"><?php echo fmtPct($gEffPct, 2); ?></b></span>
+                            <!-- TAMBAHAN: GRUP TOTAL NG % -->
+                            <span style="margin-left: 15px;">NG : <b style="color:#dc3545;"><?php echo fmtPct($gNgPct, 2); ?></b></span>
+                        </td>
                     </tr>
 
                     <?php foreach ($g['rows'] as $index => $r): ?>
                         <?php
-                        $mc      = trim((isset($r['MAG_STATION']) ? (string)$r['MAG_STATION'] : '') . ' ' . (isset($r['MAC_CODE']) ? (string)$r['MAC_CODE'] : ''));
-                        $prodPct = productionPercentValue($r, $legacyFormulaMode);
-                        $eff     = efficiencyValue($r, $legacyFormulaMode);
-                        $ngPct   = ngPercentValue($r);
+                        $mc    = trim((isset($r['MAG_STATION']) ? (string)$r['MAG_STATION'] : '') . ' ' . (isset($r['MAC_CODE']) ? (string)$r['MAC_CODE'] : ''));
+                        $ngPct = ngPercentValue($r);
                         
                         // ZEBRA LOGIC
                         $rowClass = ($index % 2 === 0) ? 'tr-even' : 'tr-odd';
@@ -714,13 +762,6 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
                             <td class="left" title="<?php echo h(isset($r['PD_REM']) ? $r['PD_REM'] : ''); ?>">
                                 <?php echo h(isset($r['PD_REM']) ? $r['PD_REM'] : ''); ?>
                             </td>
-
-                            <td class="num">
-                                <?php echo $legacyFormulaMode ? fmt0($prodPct) : fmtPct($prodPct, 2); ?>
-                            </td>
-                            <td class="num">
-                                <?php echo $legacyFormulaMode ? fmt2($eff) : fmtPct($eff, 2); ?>
-                            </td>
                             <td class="num"><?php echo fmtPct($ngPct, 3); ?></td>
                         </tr>
                     <?php endforeach; ?>
@@ -728,14 +769,6 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
             <?php endif; ?>
             </tbody>
         </table>
-    </div>
-
-    <div class="muted-text" style="margin-top:6px;">
-        <?php if ($legacyFormulaMode): ?>
-            Mode formula: legacy (Persentase Produksi = PD_WKH, EFF = WO_CAP).
-        <?php else: ?>
-            Mode formula: calculated (Persentase Produksi = PD_QTY/WO_QTY, EFF = PD_QTY/WO_CAP).
-        <?php endif; ?>
     </div>
 
 </div><script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
@@ -758,13 +791,12 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
         var selIdx   = -1;
         var xhr      = null;
         var debounce = null;
-        var DEBOUNCE = 400; // Jeda waktu ketik
+        var DEBOUNCE = 400;
 
         $input.on("input focus", function () {
             clearTimeout(debounce);
             var q = $(this).val().replace(/%/g, "").trim();
             
-            // Opsional: Minimal 2 karakter baru mulai mencari agar server tidak terlalu berat
             if (q.length < 2) { 
                 hide(); 
                 return; 
@@ -834,13 +866,8 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
                     }
                 },
                 error: function (jqXHR, textStatus, errorThrown) {
-                    // Jika digagalkan sengaja karena ketikan terlalu cepat, biarkan saja
                     if (textStatus === 'abort') return;
-                    
-                    // JIKA BACKEND PHP ERROR (Bukan JSON / Query Gagal)
                     console.error("AJAX Error [" + url + "]:", textStatus, errorThrown);
-                    console.error("Response Text:", jqXHR.responseText);
-                    
                     $dropdown.html('<div class="ac-empty" style="color:#d9534f; font-weight:bold;">Error mengambil data. Cek Console F12.</div>');
                     show();
                 }
@@ -916,13 +943,9 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
         }
     }
 
-    // Eksekusi Autocomplete
     initAutocomplete("code",      "ac_dropdown_item",     "ac_item.php");
     initAutocomplete("cust_code", "ac_dropdown_customer", "ac_customer.php");
 
-    /* =========================================================
-     * Submit handler: field kosong → kirim %
-     * ========================================================= */
     $("#filterForm").on("submit", function () {
         var $code = $("#code");
         var $cust = $("#cust_code");
@@ -935,9 +958,6 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
         }
     });
 
-    /* =========================================================
-     * Spin animation untuk loading icon
-     * ========================================================= */
     var style = document.createElement("style");
     style.textContent = "@-webkit-keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}.glyphicon-spin{animation:spin 1s linear infinite}";
     document.head.appendChild(style);

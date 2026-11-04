@@ -1,4 +1,9 @@
 <?php
+// Pastikan session aktif agar bisa membaca variabel login active_plant
+if (!isset($_SESSION)) {
+    session_start();
+}
+
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
 require_once __DIR__ . "/../config/global.php";
@@ -10,12 +15,16 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit;
 }
 
-// 1. Ekstrak & Sanitasi Parameter
 $tranid   = isset($_POST['tranid']) ? (int)$_POST['tranid'] : 0;
 $itemid   = isset($_POST['itemid']) ? (int)$_POST['itemid'] : 0;
 $poid     = isset($_POST['poid']) && $_POST['poid'] !== '' ? (int)$_POST['poid'] : null;
 $rcvdqty  = isset($_POST['rcvdqty']) ? (float)$_POST['rcvdqty'] : 0;
 $qrcodeid = isset($_POST['qrcodeid']) ? trim($_POST['qrcodeid']) : '';
+
+// Ambil data plan: Prioritaskan dari Session global.php, jika kosong gunakan dari POST ajax
+$plan_session = isset($_SESSION['active_plant']) ? strtolower(trim($_SESSION['active_plant'])) : '';
+$plan_post    = isset($_POST['plan']) ? strtolower(trim($_POST['plan'])) : '';
+$plan         = ($plan_session !== '') ? $plan_session : $plan_post;
 
 if ($tranid === 0 || $qrcodeid === '' || $itemid === 0) {
     echo json_encode(array('status' => 'error', 'message' => 'Data detail tidak valid.'));
@@ -27,34 +36,37 @@ if ($conn === false) {
     exit;
 }
 
-// Transaksi Dimulai
 sqlsrv_begin_transaction($conn);
 
 try {
-    // 2. VERIFIKASI EKSISTENSI: Pastikan QR Code ada di database sebelum dikeluarkan
-    $sqlExist = "SELECT TOP 1 QRCODE_ID FROM INV_TRAN WITH (NOLOCK) WHERE QRCODE_ID = ?";
-    $stmtExist = sqlsrv_query($conn, $sqlExist, array($qrcodeid));
-    if ($stmtExist === false || !sqlsrv_has_rows($stmtExist)) {
-        throw new Exception("QR Code [$qrcodeid] tidak terdaftar di sistem. Barang belum pernah masuk!");
+    // 1. Verifikasi ketersediaan QR Code di database (INV_TRAN)
+    // LEWATI pengecekan jika login dari plant 2 ('p2')
+    if (!in_array($plan, ['p2', 'plan2', 'plant2'])) {
+        $sqlExist = "SELECT TOP 1 QRCODE_ID FROM INV_TRAN WHERE QRCODE_ID = ?";
+        $stmtExist = sqlsrv_query($conn, $sqlExist, array($qrcodeid));
+        
+        if ($stmtExist === false || !sqlsrv_has_rows($stmtExist)) {
+            throw new Exception("QR Code [$qrcodeid] tidak terdaftar di sistem. Barang belum pernah masuk!");
+        }
+        sqlsrv_free_stmt($stmtExist);
     }
-    if ($stmtExist !== false) sqlsrv_free_stmt($stmtExist);
 
-    // 3. Cek Duplikasi Scan QR (Mencegah Double Input) dengan Table Lock
-    $sqlCheck = "SELECT TOP 1 QRCODE_ID FROM INV_TRAN WITH (UPDLOCK, HOLDLOCK) WHERE QRCODE_ID = ? AND SCAN_TYPE = 1";
+    // 2. Cek Duplikasi Scan QR berdasarkan SCAN_TYPE = 1
+    $sqlCheck = "SELECT TOP 1 QRCODE_ID FROM INV_TRAN WHERE QRCODE_ID = ? AND SCAN_TYPE = 1";
     $stmtCheck = sqlsrv_query($conn, $sqlCheck, array($qrcodeid));
     if ($stmtCheck !== false && sqlsrv_has_rows($stmtCheck)) {
-        throw new Exception("QR Code [$qrcodeid] sudah pernah di-scan untuk pengeluaran sebelumnya.");
+        throw new Exception("QR Code [$qrcodeid] sudah pernah di-scan sebelumnya.");
     }
     if ($stmtCheck !== false) sqlsrv_free_stmt($stmtCheck);
 
-    // 4. Ambil nomor urut baris (IT_LINENO) berikutnya secara aman
-    $sqlLine = "SELECT ISNULL(MAX(IT_LINENO), 0) + 1 AS next_line FROM INV_TRAN WITH (UPDLOCK, HOLDLOCK) WHERE TRAN_ID = ?";
+    // 3. Ambil nomor urut baris (IT_LINENO) berikutnya
+    $sqlLine = "SELECT MAX(IT_LINENO) AS max_line FROM INV_TRAN WHERE TRAN_ID = ?";
     $stmtLine = sqlsrv_query($conn, $sqlLine, array($tranid));
     $rowLine = sqlsrv_fetch_array($stmtLine, SQLSRV_FETCH_ASSOC);
-    $lineno = $rowLine['next_line'];
+    $lineno = isset($rowLine['max_line']) ? ((int)$rowLine['max_line'] + 1) : 1;
     sqlsrv_free_stmt($stmtLine);
 
-    // 5. Insert Detail ke tabel INV_TRAN
+    // 4. Insert Detail ke tabel INV_TRAN
     $stcode = '';
     $type   = 1;
 
@@ -71,6 +83,7 @@ try {
     sqlsrv_free_stmt($stmtInsert);
 
     sqlsrv_commit($conn);
+
     echo json_encode(array('status' => 'success', 'message' => 'Data detail berhasil disimpan.'));
 
 } catch (Exception $e) {

@@ -205,7 +205,7 @@ SELECT
     DATEDIFF(day, GETDATE(), DATEADD(year, m.PeriodeBulan, h.TglActual)) AS SisaHari
 FROM MasterAlatUkur m
 LEFT JOIN HistoriTerakhir h ON m.AlatID = h.AlatID AND h.RowNum = 1
-ORDER BY ISNULL(m.GrupAlat, 'Z_Lainnya') ASC, LEN(m.NoUrut) ASC, m.NoUrut ASC
+ORDER BY ISNULL(m.GrupAlat, 'Z_Lainnya') ASC, m.SeriNoIMC ASC
 ";
 
 $stmt = sqlsrv_query($conn, $tsql);
@@ -337,8 +337,8 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
             <input type="hidden" name="AlatID" value="<?php echo $editData ? $editData['AlatID'] : ''; ?>">
             
             <div class="form-group">
-                <label>No. Urut</label>
-                <input type="text" name="NoUrut" required value="<?php echo $editData ? htmlspecialchars($editData['NoUrut'], ENT_QUOTES, 'UTF-8') : ''; ?>">
+                <label>No. Urut (Data Legacy)</label>
+                <input type="text" name="NoUrut" value="<?php echo $editData ? htmlspecialchars($editData['NoUrut'], ENT_QUOTES, 'UTF-8') : ''; ?>">
             </div>
             
             <div class="form-group">
@@ -476,9 +476,10 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         <tbody>
             <?php 
             $currentGroup = null; 
+            $nomor = 1; // Inisiasi nomor urut
+            
             foreach ($dataAlat as $alat): 
                 $alatID      = $alat['AlatID'];
-                $noUrut      = htmlspecialchars($alat['NoUrut'] ?: '-', ENT_QUOTES, 'UTF-8');
                 $grupAlat    = !empty($alat['GrupAlat']) ? htmlspecialchars($alat['GrupAlat'], ENT_QUOTES, 'UTF-8') : 'Tanpa Grup';
                 $namaAlat    = htmlspecialchars($alat['NamaAlat'] ?: '-', ENT_QUOTES, 'UTF-8');
                 $seriIMC     = htmlspecialchars($alat['SeriNoIMC'] ?: '-', ENT_QUOTES, 'UTF-8');
@@ -497,11 +498,12 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
 
                 if ($currentGroup !== $grupAlat) {
                     $currentGroup = $grupAlat;
+                    $nomor = 1; // Reset nomor kembali ke 1 setiap ganti grup
                     echo "<tr><td colspan='10' class='group-header'>🗂️ GRUP: " . $currentGroup . "</td></tr>";
                 }
             ?>
             <tr class="<?php echo $rowColorClass; ?>">
-                <td><?php echo $noUrut; ?></td>
+                <td><?php echo $nomor++; ?></td>
                 <td style="text-align: left; font-weight: bold;"><?php echo $namaAlat; ?></td>
                 <td><?php echo $seriIMC; ?></td>
                 <td><?php echo $lokasi; ?></td>

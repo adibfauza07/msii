@@ -2,10 +2,6 @@
 /**
  * STOCK ANALYSIS UNIVERSAL - WHS DAN REFERENSI PRODUKSI
  * PHP 5.4 + SQLSRV + SQL Server 2008
- *
- * DEFINISI PERIODE:
- *   start_date = tanggal stok awal
- *   end_date   = tanggal stok akhir/opname
  */
 
 if (session_status() == PHP_SESSION_NONE) {
@@ -24,39 +20,19 @@ function sap_h($value)
 
 function sap_valid_date($value)
 {
-    if (
-        !is_string($value) ||
-        !preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)
-    ) {
+    if (!is_string($value) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
         return false;
     }
-
     $parts = explode('-', $value);
-
-    return count($parts) == 3 &&
-        checkdate(
-            (int) $parts[1],
-            (int) $parts[2],
-            (int) $parts[0]
-        );
+    return count($parts) == 3 && checkdate((int) $parts[1], (int) $parts[2], (int) $parts[0]);
 }
 
 function sap_date($value, $format)
 {
-    if ($value instanceof DateTime) {
-        return $value->format($format);
-    }
-
-    if ($value === null || $value === '') {
-        return '';
-    }
-
+    if ($value instanceof DateTime) { return $value->format($format); }
+    if ($value === null || $value === '') { return ''; }
     $time = strtotime((string) $value);
-
-    if ($time === false) {
-        return (string) $value;
-    }
-
+    if ($time === false) { return (string) $value; }
     return date($format, $time);
 }
 
@@ -67,135 +43,67 @@ function sap_number($value)
 
 function sap_float_param($name)
 {
-    if (!isset($_GET[$name]) || trim($_GET[$name]) === '') {
-        return null;
-    }
-
+    if (!isset($_GET[$name]) || trim($_GET[$name]) === '') { return null; }
     $value = str_replace(',', '', trim($_GET[$name]));
-
     return is_numeric($value) ? (float) $value : null;
 }
 
 function sap_sql_error()
 {
     $errors = sqlsrv_errors();
-
-    if (!is_array($errors)) {
-        return 'Kesalahan SQL Server tidak diketahui.';
-    }
-
+    if (!is_array($errors)) { return 'Kesalahan SQL Server tidak diketahui.'; }
     $messages = array();
-
     foreach ($errors as $error) {
-        $messages[] =
-            '[' . $error['SQLSTATE'] . '] '
-            . $error['code']
-            . ' - '
-            . $error['message'];
+        $messages[] = '[' . $error['SQLSTATE'] . '] ' . $error['code'] . ' - ' . $error['message'];
     }
-
     return implode("\n", $messages);
 }
 
 /* =========================================================
  * PARAMETER
  * ========================================================= */
-$reportType = isset($_GET['report_type'])
-    ? strtolower(trim($_GET['report_type']))
-    : 'bahanbaku';
+$reportType = isset($_GET['report_type']) ? strtolower(trim($_GET['report_type'])) : 'bahanbaku';
+if ($reportType != 'barang') { $reportType = 'bahanbaku'; }
 
-if ($reportType != 'barang') {
-    $reportType = 'bahanbaku';
-}
-
-$reportTitle = ($reportType == 'barang')
-    ? 'STOCK ANALYSIS BARANG JADI'
-    : 'STOCK ANALYSIS BAHAN BAKU';
-
-$summaryProcedure = ($reportType == 'barang')
-    ? 'dbo.sp_laporan_mutasi_barang1'
-    : 'dbo.sp_laporan_mutasi_bahanbaku1';
-
-$backPage = ($reportType == 'barang')
-    ? 'mutasi_barang.php'
-    : 'mutasi_bahanbaku.php';
-
-$passedItem = isset($_GET['item_id'])
-    ? trim($_GET['item_id'])
-    : '';
-
-$startDate = isset($_GET['start_date'])
-    ? trim($_GET['start_date'])
-    : date('Y-m-01');
-
-$endDate = isset($_GET['end_date'])
-    ? trim($_GET['end_date'])
-    : date('Y-m-d');
-
+$reportTitle = ($reportType == 'barang') ? 'STOCK ANALYSIS BARANG JADI' : 'STOCK ANALYSIS BAHAN BAKU';
+$summaryProcedure = ($reportType == 'barang') ? 'dbo.sp_laporan_mutasi_barang1' : 'dbo.sp_laporan_mutasi_bahanbaku1';
+$backPage = ($reportType == 'barang') ? 'mutasi_barang.php' : 'mutasi_bahanbaku.php';
+$passedItem = isset($_GET['item_id']) ? trim($_GET['item_id']) : '';
+$startDate = isset($_GET['start_date']) ? trim($_GET['start_date']) : date('Y-m-01');
+$endDate = isset($_GET['end_date']) ? trim($_GET['end_date']) : date('Y-m-d');
 $saldoAwalParam  = sap_float_param('saldo_awal');
 $stokOpnameParam = sap_float_param('stok_opname');
-
 $errors = array();
 
-if ($passedItem === '') {
-    $errors[] = 'Kode atau ID barang wajib diisi.';
-}
-
-if (!sap_valid_date($startDate)) {
-    $errors[] = 'Tanggal awal tidak valid.';
-}
-
-if (!sap_valid_date($endDate)) {
-    $errors[] = 'Tanggal akhir tidak valid.';
-}
-
-if (
-    sap_valid_date($startDate) &&
-    sap_valid_date($endDate) &&
-    strtotime($startDate) >= strtotime($endDate)
-) {
+if ($passedItem === '') { $errors[] = 'Kode atau ID barang wajib diisi.'; }
+if (!sap_valid_date($startDate)) { $errors[] = 'Tanggal awal tidak valid.'; }
+if (!sap_valid_date($endDate)) { $errors[] = 'Tanggal akhir tidak valid.'; }
+if (sap_valid_date($startDate) && sap_valid_date($endDate) && strtotime($startDate) >= strtotime($endDate)) {
     $errors[] = 'Tanggal akhir harus lebih besar dari tanggal awal.';
 }
 
-$transactionEndDate = sap_valid_date($endDate)
-    ? date('Y-m-d', strtotime($endDate . ' -1 day'))
-    : $endDate;
+// PERBAIKAN: Gunakan $endDate agar hitungan mutasi sinkron dengan stok opname (tidak tembus akhir bulan)
+$transactionEndDate = $endDate;
 
 /* =========================================================
  * ITEM
  * ========================================================= */
-$itemId = 0;
-$itemCode = '';
-$itemName = '';
-$itemUnit = '';
-$queryError = '';
+$itemId = 0; $itemCode = ''; $itemName = ''; $itemUnit = ''; $queryError = '';
 
 if (count($errors) == 0) {
     if (is_numeric($passedItem)) {
-        $itemSql = "
-            SELECT TOP 1
-                ITEM_ID, ITEM_CODE, ITEM_NAME, ITEM_UNIT
-            FROM dbo.ITEMS
-            WHERE ITEM_ID = ?
-        ";
+        $itemSql = "SELECT TOP 1 ITEM_ID, ITEM_CODE, ITEM_NAME, ITEM_UNIT FROM dbo.ITEMS WHERE ITEM_ID = ?";
         $itemParams = array((int) $passedItem);
     } else {
-        $itemSql = "
-            SELECT TOP 1
-                ITEM_ID, ITEM_CODE, ITEM_NAME, ITEM_UNIT
-            FROM dbo.ITEMS
-            WHERE ITEM_CODE = ?
-        ";
+        $itemSql = "SELECT TOP 1 ITEM_ID, ITEM_CODE, ITEM_NAME, ITEM_UNIT FROM dbo.ITEMS WHERE ITEM_CODE = ?";
         $itemParams = array($passedItem);
     }
 
     $itemStmt = sqlsrv_query($conn, $itemSql, $itemParams);
-
     if ($itemStmt === false) {
         $queryError = sap_sql_error();
     } else {
         $itemRow = sqlsrv_fetch_array($itemStmt, SQLSRV_FETCH_ASSOC);
-
         if ($itemRow) {
             $itemId   = (int) $itemRow['ITEM_ID'];
             $itemCode = $itemRow['ITEM_CODE'];
@@ -204,47 +112,72 @@ if (count($errors) == 0) {
         } else {
             $errors[] = 'Item tidak ditemukan.';
         }
-
         sqlsrv_free_stmt($itemStmt);
     }
 }
 
 /* =========================================================
- * AMBIL RINGKASAN SP MUTASI (WHS)
+ * AMBIL SALDO AWAL & STOK OPNAME WHS 
+ * (BYPASS SP, LANGSUNG BACA TAGS & tags AGAR MATCH DENGAN MRP)
  * ========================================================= */
-$summaryRow = null;
+$saldoAwal = 0;
+$stokOpname = 0;
 
 if (count($errors) == 0 && $queryError == '') {
-    $summarySql = "{CALL " . $summaryProcedure . "(?, ?)}";
-    $summaryStmt = sqlsrv_query($conn, $summarySql, array($startDate, $endDate));
-
-    if ($summaryStmt === false) {
-        $queryError = sap_sql_error();
+    
+    // 1. Saldo Awal WHS (Dari tabel TAGS)
+    if ($saldoAwalParam !== null) {
+        $saldoAwal = $saldoAwalParam;
     } else {
-        while ($row = sqlsrv_fetch_array($summaryStmt, SQLSRV_FETCH_ASSOC)) {
-            $rowCode = isset($row['KODE_BARANG']) ? trim($row['KODE_BARANG']) : '';
-            if (strcasecmp($rowCode, $itemCode) == 0) {
-                $summaryRow = $row;
-                break;
+        $sqlBegWHS = "
+            SELECT SUM(ISNULL(T.TAG_QTY, 0)) AS SALDO_AWAL
+            FROM dbo.TAGS AS T
+            INNER JOIN dbo.SOP AS S ON S.SOP_ID = T.SOP_ID
+            INNER JOIN dbo.LOC AS L ON L.LOC_ID = T.LOC_ID
+            WHERE T.ITEM_ID = ? 
+              AND L.LOC_CODE = 'WHS' 
+              AND CAST(S.SOP_SDATE AS DATE) = CAST(? AS DATE)
+        ";
+        $stmtBeg = sqlsrv_query($conn, $sqlBegWHS, array($itemId, $startDate));
+        if ($stmtBeg !== false) {
+            if ($rowBeg = sqlsrv_fetch_array($stmtBeg, SQLSRV_FETCH_ASSOC)) {
+                $saldoAwal = (float) $rowBeg['SALDO_AWAL'];
             }
+            sqlsrv_free_stmt($stmtBeg);
+        } else {
+            $queryError = sap_sql_error();
         }
-        sqlsrv_free_stmt($summaryStmt);
+    }
+
+    // 2. Stok Opname WHS (Dari tabel tags)
+    if ($stokOpnameParam !== null) {
+        $stokOpname = $stokOpnameParam;
+    } else {
+        $sqlOpnWHS = "
+            SELECT SUM(ISNULL(T.TAG_QTY, 0)) AS STOK_OPNAME
+            FROM dbo.tags AS T
+            INNER JOIN dbo.SOP AS S ON S.SOP_ID = T.SOP_ID
+            INNER JOIN dbo.LOC AS L ON L.LOC_ID = T.LOC_ID
+            WHERE T.ITEM_ID = ? 
+              AND L.LOC_CODE = 'WHS' 
+              AND CAST(S.SOP_SDATE AS DATE) = CAST(? AS DATE)
+        ";
+        $stmtOpn = sqlsrv_query($conn, $sqlOpnWHS, array($itemId, $endDate));
+        if ($stmtOpn !== false) {
+            if ($rowOpn = sqlsrv_fetch_array($stmtOpn, SQLSRV_FETCH_ASSOC)) {
+                $stokOpname = (float) $rowOpn['STOK_OPNAME'];
+            }
+            sqlsrv_free_stmt($stmtOpn);
+        } else {
+            if ($queryError == '') { $queryError = sap_sql_error(); }
+        }
     }
 }
-
-$saldoAwal = $saldoAwalParam !== null
-    ? $saldoAwalParam
-    : ($summaryRow !== null && isset($summaryRow['SALDO_AWAL']) ? (float) $summaryRow['SALDO_AWAL'] : 0);
-
-$stokOpname = $stokOpnameParam !== null
-    ? $stokOpnameParam
-    : ($summaryRow !== null && isset($summaryRow['STOK_OPNAME']) ? (float) $summaryRow['STOK_OPNAME'] : 0);
 
 /* =========================================================
  * TRANSAKSI WHS
  * ========================================================= */
 $whsRows = array();
-
 if (count($errors) == 0 && $queryError == '') {
     $whsSql = "
         SELECT
@@ -255,8 +188,7 @@ if (count($errors) == 0 && $queryError == '') {
         FROM dbo.TRANS AS TR
         INNER JOIN dbo.INV_TRAN AS IT ON IT.TRAN_ID = TR.TRAN_ID
         INNER JOIN dbo.ITEMS AS I ON I.ITEM_ID = IT.ITEM_ID
-        CROSS APPLY
-        (
+        CROSS APPLY (
             SELECT TOP 1 L.LOC_CODE, L.LOC_NAME, L.LOC_GROUP, TL.TRTY_INOUT, TL.TRTY_SIGN
             FROM dbo.TRTY_LOC AS TL
             INNER JOIN dbo.LOC AS L ON L.LOC_ID = TL.LOC_ID
@@ -264,21 +196,18 @@ if (count($errors) == 0 && $queryError == '') {
             ORDER BY TL.LOC_ID
         ) AS W
         LEFT JOIN dbo.TRTY AS TY ON TY.TRTY_CODE = TR.TRTY_CODE
-        WHERE I.ITEM_ID = ? AND TR.TRAN_DATE >= ? AND TR.TRAN_DATE < ?
+        WHERE I.ITEM_ID = ? AND TR.TRAN_DATE >= ? AND TR.TRAN_DATE < DATEADD(day, 1, ?)
         GROUP BY
             TR.TRAN_ID, TR.TRAN_DATE, TR.TRAN_DOC, TR.TRAN_DOC2, TR.TRTY_CODE, ISNULL(TY.TRTY_DESC, ''),
             W.LOC_CODE, W.LOC_NAME, W.LOC_GROUP, W.TRTY_INOUT, W.TRTY_SIGN
         ORDER BY TR.TRAN_DATE, TR.TRAN_ID, TR.TRTY_CODE
     ";
 
-    $whsStmt = sqlsrv_query($conn, $whsSql, array($itemId, $startDate, $endDate));
-
+    $whsStmt = sqlsrv_query($conn, $whsSql, array($itemId, $startDate, $transactionEndDate));
     if ($whsStmt === false) {
         $queryError = sap_sql_error();
     } else {
-        while ($row = sqlsrv_fetch_array($whsStmt, SQLSRV_FETCH_ASSOC)) {
-            $whsRows[] = $row;
-        }
+        while ($row = sqlsrv_fetch_array($whsStmt, SQLSRV_FETCH_ASSOC)) { $whsRows[] = $row; }
         sqlsrv_free_stmt($whsStmt);
     }
 }
@@ -287,35 +216,37 @@ if (count($errors) == 0 && $queryError == '') {
  * REFERENSI LOKASI PRODUKSI / NON-WHS
  * ========================================================= */
 $productionRows = array();
-
 if (count($errors) == 0 && $queryError == '') {
+    // PERBAIKAN: Menggunakan CROSS APPLY untuk mencegah duplikasi (multiply) QTY pada join
     $productionSql = "
         SELECT
             TR.TRAN_ID, TR.TRAN_DATE, TR.TRAN_DOC, TR.TRAN_DOC2, TR.TRTY_CODE,
             ISNULL(TY.TRTY_DESC, '') AS TRTY_DESC,
-            L.LOC_CODE, L.LOC_NAME, L.LOC_GROUP, TL.TRTY_INOUT, TL.TRTY_SIGN,
+            L_OUT.LOC_CODE, L_OUT.LOC_NAME, L_OUT.LOC_GROUP, L_OUT.TRTY_INOUT, L_OUT.TRTY_SIGN,
             SUM(ISNULL(IT.IT_QTY, 0)) AS IT_QTY
         FROM dbo.TRANS AS TR
         INNER JOIN dbo.INV_TRAN AS IT ON IT.TRAN_ID = TR.TRAN_ID
         INNER JOIN dbo.ITEMS AS I ON I.ITEM_ID = IT.ITEM_ID
-        INNER JOIN dbo.TRTY_LOC AS TL ON TL.TRTY_CODE = TR.TRTY_CODE
-        INNER JOIN dbo.LOC AS L ON L.LOC_ID = TL.LOC_ID
+        CROSS APPLY (
+            SELECT TOP 1 L2.LOC_CODE, L2.LOC_NAME, L2.LOC_GROUP, TL.TRTY_INOUT, TL.TRTY_SIGN
+            FROM dbo.TRTY_LOC AS TL
+            INNER JOIN dbo.LOC AS L2 ON L2.LOC_ID = TL.LOC_ID
+            WHERE TL.TRTY_CODE = TR.TRTY_CODE AND L2.LOC_CODE <> 'WHS'
+            ORDER BY TL.LOC_ID
+        ) AS L_OUT
         LEFT JOIN dbo.TRTY AS TY ON TY.TRTY_CODE = TR.TRTY_CODE
-        WHERE I.ITEM_ID = ? AND L.LOC_CODE <> 'WHS' AND TR.TRAN_DATE >= ? AND TR.TRAN_DATE < ?
+        WHERE I.ITEM_ID = ? AND TR.TRAN_DATE >= ? AND TR.TRAN_DATE < DATEADD(day, 1, ?)
         GROUP BY
             TR.TRAN_ID, TR.TRAN_DATE, TR.TRAN_DOC, TR.TRAN_DOC2, TR.TRTY_CODE, ISNULL(TY.TRTY_DESC, ''),
-            L.LOC_CODE, L.LOC_NAME, L.LOC_GROUP, TL.TRTY_INOUT, TL.TRTY_SIGN
-        ORDER BY L.LOC_GROUP, L.LOC_CODE, TR.TRAN_DATE, TR.TRAN_ID
+            L_OUT.LOC_CODE, L_OUT.LOC_NAME, L_OUT.LOC_GROUP, L_OUT.TRTY_INOUT, L_OUT.TRTY_SIGN
+        ORDER BY L_OUT.LOC_GROUP, L_OUT.LOC_CODE, TR.TRAN_DATE, TR.TRAN_ID
     ";
 
-    $productionStmt = sqlsrv_query($conn, $productionSql, array($itemId, $startDate, $endDate));
-
+    $productionStmt = sqlsrv_query($conn, $productionSql, array($itemId, $startDate, $transactionEndDate));
     if ($productionStmt === false) {
         $queryError = sap_sql_error();
     } else {
-        while ($row = sqlsrv_fetch_array($productionStmt, SQLSRV_FETCH_ASSOC)) {
-            $productionRows[] = $row;
-        }
+        while ($row = sqlsrv_fetch_array($productionStmt, SQLSRV_FETCH_ASSOC)) { $productionRows[] = $row; }
         sqlsrv_free_stmt($productionStmt);
     }
 }
@@ -324,8 +255,8 @@ if (count($errors) == 0 && $queryError == '') {
  * STOK AWAL LOKASI PRODUKSI / NON-WHS (TAGS)
  * ========================================================= */
 $productionBeginningRows = array();
-
 if (count($errors) == 0 && $queryError == '') {
+    // PERBAIKAN: Gunakan CAST untuk tipe tanggal agar akurat dan tidak meleset
     $productionBeginningSql = "
         SELECT 
             L.LOC_ID, L.LOC_CODE, L.LOC_NAME, L.LOC_GROUP,
@@ -333,18 +264,16 @@ if (count($errors) == 0 && $queryError == '') {
         FROM dbo.TAGS AS T
         INNER JOIN dbo.SOP AS S ON S.SOP_ID = T.SOP_ID
         INNER JOIN dbo.LOC AS L ON L.LOC_ID = T.LOC_ID
-        WHERE T.ITEM_ID = ? AND L.LOC_CODE <> 'WHS' AND S.SOP_SDATE = ?
+        WHERE T.ITEM_ID = ? AND L.LOC_CODE <> 'WHS' 
+          AND CAST(S.SOP_SDATE AS DATE) = CAST(? AS DATE)
         GROUP BY L.LOC_ID, L.LOC_CODE, L.LOC_NAME, L.LOC_GROUP
     ";
 
     $productionBeginningStmt = sqlsrv_query($conn, $productionBeginningSql, array($itemId, $startDate));
-
     if ($productionBeginningStmt === false) {
         $queryError = sap_sql_error();
     } else {
-        while ($row = sqlsrv_fetch_array($productionBeginningStmt, SQLSRV_FETCH_ASSOC)) {
-            $productionBeginningRows[] = $row;
-        }
+        while ($row = sqlsrv_fetch_array($productionBeginningStmt, SQLSRV_FETCH_ASSOC)) { $productionBeginningRows[] = $row; }
         sqlsrv_free_stmt($productionBeginningStmt);
     }
 }
@@ -353,8 +282,8 @@ if (count($errors) == 0 && $queryError == '') {
  * STOK AKHIR LOKASI PRODUKSI / NON-WHS (tags)
  * ========================================================= */
 $productionClosingRows = array();
-
 if (count($errors) == 0 && $queryError == '') {
+    // PERBAIKAN: Gunakan CAST untuk tipe tanggal dan tidak menggunakan interval
     $productionClosingSql = "
         SELECT
             L.LOC_ID, L.LOC_CODE, L.LOC_NAME, L.LOC_GROUP,
@@ -362,19 +291,17 @@ if (count($errors) == 0 && $queryError == '') {
         FROM dbo.tags AS T
         INNER JOIN dbo.SOP AS S ON S.SOP_ID = T.SOP_ID
         INNER JOIN dbo.LOC AS L ON L.LOC_ID = T.LOC_ID
-        WHERE T.ITEM_ID = ? AND L.LOC_CODE <> 'WHS' AND S.SOP_SDATE >= ? AND S.SOP_SDATE < DATEADD(day, 1, ?)
+        WHERE T.ITEM_ID = ? AND L.LOC_CODE <> 'WHS' 
+          AND CAST(S.SOP_SDATE AS DATE) = CAST(? AS DATE)
         GROUP BY L.LOC_ID, L.LOC_CODE, L.LOC_NAME, L.LOC_GROUP
         ORDER BY L.LOC_GROUP, L.LOC_CODE, L.LOC_NAME
     ";
 
-    $productionClosingStmt = sqlsrv_query($conn, $productionClosingSql, array($itemId, $endDate, $endDate));
-
+    $productionClosingStmt = sqlsrv_query($conn, $productionClosingSql, array($itemId, $endDate));
     if ($productionClosingStmt === false) {
         $queryError = sap_sql_error();
     } else {
-        while ($row = sqlsrv_fetch_array($productionClosingStmt, SQLSRV_FETCH_ASSOC)) {
-            $productionClosingRows[] = $row;
-        }
+        while ($row = sqlsrv_fetch_array($productionClosingStmt, SQLSRV_FETCH_ASSOC)) { $productionClosingRows[] = $row; }
         sqlsrv_free_stmt($productionClosingStmt);
     }
 }
@@ -393,8 +320,7 @@ foreach ($whsRows as $index => $row) {
     $sign = isset($row['TRTY_SIGN']) ? (float) $row['TRTY_SIGN'] : 0;
 
     $movement = $qty * $sign;
-    $masuk = 0;
-    $keluar = 0;
+    $masuk = 0; $keluar = 0;
 
     if ($inOut == 1) {
         $masuk = $movement;
@@ -411,9 +337,7 @@ foreach ($whsRows as $index => $row) {
     $whsRows[$index]['CALC_EFFECT'] = $masuk - $keluar;
     $whsRows[$index]['RUNNING_BALANCE'] = $runningBalance;
 
-    if ($firstNegativeIndex < 0 && $runningBalance < -0.000001) {
-        $firstNegativeIndex = $index;
-    }
+    if ($firstNegativeIndex < 0 && $runningBalance < -0.000001) { $firstNegativeIndex = $index; }
 }
 
 $saldoAkhir = $saldoAwal + $totalMasuk - $totalKeluar;
@@ -453,8 +377,7 @@ foreach ($productionRows as $index => $row) {
     $inOut = isset($row['TRTY_INOUT']) ? (int) $row['TRTY_INOUT'] : 0;
 
     $movement = $qty * $sign;
-    $masuk = 0;
-    $keluar = 0;
+    $masuk = 0; $keluar = 0;
 
     if ($inOut == 1) {
         $masuk = $movement;
@@ -485,31 +408,22 @@ foreach ($productionClosingRows as $closingRow) {
     $productionSummary[$locKey]['has_opname'] = true;
 }
 
-/*
- * Total referensi produksi.
- */
-$totalProductionStokAwal = 0;
-$totalProductionMasuk = 0;
-$totalProductionKeluar = 0;
-$totalProductionNet = 0;
-$totalProductionClosing = 0;
-$totalProductionOpnameLocations = 0;
+/* Total referensi produksi */
+$totalProductionStokAwal = 0; $totalProductionMasuk = 0; $totalProductionKeluar = 0;
+$totalProductionNet = 0; $totalProductionClosing = 0; $totalProductionOpnameLocations = 0;
 
 foreach ($productionSummary as $locSummary) {
     $totalProductionStokAwal += isset($locSummary['stok_awal']) ? (float) $locSummary['stok_awal'] : 0;
     $totalProductionMasuk += isset($locSummary['masuk']) ? (float) $locSummary['masuk'] : 0;
     $totalProductionKeluar += isset($locSummary['keluar']) ? (float) $locSummary['keluar'] : 0;
     $totalProductionNet += isset($locSummary['net']) ? (float) $locSummary['net'] : 0;
-
     if (!empty($locSummary['has_opname'])) {
         $totalProductionClosing += isset($locSummary['stok_akhir']) ? (float) $locSummary['stok_akhir'] : 0;
         $totalProductionOpnameLocations++;
     }
 }
 
-$backUrl = $backPage . "?" . http_build_query(
-    array('tglawal' => $startDate, 'tglakhir' => $endDate, 'cari' => $itemCode)
-);
+$backUrl = $backPage . "?" . http_build_query(array('tglawal' => $startDate, 'tglakhir' => $endDate, 'cari' => $itemCode));
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -563,9 +477,7 @@ $backUrl = $backPage . "?" . http_build_query(
 </div>
 
 <?php if (count($errors) > 0) { ?>
-    <div class="danger" style="margin:20px;">
-        <?php echo sap_h(implode("\n", $errors)); ?>
-    </div>
+    <div class="danger" style="margin:20px;"><?php echo sap_h(implode("\n", $errors)); ?></div>
 <?php } ?>
 
 <?php if ($queryError != '') { ?>
@@ -576,22 +488,15 @@ $backUrl = $backPage . "?" . http_build_query(
 <?php } ?>
 
 <?php if (count($errors) == 0 && $queryError == '') { ?>
-
 <div class="page">
     <table class="header-table">
         <tr>
             <td style="width:33%;">P.T. IMC TEKNO INDONESIA</td>
             <td style="width:34%;" class="title">
                 <h1><?php echo sap_h($reportTitle); ?></h1>
-                <div>
-                    <?php echo sap_h($itemCode); ?> - <?php echo sap_h($itemName); ?> (<?php echo sap_h($itemUnit); ?>)
-                </div>
-                <div>
-                    Stok awal: <?php echo sap_h(sap_date($startDate, 'd-M-y')); ?> | Stok akhir: <?php echo sap_h(sap_date($endDate, 'd-M-y')); ?>
-                </div>
-                <div>
-                    Transaksi: <?php echo sap_h(sap_date($startDate, 'd-M-y')); ?> s/d <?php echo sap_h(sap_date($transactionEndDate, 'd-M-y')); ?>
-                </div>
+                <div><?php echo sap_h($itemCode); ?> - <?php echo sap_h($itemName); ?> (<?php echo sap_h($itemUnit); ?>)</div>
+                <div>Stok awal: <?php echo sap_h(sap_date($startDate, 'd-M-y')); ?> | Stok akhir: <?php echo sap_h(sap_date($endDate, 'd-M-y')); ?></div>
+                <div>Transaksi: <?php echo sap_h(sap_date($startDate, 'd-M-y')); ?> s/d <?php echo sap_h(sap_date($transactionEndDate, 'd-M-y')); ?></div>
             </td>
             <td style="width:33%;" class="right">
                 <div>Hitungan utama: WHS</div>
@@ -602,13 +507,12 @@ $backUrl = $backPage . "?" . http_build_query(
     </table>
 
     <div class="section-title">REKONSILIASI WHS</div>
-
     <table class="summary-table">
         <tr>
             <th>BEGINNING BALANCE<br><?php echo sap_h(sap_date($startDate, 'd-M-y')); ?></th>
             <th>PEMASUKAN WHS<br><?php echo sap_h(sap_date($startDate, 'd-M-y')); ?> - <?php echo sap_h(sap_date($transactionEndDate, 'd-M-y')); ?></th>
             <th>PENGELUARAN WHS<br><?php echo sap_h(sap_date($startDate, 'd-M-y')); ?> - <?php echo sap_h(sap_date($transactionEndDate, 'd-M-y')); ?></th>
-            <th>SALDO AKHIR SISTEM<br><?php echo sap_h(sap_date($endDate, 'd-M-y')); ?></th>
+            <th>SALDO AKHIR SISTEM<br><?php echo sap_h(sap_date($transactionEndDate, 'd-M-y')); ?></th>
             <th>STOK OPNAME<br><?php echo sap_h(sap_date($endDate, 'd-M-y')); ?></th>
             <th>SELISIH</th>
         </tr>
@@ -618,9 +522,7 @@ $backUrl = $backPage . "?" . http_build_query(
             <td class="out"><?php echo sap_h(sap_number($totalKeluar)); ?></td>
             <td><?php echo sap_h(sap_number($saldoAkhir)); ?></td>
             <td><?php echo sap_h(sap_number($stokOpname)); ?></td>
-            <td class="<?php echo (abs($selisih) > 0.000001) ? 'negative' : ''; ?>">
-                <?php echo sap_h(sap_number($selisih)); ?>
-            </td>
+            <td class="<?php echo (abs($selisih) > 0.000001) ? 'negative' : ''; ?>"><?php echo sap_h(sap_number($selisih)); ?></td>
         </tr>
     </table>
 
@@ -630,44 +532,25 @@ $backUrl = $backPage . "?" . http_build_query(
     </div>
 
     <div class="note">
-        Transaksi tanggal <strong><?php echo sap_h(sap_date($endDate, 'd-M-y')); ?></strong> tidak masuk mutasi periode. Tanggal tersebut hanya digunakan sebagai tanggal stok akhir/opname.
+        Patokan <strong>Stok Opname (TAGS)</strong> menggunakan tanggal <strong><?php echo sap_h(sap_date($endDate, 'd-M-y')); ?></strong>. Batas Mutasi Transaksi dikunci secara sinkron di tanggal yang sama (<strong><?php echo sap_h(sap_date($transactionEndDate, 'd-M-y')); ?></strong>) untuk mencegah penarikan diluar batas periode yang selisih dengan tanggal opname.
     </div>
 
     <?php if ($selisih < -0.000001) { ?>
-        <div class="danger">
-            Stok opname lebih kecil daripada saldo sistem sebesar <strong><?php echo sap_h(sap_number(abs($selisih))); ?></strong>.
-        </div>
+        <div class="danger">Stok opname lebih kecil daripada saldo sistem sebesar <strong><?php echo sap_h(sap_number(abs($selisih))); ?></strong>.</div>
     <?php } elseif ($selisih > 0.000001) { ?>
-        <div class="danger">
-            Stok opname lebih besar daripada saldo sistem sebesar <strong><?php echo sap_h(sap_number($selisih)); ?></strong>.
-        </div>
+        <div class="danger">Stok opname lebih besar daripada saldo sistem sebesar <strong><?php echo sap_h(sap_number($selisih)); ?></strong>.</div>
     <?php } ?>
 
     <div class="section-title">DETAIL TRANSAKSI WHS</div>
-    <div class="note">Baris dengan tanggal, TRAN ID, dokumen, TRTY, lokasi, arah, dan sign yang sama sudah digabung. QTY, MASUK, dan KELUAR ditampilkan sebagai hasil penjumlahan.</div>
-
     <table class="detail-table">
         <thead>
             <tr>
-                <th>NO</th>
-                <th>TANGGAL</th>
-                <th>TRAN ID</th>
-                <th>DOKUMEN</th>
-                <th>TRTY</th>
-                <th>KETERANGAN</th>
-                <th>SIGN</th>
-                <th>QTY</th>
-                <th>MASUK</th>
-                <th>KELUAR</th>
-                <th>EFEK</th>
-                <th>SALDO BERJALAN</th>
+                <th>NO</th><th>TANGGAL</th><th>TRAN ID</th><th>DOKUMEN</th><th>TRTY</th><th>KETERANGAN</th><th>SIGN</th><th>QTY</th><th>MASUK</th><th>KELUAR</th><th>SALDO BERJALAN</th>
             </tr>
         </thead>
         <tbody>
             <tr class="begin-row">
-                <td class="center">0</td>
-                <td colspan="10">BEGINNING BALANCE <?php echo sap_h(sap_date($startDate, 'd-M-y')); ?></td>
-                <td class="number"><?php echo sap_h(sap_number($saldoAwal)); ?></td>
+                <td class="center">0</td><td colspan="9">BEGINNING BALANCE <?php echo sap_h(sap_date($startDate, 'd-M-y')); ?></td><td class="number"><?php echo sap_h(sap_number($saldoAwal)); ?></td>
             </tr>
             <?php foreach ($whsRows as $index => $row) { 
                 $balance = isset($row['RUNNING_BALANCE']) ? (float) $row['RUNNING_BALANCE'] : 0;
@@ -689,20 +572,16 @@ $backUrl = $backPage . "?" . http_build_query(
                     <td class="number"><?php echo sap_h(sap_number($row['IT_QTY'])); ?></td>
                     <td class="number in"><?php echo sap_h(sap_number($row['CALC_MASUK'])); ?></td>
                     <td class="number out"><?php echo sap_h(sap_number($row['CALC_KELUAR'])); ?></td>
-                    <td class="number"><?php echo sap_h(sap_number($row['CALC_EFFECT'])); ?></td>
-                    <td class="number <?php echo $isNegative ? 'negative' : ''; ?> <?php echo $isFirstNegative ? 'first-negative' : ''; ?>">
-                        <?php echo sap_h(sap_number($balance)); ?>
-                    </td>
+                    <td class="number <?php echo $isNegative ? 'negative' : ''; ?> <?php echo $isFirstNegative ? 'first-negative' : ''; ?>"><?php echo sap_h(sap_number($balance)); ?></td>
                 </tr>
             <?php } ?>
             <?php if (count($whsRows) == 0) { ?>
-                <tr><td colspan="12" class="center">Tidak ada transaksi WHS pada periode ini.</td></tr>
+                <tr><td colspan="11" class="center">Tidak ada transaksi WHS pada periode ini.</td></tr>
             <?php } ?>
             <tr class="total-row">
                 <td colspan="8" class="right">TOTAL WHS</td>
                 <td class="number in"><?php echo sap_h(sap_number($totalMasuk)); ?></td>
                 <td class="number out"><?php echo sap_h(sap_number($totalKeluar)); ?></td>
-                <td class="number"><?php echo sap_h(sap_number($totalMasuk - $totalKeluar)); ?></td>
                 <td class="number"><?php echo sap_h(sap_number($saldoAkhir)); ?></td>
             </tr>
         </tbody>
@@ -710,7 +589,7 @@ $backUrl = $backPage . "?" . http_build_query(
 
     <div class="section-title">REFERENSI LOKASI PRODUKSI / NON-WHS</div>
     <div class="note">
-        Bagian ini hanya sebagai acuan perpindahan atau aktivitas lokasi produksi. Angka stok awal, masuk, keluar, dan stok akhir produksi tidak dimasukkan ke saldo WHS. Stok akhir diambil dari tags/SOP tepat pada tanggal <strong><?php echo sap_h(sap_date($endDate, 'd-M-y')); ?></strong>.
+        Bagian ini hanya sebagai acuan perpindahan aktivitas lokasi produksi. Angka stok ini dipisahkan dari rekonsiliasi saldo WHS. Stok akhir ditarik persis sesuai tanggal <strong><?php echo sap_h(sap_date($endDate, 'd-M-y')); ?></strong>.
     </div>
 
     <table class="summary-table">
@@ -733,11 +612,7 @@ $backUrl = $backPage . "?" . http_build_query(
                     <td class="in"><?php echo sap_h(sap_number($locSummary['masuk'])); ?></td>
                     <td class="out"><?php echo sap_h(sap_number($locSummary['keluar'])); ?></td>
                     <td><?php echo sap_h(sap_number($locSummary['net'])); ?></td>
-                    <td>
-                        <?php if (!empty($locSummary['has_opname'])) { 
-                            echo sap_h(sap_number($locSummary['stok_akhir'])); 
-                        } else { echo '-'; } ?>
-                    </td>
+                    <td><?php if (!empty($locSummary['has_opname'])) { echo sap_h(sap_number($locSummary['stok_akhir'])); } else { echo '-'; } ?></td>
                     <td class="center">
                         <?php if (!empty($locSummary['has_opname'])) { ?>
                             <strong class="in">OPNAME</strong>
@@ -747,7 +622,6 @@ $backUrl = $backPage . "?" . http_build_query(
                     </td>
                 </tr>
             <?php } ?>
-
             <?php if (count($productionSummary) == 0) { ?>
                 <tr><td colspan="7" class="center">Tidak ada transaksi maupun stok opname lokasi non-WHS.</td></tr>
             <?php } else { ?>
@@ -767,18 +641,7 @@ $backUrl = $backPage . "?" . http_build_query(
     <table class="detail-table">
         <thead>
             <tr>
-                <th>NO</th>
-                <th>LOKASI</th>
-                <th>TANGGAL</th>
-                <th>TRAN ID</th>
-                <th>DOKUMEN</th>
-                <th>TRTY</th>
-                <th>KETERANGAN</th>
-                <th>SIGN</th>
-                <th>QTY</th>
-                <th>MASUK</th>
-                <th>KELUAR</th>
-                <th>EFEK</th>
+                <th>NO</th><th>LOKASI</th><th>TANGGAL</th><th>TRAN ID</th><th>DOKUMEN</th><th>TRTY</th><th>KETERANGAN</th><th>SIGN</th><th>QTY</th><th>MASUK</th><th>KELUAR</th>
             </tr>
         </thead>
         <tbody>
@@ -798,11 +661,10 @@ $backUrl = $backPage . "?" . http_build_query(
                     <td class="number"><?php echo sap_h(sap_number($row['IT_QTY'])); ?></td>
                     <td class="number in"><?php echo sap_h(sap_number($row['CALC_MASUK'])); ?></td>
                     <td class="number out"><?php echo sap_h(sap_number($row['CALC_KELUAR'])); ?></td>
-                    <td class="number"><?php echo sap_h(sap_number($row['CALC_EFFECT'])); ?></td>
                 </tr>
             <?php } ?>
             <?php if (count($productionRows) == 0) { ?>
-                <tr><td colspan="12" class="center">Tidak ada detail transaksi lokasi produksi/non-WHS.</td></tr>
+                <tr><td colspan="11" class="center">Tidak ada detail transaksi lokasi produksi/non-WHS.</td></tr>
             <?php } ?>
         </tbody>
     </table>

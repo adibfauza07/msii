@@ -64,7 +64,8 @@ $part_code  = post_value("CODE");
 $dipa_qty   = intval(post_value("DIPA_QTY"));
 $dipa_pqty  = intval(post_value("DIPA_PQTY"));
 $pack_desc  = post_value("PACK_DESC");
-$location   = post_value("LOCATION");
+// Tangkap parameter LOCATION dari request AJAX (JavaScript)
+$location   = post_value("LOCATION"); 
 $price_id   = intval(post_value("PRICE_ID"));
 $pack_id    = intval(post_value("PACK_ID"));
 
@@ -208,6 +209,7 @@ try {
 
     if ($exists) {
 
+        // Mode UPDATE: Pastikan urutan SET dan urutan di $paramsUpdate persis sama!
         $sqlUpdate = "
             UPDATE DI_PART
             SET
@@ -244,6 +246,7 @@ try {
 
     } else {
 
+        // Mode INSERT: Terdapat 11 kolom dan 11 values, termasuk 0 dan 1 yang di hard-code
         $sqlInsert = "
             INSERT INTO DI_PART
             (
@@ -288,6 +291,7 @@ try {
 
     sqlsrv_commit($conn);
 
+    // Pastikan mengembalikan data LOCATION juga sebagai respon JSON, agar tidak ditimpa kosong oleh script Frontend
     echo json_encode(array(
         "success" => true,
         "mode" => $mode,
@@ -299,7 +303,8 @@ try {
         "DIPA_QTY" => $dipa_qty,
         "DIPA_PQTY" => $dipa_pqty,
         "PACK_ID" => $pack_id,
-        "PACK_DESC" => $pack_desc
+        "PACK_DESC" => $pack_desc,
+        "LOCATION" => $location
     ));
     exit();
 

@@ -16,6 +16,9 @@ $poid     = isset($_POST['poid']) && $_POST['poid'] !== '' ? (int)$_POST['poid']
 $rcvdqty  = isset($_POST['rcvdqty']) ? (float)$_POST['rcvdqty'] : 0;
 $qrcodeid = isset($_POST['qrcodeid']) ? trim($_POST['qrcodeid']) : '';
 
+// Tambahkan parameter untuk mendeteksi login plan (bisa disesuaikan jika menggunakan $_SESSION)
+$plan     = isset($_POST['plan']) ? strtolower(trim($_POST['plan'])) : ''; 
+
 if ($tranid === 0 || $qrcodeid === '' || $itemid === 0) {
     echo json_encode(array('status' => 'error', 'message' => 'Data detail tidak valid.'));
     exit;
@@ -30,14 +33,17 @@ sqlsrv_begin_transaction($conn);
 
 try {
     // 1. Verifikasi ketersediaan QR Code di database (INV_TRAN)
-    $sqlExist = "SELECT TOP 1 QRCODE_ID FROM INV_TRAN WHERE QRCODE_ID = ?";
-    $stmtExist = sqlsrv_query($conn, $sqlExist, array($qrcodeid));
-    
-    // Jika query gagal atau tidak ada baris yang ditemukan, hentikan proses
-    if ($stmtExist === false || !sqlsrv_has_rows($stmtExist)) {
-        throw new Exception("QR Code [$qrcodeid] tidak terdaftar di database sistem.");
+    // Lewati pengecekan ini jika login dari 'plan2'
+    if ($plan !== 'plan2') {
+        $sqlExist = "SELECT TOP 1 QRCODE_ID FROM INV_TRAN WHERE QRCODE_ID = ?";
+        $stmtExist = sqlsrv_query($conn, $sqlExist, array($qrcodeid));
+        
+        // Jika query gagal atau tidak ada baris yang ditemukan, hentikan proses
+        if ($stmtExist === false || !sqlsrv_has_rows($stmtExist)) {
+            throw new Exception("QR Code [$qrcodeid] tidak terdaftar di database sistem.");
+        }
+        sqlsrv_free_stmt($stmtExist);
     }
-    sqlsrv_free_stmt($stmtExist);
 
     // 2. Cek Duplikasi Scan QR berdasarkan SCAN_TYPE = 1
     $sqlCheck = "SELECT TOP 1 QRCODE_ID FROM INV_TRAN WHERE QRCODE_ID = ? AND SCAN_TYPE = 1";

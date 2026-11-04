@@ -25,7 +25,6 @@ $plant_name = ($active_plant == 'p2') ? "PLANT 2" : "PLANT 1";
 $theme_color = ($active_plant == 'p2') ? "warning" : "primary"; 
 
 // --- KONFIGURASI DATABASE PENTING ---
-// Variabel $conn wajib diciptakan di file ini
 if ($active_plant == 'p2') {
     $_SESSION['erp_user'] = $_SESSION['db_user'];
     $_SESSION['erp_pass'] = $_SESSION['db_pass'];
@@ -42,7 +41,17 @@ if(file_exists($db_path)) {
     $db_error = "File database tidak ditemukan: $db_path";
 }
 
-$page = isset($_GET['page']) ? $_GET['page'] : 'home';
+$page = isset($_GET['page']) ? trim($_GET['page']) : 'home';
+
+// --- BLOK KODE UNTUK EXPORT EXCEL REPORT QC ---
+if ($page == 'report_qc' && isset($_GET['action']) && $_GET['action'] == 'excel') {
+    while (ob_get_level()) ob_end_clean(); 
+    
+    if (file_exists('page_report.php')) {
+        include "page_report.php";
+        exit;
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -56,89 +65,138 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
     <style>
-        body { background: #f4f6f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow-x: hidden; }
-        #sidebar { width: 250px; height: 100vh; background: #1f2a36; color: white; position: fixed; top: 0; left: 0; z-index: 1050; display: flex; flex-direction: column; transition: 0.3s; }
-        .nav-link { color: #aab0b6; padding: 12px 20px; text-decoration: none; display: block; border-left: 3px solid transparent; }
-        .nav-link:hover, .nav-link.active { background: #2c3e50; color: #fff; border-left: 3px solid var(--bs-<?php echo $theme_color; ?>); } 
-        .nav-link i { width: 25px; display: inline-block; }
-        #content { margin-left: 250px; padding: 25px; transition: 0.3s; }
-        .menu-label { padding: 15px 20px 5px; font-size: 11px; text-transform: uppercase; color: #6c757d; font-weight: bold; letter-spacing: 1px; }
+        body { 
+            background: #e9ecef; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+        }
         
-        .plant-badge {
-            background: <?php echo ($active_plant == 'p2') ? '#ffc107' : '#0d6efd'; ?>;
-            color: <?php echo ($active_plant == 'p2') ? '#000' : '#fff'; ?>;
-            padding: 5px 10px;
+        .navbar-custom {
+            background-color: #e3f2fd;
+            border-bottom: 3px solid #dc3545;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .navbar-custom .navbar-brand {
+            font-weight: 800;
+            color: #0d6efd;
+            font-size: 1.2rem;
+        }
+        .navbar-custom .nav-link {
+            color: #0d6efd;
+            font-weight: 600;
+            font-size: 0.9rem;
+            padding: 10px 15px;
+        }
+        .navbar-custom .nav-link:hover, .navbar-custom .nav-link.active {
+            background-color: #cce5ff;
             border-radius: 4px;
-            font-weight: bold;
-            font-size: 12px;
-            display: inline-block;
-            margin-top: 5px;
+        }
+        .navbar-custom .dropdown-menu {
+            border: 1px solid #b6d4fe;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .navbar-custom .dropdown-item {
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .navbar-custom .dropdown-item i {
+            width: 20px;
+        }
+        
+        #content {
+            padding: 20px;
+            background: #f8f9fa;
+            min-height: calc(100vh - 60px);
         }
 
-        @media (max-width: 768px) { 
-            #sidebar { margin-left: -250px; } 
-            #content { margin-left: 0; } 
+        @media print {
+            .navbar-custom {
+                display: none !important;
+            }
+            #content {
+                padding: 0 !important;
+                background: #fff !important;
+            }
         }
     </style>
 </head>
 <body>
 
-<div id="sidebar">
-    <div class="p-3 text-center fw-bold fs-5 border-bottom border-secondary bg-dark text-white">
-        <i class="bi bi-shield-check text-<?php echo $theme_color; ?>"></i> QC SYSTEM
-        <div class="plant-badge"><?php echo $plant_name; ?></div>
-    </div>
-    <div class="flex-grow-1 overflow-auto">
-        <div class="menu-label">Menu Utama</div>
-        <a href="?page=home" class="nav-link <?php echo $page=='home'?'active':''; ?>"><i class="bi bi-speedometer2"></i> Dashboard</a>
-        
-        <div class="menu-label">MENU OPERASIONAL</div>
-        
-        <?php if ($active_plant == 'p1'): ?>
-            <a href="?page=kakotora&plant=p1" class="nav-link <?php echo ($page=='kakotora')?'active':''; ?>">
-                <i class="bi bi-building text-primary"></i> Data Claim (Plant 1)
-            </a>
-            <a href="?page=usulan_perubahan_p1&plant=p1" class="nav-link <?php echo (($page=='usulan_perubahan_p1' || $page=='input_usulan' || $page=='edit_usulan'))?'active':''; ?>">
-                <i class="bi bi-file-earmark-text text-primary"></i> Usulan Perubahan Plant 1
-            </a>
-            <a href="?page=kalibrasi" class="nav-link <?php echo ($page=='kalibrasi' )?'active':''; ?>">
-                <i class="bi bi-file-earmark-text text-primary"></i> Kalibrasi Plant 1
-            </a>
-        <?php else: ?>
-            <a href="?page=kakotora&plant=p2" class="nav-link <?php echo ($page=='kakotora')?'active':''; ?>">
-                <i class="bi bi-building-fill text-warning"></i> Data Claim (Plant 2)
-            </a>
-            <a href="?page=usulan_perubahan&plant=p2" class="nav-link <?php echo (($page=='usulan_perubahan' || $page=='input_usulan' || $page=='edit_usulan'))?'active':''; ?>">
-                <i class="bi bi-file-earmark-text-fill text-warning"></i> Usulan Perubahan Plant 2
-            </a>
-            <a href="?page=kalibrasi" class="nav-link <?php echo ($page=='kalibrasi')?'active':''; ?>">
-                <i class="bi bi-file-earmark-text-fill text-warning"></i> Kalibrasi Plant 2
-            </a>
-        <?php endif; ?>
-
-        
-        <div class="menu-label">Laporan</div>
-        <a href="#" class="nav-link"><i class="bi bi-file-earmark-bar-graph"></i> Summary Report</a>
-        <!-- Tambahkan menu NG Production di sini -->
-        <a href="?page=ng_prod" class="nav-link <?php echo ($page=='ng_prod')?'active':''; ?>">
-            <i class="bi bi-display text-info"></i> NG Production
+<!-- TOP NAVBAR -->
+<nav class="navbar navbar-expand-lg navbar-custom sticky-top">
+    <div class="container-fluid">
+        <!-- Brand & Plant -->
+        <a class="navbar-brand" href="?page=home">
+            <i class="bi bi-shield-check"></i> QC System <span class="badge bg-<?php echo $theme_color; ?> text-dark ms-1"><?php echo $plant_name; ?></span>
         </a>
-    </div>
-    <div class="p-3 border-top border-secondary bg-dark">
-        <div class="d-flex align-items-center">
-            <div class="bg-secondary rounded-circle text-white d-flex align-items-center justify-content-center" style="width: 35px; height: 35px; margin-right: 10px;">
-                <i class="bi bi-person"></i>
-            </div>
-            <div style="font-size: 12px; line-height: 1.2;">
-                <span class="d-block text-white fw-bold"><?php echo $_SESSION['db_user']; ?></span>
-                <span class="text-muted">User Login</span>
+        
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#topMenu" aria-controls="topMenu" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="topMenu">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0 align-items-center">
+                
+                <!-- Menu Dashboard -->
+                <li class="nav-item">
+                    <a class="nav-link <?php echo $page=='home'?'active':''; ?>" href="?page=home">
+                        <i class="bi bi-speedometer2"></i> Dashboard
+                    </a>
+                </li>
+                
+                <!-- Menu Input Data -->
+                <li class="nav-item">
+                    <a class="nav-link text-success <?php echo $page=='input_problem'?'active':''; ?>" href="?page=input_problem&plant=<?php echo $active_plant; ?>">
+                        <i class="bi bi-ui-checks-grid"></i> Input QC Problem
+                    </a>
+                </li>
+
+                <!-- Menu Operasional (Dropdown) -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle <?php echo in_array($page, ['kakotora','usulan_perubahan','usulan_perubahan_p1','input_usulan','edit_usulan','kalibrasi'])?'active':''; ?>" href="#" id="menuOperasional" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-list-check"></i> Menu Operasional
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="menuOperasional">
+                        <?php if ($active_plant == 'p1'): ?>
+                            <li><a class="dropdown-item" href="?page=kakotora&plant=p1"><i class="bi bi-building text-primary"></i> Data Claim (Plant 1)</a></li>
+                            <li><a class="dropdown-item" href="?page=usulan_perubahan_p1&plant=p1"><i class="bi bi-file-earmark-text text-primary"></i> Usulan Perubahan Plant 1</a></li>
+                            <li><a class="dropdown-item" href="?page=kalibrasi"><i class="bi bi-tools text-primary"></i> Kalibrasi Plant 1</a></li>
+                        <?php else: ?>
+                            <li><a class="dropdown-item" href="?page=kakotora&plant=p2"><i class="bi bi-building-fill text-warning"></i> Data Claim (Plant 2)</a></li>
+                            <li><a class="dropdown-item" href="?page=usulan_perubahan&plant=p2"><i class="bi bi-file-earmark-text-fill text-warning"></i> Usulan Perubahan Plant 2</a></li>
+                            <li><a class="dropdown-item" href="?page=kalibrasi"><i class="bi bi-tools text-warning"></i> Kalibrasi Plant 2</a></li>
+                        <?php endif; ?>
+                    </ul>
+                </li>
+
+                <!-- Menu Laporan (Dropdown) -->
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle <?php echo in_array($page, ['ng_prod', 'report_qc', 'delivery_item_list', 'delivery_item_list_12month'])?'active':''; ?>" href="#" id="menuLaporan" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-file-earmark-bar-graph"></i> Laporan
+                    </a>
+                    <ul class="dropdown-menu" aria-labelledby="menuLaporan">
+                        <li><a class="dropdown-item" href="?page=report_qc&plant=<?php echo $active_plant; ?>"><i class="bi bi-file-earmark-bar-graph text-success"></i> DIC REPORT</a></li>
+                        <li><a class="dropdown-item" href="?page=ng_prod"><i class="bi bi-display text-info"></i> NG Production</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="?page=delivery_item_list_12month&plant=<?php echo $active_plant; ?>"><i class="bi bi-box-seam text-primary"></i> Item List (12M)</a></li>
+                    </ul>
+                </li>
+            </ul>
+
+            <!-- Info User & Logout -->
+            <div class="d-flex align-items-center">
+                <span class="text-primary fw-bold me-3">
+                    <i class="bi bi-person-circle"></i> <?php echo $_SESSION['db_user']; ?>
+                </span>
+                <a href="logout.php" class="btn btn-danger btn-sm fw-bold shadow-sm">
+                    <i class="bi bi-box-arrow-right"></i> Logout
+                </a>
             </div>
         </div>
-        <a href="logout.php" class="btn btn-outline-danger btn-sm w-100 mt-3"><i class="bi bi-box-arrow-right"></i> LOGOUT</a>
     </div>
-</div>
+</nav>
 
-<div id="content" class="<?php echo ($page == 'home') ? 'night-mode' : ''; ?>" style="<?php echo ($page == 'home') ? 'min-height: 100vh;' : ''; ?>">
+<!-- MAIN CONTENT AREA -->
+<div id="content" class="<?php echo ($page == 'home') ? 'night-mode' : ''; ?>">
     <?php
     if (isset($db_error)) {
         echo "<div class='alert alert-danger'>$db_error</div>";
@@ -146,10 +204,12 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
 
     // 1. DASHBOARD HOME
     if ($page == 'home') {
-        echo "<h3>Dashboard Overview ($plant_name)</h3><hr>";
-        echo "<div class='row'>";
-        echo "<div class='col-md-4'><div class='card bg-$theme_color text-white p-3 mb-3'><h5>Total Claim</h5><h3>Check Data</h3></div></div>";
+        echo "<div class='card shadow-sm'><div class='card-body text-center py-5'>";
+        echo "<h3 class='text-uppercase fw-bold mb-3'>Dashboard Overview ($plant_name)</h3><hr>";
+        echo "<div class='row justify-content-center mt-4'>";
+        echo "<div class='col-md-4'><div class='card bg-$theme_color text-white p-4 shadow'><h5>Total Claim</h5><h2 class='fw-bold'>Check Data</h2></div></div>";
         echo "</div>";
+        echo "</div></div>";
     }
     // 2. KAKOTORA CLAIM
     elseif ($page == 'kakotora') {
@@ -160,70 +220,71 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
             echo "<div class='alert alert-danger'>File <b>page_kakotora.php</b> tidak ditemukan!</div>";
         }
     }
-    // 3. LIST USULAN PERUBAHAN (GEMBOK SUDAH DIBUKA)
+    // 3. LIST USULAN PERUBAHAN
     elseif ($page == 'usulan_perubahan') {
-        if (file_exists('page_usulan_perubahan.php')) { 
-            include "page_usulan_perubahan.php"; 
-        } else {
-            echo "<div class='alert alert-danger'>File <b>page_usulan_perubahan.php</b> tidak ditemukan!</div>";
-        }
+        if (file_exists('page_usulan_perubahan.php')) { include "page_usulan_perubahan.php"; } 
+        else { echo "<div class='alert alert-danger'>File <b>page_usulan_perubahan.php</b> tidak ditemukan!</div>"; }
     }
-    // --- TAMBAHAN UNTUK LIST USULAN PLANT 1 ---
     elseif ($page == 'usulan_perubahan_p1') {
-        if (file_exists('page_usulan_perubahan_p1.php')) { 
-            include "page_usulan_perubahan_p1.php"; 
-        } else {
-            echo "<div class='alert alert-danger'>File <b>page_usulan_perubahan_p1.php</b> tidak ditemukan!</div>";
-        }
+        if (file_exists('page_usulan_perubahan_p1.php')) { include "page_usulan_perubahan_p1.php"; } 
+        else { echo "<div class='alert alert-danger'>File <b>page_usulan_perubahan_p1.php</b> tidak ditemukan!</div>"; }
     }
-    // 4. FORM INPUT USULAN BARU (GEMBOK SUDAH DIBUKA)
     elseif ($page == 'input_usulan') {
-        if (file_exists('input_usulan.php')) { 
-            include "input_usulan.php"; 
-        } else {
-            echo "<div class='alert alert-danger'>File <b>input_usulan.php</b> tidak ditemukan!</div>";
-        }
+        if (file_exists('input_usulan.php')) { include "input_usulan.php"; } 
+        else { echo "<div class='alert alert-danger'>File <b>input_usulan.php</b> tidak ditemukan!</div>"; }
     }
-    // 5. FORM EDIT USULAN (GEMBOK SUDAH DIBUKA)
     elseif ($page == 'edit_usulan') {
-        if (file_exists('edit_usulan.php')) { 
-            include "edit_usulan.php"; 
+        if (file_exists('edit_usulan.php')) { include "edit_usulan.php"; } 
+        else { echo "<div class='alert alert-danger'>File <b>edit_usulan.php</b> tidak ditemukan!</div>"; }
+    }
+    // 4. HALAMAN LAPORAN & NG PRODUCTION
+    elseif ($page == 'report_qc') {
+        if (file_exists('page_report.php')) {
+            include "page_report.php";
         } else {
-            echo "<div class='alert alert-danger'>File <b>edit_usulan.php</b> tidak ditemukan!</div>";
+            echo "<div class='alert alert-danger'>File <b>page_report.php</b> tidak ditemukan!</div>";
         }
     }
-    
-    // --- TAMBAHAN BARU: HALAMAN NG PRODUCTION ---
     elseif ($page == 'ng_prod') {
         if (file_exists('ng_prod.php')) {
-            // Kita tambahkan class night-mode secara dinamis agar tampilannya tetap gelap/keren
             echo "<script>document.getElementById('content').classList.add('night-mode');</script>";
             include "ng_prod.php";
         } else {
             echo "<div class='alert alert-danger'>File <b>ng_prod.php</b> tidak ditemukan!</div>";
         }
     }
-
-    // --- HALAMAN KALIBRASI ---
-    elseif ($page == 'kalibrasi') {
-        if (file_exists('kalibrasi.php')) {
-            include "kalibrasi.php";
+    // 5. HALAMAN DELIVERY ITEM LIST (MENDUKUNG KEDUA PARAMETER URL)
+    elseif ($page == 'delivery_item_list' || $page == 'delivery_item_list_12month') {
+        if (file_exists(__DIR__ . '/delivery_item_list_12month.php')) {
+            include __DIR__ . '/delivery_item_list_12month.php';
+        } elseif (file_exists(__DIR__ . '/../ordering/delivery_item_list_12month.php')) {
+            include __DIR__ . '/../ordering/delivery_item_list_12month.php';
         } else {
-            echo "<div class='alert alert-danger'>File <b>kalibrasi.php</b> tidak ditemukan!</div>";
+            echo "<div class='alert alert-danger'>File <b>delivery_item_list_12month.php</b> tidak ditemukan di folder <code>msii/qc/</code>! Pastikan file tersebut sudah disimpan di folder yang sama dengan <code>dashboard_qc.php</code>.</div>";
         }
     }
-
-    // 6. JIKA HALAMAN TIDAK ADA
+    // 6. HALAMAN KALIBRASI
+    elseif ($page == 'kalibrasi') {
+        if (file_exists('kalibrasi.php')) { include "kalibrasi.php"; } 
+        else { echo "<div class='alert alert-danger'>File <b>kalibrasi.php</b> tidak ditemukan!</div>"; }
+    }
+    // 7. FORM INPUT MASTER DETAIL QC PROBLEM
+    elseif ($page == 'input_problem') {
+        if (file_exists('input_problem.php')) {
+            include "input_problem.php";
+        } else {
+            echo "<div class='alert alert-danger'>File <b>input_problem.php</b> tidak ditemukan!</div>";
+        }
+    }
+    // 8. JIKA HALAMAN TIDAK ADA
     else {
         echo "<div class='alert alert-info'>Halaman tidak ditemukan.</div>";
     }
-    
     ?>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    // Update Judul Halaman Kakotora secara dinamis
     if(typeof currentPlantName !== 'undefined' && document.getElementById('pageTitle')) {
         document.getElementById('pageTitle').innerHTML = '<i class="bi bi-list-task"></i> DATA KAKOTORA - ' + currentPlantName;
     }

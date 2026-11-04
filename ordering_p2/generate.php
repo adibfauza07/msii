@@ -23,11 +23,10 @@ $statGenerate = "";
 $msgTransfer = "";
 $statTransfer = "";
 
-// Default range tanggal untuk filter Print Temp
-$print_start_val = $firstDayOfMonth;
-$print_end_val   = $today;
-
-function GetNextDINo($conn, $UseDate, $offset = 0) {
+// =========================================================================
+// FUNGSI PENCARIAN NOMOR TERAKHIR (DIPERBAIKI MENGGUNAKAN MAX)
+// =========================================================================
+function GetNextDINo($conn, $UseDate) {
     $ts = strtotime($UseDate);
     if ($ts === false) $ts = time();
     $yymm = date('y', $ts) . date('m', $ts); 
@@ -35,17 +34,16 @@ function GetNextDINo($conn, $UseDate, $offset = 0) {
     $minNo = intval($yymm . "001");  
     $pattern = $yymm . "%";
 
+    // Cari angka terbesar (MAX) yang benar-benar ada di tabel Original & Temp
     $sql = "
-        SELECT MAX(CAST(DI_NO AS INT)) AS MaxNo FROM (
-            SELECT TOP 1 DI_NO FROM dbo.DI 
-            WHERE DI_NO LIKE ? AND DI_NO NOT LIKE '%[^0-9]%' 
-            ORDER BY DI_ID DESC
+        SELECT MAX(MaxNo) AS FinalMax FROM (
+            SELECT MAX(CAST(DI_NO AS INT)) AS MaxNo FROM dbo.DI 
+            WHERE DI_NO LIKE ? AND LEN(DI_NO) = 7 AND DI_NO NOT LIKE '%[^0-9]%' 
             
             UNION
             
-            SELECT TOP 1 DI_NO FROM dbo.DI_TEMP 
-            WHERE DI_NO LIKE ? AND DI_NO NOT LIKE '%[^0-9]%' 
-            ORDER BY DI_ID DESC
+            SELECT MAX(CAST(DI_NO AS INT)) AS MaxNo FROM dbo.DI_TEMP 
+            WHERE DI_NO LIKE ? AND LEN(DI_NO) = 7 AND DI_NO NOT LIKE '%[^0-9]%' 
         ) t
     ";
     
@@ -53,19 +51,19 @@ function GetNextDINo($conn, $UseDate, $offset = 0) {
     
     $lastNo = 0;
     if ($stmt !== false && $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-        if ($row['MaxNo'] != null) {
-            $lastNo = intval($row['MaxNo']);
+        if ($row['FinalMax'] != null) {
+            $lastNo = intval($row['FinalMax']);
         }
     }
 
-    if ($lastNo == 0) {
-        return $minNo + $offset; 
+    if ($lastNo == 0 || $lastNo < $minNo) {
+        return $minNo; 
     } else {
         return $lastNo + 1; 
     }
 }
 
-function GenerateDSNo_Other($conn, $CustAbbr, $UseDate, $offset = 0) {
+function GenerateDSNo_Other($conn, $CustAbbr, $UseDate) {
     $rom = array('I','II','III','IV','V','VI','VII','VIII','IX','X','XI','XII');
     $ts = strtotime($UseDate);
     if ($ts === false) $ts = time();
@@ -74,33 +72,43 @@ function GenerateDSNo_Other($conn, $CustAbbr, $UseDate, $offset = 0) {
 
     $monthRoman = $rom[$m - 1];
     $year2 = substr($y, 2, 2);
+    // Pola pencarian berfokus pada /DS/ di database
     $pattern = '%/IMC/DS/' . trim($CustAbbr) . '/%/' . $year2;
 
+    // Cari urutan terbesar dengan mengambil angka sebelum slash pertama
     $sql = "
-        SELECT TOP 1 DI_DSNO FROM (
-            SELECT DI_DSNO, DI_ID FROM dbo.DI WHERE DI_DSNO LIKE ?
+        SELECT MAX(MaxUrut) AS FinalMax FROM (
+            SELECT MAX(CAST(SUBSTRING(DI_DSNO, 1, CHARINDEX('/', DI_DSNO) - 1) AS INT)) AS MaxUrut 
+            FROM dbo.DI 
+            WHERE DI_DSNO LIKE ? 
+              AND CHARINDEX('/', DI_DSNO) > 1
+              AND SUBSTRING(DI_DSNO, 1, CHARINDEX('/', DI_DSNO) - 1) NOT LIKE '%[^0-9]%'
+            
             UNION
-            SELECT DI_DSNO, DI_ID FROM dbo.DI_TEMP WHERE DI_DSNO LIKE ?
-        ) t ORDER BY DI_ID DESC
+            
+            SELECT MAX(CAST(SUBSTRING(DI_DSNO, 1, CHARINDEX('/', DI_DSNO) - 1) AS INT)) AS MaxUrut 
+            FROM dbo.DI_TEMP 
+            WHERE DI_DSNO LIKE ? 
+              AND CHARINDEX('/', DI_DSNO) > 1
+              AND SUBSTRING(DI_DSNO, 1, CHARINDEX('/', DI_DSNO) - 1) NOT LIKE '%[^0-9]%'
+        ) t
     ";
+    
     $stmt = sqlsrv_query($conn, $sql, array($pattern, $pattern));
     
     $newNo = 1;
     if ($stmt !== false && $row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-        $lastDS = trim($row['DI_DSNO']);
-        $pPos = strpos($lastDS, '/IMC/');
-        if ($pPos !== false && $pPos > 0) {
-            $lastNo = intval(substr($lastDS, 0, $pPos));
-            if ($lastNo > 0) {
-                $newNo = $lastNo + 1;
-            }
+        if ($row['FinalMax'] != null) {
+            $newNo = intval($row['FinalMax']) + 1;
         }
     }
 
-    $newNo = $newNo + $offset; 
     $dsno = sprintf('%03d/IMC/DS/%s/%s/%s', $newNo, trim($CustAbbr), $monthRoman, $year2);
-    return str_replace('/DS/', '/INV/', $dsno);
+    
+    // PERBAIKAN: Kembalikan string DS asli, JANGAN di-replace ke INV di tahap ini.
+    return $dsno;
 }
+
 
 // =========================================================================
 // 2. PROSES POST (AJAX ENTER SAVE, GENERATE, TRANSFER, & UPLOAD PDF KOITO)
@@ -159,13 +167,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $di_date_pdf = isset($_POST['DI_DATE_PDF']) ? trim($_POST['DI_DATE_PDF']) : $today;
             $file_tmp = $_FILES['file_pdf']['tmp_name'];
             
-            // Otomatis Start Date adalah tanggal 1 di bulan yang dipilih pada DI_DATE_PDF
             $start_date_pdf = date('Y-m-01', strtotime($di_date_pdf));
             
-            // Set range print agar langsung mengikuti bulan yang baru saja diupload
-            $print_start_val = $start_date_pdf;
-            $print_end_val   = $di_date_pdf;
-
             try {
                 $exePath = __DIR__ . '/assets/pdftotext.exe'; 
                 if (!file_exists($exePath)) {
@@ -219,7 +222,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $c_code = trim($c_row['CUST_CODE']);
                 $c_abbr = trim($c_row['CUST_ABBR']);
 
-                // Tarik data dari SP_DELIVERY_INSTRUCTION_PO2 menggunakan range awal bulan DI_DATE_PDF
                 $sp_start_date = date('Ymd', strtotime($start_date_pdf));
                 $sp_end_date   = date('Ymd', strtotime($di_date_pdf));
                 
@@ -245,6 +247,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 sqlsrv_begin_transaction($conn);
                 
+                // Ambil nomor awal
                 $base_dino = GetNextDINo($conn, $di_date_pdf);
                 $base_dsno = GenerateDSNo_Other($conn, $c_abbr, $di_date_pdf);
                 $ds_parts = explode('/', $base_dsno);
@@ -258,6 +261,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $suffix = isset($alphabet[$loop_index]) ? $alphabet[$loop_index] : 'X';
                     $location_code = $cycle_prefix . $suffix; 
                     
+                    // Increment urutan berdasar loop index
                     $di_no = $base_dino + $loop_index;
                     $ds_parts[0] = sprintf('%03d', $start_ds_int + $loop_index);
                     $di_dsno = implode('/', $ds_parts);
@@ -395,9 +399,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $start_date = date('Ymd', strtotime($start_raw));
         $end_date   = date('Ymd', strtotime($end_raw));
 
-        $print_start_val = $start_raw;
-        $print_end_val   = $end_raw;
-
         if ($action === 'clear_only') {
             if ($clear_pwd === 'q9tj9') {
                 sqlsrv_begin_transaction($conn);
@@ -470,6 +471,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     sqlsrv_begin_transaction($conn);
                     try {
+                        
+                        // AMBIL NOMOR TERAKHIR SEKALI SAJA DI AWAL UNTUK CUSTOMER INI
+                        if ($c_abbr == '') throw new Exception("Customer Abbr kosong. (Cust ID: " . $c_id . ")");
+                        $base_dino = GetNextDINo($conn, $end_raw);
+                        $base_dsno = GenerateDSNo_Other($conn, $c_abbr, $end_raw);
+                        $ds_parts = explode('/', $base_dsno);
+                        $start_ds_int = intval($ds_parts[0]);
+
                         $offset = 0;
                         
                         foreach ($grouped_rows as $group_key => $group_items) {
@@ -490,10 +499,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 }
                             }
 
-                            $di_no = GetNextDINo($conn, $end_raw, 0); 
-                            
-                            if ($c_abbr == '') throw new Exception("Customer Abbr kosong. (Cust ID: " . $c_id . ")");
-                            $di_dsno = GenerateDSNo_Other($conn, $c_abbr, $end_raw, $offset);
+                            // HITUNG INCREMENT DI_NO DAN DS_NO BERDASARKAN BASE DI ATAS
+                            $di_no = $base_dino + $offset; 
+                            $ds_parts[0] = sprintf('%03d', $start_ds_int + $offset);
+                            $di_dsno = implode('/', $ds_parts);
                             $di_invno = str_replace('/DS/', '/INV/', $di_dsno); 
                             
                             $sql_ins_di = "
@@ -569,7 +578,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
                                     ";
                                     sqlsrv_query($conn, $sql_ins_part, array(
-                                        $new_di_id, $lino, $part_code_8, $part_id, $qty_to_load, $pack_id,                       
+                                        $new_di_id, $lino, $part_code_8, $part_id, $qty_to_load, $pack_id,                        
                                         substr($dipa_pack, 0, 10), $dipa_pqty, $pb_qty, $price_id, substr($location, 0, 30),
                                         $row_po, $row_po
                                     ));
@@ -644,15 +653,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         sqlsrv_query($conn, $sql_upd_dino, array($upd_dino, $temp_di_id));
                     }
 
+                    // =========================================================================
+                    // VALIDASI CEK DUPLIKAT NO. DI (Mencegah Error Unique Index 'DI02_DINO')
+                    // =========================================================================
+                    $sql_get_dino = "SELECT DI_NO FROM dbo.DI_TEMP WHERE DI_ID = ?";
+                    $stmt_get_dino = sqlsrv_query($conn, $sql_get_dino, array($temp_di_id));
+                    $row_dino = sqlsrv_fetch_array($stmt_get_dino, SQLSRV_FETCH_ASSOC);
+                    
+                    if (!$row_dino) {
+                        throw new Exception("Data temporary tidak ditemukan.");
+                    }
+                    
+                    $current_di_no = trim($row_dino['DI_NO']);
+                    
+                    $sql_cek = "SELECT TOP 1 DI_ID FROM dbo.DI WHERE DI_NO = ?";
+                    $stmt_cek = sqlsrv_query($conn, $sql_cek, array($current_di_no));
+                    if ($stmt_cek !== false && sqlsrv_has_rows($stmt_cek)) {
+                        throw new Exception("No. DI <strong>" . h($current_di_no) . "</strong> sudah terpakai di data Original. Silakan edit No DI sebelum ditransfer.");
+                    }
+                    // =========================================================================
+
+                    // INSERT DI (TANPA DI_ORDERNO)
                     $sql_ins_di = "
                         SET NOCOUNT ON;
                         INSERT INTO dbo.DI (
                             DI_NO, CUST_ID, CUST_CODE, DI_START_DATE, DI_DATE, DI_INVNO, DI_DSNO, DI_BCNO, DI_DSRET, DI_DSRETDATE,
-                            DI_INVRET, DI_INVRETDATE, DI_BCRET, DI_BCRETDATE, DI_BCDEST, DI_POSTED, DATE_CREATED, DATE_UPDATED, TRAN_ID, DI_ORDERNO
+                            DI_INVRET, DI_INVRETDATE, DI_BCRET, DI_BCRETDATE, DI_BCDEST, DI_POSTED, DATE_CREATED, DATE_UPDATED, TRAN_ID
                         )
                         SELECT 
                             DI_NO, CUST_ID, CUST_CODE, DI_START_DATE, DI_DATE, DI_INVNO, DI_DSNO, DI_BCNO, DI_DSRET, DI_DSRETDATE,
-                            DI_INVRET, DI_INVRETDATE, DI_BCRET, DI_BCRETDATE, DI_BCDEST, DI_POSTED, DATE_CREATED, DATE_UPDATED, TRAN_ID, DI_ORDERNO
+                            DI_INVRET, DI_INVRETDATE, DI_BCRET, DI_BCRETDATE, DI_BCDEST, DI_POSTED, DATE_CREATED, DATE_UPDATED, TRAN_ID
                         FROM dbo.DI_TEMP WHERE DI_ID = ?;
                         
                         SELECT SCOPE_IDENTITY() AS NEW_DI_ID;
@@ -706,7 +736,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 } catch (Exception $e) {
                     sqlsrv_rollback($conn);
-                    $error_messages[] = "ID Temp " . $temp_di_id . ": " . $e->getMessage();
+                    $error_messages[] = $e->getMessage();
                 }
             }
 
@@ -714,7 +744,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             if ($success_count > 0) {
                 $msgTransfer = "Berhasil mentransfer <strong>$success_count</strong> data ke original tanpa pemotongan stok.";
-                if (!empty($error_messages)) $msgTransfer .= "<br>Error tersisa: " . implode("<br>", $error_messages);
+                if (!empty($error_messages)) $msgTransfer .= "<br>Error tersisa: <br>" . implode("<br>", $error_messages);
                 $statTransfer = "success";
             } else {
                 $msgTransfer = "Semua data gagal ditransfer.<br>" . implode("<br>", $error_messages);
@@ -917,11 +947,7 @@ if ($stmt_get !== false) {
                     <!-- Form Print DI -->
                     <div style="border-left: 2px solid #808080; height: 24px; margin: 0 5px;"></div>
                     <div style="display: flex; gap: 5px; align-items: center;">
-                        <span style="font-weight:bold; font-size:11px; color:#000080;">Print Temp:</span>
-                        <input type="date" id="print_start" value="<?php echo h($print_start_val); ?>" style="width: 110px;">
-                        <span style="font-weight:bold;">-</span>
-                        <input type="date" id="print_end" value="<?php echo h($print_end_val); ?>" style="width: 110px;">
-                        <button type="button" onclick="printDI()" style="padding: 4px 10px; color: #000;">Print DI</button>
+                        <button type="button" onclick="printDI()" style="padding: 4px 10px; color: #000; background: #e0e0e0;">Print DI (Terpilih)</button>
                     </div>
                 </div>
                 <div style="font-weight: bold; font-size: 13px;">
@@ -995,40 +1021,6 @@ if ($stmt_get !== false) {
 </div>
 
 <script>
-// ================= AUTO SINKRON TANGGAL AWAL BULAN =================
-// Setiap kali input "Tanggal DI" diubah, Print Temp otomatis mulai dari tgl 1 bulan tersebut
-document.getElementById('DI_DATE_PDF').addEventListener('change', function() {
-    var val = this.value;
-    if (val) {
-        var d = new Date(val);
-        if (!isNaN(d.getTime())) {
-            var y = d.getFullYear();
-            var m = ('0' + (d.getMonth() + 1)).slice(-2);
-            var firstDay = y + '-' + m + '-01';
-            
-            // Set otomatis input Print Temp
-            document.getElementById('print_start').value = firstDay;
-            document.getElementById('print_end').value = val;
-        }
-    }
-});
-
-// Begitu juga jika mengganti DI DATE pada form Generate manual
-document.getElementById('GEN_DI_DATE').addEventListener('change', function() {
-    var val = this.value;
-    if (val) {
-        var d = new Date(val);
-        if (!isNaN(d.getTime())) {
-            var y = d.getFullYear();
-            var m = ('0' + (d.getMonth() + 1)).slice(-2);
-            var firstDay = y + '-' + m + '-01';
-            document.getElementById('GEN_START_DATE').value = firstDay;
-            document.getElementById('print_start').value = firstDay;
-            document.getElementById('print_end').value = val;
-        }
-    }
-});
-
 // ================= SCRIPT JAVASCRIPT: AJAX SAVE ENTER NO. DI =================
 function saveDiNoOnEnter(e, inputElem, diId) {
     if (e.key === 'Enter' || e.keyCode === 13) {
@@ -1207,15 +1199,27 @@ function submitTransfer(action) {
 
 // ================= SCRIPT PRINT =================
 function printDI() {
-    var startDate = document.getElementById('print_start').value;
-    var endDate = document.getElementById('print_end').value;
+    var checkboxes = document.getElementsByClassName('rowCheckbox');
+    var selectedIds = [];
     
-    if (!startDate || !endDate) {
-        alert("Tanggal Start Date dan End Date untuk Print harus diisi!");
+    // Looping untuk mencari checkbox mana saja yang di-ceklis
+    for (var i = 0; i < checkboxes.length; i++) {
+        if (checkboxes[i].checked) {
+            selectedIds.push(checkboxes[i].value); // Ambil DI_ID
+        }
+    }
+    
+    // Jika tidak ada yang dipilih, tampilkan peringatan
+    if (selectedIds.length === 0) {
+        alert("Pilih setidaknya satu data yang ingin diprint!");
         return;
     }
     
-    var url = "delivery_instruction_oto.php?START_DATE=" + enc(startDate) + "&END_DATE=" + enc(endDate);
+    // Gabungkan ID menjadi string (misal: 152,153,154)
+    var idsStr = selectedIds.join(',');
+    
+    // Buka window baru dengan parameter PRINT_IDS
+    var url = "delivery_instruction_oto.php?PRINT_IDS=" + encodeURIComponent(idsStr);
     window.open(url, '_blank');
 }
 </script>

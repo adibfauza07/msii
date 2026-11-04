@@ -261,6 +261,7 @@ function playSound(type) {
 
 $(document).ready(function() {
     var baseUrl = '<?php echo "http://" . $_SERVER['HTTP_HOST'] . rtrim(dirname($_SERVER['PHP_SELF']), '/\\') . "/"; ?>';
+    // Menangkap variabel active_plant dari PHP session secara dinamis
     var activePlant = '<?php echo isset($_SESSION['active_plant']) ? strtolower(trim($_SESSION['active_plant'])) : "p1"; ?>';
 
     var $qr = $('#qrcode');
@@ -331,9 +332,6 @@ $(document).ready(function() {
         }
     });
 
-    // ==========================================
-    // FUNGSI ALERT & FEEDBACK 
-    // ==========================================
     function setInputFeedback(status) {
         clearTimeout(colorResetTimer);
         $qr.removeClass('scan-success scan-error').val('').attr('placeholder', 'Arahkan scanner ke sini...');
@@ -442,9 +440,7 @@ $(document).ready(function() {
         location.reload();
     });
 
-    // ==========================================
     // LOGIKA SCAN SUPER INSTAN (ENTER KEY DETECTION)
-    // ==========================================
     function processQRCode(str) {
         if (str.trim() === '') return;
 
@@ -479,7 +475,7 @@ $(document).ready(function() {
 
         var tranid = $('#tranid').val();
 
-        // Eksekusi Simpan Detail secara Langsung! Pengecekan duplikat dihilangkan di frontend karena sudah ditangani di server.
+        // EKSEKUSI SIMPAN DETAIL
         $.ajax({
             type: 'POST',
             url: baseUrl + 'out_simpan_detail.php',
@@ -488,7 +484,8 @@ $(document).ready(function() {
                 itemid: itemId,
                 poid: poId,
                 rcvdqty: qty,
-                qrcodeid: qrId
+                qrcodeid: qrId,
+                plan: activePlant // <-- Mengirimkan p1 atau p2 ke backend
             },
             dataType: 'json',
             success: function(res) {
@@ -514,17 +511,15 @@ $(document).ready(function() {
         });
     }
 
-    // Pemicu Utama: Tombol Enter dari Scanner
     $qr.on('keypress', function(e) {
         if (e.which === 13) {
             e.preventDefault();
             var str = $(this).val();
-            clearTimeout(scanTimer); // Batalkan timer cadangan
-            processQRCode(str);      // Langsung eksekusi tanpa jeda
+            clearTimeout(scanTimer);
+            processQRCode(str);      
         }
     });
 
-    // Pemicu Cadangan
     $qr.on('input', function() {
         if ($(this).hasClass('scan-success') || $(this).hasClass('scan-error')) {
             $(this).removeClass('scan-success scan-error').attr('placeholder', 'Arahkan scanner ke sini...');
@@ -534,7 +529,6 @@ $(document).ready(function() {
         var str = $(this).val();
         clearTimeout(scanTimer);
         
-        // Timer dipercepat menjadi 200ms
         scanTimer = setTimeout(function() {
             if ($qr.val().trim() !== '') {
                 var parts = str.split('|');

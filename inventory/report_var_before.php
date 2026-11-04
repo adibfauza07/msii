@@ -28,8 +28,8 @@ if ($stmt === false) {
     die("<pre>Error executing SP: \n" . print_r(sqlsrv_errors(), true) . "</pre>");
 }
 
-// Array untuk mengelompokkan data berdasarkan Lokasi (LOC_NAME)
-$dataByLocation = array();
+// Array untuk mengelompokkan data berdasarkan Customer lalu Location
+$dataGrouped = array();
 $sop_date_str = "-";
 
 while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
@@ -38,12 +38,20 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         $sop_date_str = $row['SOPDATE']->format('d-F-Y'); 
     }
     
-    // Kelompokkan data
-    $locName = trim($row['LOC_NAME']);
+    // Tentukan Nama Customer
+    $custComp = isset($row['CUST_COMP']) ? trim($row['CUST_COMP']) : '';
+    if ($custComp == '') {
+        $custComp = 'UNASSIGNED CUSTOMER';
+    }
+
+    // Tentukan Nama Lokasi
+    $locName = isset($row['LOC_NAME']) ? trim($row['LOC_NAME']) : '';
     if ($locName == '') {
         $locName = 'UNASSIGNED LOCATION';
     }
-    $dataByLocation[$locName][] = $row;
+    
+    // Masukkan ke array bersarang (Customer -> Location -> Data)
+    $dataGrouped[$custComp][$locName][] = $row;
 }
 ?>
 
@@ -79,6 +87,17 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
             padding: 2px 2px;
             vertical-align: top;
         }
+
+        /* Styling Judul Customer */
+        .cust-header {
+            font-weight: bold;
+            font-size: 13px;
+            background-color: #f0f0f0;
+            padding-top: 10px !important;
+            padding-bottom: 10px !important;
+            border-top: 1px solid #000;
+            border-bottom: 1px solid #000;
+        }
         
         /* Styling Judul Lokasi */
         .loc-header {
@@ -87,14 +106,23 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
             text-transform: uppercase;
             padding-top: 15px !important;
             padding-bottom: 5px !important;
+            padding-left: 15px !important;
         }
         
-        /* Garis Lurus (Solid) untuk Subtotal seperti di Screenshot */
+        /* Garis Lurus (Solid) untuk Subtotal Location */
         .subtotal-row td {
+            border-top: 1px dashed #777;
+            font-style: italic;
+            padding-top: 5px;
+            padding-bottom: 15px; 
+        }
+
+        /* Garis Lurus (Solid) tebal untuk Total Customer */
+        .cust-total-row td {
             border-top: 1px solid #000;
             font-weight: bold;
-            padding-top: 10px;
-            padding-bottom: 25px; /* Jarak dengan lokasi berikutnya */
+            padding-top: 5px;
+            padding-bottom: 25px; 
         }
 
         .text-left { text-align: left; }
@@ -112,14 +140,14 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
             border: 1px solid #000;
             width: 110px;
             font-size: 11px;
-            font-family: Arial, sans-serif; /* Font standar untuk tabel TTD */
+            font-family: Arial, sans-serif; 
         }
         .signature-table th {
             padding: 4px;
             font-weight: normal;
         }
         .signature-table td {
-            height: 60px; /* Ruang kosong untuk tanda tangan */
+            height: 60px; 
         }
         
         /* Tampilan Tombol Print (Sembunyi saat di-print) */
@@ -147,6 +175,7 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         @media print {
             .no-print { display: none; }
             body { margin: 0; font-size: 11px; }
+            .cust-header { background-color: transparent !important; }
         }
     </style>
 </head>
@@ -190,73 +219,92 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
             <?php 
             $grand_total_usd = 0;
 
-            // Looping per Kelompok Lokasi
-            foreach ($dataByLocation as $location => $items): 
-                $subtotal_usd = 0;
+            // 1. Looping per Customer
+            foreach ($dataGrouped as $customer => $locations): 
+                $cust_total_usd = 0;
             ?>
                 <tr>
-                    <td colspan="6" class="loc-header text-left"><?= htmlspecialchars($location) ?></td>
+                    <td colspan="6" class="cust-header text-left">
+                        CUSTOMER : <?= htmlspecialchars($customer) ?>
+                    </td>
                 </tr>
 
-<?php foreach ($items as $row): 
-                    // Perbaikan: Cek apakah nama kolomnya ITEM atau ITEM_CODE
-                    $item_code = isset($row['ITEM']) ? trim($row['ITEM']) : (isset($row['ITEM_CODE']) ? trim($row['ITEM_CODE']) : '-');
-                    
-                    // Gunakan pengecekan (isset) agar aman dari error Notice
-                    $item_name = isset($row['ITEM_NAME']) ? trim($row['ITEM_NAME']) : '-';
-                    $item_cur  = isset($row['ITEM_CUR']) ? trim($row['ITEM_CUR']) : '';
-                    
-                    $bal  = isset($row['BBAL']) ? (float)$row['BBAL'] : 0;
-                    $tag  = isset($row['TTAG']) ? (float)$row['TTAG'] : 0;
-                    $cost = isset($row['ITEM_COST']) ? (float)$row['ITEM_COST'] : 0;
-                    
-                    $diff = $tag - $bal; 
-                    
-                    $usd_amount = 0;
-                    if ($diff != 0 && $cost > 0) {
-                        if (strtoupper($item_cur) == 'USD') {
-                            $usd_amount = $diff * $cost;
-                        } else {
-                            $usrate = (float)$row['USRATE'];
-                            $curr_vrate = (float)$row['CURR_VRATE'];
-                            
-                            if ($usrate > 0) {
-                                $usd_amount = ($diff * $cost * $curr_vrate) / $usrate;
+                <?php 
+                // 2. Looping per Kelompok Lokasi di dalam Customer
+                foreach ($locations as $location => $items): 
+                    $subtotal_usd = 0;
+                ?>
+                    <tr>
+                        <td colspan="6" class="loc-header text-left"><?= htmlspecialchars($location) ?></td>
+                    </tr>
+
+                    <?php 
+                    // 3. Looping detail Item
+                    foreach ($items as $row): 
+                        $item_code = isset($row['ITEM']) ? trim($row['ITEM']) : (isset($row['ITEM_CODE']) ? trim($row['ITEM_CODE']) : '-');
+                        $item_name = isset($row['ITEM_NAME']) ? trim($row['ITEM_NAME']) : '-';
+                        $item_cur  = isset($row['ITEM_CUR']) ? trim($row['ITEM_CUR']) : '';
+                        
+                        $bal  = isset($row['BBAL']) ? (float)$row['BBAL'] : 0;
+                        $tag  = isset($row['TTAG']) ? (float)$row['TTAG'] : 0;
+                        $cost = isset($row['ITEM_COST']) ? (float)$row['ITEM_COST'] : 0;
+                        
+                        $diff = $tag - $bal; 
+                        
+                        $usd_amount = 0;
+                        if ($diff != 0 && $cost > 0) {
+                            if (strtoupper($item_cur) == 'USD') {
+                                $usd_amount = $diff * $cost;
+                            } else {
+                                $usrate = (float)$row['USRATE'];
+                                $curr_vrate = (float)$row['CURR_VRATE'];
+                                
+                                if ($usrate > 0) {
+                                    $usd_amount = ($diff * $cost * $curr_vrate) / $usrate;
+                                }
                             }
                         }
-                    }
+                        
+                        $subtotal_usd += $usd_amount;
+                        $cust_total_usd += $usd_amount;
+                        $grand_total_usd += $usd_amount;
+                    ?>
+                    <tr>
+                        <td class="text-left" style="padding-left: 15px;"><?= htmlspecialchars($item_code . " " . $item_name) ?></td>
+                        <td class="text-right"><?= ($bal != 0) ? number_format($bal, 0) : '0' ?></td>
+                        <td class="text-right"><?= ($tag != 0) ? number_format($tag, 0) : '0' ?></td>
+                        <td class="text-right"><?= ($diff != 0) ? number_format($diff, 2) : '-' ?></td>
+                        <td class="text-right">
+                            <?php if ($cost > 0): ?>
+                                <?= number_format($cost, 4) . " " . htmlspecialchars($item_cur) ?>
+                            <?php else: ?>
+                                - <?= htmlspecialchars($item_cur) ?>
+                            <?php endif; ?>
+                        </td>
+                        <td class="text-right"><?= ($usd_amount != 0) ? number_format($usd_amount, 2) : '-' ?></td>
+                    </tr>
+                    <?php endforeach; // End Looping Items ?>
                     
-                    $subtotal_usd += $usd_amount;
-                    $grand_total_usd += $usd_amount;
-                ?>
-                <tr>
-                    <td class="text-left"><?= htmlspecialchars($item_code . " " . $item_name) ?></td>
-                    <td class="text-right"><?= ($bal != 0) ? number_format($bal, 0) : '0' ?></td>
-                    <td class="text-right"><?= ($tag != 0) ? number_format($tag, 0) : '0' ?></td>
-                    <td class="text-right"><?= ($diff != 0) ? number_format($diff, 2) : '-' ?></td>
-                    <td class="text-right">
-                        <?php if ($cost > 0): ?>
-                            <?= number_format($cost, 4) . " " . htmlspecialchars($item_cur) ?>
-                        <?php else: ?>
-                            - <?= htmlspecialchars($item_cur) ?>
-                        <?php endif; ?>
-                    </td>
-                    <td class="text-right"><?= ($usd_amount != 0) ? number_format($usd_amount, 2) : '-' ?></td>
-                </tr>
-                <?php endforeach; ?>
-                
+                    <!-- Subtotal per Location -->
+                    <tr class="subtotal-row">
+                        <td colspan="4"></td>
+                        <td class="text-right">Subtotal <?= htmlspecialchars($location) ?></td>
+                        <td class="text-right"><?= number_format($subtotal_usd, 2) ?></td>
+                    </tr>
+                <?php endforeach; // End Looping Locations ?>
 
-
-                
-                <tr class="subtotal-row">
+                <!-- Total per Customer -->
+                <tr class="cust-total-row">
                     <td colspan="4"></td>
-                    <td class="text-right">SUBTOTAL <?= htmlspecialchars($location) ?></td>
-                    <td class="text-right"><?= number_format($subtotal_usd, 2) ?></td>
+                    <td class="text-right">TOTAL <?= htmlspecialchars($customer) ?></td>
+                    <td class="text-right"><?= number_format($cust_total_usd, 2) ?></td>
                 </tr>
-            <?php endforeach; ?>
 
+            <?php endforeach; // End Looping Customers ?>
+
+            <!-- Baris Grand Total dan Tanda Tangan -->
             <tr>
-                <td colspan="4" class="text-left" style="vertical-align: top;">
+                <td colspan="4" class="text-left" style="vertical-align: top; padding-top: 20px;">
                     <table class="signature-table">
                         <tr>
                             <th>Approved by</th>
@@ -271,11 +319,11 @@ while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
                     </table>
                 </td>
                 
-                <td class="text-right" style="vertical-align: middle; font-weight: bold; font-size: 13px; padding-right: 15px;">
+                <td class="text-right" style="vertical-align: middle; font-weight: bold; font-size: 13px; padding-right: 15px; border-top: 3px double #000; border-bottom: 3px double #000;">
                     GRAND TOTAL
                 </td>
                 
-                <td class="text-right" style="vertical-align: middle; font-weight: bold; font-size: 13px;">
+                <td class="text-right" style="vertical-align: middle; font-weight: bold; font-size: 13px; border-top: 3px double #000; border-bottom: 3px double #000;">
                     <?= number_format($grand_total_usd, 2) ?>
                 </td>
             </tr>

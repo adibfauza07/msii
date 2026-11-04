@@ -158,25 +158,73 @@ elseif ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_PO
 }
 
 // ==========================================
-// 5. BLOK MENGAMBIL DATA LIST (READ ALL)
+// 5. BLOK MENGAMBIL DATA LIST DENGAN FILTER + DETAIL ITEM
 // ==========================================
+// Tangkap parameter filter 
+$filter_month = isset($_GET['filter_month']) ? $_GET['filter_month'] : date('m');
+$filter_year  = isset($_GET['filter_year']) ? $_GET['filter_year'] : date('Y');
+$filter_cust_id = isset($_GET['filter_cust_id']) ? $_GET['filter_cust_id'] : '';
+$filter_cust_label = isset($_GET['filter_cust_label']) ? $_GET['filter_cust_label'] : '';
+
+// Query List Data Berdasarkan Filter Bulan dan Tahun (DENGAN JOIN KE DETAIL)
 $sqlList = "
-    SELECT TOP 10 
+    SELECT 
         PR.PRE_ID, 
         PR.PRE_REF, 
         PR.PRE_DATE, 
         PR.PRE_USER, 
         C.CUST_CODE, 
-        C.CUST_COMP
+        C.CUST_COMP,
+        P.PACK_CODE,
+        P.PACK_DESC,
+        PD.PRE_QTY
     FROM PackReturn PR
     LEFT JOIN CUST C ON PR.CUST_ID = C.CUST_ID
-    ORDER BY PR.PRE_ID DESC
+    LEFT JOIN PackReturnDtl PD ON PR.PRE_ID = PD.PRE_ID
+    LEFT JOIN PACK P ON PD.PACK_ID = P.PACK_ID
+    WHERE MONTH(PR.PRE_DATE) = ? AND YEAR(PR.PRE_DATE) = ?
 ";
-$stmtList = sqlsrv_query($conn, $sqlList);
+$paramsList = array($filter_month, $filter_year);
+
+// Tambahkan Filter Customer jika diisi
+if (!empty($filter_cust_id)) {
+    $sqlList .= " AND PR.CUST_ID = ?";
+    $paramsList[] = $filter_cust_id;
+}
+
+$sqlList .= " ORDER BY PR.PRE_ID DESC";
+
+$stmtList = sqlsrv_query($conn, $sqlList, $paramsList);
 $recentReturns = array();
+
+// Grouping Data di PHP agar detail pack tersusun rapi dalam 1 array per Transaksi (PRE_ID)
 if ($stmtList !== false) {
     while ($row = sqlsrv_fetch_array($stmtList, SQLSRV_FETCH_ASSOC)) {
-        $recentReturns[] = $row;
+        $pre_id = $row['PRE_ID'];
+        
+        // Buat array header jika belum ada
+        if (!isset($recentReturns[$pre_id])) {
+            $recentReturns[$pre_id] = array(
+                'PRE_ID'    => $row['PRE_ID'],
+                'PRE_DATE'  => $row['PRE_DATE'],
+                'CUST_CODE' => $row['CUST_CODE'],
+                'CUST_COMP' => $row['CUST_COMP'],
+                'PRE_REF'   => $row['PRE_REF'],
+                'PRE_USER'  => $row['PRE_USER'],
+                'DETAILS'   => array()
+            );
+        }
+        
+        // Memasukkan detail pack ke dalam array 'DETAILS'
+        if (!empty($row['PACK_CODE'])) {
+            $pack_name = trim($row['PACK_CODE']);
+            if (!empty($row['PACK_DESC'])) $pack_name .= " - " . trim($row['PACK_DESC']);
+            
+            $qty = (float)$row['PRE_QTY'];
+            
+            // Format yang ditampilkan: • BB - Bucket grade B (70)
+            $recentReturns[$pre_id]['DETAILS'][] = "&bull; " . htmlspecialchars($pack_name) . " <b>(" . $qty . ")</b>";
+        }
     }
 }
 ?>
@@ -203,8 +251,9 @@ if ($stmtList !== false) {
         .table-form th, .table-form td { border: 1px solid #ccc; padding: 8px 12px; text-align: left; }
         .table-form th { background-color: #f4f4f4; }
         
-        .table-list { border-collapse: collapse; width: 100%; max-width: 1000px; margin-top: 10px; font-size: 13px; }
-        .table-list th, .table-list td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: middle; }
+        /* Modifikasi style table list agar cukup untuk detail */
+        .table-list { border-collapse: collapse; width: 100%; max-width: 1200px; margin-top: 10px; font-size: 13px; }
+        .table-list th, .table-list td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; vertical-align: top; }
         .table-list th { background-color: #e9ecef; color: #333; }
         .table-list tr:hover { background-color: #f8f9fa; }
 
@@ -220,13 +269,51 @@ if ($stmtList !== false) {
         .btn-secondary { background-color: #6c757d; }
         
         .btn-sm { padding: 4px 10px; font-size: 12px; cursor: pointer; text-decoration: none; border: none; border-radius: 3px; display: inline-block; margin-right: 4px;}
+        .btn-info-sm { background-color: #17a2b8; color: white; }
         .btn-warning-sm { background-color: #ffc107; color: #212529; }
         .btn-danger-sm { background-color: #dc3545; color: white; }
 
         .list-section { margin-top: 40px; padding-top: 20px; border-top: 2px solid #ddd; }
+        
+        /* Style untuk Filter Box */
+        .filter-box {
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            max-width: 1000px;
+        }
+        .filter-form {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .filter-item {
+            display: flex;
+            align-items: center;
+        }
+        .filter-item label {
+            width: auto;
+            margin-right: 8px;
+        }
+        .filter-item select, .filter-item input[type="text"] {
+            padding: 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
+
+    <script>
+    // PENAMBAHAN UNTUK MENCEGAH DUPLIKASI
+    // 1. Mencegah Form Resubmission saat user melakukan Refresh halaman (F5) setelah menyimpan data
+    if ( window.history.replaceState ) {
+        window.history.replaceState( null, null, window.location.href );
+    }
+    </script>
 
     <h2>Form Input Pack Return</h2>
     
@@ -237,7 +324,7 @@ if ($stmtList !== false) {
     <?php endif; ?>
 
     <!-- Form Utama (Bisa Create atau Update) -->
-    <form method="POST" action="">
+    <form method="POST" action="" id="returnForm">
         <!-- Identifier Action -->
         <?php if ($is_edit): ?>
             <input type="hidden" name="action" value="update">
@@ -259,7 +346,6 @@ if ($stmtList !== false) {
 
         <div class="form-group">
             <label>Return Date:</label>
-            <!-- Tipe diubah jadi text agar kompatibel di browser lama, kalender dipanggil dari jQuery -->
             <input type="text" name="pre_date" id="pre_date" placeholder="YYYY-MM-DD" value="<?php echo htmlspecialchars($form_pre_date); ?>" autocomplete="off" required>
         </div>
 
@@ -317,19 +403,65 @@ if ($stmtList !== false) {
         </div>
 
         <?php if ($is_edit): ?>
-            <button type="submit" class="btn btn-warning" style="color: black;">Update Data Return</button>
+            <button type="submit" class="btn btn-warning" style="color: black;" id="btnSubmit">Update Data Return</button>
             <a href="pack_return.php" class="btn btn-secondary">Batal Edit</a>
         <?php else: ?>
-            <button type="submit" class="btn btn-success">Simpan Data Return</button>
+            <button type="submit" class="btn btn-success" id="btnSubmit">Simpan Data Return</button>
         <?php endif; ?>
     </form>
 
 
     <!-- ========================================== -->
-    <!-- BAGIAN LIST TRANSAKSI (RAPAT & CRUD)       -->
+    <!-- BAGIAN LIST TRANSAKSI & FILTER             -->
     <!-- ========================================== -->
     <div class="list-section">
-        <h3>10 Transaksi Return Terakhir</h3>
+        <h3>Daftar Transaksi Return</h3>
+        
+        <!-- Form Filter Bulan, Tahun, dan Customer -->
+        <div class="filter-box">
+            <form method="GET" action="" class="filter-form">
+                
+                <div class="filter-item">
+                    <label>Bulan:</label>
+                    <select name="filter_month">
+                        <?php
+                        $months = array("01"=>"Januari", "02"=>"Februari", "03"=>"Maret", "04"=>"April", "05"=>"Mei", "06"=>"Juni", "07"=>"Juli", "08"=>"Agustus", "09"=>"September", "10"=>"Oktober", "11"=>"November", "12"=>"Desember");
+                        foreach($months as $num => $name) {
+                            $sel = ($filter_month == $num) ? 'selected' : '';
+                            echo "<option value='$num' $sel>$name</option>";
+                        }
+                        ?>
+                    </select>
+                </div>
+
+                <div class="filter-item">
+                    <label>Tahun:</label>
+                    <select name="filter_year">
+                        <?php
+                        $start_year = 2023; // Sesuaikan dengan tahun awal data Anda
+                        $current_year = date('Y') + 2; 
+                        for($y = $current_year; $y >= $start_year; $y--) {
+                            $sel = ($filter_year == $y) ? 'selected' : '';
+                            echo "<option value='$y' $sel>$y</option>";
+                        }
+                        ?>
+                    </select>
+                </div>
+
+                <div class="filter-item">
+                    <label>Customer:</label>
+                    <input type="text" id="filter_cust_search" name="filter_cust_label" placeholder="Semua Customer..." value="<?php echo htmlspecialchars($filter_cust_label); ?>" style="width: 250px;">
+                    <input type="hidden" name="filter_cust_id" id="filter_cust_id" value="<?php echo htmlspecialchars($filter_cust_id); ?>">
+                </div>
+
+                <div class="filter-item">
+                    <button type="submit" class="btn-sm btn-info-sm" style="padding: 7px 15px; font-weight:bold; font-size:13px;">Tampilkan</button>
+                    <!-- Tombol Reset Opsional -->
+                    <a href="?" class="btn-sm btn-secondary" style="padding: 7px 15px; font-size:13px; text-decoration:none; margin-left: 5px;">Reset</a>
+                </div>
+            </form>
+        </div>
+
         <table class="table-list">
             <thead>
                 <tr>
@@ -337,8 +469,12 @@ if ($stmtList !== false) {
                     <th width="90">Tanggal</th>
                     <th>Customer</th>
                     <th width="150">No. Referensi</th>
-                    <th width="100">User</th>
-                    <th width="120" style="text-align:center;">Aksi</th>
+                    <th width="80">User</th>
+                    
+                    <!-- Tambahan Kolom Baru Untuk Menampilkan Detail Pack -->
+                    <th>Detail Return (Qty)</th>
+                    
+                    <th width="110" style="text-align:center;">Aksi</th>
                 </tr>
             </thead>
             <tbody>
@@ -355,15 +491,25 @@ if ($stmtList !== false) {
                             <td><?php echo htmlspecialchars($row['CUST_CODE'] . ' - ' . $row['CUST_COMP']); ?></td>
                             <td><?php echo htmlspecialchars($row['PRE_REF']); ?></td>
                             <td><?php echo htmlspecialchars($row['PRE_USER']); ?></td>
+                            
+                            <!-- Cetak Detail Pack Return yang sudah di-group di PHP -->
+                            <td style="line-height: 1.4;">
+                                <?php 
+                                    if (!empty($row['DETAILS'])) {
+                                        echo implode("<br>", $row['DETAILS']);
+                                    } else {
+                                        echo "-";
+                                    }
+                                ?>
+                            </td>
+                            
                             <td style="text-align:center;">
-                                <!-- Tombol Edit Memakai POST agar tetap di halaman yang sama -->
                                 <form method="POST" style="display:inline;">
                                     <input type="hidden" name="action" value="edit">
                                     <input type="hidden" name="target_id" value="<?php echo $row['PRE_ID']; ?>">
                                     <button type="submit" class="btn-sm btn-warning-sm">Edit</button>
                                 </form>
                                 
-                                <!-- Tombol Hapus -->
                                 <form method="POST" style="display:inline;" onsubmit="return confirm('Apakah Anda yakin ingin menghapus data Transaksi ID: <?php echo $row['PRE_ID']; ?>?');">
                                     <input type="hidden" name="action" value="delete">
                                     <input type="hidden" name="target_id" value="<?php echo $row['PRE_ID']; ?>">
@@ -373,7 +519,8 @@ if ($stmtList !== false) {
                         </tr>
                     <?php endforeach; ?>
                 <?php else: ?>
-                    <tr><td colspan="6" style="text-align: center; color: #666; padding: 15px;">Belum ada data transaksi.</td></tr>
+                    <!-- Colspan diubah menjadi 7 karena ada penambahan 1 kolom -->
+                    <tr><td colspan="7" style="text-align: center; color: #666; padding: 15px;">Belum ada data transaksi pada filter ini.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>
@@ -382,14 +529,25 @@ if ($stmtList !== false) {
     <script>
     $(document).ready(function() {
         
-        // Inisialisasi Datepicker untuk kompabilitas browser lawas
+        // PENAMBAHAN UNTUK MENCEGAH DUPLIKASI
+        // 2. Mencegah user klik tombol simpan berkali-kali (Double Click)
+        $('#returnForm').on('submit', function() {
+            var btn = $(this).find('#btnSubmit');
+            if (!btn.prop('disabled')) {
+                btn.prop('disabled', true).css('opacity', '0.7').text('Memproses...');
+                return true; // Lanjutkan proses submit
+            }
+            return false; // Hentikan jika sudah ditekan
+        });
+
+        // Inisialisasi Datepicker
         $("#pre_date").datepicker({
-            dateFormat: "yy-mm-dd", // Menghasilkan format YYYY-MM-DD
+            dateFormat: "yy-mm-dd", 
             changeMonth: true,
             changeYear: true
         });
 
-        // 1. Autocomplete Customer
+        // 1a. Autocomplete Customer untuk Form Input Utama
         $("#cust_search").autocomplete({
             source: function(request, response) {
                 $.ajax({
@@ -413,6 +571,40 @@ if ($stmtList !== false) {
                 $("#cust_id").val(ui.item.id);
                 $(this).val(ui.item.label);
                 return false;
+            }
+        });
+
+        // 1b. Autocomplete Customer untuk Filter Pencarian
+        $("#filter_cust_search").autocomplete({
+            source: function(request, response) {
+                $.ajax({
+                    url: "ajax_customer_autocomplete.php",
+                    type: "POST",
+                    dataType: "json",
+                    data: { q: request.term },
+                    success: function(data) {
+                        response($.map(data, function(item) {
+                            return {
+                                label: item.label || (item.CUST_CODE + " - " + item.CUST_COMP),
+                                value: item.company || item.CUST_COMP,
+                                id: item.id || item.CUST_ID
+                            };
+                        }));
+                    }
+                });
+            },
+            minLength: 2,
+            select: function(event, ui) {
+                $("#filter_cust_id").val(ui.item.id);
+                $(this).val(ui.item.label);
+                return false;
+            }
+        });
+
+        // Kosongkan ID Filter Jika Input Text Customer Dihapus Manual
+        $("#filter_cust_search").on("keyup change", function() {
+            if ($(this).val().trim() === "") {
+                $("#filter_cust_id").val("");
             }
         });
 

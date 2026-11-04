@@ -57,20 +57,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // GROUPING DATA BERDASARKAN CUSTOMER
         if (!empty($rawResults)) {
             foreach ($rawResults as $row) {
-                $cCode = $row['CUST_CODE'];
+                // PHP 5.4 Compatibility untuk CUST_CODE
+                $cCode = isset($row['CUST_CODE']) ? $row['CUST_CODE'] : (isset($row['cust_code']) ? $row['cust_code'] : '-');
+                
                 if (!isset($groupedResults[$cCode])) {
+                    // PHP 5.4 Compatibility untuk CUST_COMP
+                    $cComp = isset($row['CUST_COMP']) ? $row['CUST_COMP'] : (isset($row['cust_comp']) ? $row['cust_comp'] : '');
+                    
                     $groupedResults[$cCode] = array(
-                        'CUST_COMP' => $row['CUST_COMP'],
+                        'CUST_COMP' => $cComp,
                         'items' => array()
                     );
                 }
                 $groupedResults[$cCode]['items'][] = $row;
             }
 
-            // SORTING ITEM NAME A-Z
+            // SORTING ITEM NAME A-Z (Fix PHP 5.4)
             foreach ($groupedResults as $cCode => &$custData) {
                 usort($custData['items'], function($a, $b) {
-                    return strcasecmp(trim($a['item_name']), trim($b['item_name']));
+                    $nameA = isset($a['item_name']) ? $a['item_name'] : (isset($a['ITEM_NAME']) ? $a['ITEM_NAME'] : '');
+                    $nameB = isset($b['item_name']) ? $b['item_name'] : (isset($b['ITEM_NAME']) ? $b['ITEM_NAME'] : '');
+                    return strcasecmp(trim($nameA), trim($nameB));
                 });
             }
             unset($custData); 
@@ -199,7 +206,7 @@ function formatNum($val, $is_export = false) {
                         <th>Del Actual</th>
                         <th>Delivery Balance</th>
                         <th>NG / RW</th>
-                        <th>Sub Qty</th>
+                        <th>HOLD OK</th>
                         <th>Forecast</th>
                         <th>Stok Plan</th>
                         <th>Stok Actual</th>
@@ -231,7 +238,11 @@ function formatNum($val, $is_export = false) {
                         // =========================================================
                         $shortage_date = "-";
                         $next_prod_date = "-";
-                        $item_code = trim($row['item_code']);
+                        
+                        // PHP 5.4 Compatibility untuk ITEM_CODE
+                        $item_code_val = isset($row['item_code']) ? $row['item_code'] : (isset($row['ITEM_CODE']) ? $row['ITEM_CODE'] : '');
+                        $item_code = trim($item_code_val);
+                        
                         $param_start = $from_date;
                         $param_end   = $to_date;
                         
@@ -320,11 +331,14 @@ function formatNum($val, $is_export = false) {
                         } else {
                             $item_code_display = "<a href='" . $del_sch_link . "' target='_blank' class='link-item' title='Lihat Delivery Schedule'>" . htmlspecialchars($item_code) . " <span class='link-icon'>📥</span></a>";
                         }
+
+                        // PHP 5.4 Compatibility untuk ITEM_NAME
+                        $item_name_val = isset($row['item_name']) ? $row['item_name'] : (isset($row['ITEM_NAME']) ? $row['ITEM_NAME'] : '');
                     ?>
                         <tr>
                             <td style="text-align: center;"><?= $no++ ?></td>
                             <td><?= $item_code_display ?></td>
-                            <td><?= htmlspecialchars($row['item_name']) ?></td>
+                            <td><?= htmlspecialchars($item_name_val) ?></td>
                             <td class="text-right"><?= formatNum($tags, $is_export) ?></td>
                             <td class="text-right"><?= formatNum($ps, $is_export) ?></td>
                             <td class="text-right"><?= formatNum($pd_actual, $is_export) ?></td>

@@ -293,33 +293,6 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
             color: #ffffff;
         }
 
-        .footer-row {
-            margin-top: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .progress-box {
-            width: 300px;
-        }
-
-        .progress {
-            width: 100%;
-            height: 16px;
-        }
-
-        .report-area {
-            margin-top: 12px;
-            padding-top: 8px;
-            border-top: 1px solid #808080;
-            display: grid;
-            grid-template-columns: 80px 120px 80px 120px 80px 160px 1fr;
-            gap: 4px;
-            align-items: center;
-        }
-
-
         .report-menu-wrap {
             position: relative;
             display: inline-block;
@@ -352,15 +325,16 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
             background: #316ac5;
             color: #ffffff;
         }
-		.autocomplete-item.active {
-    background: #316ac5;
-    color: #ffffff;
-}
+        
+        .autocomplete-item.active {
+            background: #316ac5;
+            color: #ffffff;
+        }
 
-.grid .autocomplete-item.active {
-    background: #316ac5;
-    color: #ffffff;
-}
+        .grid .autocomplete-item.active {
+            background: #316ac5;
+            color: #ffffff;
+        }
     </style>
 </head>
 
@@ -449,19 +423,19 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
         <div class="button-row">
             <button type="button" id="btnNew">NEW</button>
             <button type="button" id="btnSaveHeader">SAVE HEADER</button>
-			<button type="button" id="btnDeleteHeader">DELETE HEADER</button>
+            <button type="button" id="btnDeleteHeader">DELETE HEADER</button>
             <button type="button" id="btnLoadOther">LOAD DI OTHER</button>
-            <button type="button" id="btnLoadStaging">LOAD KOITO / STAGING</button>
-            <button type="button" id="btnPostFifo">POST FIFO</button>
             <span class="report-menu-wrap">
                 <button type="button" id="btnReport">REPORT MENU</button>
                 <div id="reportMenuPopup" class="report-menu-popup">
                     <div class="report-menu-item" data-report="INVOICE_PO">INVOICE PO</div>
-					<div class="report-menu-item" data-report="INVOICE_PPN">INVOICE PPN</div>
-					<div class="report-menu-item" data-report="INVOICE_STANLEY">INVOICE PPN STANLEY</div>
+                     <div class="report-menu-item" data-report="INVOICE_PO_PBI">INVOICE PO PBI</div>
+                    <div class="report-menu-item" data-report="INVOICE_PPN">INVOICE PPN</div>
+                    <div class="report-menu-item" data-report="INVOICE_STANLEY">INVOICE PPN STANLEY</div>
                     <div class="report-menu-item" data-report="DELIVERY_SHEET">DELIVERY SHEET</div>
                     <div class="report-menu-item" data-report="DELIVERY_SHEET_PO">DELIVERY SHEET PO</div>
                     <div class="report-menu-item" data-report="DELIVERY_SHEET_CABININDO">DELIVERY SHEET CABININDO</div>
+                     <div class="report-menu-item" data-report="DELIVERY_SHEET_MAPI">DELIVERY SHEET MAPI</div>
                     <div class="report-menu-item" data-report="DS_TOYODENSO">DS TOYODENSO</div>
                     <div class="report-menu-item" data-report="INVOICE_RATE_HIROSE">INVOICE RATE HIROSE</div>
                     <div class="report-menu-item" data-report="INVOICE_HILEX">INVOICE HILEX</div>
@@ -511,6 +485,7 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
                             <div class="packSuggest autocomplete-list"></div>
                         </div>
                     </td>
+                    <!-- DIPERBAIKI: Nama input dikembalikan ke LOCATION[] -->
                     <td><input type="text" name="LOCATION[]"></td>
                     <td><input type="text" name="PRICE_ID[]"></td>
                     <td><input type="text" name="PACK_ID[]"></td>
@@ -521,6 +496,7 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
         </table>
 
         <div class="button-row">
+            <button type="button" id="btnPostFifo">POST FIFO</button>
             <button type="button" id="btnAddRow">TAMBAH BARIS</button>
             <button type="button" id="btnDeleteLine">HAPUS PER BARIS</button>
             <button type="button" id="btnDeleteAll">BATAL SEMUA DETAIL</button>
@@ -578,39 +554,8 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
             </div>
 
         </div>
-
-        <div class="report-area">
-
-            <label>START :</label>
-            <input type="date" name="REPORT_START_DATE" id="REPORT_START_DATE" value="<?php echo h($firstDayOfMonth); ?>">
-
-            <label>END :</label>
-            <input type="date" name="REPORT_END_DATE" id="REPORT_END_DATE" value="<?php echo h($tomorrow); ?>">
-
-           <label>CUSTOMER :</label>
-<div class="autocomplete-wrap">
-    <input type="text" name="REPORT_CUST_CODE" id="REPORT_CUST_CODE" value="%" autocomplete="off" placeholder="Ketik kode/nama customer">
-    <div id="reportCustSuggest" class="autocomplete-list"></div>
-</div>
-
-<button type="button" id="btnReportDI">PRINT DELIVERY INSTRUCTION</button>
-
-        </div>
-
-        <div class="footer-row">
-
-            <div>
-                <button type="button" id="btnorder">INPUT ORDER</button>
-				<button type="button" id="btnForecast">FORECAST</button>
-                <button type="button" id="btnSchedule">SCHEDULE</button>
-                <button type="button" id="btnEditOrder">EDIT ORDER</button>
-            </div>
-
-            <div class="progress-box">
-                <progress class="progress" id="ProgressBar1" value="0" max="100"></progress>
-            </div>
-
-        </div>
+        
+        <progress id="ProgressBar1" value="0" max="100" style="display:none;"></progress>
 
     </form>
 
@@ -624,9 +569,6 @@ var selectedPORow = null;
 var custItems = [];
 var diItems = [];
 var packItems = [];
-
-var reportCustItems = [];
-var reportCustIndex = -1;
 
 function ajaxPost(url, data, callback) {
     var xhr = new XMLHttpRequest();
@@ -696,7 +638,6 @@ function setCustomer(c) {
     document.getElementById("CUST_ID").value = c.CUST_ID;
     document.getElementById("CUST_COMP").value = c.CUST_COMP;
     document.getElementById("CUST_ABBR").value = c.CUST_ABBR;
-    document.getElementById("REPORT_CUST_CODE").value = c.CUST_CODE;
 
     document.getElementById("custSuggest").style.display = "none";
 }
@@ -774,153 +715,6 @@ document.getElementById("CUST_SEARCH").onkeyup = function (e) {
 document.getElementById("CUST_SEARCH").onblur = function () {
     setTimeout(function () {
         document.getElementById("custSuggest").style.display = "none";
-    }, 250);
-};
-
-function hideReportCustSuggest() {
-    var box = document.getElementById("reportCustSuggest");
-
-    if (box) {
-        box.style.display = "none";
-        box.innerHTML = "";
-    }
-
-    reportCustItems = [];
-    reportCustIndex = -1;
-}
-
-function setActiveReportCust(index) {
-    var box = document.getElementById("reportCustSuggest");
-    var items = box.getElementsByClassName("autocomplete-item");
-
-    if (!items || items.length == 0) {
-        reportCustIndex = -1;
-        return;
-    }
-
-    if (index < 0) {
-        index = items.length - 1;
-    }
-
-    if (index >= items.length) {
-        index = 0;
-    }
-
-    for (var i = 0; i < items.length; i++) {
-        items[i].style.background = "#c6d8e8";
-        items[i].style.color = "#000000";
-    }
-
-    items[index].style.background = "#316ac5";
-    items[index].style.color = "#ffffff";
-
-    reportCustIndex = index;
-}
-
-function setReportCustomer(c) {
-    document.getElementById("REPORT_CUST_CODE").value = c.CUST_CODE;
-    hideReportCustSuggest();
-}
-
-function renderReportCustomerSuggest(items) {
-    var box = document.getElementById("reportCustSuggest");
-    box.innerHTML = "";
-
-    reportCustItems = items || [];
-    reportCustIndex = -1;
-
-    if (!items || items.length == 0) {
-        box.style.display = "none";
-        return;
-    }
-
-    for (var i = 0; i < items.length; i++) {
-        var div = document.createElement("div");
-        div.className = "autocomplete-item";
-        div.setAttribute("data-index", i);
-
-        div.innerHTML =
-            htmlEncode(items[i].CUST_CODE) +
-            " - " +
-            htmlEncode(items[i].CUST_COMP);
-
-        div.onmouseover = function () {
-            setActiveReportCust(parseInt(this.getAttribute("data-index"), 10));
-        };
-
-        div.onmousedown = function (e) {
-            if (!e) {
-                e = window.event;
-            }
-
-            if (e.preventDefault) {
-                e.preventDefault();
-            }
-
-            var idx = parseInt(this.getAttribute("data-index"), 10);
-            setReportCustomer(reportCustItems[idx]);
-        };
-
-        box.appendChild(div);
-    }
-
-    box.style.display = "block";
-    setActiveReportCust(0);
-}
-
-document.getElementById("REPORT_CUST_CODE").onkeyup = function (e) {
-    e = e || window.event;
-
-    var key = e.keyCode || e.which;
-    var q = this.value;
-
-    if (key == 40) {
-        setActiveReportCust(reportCustIndex + 1);
-        return;
-    }
-
-    if (key == 38) {
-        setActiveReportCust(reportCustIndex - 1);
-        return;
-    }
-
-    if (key == 13) {
-        if (reportCustItems.length > 0) {
-            if (reportCustIndex < 0) {
-                reportCustIndex = 0;
-            }
-
-            setReportCustomer(reportCustItems[reportCustIndex]);
-        }
-
-        return;
-    }
-
-    if (q.length < 1 || q == "%") {
-        hideReportCustSuggest();
-        return;
-    }
-
-    ajaxPost("ajax_customer_autocomplete.php", "q=" + enc(q), function (status, responseText) {
-        if (status != 200) {
-            return;
-        }
-
-        var result;
-
-        try {
-            result = JSON.parse(responseText);
-        } catch (e) {
-            return;
-        }
-
-        renderReportCustomerSuggest(result);
-    });
-};
-
-document.getElementById("REPORT_CUST_CODE").onblur = function () {
-    setTimeout(function () {
-        hideReportCustSuggest();
     }, 250);
 };
 
@@ -1057,7 +851,7 @@ function addRow() {
                 '<div class="packSuggest autocomplete-list"></div>' +
             '</div>' +
         '</td>' +
-        '<td><input type="text" name="LOCATION[]"></td>' +
+        '<td><input type="text" name="LOCATION[]"></td>' + // DIPERBAIKI: LOCATION[]
         '<td><input type="text" name="PRICE_ID[]"></td>' +
         '<td><input type="text" name="PACK_ID[]"></td>' +
         '<td style="display:none;"><button type="button" onclick="deleteRow(event, this)">X</button></td>';
@@ -1086,7 +880,7 @@ function addPartRowFromData(r) {
                 '<div class="packSuggest autocomplete-list"></div>' +
             '</div>' +
         '</td>' +
-        '<td><input type="text" name="LOCATION[]" value="' + htmlEncode(r.LOCATION) + '"></td>' +
+        '<td><input type="text" name="LOCATION[]" value="' + htmlEncode(r.LOCATION !== undefined ? r.LOCATION : '') + '"></td>' + // DIPERBAIKI: LOCATION[] dan r.LOCATION
         '<td><input type="text" name="PRICE_ID[]" value="' + htmlEncode(r.PRICE_ID) + '"></td>' +
         '<td><input type="text" name="PACK_ID[]" value="' + htmlEncode(r.PACK_ID) + '"></td>' +
         '<td style="display:none;"><button type="button" onclick="deleteRow(event, this)">X</button></td>';
@@ -1190,7 +984,6 @@ function fillHeaderFromSearch(h) {
     document.getElementById("CUST_ID").value = h.CUST_ID || "";
     document.getElementById("CUST_COMP").value = h.CUST_COMP || "";
     document.getElementById("CUST_ABBR").value = h.CUST_ABBR || "";
-    document.getElementById("REPORT_CUST_CODE").value = custCode;
 }
 
 function fillDetailFromSearch(details) {
@@ -1223,7 +1016,6 @@ document.getElementById("btnNew").onclick = function () {
     document.getElementById("CUST_ID").value = "";
     document.getElementById("CUST_COMP").value = "";
     document.getElementById("CUST_ABBR").value = "";
-    document.getElementById("REPORT_CUST_CODE").value = "%";
 
     document.getElementById("SEARCH_KEYWORD").value = "";
     document.getElementById("SearchStatus").innerHTML = "";
@@ -1683,10 +1475,6 @@ document.getElementById("btnSaveDetail").onclick = function () {
     saveAllDetailRows(rows, 0, 0);
 };
 
-document.getElementById("btnLoadStaging").onclick = function () {
-    alert("Step berikutnya: LOAD KOITO / STAGING.");
-};
-
 function getPostFifoData() {
     return "DI_ID=" + enc(document.getElementById("DI_ID").value);
 }
@@ -1947,13 +1735,18 @@ function openReportMenuItem(reportType) {
         window.open("report_invoice_po.php?DI_ID=" + enc(diId), "_blank");
         return;
     }
-	
-	if (reportType == "INVOICE_PPN") {
+    
+    if (reportType == "INVOICE_PO_PBI") {
+        window.open("report_invoice_po_pbi.php?DI_ID=" + enc(diId), "_blank");
+        return;
+    }
+    
+    if (reportType == "INVOICE_PPN") {
         window.open("invoice_po_ppn.php?DI_ID=" + enc(diId), "_blank");
         return;
     }
-	
-	if (reportType == "INVOICE_STANLEY") {
+    
+    if (reportType == "INVOICE_STANLEY") {
         window.open("invoice_po_stanley.php?DI_ID=" + enc(diId), "_blank");
         return;
     }
@@ -1969,6 +1762,14 @@ function openReportMenuItem(reportType) {
         "report_delivery_sheet_po.php?DI_ID=" + enc(diId),"_blank");
         return;
     }
+
+
+ if (reportType == "DELIVERY_SHEET_MAPI") {
+       window.open(
+        "report_delivery_sheet_mapi.php?DI_ID=" + enc(diId),"_blank");
+        return;
+    }
+
 
     if (reportType == "DELIVERY_SHEET_CABININDO") {
         window.open(
@@ -2032,119 +1833,6 @@ for (var i = 0; i < reportItems.length; i++) {
 document.addEventListener("click", function () {
     hideReportMenu();
 });
-
-document.getElementById("btnReportDI").onclick = function () {
-    var custCode  = document.getElementById("REPORT_CUST_CODE").value;
-    var startDate = document.getElementById("REPORT_START_DATE").value;
-    var endDate   = document.getElementById("REPORT_END_DATE").value;
-
-    custCode = custCode.replace(/^\s+|\s+$/g, "");
-
-    /*
-        % = CETAK SEMUA CUSTOMER
-    */
-    if (custCode == "") {
-        alert("Customer report belum diisi. Isi kode customer atau % untuk semua customer.");
-        document.getElementById("REPORT_CUST_CODE").focus();
-        return;
-    }
-
-    if (startDate == "") {
-        alert("Start date report belum diisi.");
-        document.getElementById("REPORT_START_DATE").focus();
-        return;
-    }
-
-    if (endDate == "") {
-        alert("End date report belum diisi.");
-        document.getElementById("REPORT_END_DATE").focus();
-        return;
-    }
-
-    window.open(
-        "delivery_instruction_report.php" +
-        "?CUST_CODE=" + enc(custCode) +
-        "&START_DATE=" + enc(startDate) +
-        "&END_DATE=" + enc(endDate),
-        "delivery_instruction",
-        "width=1200,height=700,scrollbars=yes,resizable=yes"
-    );
-};
-
-
-document.getElementById("btnorder").onclick = function () {
-    window.open(
-        "input_order.php",
-        "_blank",
-        "width=1150,height=700,scrollbars=yes"
-    );
-};
-
-document.getElementById("btnForecast").onclick = function () {
-    window.open(
-        "forecast.php",
-        "forecast",
-        "width=1150,height=560,scrollbars=yes,resizable=yes"
-    );
-};
-
-document.getElementById("btnSchedule").onclick = function () {
-    window.open(
-        "schedule.php",
-        "schedule",
-        "width=1150,height=620,scrollbars=yes,resizable=yes"
-    );
-};
-
-document.getElementById("btnEditOrder").onclick = function () {
-    var po = "";
-
-    /*
-        Ambil PO dari grid ORDER / PO AVAILABLE.
-        Pastikan tbody PO Available punya id="poAvailableBody".
-    */
-    var poBody = document.getElementById("poAvailableBody");
-
-    if (poBody) {
-        var rows = poBody.getElementsByTagName("tr");
-
-        if (rows.length > 0) {
-            var cells = rows[0].getElementsByTagName("td");
-
-            /*
-                Kolom:
-                0 = ORDR_DATE
-                1 = ORDR_PO
-                2 = QTY
-                3 = DQTY
-                4 = BQTY
-            */
-            if (cells.length >= 2) {
-                po = cells[1].innerText || cells[1].textContent;
-                po = po.replace(/^\s+|\s+$/g, "");
-            }
-        }
-    }
-
-    /*
-        Kalau PO kosong / belum ada data, tetap buka halaman Edit Order kosong.
-    */
-    if (po == "" || po == "Belum ada data.") {
-        window.open(
-            "order_edit.php",
-            "_blank",
-            "width=980,height=620,scrollbars=yes"
-        );
-
-        return;
-    }
-
-    window.open(
-        "order_edit.php?po=" + enc(po),
-        "_blank",
-        "width=980,height=620,scrollbars=yes"
-    );
-};
 
 function getSelectedPartParams(row) {
     return {
@@ -2485,7 +2173,10 @@ function getRowSaveData(row) {
     data.push("DIPA_QTY=" + enc(getInputByNameFromRow(row, "DIPA_QTY[]").value));
     data.push("DIPA_PQTY=" + enc(getInputByNameFromRow(row, "DIPA_PQTY[]").value));
     data.push("PACK_DESC=" + enc(getInputByNameFromRow(row, "PACK_DESC[]").value));
+    
+    // DIPERBAIKI: Harus menarik data dari name="LOCATION[]", dan memparsingnya menjadi var POST "LOCATION=..."
     data.push("LOCATION=" + enc(getInputByNameFromRow(row, "LOCATION[]").value));
+    
     data.push("PRICE_ID=" + enc(getInputByNameFromRow(row, "PRICE_ID[]").value));
     data.push("PACK_ID=" + enc(getInputByNameFromRow(row, "PACK_ID[]").value));
 
@@ -2645,8 +2336,8 @@ function saveDetailRow(row, callback) {
             if (isDuplicateItemInGrid(priceValue, codeValue, row)) {
                 alert(
                     "Item tidak boleh double dalam 1 DI.\n\n" +
-                    "Line     : " + lineInput.value + "\n" +
-                    "CODE     : " + codeValue + "\n" +
+                    "Line      : " + lineInput.value + "\n" +
+                    "CODE      : " + codeValue + "\n" +
                     "PRICE ID : " + priceValue
                 );
 
@@ -3104,10 +2795,13 @@ document.getElementById("tblPart").addEventListener("keydown", function (e) {
         return false;
     }
 
+    // Jika yang ditekan BUKAN tombol ENTER (Key 13)
     if (key != 13) {
         return true;
     }
 
+    // --- MULAI AREA KETIKA USER MENEKAN ENTER ---
+    
     if (e.preventDefault) {
         e.preventDefault();
     } else {
@@ -3151,9 +2845,10 @@ document.getElementById("tblPart").addEventListener("keydown", function (e) {
         }
     }
 
+    // Otomatis men-trigger ajax_save_detail_line.php. Parameter LOCATION dikirim dengan benar di getRowSaveData()
     saveDetailRow(rowSave, function (ok) {
         if (ok) {
-            moveToNextRowSameColumn(target);
+            moveToNextRowSameColumn(target); // Memindahkan kursor ke baris berikutnya
         }
     });
 

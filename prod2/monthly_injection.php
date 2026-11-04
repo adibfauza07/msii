@@ -85,10 +85,39 @@ function excel_num($value, $dec) {
     return number_format($n, $dec, ".", "");
 }
 
-$monthInput = get_value("month", date("Y-m"));
-$tonaseFilter = get_value("tonase", "");
-$itemFilter = get_value("item", "");
-$export = strtolower(get_value("export", ""));
+/* ======================================================
+   LOAD DAFTAR PROSES DARI dbo.PROCESS (URUT PROC_ID)
+====================================================== */
+$processList = array();
+$sqlProcess = "
+    SELECT
+        PROC_ID,
+        LTRIM(RTRIM(PROC_NAME)) AS PROC_NAME
+    FROM dbo.PROCESS
+    WHERE LTRIM(RTRIM(ISNULL(PROC_NAME, ''))) <> ''
+    ORDER BY PROC_ID ASC
+";
+$stmtProcess = sqlsrv_query($conn, $sqlProcess);
+if ($stmtProcess !== false) {
+    while ($pr = sqlsrv_fetch_array($stmtProcess, SQLSRV_FETCH_ASSOC)) {
+        $pv = trim((string)$pr["PROC_NAME"]);
+        if ($pv != "") {
+            $processList[] = $pv;
+        }
+    }
+}
+
+$defaultProcess = !empty($processList) ? $processList[0] : "INJECTION";
+
+$monthInput    = get_value("month", date("Y-m"));
+$processFilter = get_value("process", $defaultProcess);
+$tonaseFilter  = get_value("tonase", "");
+$itemFilter    = get_value("item", "");
+$export        = strtolower(get_value("export", ""));
+
+if ($processFilter == "%" || strtoupper($processFilter) == "ALL" || strtoupper($processFilter) == "ALL PROCESS") {
+    $processFilter = "";
+}
 
 if ($tonaseFilter == "%" || strtoupper($tonaseFilter) == "ALL TONASE") {
     $tonaseFilter = "";
@@ -104,9 +133,12 @@ if (strtotime($fromDate) === false) {
     $fromDate = date("Y-m-01");
 }
 
-$toDate = date("Y-m-t", strtotime($fromDate));
+$toDate    = date("Y-m-t", strtotime($fromDate));
 $monthLong = date("F Y", strtotime($fromDate));
 $printDate = date("d-M-Y H:i:s");
+
+$processLabel = ($processFilter != "") ? strtoupper($processFilter) : "ALL PROCESS";
+$processSlug  = ($processFilter != "") ? preg_replace('/[^A-Z0-9]+/', '_', strtoupper($processFilter)) : "ALL_PROCESS";
 
 /* ======================================================
    AUTO COMPLETE TONASE
@@ -129,8 +161,49 @@ if ($stmtTonase !== false) {
 }
 
 /* ======================================================
-   LOAD DATA DARI sp_injection_report
-   SP baru sudah langsung SELECT, tidak perlu sqlsrv_next_result
+   MAP PROSES DARI dbo.WO -> dbo.PROCESS
+   Agar tetap berfungsi meskipun sp_injection_report
+   hanya memiliki 2 parameter (@from_date, @to_date)
+====================================================== */
+$woProcessByItemMac = array();
+$woProcessByItem    = array();
+
+$sqlWoProc = "
+    SELECT DISTINCT
+        wo.ITEM_ID,
+        LTRIM(RTRIM(m.MAC_CODE)) AS MAC_CODE,
+        LTRIM(RTRIM(pr.PROC_NAME)) AS PROC_NAME
+    FROM dbo.WO wo
+    INNER JOIN dbo.MAC m
+        ON wo.MAC_ID = m.MAC_ID
+    INNER JOIN dbo.PROCESS pr
+        ON wo.PROC_ID = pr.PROC_ID
+    WHERE wo.WO_MMYY = ?
+";
+$stmtWoProc = sqlsrv_query($conn, $sqlWoProc, array($fromDate));
+if ($stmtWoProc !== false) {
+    while ($wp = sqlsrv_fetch_array($stmtWoProc, SQLSRV_FETCH_ASSOC)) {
+        $wItemId = trim((string)rowv($wp, "ITEM_ID", ""));
+        $wMac    = strtoupper(trim((string)rowv($wp, "MAC_CODE", "")));
+        $wProc   = strtoupper(trim((string)rowv($wp, "PROC_NAME", "")));
+
+        if ($wItemId !== "" && $wProc !== "") {
+            $key = $wItemId . "|" . $wMac;
+            if (!isset($woProcessByItemMac[$key])) {
+                $woProcessByItemMac[$key] = array();
+            }
+            $woProcessByItemMac[$key][$wProc] = $wProc;
+
+            if (!isset($woProcessByItem[$wItemId])) {
+                $woProcessByItem[$wItemId] = array();
+            }
+            $woProcessByItem[$wItemId][$wProc] = $wProc;
+        }
+    }
+}
+
+/* ======================================================
+   LOAD DATA DARI sp_injection_report (2 PARAMETER)
 ====================================================== */
 $sql = "EXEC dbo.sp_injection_report ?, ?";
 $stmt = sqlsrv_query($conn, $sql, array($fromDate, $toDate));
@@ -143,12 +216,50 @@ $groups = array();
 $totalRows = 0;
 
 while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-    $tonase = trim((string)rowv($r, "MAG_STATION", ""));
+    $itemId   = trim((string)rowv($r, "ITEM_ID", ""));
+    $tonase   = trim((string)rowv($r, "MAG_STATION", ""));
     $itemCode = trim((string)rowv($r, "ITEM_CODE", ""));
     $itemName = trim((string)rowv($r, "ITEM_NAME", ""));
+    $mc       = trim((string)rowv($r, "MAC_CODE", ""));
+    $procName = trim((string)rowv($r, "PROC_NAME", ""));
 
     if ($tonase == "") {
         $tonase = "*NONE*";
+    }
+
+    // Filter Proses Produksi
+    if ($processFilter != "") {
+        $targetProc = strtoupper($processFilter);
+        $matchedProc = false;
+
+        if ($procName != "") {
+            // Jika kolom PROC_NAME sudah ada dari hasil SP
+            if (strcasecmp($procName, $targetProc) === 0 || stripos($procName, $targetProc) !== false) {
+                $matchedProc = true;
+            }
+        } else {
+            // Ambil dari mapping dbo.WO -> dbo.PROCESS
+            $mapKey = $itemId . "|" . strtoupper($mc);
+            if (isset($woProcessByItemMac[$mapKey])) {
+                foreach ($woProcessByItemMac[$mapKey] as $pName) {
+                    if (strcasecmp($pName, $targetProc) === 0 || stripos($pName, $targetProc) !== false) {
+                        $matchedProc = true;
+                        break;
+                    }
+                }
+            } elseif (isset($woProcessByItem[$itemId])) {
+                foreach ($woProcessByItem[$itemId] as $pName) {
+                    if (strcasecmp($pName, $targetProc) === 0 || stripos($pName, $targetProc) !== false) {
+                        $matchedProc = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!$matchedProc) {
+            continue;
+        }
     }
 
     if ($tonaseFilter != "" && stripos($tonase, $tonaseFilter) === false) {
@@ -164,69 +275,68 @@ while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
 
     $cust = trim((string)rowv($r, "CUST_ABBR", ""));
     $capd = floatval(rowv($r, "capd", 0));
-    $mc = trim((string)rowv($r, "MAC_CODE", ""));
 
     $planQty = floatval(rowv($r, "ps", 0));
     $planMcd = ($capd > 0) ? ($planQty / $capd) : 0;
 
-    $ok = floatval(rowv($r, "ok", 0));
-    $hold = floatval(rowv($r, "hold", 0));
-    $ng = floatval(rowv($r, "ng", 0));
+    $ok        = floatval(rowv($r, "ok", 0));
+    $hold      = floatval(rowv($r, "hold", 0));
+    $ng        = floatval(rowv($r, "ng", 0));
     $actualMcd = floatval(rowv($r, "HITUNG_PD_DATE", 0));
-    $ngRw = floatval(rowv($r, "ng_rw", 0));
-    $purg = floatval(rowv($r, "purg", 0));
-    $price = floatval(rowv($r, "ITEM_COST", 0));
+    $ngRw      = floatval(rowv($r, "ng_rw", 0));
+    $purg      = floatval(rowv($r, "purg", 0));
+    $price     = floatval(rowv($r, "ITEM_COST", 0));
 
     $totalActual = $ok + $hold + $ng;
 
     $effPct = ($capd > 0 && $actualMcd > 0) ? ($ok / ($capd * $actualMcd) * 100) : 0;
-    $ngPct = ($totalActual > 0) ? ($ng / $totalActual) : 0;
+    $ngPct  = ($totalActual > 0) ? ($ng / $totalActual) : 0;
 
     if (!isset($groups[$tonase])) {
         $groups[$tonase] = array(
-            "TONASE" => $tonase,
-            "ROWS" => array(),
-            "SUM_PLAN" => 0,
+            "TONASE"       => $tonase,
+            "ROWS"         => array(),
+            "SUM_PLAN"     => 0,
             "SUM_PLAN_MCD" => 0,
-            "SUM_OK" => 0,
-            "SUM_HOLD" => 0,
-            "SUM_NG" => 0,
-            "SUM_ACT_MCD" => 0,
-            "SUM_NG_RW" => 0,
-            "SUM_PURG" => 0,
-            "SUM_PRICE" => 0
+            "SUM_OK"       => 0,
+            "SUM_HOLD"     => 0,
+            "SUM_NG"       => 0,
+            "SUM_ACT_MCD"  => 0,
+            "SUM_NG_RW"    => 0,
+            "SUM_PURG"     => 0,
+            "SUM_PRICE"    => 0
         );
     }
 
     $row = array(
-        "ITEM_CODE" => $itemCode,
-        "ITEM_NAME" => $itemName,
-        "CUST" => $cust,
-        "CAPD" => $capd,
-        "MC" => $mc,
-        "PLAN_QTY" => $planQty,
-        "PLAN_MCD" => $planMcd,
-        "OK" => $ok,
-        "HOLD" => $hold,
-        "NG" => $ng,
+        "ITEM_CODE"  => $itemCode,
+        "ITEM_NAME"  => $itemName,
+        "CUST"       => $cust,
+        "CAPD"       => $capd,
+        "MC"         => $mc,
+        "PLAN_QTY"   => $planQty,
+        "PLAN_MCD"   => $planMcd,
+        "OK"         => $ok,
+        "HOLD"       => $hold,
+        "NG"         => $ng,
         "ACTUAL_MCD" => $actualMcd,
-        "NG_RW" => $ngRw,
-        "EFF_PCT" => $effPct,
-        "NG_PCT" => $ngPct,
-        "PURGING" => $purg,
-        "PRICE" => $price
+        "NG_RW"      => $ngRw,
+        "EFF_PCT"    => $effPct,
+        "NG_PCT"     => $ngPct,
+        "PURGING"    => $purg,
+        "PRICE"      => $price
     );
 
     $groups[$tonase]["ROWS"][] = $row;
-    $groups[$tonase]["SUM_PLAN"] += $planQty;
+    $groups[$tonase]["SUM_PLAN"]     += $planQty;
     $groups[$tonase]["SUM_PLAN_MCD"] += $planMcd;
-    $groups[$tonase]["SUM_OK"] += $ok;
-    $groups[$tonase]["SUM_HOLD"] += $hold;
-    $groups[$tonase]["SUM_NG"] += $ng;
-    $groups[$tonase]["SUM_ACT_MCD"] += $actualMcd;
-    $groups[$tonase]["SUM_NG_RW"] += $ngRw;
-    $groups[$tonase]["SUM_PURG"] += $purg;
-    $groups[$tonase]["SUM_PRICE"] += $price;
+    $groups[$tonase]["SUM_OK"]       += $ok;
+    $groups[$tonase]["SUM_HOLD"]     += $hold;
+    $groups[$tonase]["SUM_NG"]       += $ng;
+    $groups[$tonase]["SUM_ACT_MCD"]  += $actualMcd;
+    $groups[$tonase]["SUM_NG_RW"]    += $ngRw;
+    $groups[$tonase]["SUM_PURG"]     += $purg;
+    $groups[$tonase]["SUM_PRICE"]    += $price;
 
     $totalRows++;
 }
@@ -241,7 +351,7 @@ if ($export == "excel") {
         ob_end_clean();
     }
 
-    $fileName = "MONTHLY_PRODUCTION_INJECTION_" . date("Ym", strtotime($fromDate)) . "_" . date("Ymd_His") . ".xls";
+    $fileName = "MONTHLY_PRODUCTION_" . $processSlug . "_" . date("Ym", strtotime($fromDate)) . "_" . date("Ymd_His") . ".xls";
 
     header("Content-Type: application/vnd.ms-excel; charset=utf-8");
     header("Content-Disposition: attachment; filename=\"" . $fileName . "\"");
@@ -270,8 +380,8 @@ if ($export == "excel") {
 <body>
 <table>
     <tr><td colspan="16" class="title">PT.IMC TEKNO INDONESIA</td></tr>
-    <tr><td colspan="16" class="title">MONTHLY PRODUCTION INJECTION REPORT</td></tr>
-    <tr><td colspan="16" class="info">Month : <?php echo h($monthLong); ?> | Export Date : <?php echo h($printDate); ?></td></tr>
+    <tr><td colspan="16" class="title">MONTHLY PRODUCTION <?php echo h($processLabel); ?> REPORT</td></tr>
+    <tr><td colspan="16" class="info">Process : <?php echo h($processLabel); ?> | Month : <?php echo h($monthLong); ?> | Export Date : <?php echo h($printDate); ?></td></tr>
     <tr><td colspan="16" class="info"></td></tr>
 
     <tr>
@@ -335,7 +445,7 @@ if ($export == "excel") {
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Monthly Production Injection Report</title>
+    <title>Monthly Production <?php echo h($processLabel); ?> Report</title>
 
     <style>
         html, body {
@@ -360,13 +470,15 @@ if ($export == "excel") {
             white-space: nowrap;
         }
 
-        .filter input {
+        .filter input,
+        .filter select {
             height: 24px;
             border: 1px solid #777777;
             padding: 2px 5px;
             font-family: Tahoma, Arial, sans-serif;
             font-size: 12px;
             box-sizing: border-box;
+            background: #ffffff;
         }
 
         .btn {
@@ -504,13 +616,23 @@ if ($export == "excel") {
 
 <div class="filter">
     <form method="get">
-        <b>Monthly Injection</b>
+        <b>Monthly Production</b>
         &nbsp;&nbsp;
         Month:
         <input type="month" name="month" value="<?php echo h($monthInput); ?>">
         &nbsp;
+        Process:
+        <select name="process" style="width:140px;">
+            <option value="ALL" <?php echo ($processFilter == "") ? "selected" : ""; ?>>ALL PROCESS</option>
+            <?php foreach ($processList as $procName) { ?>
+                <option value="<?php echo h($procName); ?>" <?php echo (strcasecmp($processFilter, $procName) === 0) ? "selected" : ""; ?>>
+                    <?php echo h($procName); ?>
+                </option>
+            <?php } ?>
+        </select>
+        &nbsp;
         Tonase:
-        <input type="text" name="tonase" value="<?php echo h($tonaseFilter); ?>" list="tonaseList" placeholder="ALL TONASE" style="width:120px;">
+        <input type="text" name="tonase" value="<?php echo h($tonaseFilter); ?>" list="tonaseList" placeholder="ALL TONASE" style="width:110px;">
         <datalist id="tonaseList">
             <?php foreach ($tonaseList as $tv) { ?>
                 <option value="<?php echo h($tv); ?>">
@@ -518,10 +640,10 @@ if ($export == "excel") {
         </datalist>
         &nbsp;
         Item:
-        <input type="text" name="item" value="<?php echo h($itemFilter); ?>" placeholder="ALL ITEM" style="width:180px;">
+        <input type="text" name="item" value="<?php echo h($itemFilter); ?>" placeholder="ALL ITEM" style="width:155px;">
         &nbsp;
         <button type="submit" class="btn">FILTER</button>
-        <a href="monthly_injection.php?month=<?php echo h($monthInput); ?>" class="btn">ALL</a>
+        <a href="monthly_injection.php?month=<?php echo h($monthInput); ?>&process=ALL" class="btn">ALL</a>
         <button type="submit" name="export" value="excel" class="btn">EXPORT EXCEL</button>
     </form>
 </div>
@@ -533,11 +655,11 @@ if ($export == "excel") {
 
 <div class="page">
     <div class="company">PT.IMC TEKNO INDONESIA</div>
-    <div class="title">MONTHLY PRODUCTION INJECTION REPORT</div>
+    <div class="title">MONTHLY PRODUCTION <?php echo h($processLabel); ?> REPORT</div>
     <div class="month"><?php echo h($monthLong); ?></div>
 
     <?php if ($totalRows == 0) { ?>
-        <div class="no-data">Data injection tidak ditemukan.</div>
+        <div class="no-data">Data <?php echo h(strtolower($processLabel)); ?> tidak ditemukan.</div>
     <?php } else { ?>
         <table class="report">
             <colgroup>

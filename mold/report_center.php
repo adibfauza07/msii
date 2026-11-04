@@ -26,25 +26,28 @@ if ($resMasterMold === false) {
 }
 
 $arrMasterMold = [];
+$mapMoldIdByPart = [];
 while ($p = sqlsrv_fetch_array($resMasterMold, SQLSRV_FETCH_ASSOC)) {
+    $cNo = strtoupper(trim($p['PART_NO'], " \t\n\r\0\x0B'"));
     $arrMasterMold[] = [
         'id'   => $p['MOLD_ID'],
-        'no'   => trim($p['PART_NO']),
+        'no'   => $cNo,
         'name' => isset($p['PART_NAME']) ? trim($p['PART_NAME']) : '',
         'cust' => isset($p['CUST_ALIAS']) ? trim($p['CUST_ALIAS']) : ''
     ];
+    $mapMoldIdByPart[$cNo] = $p['MOLD_ID'];
 }
 
-// Query Klasifikasi Kasus dari MOLD_CLASSIFICATION[cite: 2, 6]
 $sqlClass = "SELECT ID, CLASSIFICATION FROM MOLD_CLASSIFICATION WHERE CLASSIFICATION IS NOT NULL ORDER BY CLASSIFICATION ASC";
 $resClass = sqlsrv_query($conn, $sqlClass);
 $arrClass = [];
+$mapClassIdByDesc = [];
 if ($resClass !== false) {
     while ($c = sqlsrv_fetch_array($resClass, SQLSRV_FETCH_ASSOC)) {
-        $arrClass[] = [
-            'id'   => isset($c['ID']) ? $c['ID'] : $c['id'],
-            'desc' => isset($c['CLASSIFICATION']) ? $c['CLASSIFICATION'] : $c['classification']
-        ];
+        $cID = isset($c['ID']) ? $c['ID'] : $c['id'];
+        $cDesc = trim(isset($c['CLASSIFICATION']) ? $c['CLASSIFICATION'] : $c['classification']);
+        $arrClass[] = ['id' => $cID, 'desc' => $cDesc];
+        $mapClassIdByDesc[strtoupper($cDesc)] = $cID;
     }
 }
 
@@ -53,17 +56,20 @@ if ($resClass !== false) {
 // -------------------------------------------------------------
 if (isset($_POST['btnDeleteHistory'])) {
     $delMoldId = !empty($_POST['del_mold_id']) ? intval($_POST['del_mold_id']) : null;
+    $delPartNo = isset($_POST['del_part_no']) ? strtoupper(trim($_POST['del_part_no'], " \t\n\r\0\x0B'")) : '';
     $delDate   = !empty($_POST['del_date']) ? $_POST['del_date'] : null;
     $delRef    = isset($_POST['del_ref']) ? trim($_POST['del_ref']) : '';
-    $delStart  = isset($_POST['del_start']) ? trim($_POST['del_start']) : '';
+
+    if (empty($delMoldId) && !empty($delPartNo) && isset($mapMoldIdByPart[$delPartNo])) {
+        $delMoldId = $mapMoldIdByPart[$delPartNo];
+    }
 
     if ($delMoldId && $delDate) {
         $sqlDelete = "DELETE FROM MOLD_HISTORY_DETAIL 
                       WHERE MOLD_ID = ? 
                         AND CONVERT(VARCHAR(10), [DATE], 120) = ? 
-                        AND ISNULL(REFERENCE, '') = ?
-                        AND (CONVERT(VARCHAR(8), [START], 108) LIKE ? OR ISNULL([START], '') = ?)";
-        $paramsDel = [$delMoldId, $delDate, $delRef, $delStart . '%', $delStart];
+                        AND (ISNULL(REFERENCE, '') = ? OR ? = '')";
+        $paramsDel = [$delMoldId, $delDate, $delRef, $delRef];
         $stmtDel = sqlsrv_query($conn, $sqlDelete, $paramsDel);
 
         if ($stmtDel === false) {
@@ -71,8 +77,14 @@ if (isset($_POST['btnDeleteHistory'])) {
             $alertMsg = "Gagal menghapus data: " . (isset($err[0]['message']) ? $err[0]['message'] : 'Query error');
             $alertType = "danger";
         } else {
-            $alertMsg = "Data History Mold berhasil dihapus!";
-            $alertType = "success";
+            $rowsAffected = sqlsrv_rows_affected($stmtDel);
+            if ($rowsAffected > 0) {
+                $alertMsg = "Data History Mold berhasil dihapus!";
+                $alertType = "success";
+            } else {
+                $alertMsg = "Peringatan: Data tidak ditemukan pada tabel fisik untuk dihapus.";
+                $alertType = "danger";
+            }
         }
     }
 }
@@ -82,19 +94,21 @@ if (isset($_POST['btnDeleteHistory'])) {
 // -------------------------------------------------------------
 if (isset($_POST['btnUpdateHistory'])) {
     $editMoldId   = intval($_POST['edit_mold_id']);
+    $editPartNo   = isset($_POST['edit_part_no']) ? strtoupper(trim($_POST['edit_part_no'], " \t\n\r\0\x0B'")) : '';
     $editOrigDate = $_POST['edit_orig_date'];
     $editOrigRef  = trim($_POST['edit_orig_ref']);
-    $editOrigStart= trim($_POST['edit_orig_start']);
+
+    if (empty($editMoldId) && !empty($editPartNo) && isset($mapMoldIdByPart[$editPartNo])) {
+        $editMoldId = $mapMoldIdByPart[$editPartNo];
+    }
 
     $newDate       = $_POST['edit_date'];
     $newClassId    = !empty($_POST['edit_class_id']) ? intval($_POST['edit_class_id']) : null;
     $newProblem    = trim($_POST['edit_problem']);
     $newWork       = trim($_POST['edit_work']);
     $newPic        = trim($_POST['edit_pic']);
-    $newStatus     = intval($_POST['edit_status']); // 0 = OPEN, 1 = CLOSE
+    $newStatus     = intval($_POST['edit_status']); 
     $newRef        = trim($_POST['edit_ref']);
-    
-    // Format waktu ke format jam bersih
     $newStart      = !empty($_POST['edit_start']) ? trim($_POST['edit_start']) : null;
     $newFinish     = !empty($_POST['edit_finish']) ? trim($_POST['edit_finish']) : null;
     $newPartChange = trim($_POST['edit_part_change']);
@@ -112,13 +126,12 @@ if (isset($_POST['btnUpdateHistory'])) {
                       SPARE_PART_CHANGE = ?
                   WHERE MOLD_ID = ? 
                     AND CONVERT(VARCHAR(10), [DATE], 120) = ? 
-                    AND ISNULL(REFERENCE, '') = ?
-                    AND (CONVERT(VARCHAR(8), [START], 108) LIKE ? OR ISNULL([START], '') = ?)";
+                    AND (ISNULL(REFERENCE, '') = ? OR ? = '')";
 
     $paramsUpd = [
         $newDate, $newClassId, $newProblem, $newWork, $newPic, $newStatus,
         $newRef, $newStart, $newFinish, $newPartChange,
-        $editMoldId, $editOrigDate, $editOrigRef, $editOrigStart . '%', $editOrigStart
+        $editMoldId, $editOrigDate, $editOrigRef, $editOrigRef
     ];
     $stmtUpd = sqlsrv_query($conn, $sqlUpdate, $paramsUpd);
 
@@ -127,8 +140,14 @@ if (isset($_POST['btnUpdateHistory'])) {
         $alertMsg = "Gagal mengupdate data: " . (isset($err[0]['message']) ? $err[0]['message'] : 'Query error');
         $alertType = "danger";
     } else {
-        $alertMsg = "Data History Mold berhasil diperbarui!";
-        $alertType = "success";
+        $rowsAffected = sqlsrv_rows_affected($stmtUpd);
+        if ($rowsAffected > 0) {
+            $alertMsg = "Data History Mold berhasil diperbarui!";
+            $alertType = "success";
+        } else {
+            $alertMsg = "Peringatan: Kriteria baris lama tidak cocok di database.";
+            $alertType = "danger";
+        }
     }
 }
 
@@ -232,9 +251,41 @@ if ($isSubmit) {
         $reportData[$cust][$pNo]['details'][] = $row;
     }
     sqlsrv_free_stmt($stmt);
+
+    // ==============================================================
+    // URUTKAN DETAIL DATA PER MOLD SECARA DESC (TERBARU DULUAN)
+    // ==============================================================
+    foreach ($reportData as $cAlias => &$parts) {
+        foreach ($parts as $partNumber => &$partVal) {
+            if (!empty($partVal['details'])) {
+                usort($partVal['details'], function ($a, $b) {
+                    $rawDateA = isset($a['DATE']) ? $a['DATE'] : (isset($a['date']) ? $a['date'] : null);
+                    $timeA = ($rawDateA instanceof DateTime) ? $rawDateA->getTimestamp() : strtotime($rawDateA);
+
+                    $rawDateB = isset($b['DATE']) ? $b['DATE'] : (isset($b['date']) ? $b['date'] : null);
+                    $timeB = ($rawDateB instanceof DateTime) ? $rawDateB->getTimestamp() : strtotime($rawDateB);
+
+                    if ($timeA === $timeB) {
+                        $startA = isset($a['START']) ? $a['START'] : '';
+                        $startB = isset($b['START']) ? $b['START'] : '';
+                        $strStartA = ($startA instanceof DateTime) ? $startA->format('H:i') : (string)$startA;
+                        $strStartB = ($startB instanceof DateTime) ? $startB->format('H:i') : (string)$startB;
+                        return strcmp($strStartB, $strStartA);
+                    }
+
+                    if ($timeB == $timeA) {
+                        return 0;
+                    }
+                    return ($timeB > $timeA) ? 1 : -1;
+                });
+            }
+        }
+    }
+    unset($parts, $partVal);
+
     $showReport = true;
 
-    // Export Excel Langsung (Tanpa kolom Aksi)[cite: 1, 6]
+    // Export Excel Langsung (Tanpa kolom Aksi)
     if ($isExport) {
         $fileName = "History_Mold_" . date('Ymd_His') . ".xls";
         header("Content-Type: application/vnd.ms-excel; charset=utf-8");
@@ -377,9 +428,7 @@ if ($isSubmit) {
     <div class="alert alert-<?php echo $alertType; ?>"><?php echo h($alertMsg); ?></div>
 <?php endif; ?>
 
-<!-- ======================================================== -->
-<!-- FORM INPUT TRANSAKSI HISTORY MOLD BARU                  -->
-<!-- ======================================================== -->
+<!-- FORM INPUT TRANSAKSI HISTORY MOLD BARU -->
 <div class="box-container">
     <div class="box-title">INPUT TRANSAKSI HISTORY MOLD BARU</div>
     <form method="POST" action="">
@@ -468,9 +517,7 @@ if ($isSubmit) {
     </form>
 </div>
 
-<!-- ======================================================== -->
-<!-- FORM FILTER LAPORAN & EXPORT EXCEL                      -->
-<!-- ======================================================== -->
+<!-- FORM FILTER LAPORAN & EXPORT EXCEL -->
 <div class="box-container">
     <div class="box-title">FILTER LAPORAN HISTORY MOLD</div>
     <form method="POST" action="">
@@ -512,9 +559,7 @@ if ($isSubmit) {
     </form>
 </div>
 
-<!-- ======================================================== -->
-<!-- TABEL LAPORAN HISTORY MOLD                              -->
-<!-- ======================================================== -->
+<!-- TABEL LAPORAN HISTORY MOLD -->
 <?php if ($showReport): ?>
     <div class="report-header">
         <div class="company-name">PT.IMC TEKNO INDONESIA</div>
@@ -550,6 +595,10 @@ if ($isSubmit) {
                     </tr>
                     
                     <?php foreach ($parts as $partNo => $partContent): ?>
+                        <?php
+                            $cleanPartKey = strtoupper(trim($partNo, " \t\n\r\0\x0B'"));
+                            $rowMoldId = isset($mapMoldIdByPart[$cleanPartKey]) ? $mapMoldIdByPart[$cleanPartKey] : 0;
+                        ?>
                         <tr>
                             <td colspan="11" class="group-mold">
                                 <span style="text-decoration: underline; margin-right: 15px;"><?php echo h($partNo); ?></span> 
@@ -560,37 +609,22 @@ if ($isSubmit) {
                         <?php foreach ($partContent['details'] as $row): ?>
                             <?php
                                 $rDate = isset($row['DATE']) ? $row['DATE'] : (isset($row['date']) ? $row['date'] : null);
-                                $rClass = isset($row['CLASSIFICATION']) ? $row['CLASSIFICATION'] : (isset($row['classification']) ? $row['classification'] : '-');
-                                $rProblem = isset($row['PROBLEM']) ? $row['PROBLEM'] : (isset($row['problem']) ? $row['problem'] : '-');
-                                $rWork = isset($row['WORKING_PROSES']) ? $row['WORKING_PROSES'] : (isset($row['working_proses']) ? $row['working_proses'] : '-');
-                                $rPic = isset($row['PIC']) ? $row['PIC'] : (isset($row['pic']) ? $row['pic'] : '-');
+                                $rClass = trim(isset($row['CLASSIFICATION']) ? $row['CLASSIFICATION'] : (isset($row['classification']) ? $row['classification'] : '-'));
+                                $rProblem = trim(isset($row['PROBLEM']) ? $row['PROBLEM'] : (isset($row['problem']) ? $row['problem'] : '-'));
+                                $rWork = trim(isset($row['WORKING_PROSES']) ? $row['WORKING_PROSES'] : (isset($row['working_proses']) ? $row['working_proses'] : '-'));
+                                $rPic = trim(isset($row['PIC']) ? $row['PIC'] : (isset($row['pic']) ? $row['pic'] : '-'));
                                 $rStatus = isset($row['STATUS']) ? $row['STATUS'] : (isset($row['status']) ? $row['status'] : 0);
-                                $rRef = isset($row['REFERENCE']) ? $row['REFERENCE'] : (isset($row['reference']) ? $row['reference'] : '-');
+                                $rRef = trim(isset($row['REFERENCE']) ? $row['REFERENCE'] : (isset($row['reference']) ? $row['reference'] : '-'));
                                 $rStart = isset($row['START']) ? $row['START'] : (isset($row['start']) ? $row['start'] : '-');
                                 $rFinish = isset($row['FISINSH']) ? $row['FISINSH'] : (isset($row['fisinsh']) ? $row['fisinsh'] : '-');
-                                $rPartChange = isset($row['SPARE_PART_CHANGE']) ? $row['SPARE_PART_CHANGE'] : '';
+                                $rPartChange = trim(isset($row['SPARE_PART_CHANGE']) ? $row['SPARE_PART_CHANGE'] : '');
 
                                 $strDateIso = ($rDate instanceof DateTime) ? $rDate->format('Y-m-d') : date('Y-m-d', strtotime($rDate));
-                                
-                                // Format 24 Jam di Tabel[cite: 14]
-                                $strStart24 = ($rStart instanceof DateTime) ? $rStart->format('H:i') : ($rStart ? date('H:i', strtotime($rStart)) : '-');
-                                $strFinish24 = ($rFinish instanceof DateTime) ? $rFinish->format('H:i') : ($rFinish ? date('H:i', strtotime($rFinish)) : '-');
+                                $strStart24 = ($rStart instanceof DateTime) ? $rStart->format('H:i') : ($rStart && $rStart !== '-' ? date('H:i', strtotime($rStart)) : '-');
+                                $strFinish24 = ($rFinish instanceof DateTime) ? $rFinish->format('H:i') : ($rFinish && $rFinish !== '-' ? date('H:i', strtotime($rFinish)) : '-');
 
-                                $curMoldId = 0;
-                                foreach ($arrMasterMold as $mm) {
-                                    if (strcasecmp($mm['no'], $partNo) === 0) {
-                                        $curMoldId = $mm['id'];
-                                        break;
-                                    }
-                                }
-
-                                $curClassId = 0;
-                                foreach ($arrClass as $ac) {
-                                    if (strcasecmp($ac['desc'], $rClass) === 0) {
-                                        $curClassId = $ac['id'];
-                                        break;
-                                    }
-                                }
+                                $upperClass = strtoupper($rClass);
+                                $rowClassId = isset($mapClassIdByDesc[$upperClass]) ? $mapClassIdByDesc[$upperClass] : 0;
                             ?>
                             <tr>
                                 <td class="text-center"><?php echo ($rDate instanceof DateTime) ? h($rDate->format('d-M-y')) : h($rDate); ?></td>
@@ -606,24 +640,22 @@ if ($isSubmit) {
                                 <td class="text-center"><?php echo h($strFinish24); ?></td>
                                 <td class="text-center"><?php echo hitungDurasiWeb($strStart24, $strFinish24); ?></td>
                                 
-                                <!-- KOLOM AKSI EDIT & HAPUS[cite: 14] -->
                                 <td class="col-action text-center" style="white-space: nowrap;">
                                     <button type="button" class="btn-edit" 
-                                        onclick='openEditModal(<?php echo json_encode([
-                                            "mold_id"     => $curMoldId,
-                                            "part_no"     => $partNo,
-                                            "part_name"   => $partContent["info"]["PART_NAME"],
-                                            "date"        => $strDateIso,
-                                            "class_id"    => $curClassId,
-                                            "problem"     => ($rProblem === "-") ? "" : $rProblem,
-                                            "work"        => ($rWork === "-") ? "" : $rWork,
-                                            "pic"         => ($rPic === "-") ? "" : $rPic,
-                                            "status"      => ($rStatus == 1 || $rStatus === "CLOSE" || $rStatus === "CLOSED") ? 1 : 0,
-                                            "ref"         => ($rRef === "-") ? "" : $rRef,
-                                            "start"       => ($strStart24 === "-") ? "" : $strStart24,
-                                            "finish"      => ($strFinish24 === "-") ? "" : $strFinish24,
-                                            "part_change" => $rPartChange
-                                        ]); ?>)'>
+                                        data-mold-id="<?php echo h($rowMoldId); ?>"
+                                        data-part-no="<?php echo h($partNo); ?>"
+                                        data-part-name="<?php echo h($partContent['info']['PART_NAME']); ?>"
+                                        data-date="<?php echo h($strDateIso); ?>"
+                                        data-class-id="<?php echo h($rowClassId); ?>"
+                                        data-problem="<?php echo ($rProblem === '-') ? '' : h($rProblem); ?>"
+                                        data-work="<?php echo ($rWork === '-') ? '' : h($rWork); ?>"
+                                        data-pic="<?php echo ($rPic === '-') ? '' : h($rPic); ?>"
+                                        data-status="<?php echo ($rStatus == 1 || $rStatus === 'CLOSE' || $rStatus === 'CLOSED') ? '1' : '0'; ?>"
+                                        data-ref="<?php echo ($rRef === '-') ? '' : h($rRef); ?>"
+                                        data-start="<?php echo ($strStart24 === '-') ? '' : h($strStart24); ?>"
+                                        data-finish="<?php echo ($strFinish24 === '-') ? '' : h($strFinish24); ?>"
+                                        data-part-change="<?php echo h($rPartChange); ?>"
+                                        onclick="handleEditClick(this)">
                                         EDIT
                                     </button>
 
@@ -632,10 +664,10 @@ if ($isSubmit) {
                                         <input type="hidden" name="end_date" value="<?php echo h($endDateForm); ?>">
                                         <input type="hidden" name="mold_no" value="<?php echo isset($_REQUEST['mold_no']) ? h($_REQUEST['mold_no']) : ''; ?>">
                                         <input type="hidden" name="classification" value="<?php echo isset($_REQUEST['classification']) ? h($_REQUEST['classification']) : ''; ?>">
-                                        <input type="hidden" name="del_mold_id" value="<?php echo h($curMoldId); ?>">
+                                        <input type="hidden" name="del_mold_id" value="<?php echo h($rowMoldId); ?>">
+                                        <input type="hidden" name="del_part_no" value="<?php echo h($partNo); ?>">
                                         <input type="hidden" name="del_date" value="<?php echo h($strDateIso); ?>">
                                         <input type="hidden" name="del_ref" value="<?php echo ($rRef === '-') ? '' : h($rRef); ?>">
-                                        <input type="hidden" name="del_start" value="<?php echo ($strStart24 === '-') ? '' : h($strStart24); ?>">
                                         <button type="submit" name="btnDeleteHistory" class="btn-del">HAPUS</button>
                                     </form>
                                 </td>
@@ -652,9 +684,7 @@ if ($isSubmit) {
     <?php endif; ?>
 <?php endif; ?>
 
-<!-- ======================================================== -->
-<!-- MODAL POPUP EDIT DATA HISTORY MOLD[cite: 15]                       -->
-<!-- ======================================================== -->
+<!-- MODAL POPUP EDIT DATA HISTORY MOLD -->
 <div id="modalEdit" class="modal-overlay">
     <div class="modal-content">
         <div class="modal-header">
@@ -668,9 +698,9 @@ if ($isSubmit) {
             <input type="hidden" name="classification" value="<?php echo isset($_REQUEST['classification']) ? h($_REQUEST['classification']) : ''; ?>">
 
             <input type="hidden" name="edit_mold_id" id="edit_mold_id">
+            <input type="hidden" name="edit_part_no" id="edit_hidden_part_no">
             <input type="hidden" name="edit_orig_date" id="edit_orig_date">
             <input type="hidden" name="edit_orig_ref" id="edit_orig_ref">
-            <input type="hidden" name="edit_orig_start" id="edit_orig_start">
 
             <div class="form-grid-3">
                 <div class="form-group">
@@ -769,7 +799,6 @@ if ($isSubmit) {
         }
     });
 
-    // Fungsi konversi jam apa pun menjadi format 24 Jam murni (HH:mm)
     function formatTo24Hour(timeStr) {
         if (!timeStr || timeStr === '-' || timeStr === '') return '';
         timeStr = timeStr.trim().toUpperCase();
@@ -796,26 +825,25 @@ if ($isSubmit) {
         return timeStr;
     }
 
-    function openEditModal(data) {
-        document.getElementById('edit_mold_id').value = data.mold_id;
-        document.getElementById('edit_orig_date').value = data.date;
-        document.getElementById('edit_orig_ref').value = data.ref;
-        document.getElementById('edit_orig_start').value = data.start;
+    function handleEditClick(btn) {
+        document.getElementById('edit_mold_id').value = btn.dataset.moldId;
+        document.getElementById('edit_hidden_part_no').value = btn.dataset.partNo;
+        document.getElementById('edit_orig_date').value = btn.dataset.date;
+        document.getElementById('edit_orig_ref').value = btn.dataset.ref;
 
-        document.getElementById('edit_part_no').value = data.part_no;
-        document.getElementById('edit_part_name').value = data.part_name;
-        document.getElementById('edit_date').value = data.date;
-        document.getElementById('edit_class_id').value = data.class_id;
-        document.getElementById('edit_pic').value = data.pic;
-        document.getElementById('edit_status').value = data.status;
-        document.getElementById('edit_problem').value = data.problem;
-        document.getElementById('edit_work').value = data.work;
-        document.getElementById('edit_ref').value = data.ref;
+        document.getElementById('edit_part_no').value = btn.dataset.partNo;
+        document.getElementById('edit_part_name').value = btn.dataset.partName;
+        document.getElementById('edit_date').value = btn.dataset.date;
+        document.getElementById('edit_class_id').value = btn.dataset.classId;
+        document.getElementById('edit_pic').value = btn.dataset.pic;
+        document.getElementById('edit_status').value = btn.dataset.status;
+        document.getElementById('edit_problem').value = btn.dataset.problem;
+        document.getElementById('edit_work').value = btn.dataset.work;
+        document.getElementById('edit_ref').value = btn.dataset.ref;
         
-        // Format otomatis ke 24 Jam saat membuka modal
-        document.getElementById('edit_start').value = formatTo24Hour(data.start);
-        document.getElementById('edit_finish').value = formatTo24Hour(data.finish);
-        document.getElementById('edit_part_change').value = data.part_change;
+        document.getElementById('edit_start').value = formatTo24Hour(btn.dataset.start);
+        document.getElementById('edit_finish').value = formatTo24Hour(btn.dataset.finish);
+        document.getElementById('edit_part_change').value = btn.dataset.partChange;
 
         document.getElementById('modalEdit').style.display = 'flex';
     }

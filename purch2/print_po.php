@@ -118,7 +118,11 @@ function terbilang_en_simple($number) {
         return (string)$n;
     };
 
-    return $convert($whole) . " and " . str_pad($cents, 2, "0", STR_PAD_LEFT) . " /100 only";
+    if ($cents > 0) {
+        return $convert($whole) . " and " . str_pad($cents, 2, "0", STR_PAD_LEFT) . " /100 only";
+    } else {
+        return $convert($whole) . " only";
+    }
 }
 
 $poId = intval(getv("po_id", "0"));
@@ -240,20 +244,32 @@ if ($head === null) {
 
 $currency = trim((string)$head["CURR_CODE"]);
 $total = 0;
+$totalQty = 0;
 
 foreach ($rows as $r) {
-    $total += floatval($r["QTY"]) * floatval($r["POD_PRICE"]);
+    $qty = floatval($r["QTY"]);
+    $total += $qty * floatval($r["POD_PRICE"]);
+    $totalQty += $qty;
 }
 
+// --------------------------------------------------------------------------
+// LOGIK CUKAI (TAX YES / NO)
+// --------------------------------------------------------------------------
+$useTax = getv("use_tax", "yes"); // Secara lalai, cukai diaktifkan ("yes")
 $taxRate = 0.11;
-$tax = $total * $taxRate;
+$tax = 0;
+
+if ($useTax === "yes") {
+    $tax = $total * $taxRate;
+}
+
 $grandTotal = $total + $tax;
 
 // --------------------------------------------------------------------------
 // LIMIT HALAMAN DITINGKATKAN AGAR LEBIH MUAT BANYAK
 // --------------------------------------------------------------------------
-$limitNormal = 40; // Kapasitas halaman biasa
-$limitLast   = 22; // Kapasitas halaman terakhir (dinaikkan agar jika item sedikit, tidak pindah halaman)
+$limitNormal = 38; 
+$limitLast   = 20;
 
 $pages = array();
 $currentIndex = 0;
@@ -292,14 +308,14 @@ $totalPages = count($pages);
     <style>
         @page {
             size: A4 portrait;
-            margin: 5mm; /* Margin kertas diperkecil */
+            margin: 0; 
         }
 
         html, body {
             margin: 0;
             padding: 0;
-            background: #999999;
-            font-family: "Times New Roman", serif;
+            background: #e2e2e2;
+            font-family: Arial, Helvetica, sans-serif;
             font-size: 11px;
             color: #000000;
         }
@@ -318,29 +334,20 @@ $totalPages = count($pages);
             background: #eeeeee;
             padding: 4px 12px;
             cursor: pointer;
+            margin-right: 4px;
         }
 
         .page {
-            width: 198mm; /* Melebar sedikit agar muat */
-            height: 285mm; /* Memanjang sedikit */
+            width: 210mm; 
+            height: 297mm; 
             margin: 10px auto;
             background: #ffffff;
-            padding: 6mm 6mm 8mm 6mm; /* Padding internal diperkecil */
+            padding: 8mm 12mm 10mm 12mm; 
             box-sizing: border-box;
-            border: 1px solid #000000;
             position: relative;
             display: flex;
             flex-direction: column;
             page-break-after: always;
-        }
-
-        .title {
-            text-align: center;
-            font-size: 15px;
-            font-weight: bold;
-            margin-top: -3mm;
-            margin-bottom: 1mm;
-            letter-spacing: 1px;
         }
 
         table {
@@ -348,129 +355,100 @@ $totalPages = count($pages);
             width: 100%;
         }
 
-        .main-table td,
-        .main-table th {
+        td, th {
             border: 1px solid #000000;
             vertical-align: top;
-            padding: 1px 3px; /* Jarak atas bawah teks dirapatkan */
+            padding: 2px 4px;
         }
 
-        .no-border td {
-            border: none;
-        }
+        .no-border td { border: none !important; }
 
-        .small {
-            font-size: 10px;
-        }
-
-        .bold {
-            font-weight: bold;
-        }
-
-        .center {
-            text-align: center;
-        }
-
-        .right {
-            text-align: right;
-        }
+        .bold { font-weight: bold; }
+        .center { text-align: center; }
+        .right { text-align: right; }
+        .left { text-align: left; }
 
         .label {
-            font-size: 9px;
-            display: block;
-            margin-bottom: 1px;
-        }
-
-        .detail {
-            flex-grow: 1;
-            height: 100%; 
-            border-bottom: 1px solid #000000;
-            margin-top: 3px;
-        }
-
-        .detail th {
-            border: 1px solid #000000;
             font-size: 10px;
-            text-align: center;
-            padding: 1px;
+            display: block;
+            margin-bottom: 2px;
         }
 
-        .detail td {
-            border-left: 1px solid #000000;
-            border-right: 1px solid #000000;
-            padding: 1px 3px;
-        }
-        
-        .detail tr:not(.stretcher) td {
-            height: 14px; /* Tinggi baris barang dipertipis */
+        .header-title-wrapper {
+            position: relative;
+            margin-bottom: 3px;
         }
 
-        .detail .stretcher td {
-            height: 100%;
-            padding: 0;
-            border-bottom: none;
-        }
-
-        .detail-head {
-            background: #ffffff;
-        }
-
-        .rohs {
+        .title {
             text-align: center;
             font-size: 16px;
             font-weight: bold;
             letter-spacing: 1px;
-            height: 18px; /* Diperkecil */
-            line-height: 18px;
-        }
-
-        .footer-block {
-            margin-top: 0; 
-        }
-
-        .footer-table td {
-            border: 1px solid #000000;
-            padding: 1px 4px;
-            border-top: none; 
-        }
-
-        .sign-box {
-            height: 50px; /* Kotak tanda tangan dirapatkan */
-            vertical-align: top;
-        }
-
-        .sign-name {
-            height: 16px;
-            vertical-align: bottom;
-            text-align: center;
         }
 
         .page-no {
             position: absolute;
-            right: 6mm;
-            top: 6mm;
+            right: 0;
+            top: 0;
             font-size: 10px;
         }
 
+        .rohs {
+            text-align: center;
+            font-family: "Times New Roman", Times, serif;
+            font-size: 26px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            padding: 4px 0 !important;
+        }
+
+        .detail-table {
+            flex-grow: 1;
+            margin-top: -1px; 
+        }
+
+        .detail-table th {
+            text-align: center;
+            font-weight: normal;
+        }
+
+        .detail-table td {
+            height: 14px;
+        }
+        
+        .item-row td {
+            border-top: none !important;
+            border-bottom: none !important;
+        }
+        
+        .detail-table tr.stretcher td {
+            height: 100%;
+            border-top: none !important;
+            border-bottom: none !important;
+            padding: 0;
+        }
+
+        .footer-part td { border-top: 1px solid #000 !important; }
+
+        .signature-table td {
+            padding: 0;
+        }
+        
         .print-code {
-            position: absolute;
-            left: 6mm;
-            bottom: 3mm;
-            font-size: 9px;
+            font-size: 10px;
+            margin-top: 2px;
         }
 
         @media print {
             html, body {
                 background: #ffffff;
             }
-
             .toolbar {
                 display: none;
             }
-
             .page {
                 margin: 0;
-                border: none;
+                padding-top: 10mm; 
                 page-break-after: always;
             }
         }
@@ -481,6 +459,13 @@ $totalPages = count($pages);
 <div class="toolbar">
     <button class="btn" onclick="window.print()">PRINT</button>
     <button class="btn" onclick="window.close()">CLOSE</button>
+    
+    <!-- Butang pilihan Tax -->
+    <?php if ($useTax === 'yes') { ?>
+        <button class="btn" onclick="window.location.href='?po_id=<?php echo $poId; ?>&po_num=<?php echo urlencode($poNum); ?>&use_tax=no'">TANPA TAX</button>
+    <?php } else { ?>
+        <button class="btn" onclick="window.location.href='?po_id=<?php echo $poId; ?>&po_num=<?php echo urlencode($poNum); ?>&use_tax=yes'">PAKAI TAX</button>
+    <?php } ?>
 </div>
 
 <?php for ($p = 0; $p < $totalPages; $p++) { ?>
@@ -491,40 +476,37 @@ $totalPages = count($pages);
     ?>
 
     <div class="page">
-        <div class="page-no">Page <?php echo ($p + 1); ?> of <?php echo $totalPages; ?></div>
+        <div class="header-title-wrapper">
+            <div class="title">PURCHASE ORDER</div>
+            <div class="page-no">Page <?php echo ($p + 1); ?> of <?php echo $totalPages; ?></div>
+        </div>
 
-        <div class="title">PURCHASE ORDER</div>
-
-        <!-- Tabel Info (Tinggi kaku telah dihapus agar otomatis menyusut mengikuti konten) -->
-        <table class="main-table top-info">
+        <table class="top-info">
             <tr>
-                <td style="width:50%;" rowspan="3">
-                    <span class="label">Invoice To</span>
-                    <b><?php echo h($head["INV_COMP"]); ?></b><br>
+                <td style="width:48%;" rowspan="3">
+                    <span class="label">Invoice To</span><br>
+                    <span class="bold"><?php echo h($head["INV_COMP"]); ?></span><br>
                     <?php echo h($head["INV_ADDR1"]); ?><br>
                     <?php echo h($head["INV_ADDR2"]); ?><br>
                     <?php echo h($head["INV_CITY"]); ?><br>
-                    Phone: <?php echo h($head["INV_PHONE"]); ?><br>
-                    Fax: <?php echo h($head["INV_FAX"]); ?>
+                    Phone: <?php echo h($head["INV_PHONE"]); ?>, Fax: <?php echo h($head["INV_FAX"]); ?><br>
+                    NPWP: 01.071.426.9-052.000
                 </td>
-
-                <td style="width:25%;">
+                <td style="width:26%;">
                     <span class="label">Order No.</span>
-                    <b><?php echo h($head["PO_NUM"]); ?></b>
+                    <span class="bold"><?php echo h($head["PO_NUM"]); ?></span>
                 </td>
-
-                <td style="width:25%;">
+                <td style="width:26%;">
                     <span class="label">Dated</span>
-                    <?php echo h(fmt_date($head["PO_DATE"])); ?>
+                    <span class="bold"><?php echo h(fmt_date($head["PO_DATE"])); ?></span>
                 </td>
             </tr>
 
             <tr>
                 <td>
                     <span class="label">Currency</span>
-                    <?php echo h($currency); ?>
+                    <span class="bold"><?php echo h($currency); ?></span>
                 </td>
-
                 <td>
                     <span class="label">Terms of Payment</span>
                     <?php echo h($head["PO_TERM"]); ?>
@@ -534,9 +516,8 @@ $totalPages = count($pages);
             <tr>
                 <td>
                     <span class="label">Supplier's Ref.</span>
-                    <?php echo h($head["PO_NUM"]); ?>
+                    <span class="bold"><?php echo h($head["PO_NUM"]); ?></span>
                 </td>
-
                 <td>
                     <span class="label">Other References</span>
                     &nbsp;
@@ -544,22 +525,19 @@ $totalPages = count($pages);
             </tr>
 
             <tr>
-                <td class="supplier-box" rowspan="4">
-                    <span class="label">Supplier</span>
-                    <b><?php echo h($head["SUP_COMP"]); ?></b><br>
+                <td rowspan="4">
+                    <span class="label">Supplier</span><br>
+                    <span class="bold"><?php echo h($head["SUP_COMP"]); ?></span><br>
                     <?php echo h($head["SUP_ADDR1"]); ?><br>
                     <?php echo h($head["SUP_ADDR2"]); ?><br>
                     <?php echo h($head["SUP_CITY"]); ?><br>
-                    Phone: <?php echo h($head["SUP_PHONE"]); ?><br>
-                    Fax: <?php echo h($head["SUP_FAX"]); ?><br>
+                    Phone: <?php echo h($head["SUP_PHONE"]); ?>, Fax: <?php echo h($head["SUP_FAX"]); ?><br>
                     Attn: <?php echo h($head["SUP_CONTA"]); ?>
                 </td>
-
                 <td>
                     <span class="label">Dispatch through</span>
                     &nbsp;
                 </td>
-
                 <td>
                     <span class="label">Destination</span>
                     &nbsp;
@@ -568,13 +546,13 @@ $totalPages = count($pages);
 
             <tr>
                 <td colspan="2">
-                    <span class="label">Terms of Delivery</span>
+                    <span class="label">Term of Delivery</span>
                     <?php echo h($head["PO_TERMDEL"]); ?>
                 </td>
             </tr>
 
             <tr>
-                <td colspan="2">
+                <td colspan="2" style="height: 35px;">
                     <span class="label">Remark</span>
                     <?php echo nl2br(h($head["PO_REM"])); ?>
                 </td>
@@ -585,35 +563,35 @@ $totalPages = count($pages);
             </tr>
         </table>
 
-        <table class="detail">
+        <table class="detail-table">
             <thead>
-                <tr class="detail-head">
-                    <th style="width:44%;">Description of Goods</th>
-                    <th style="width:14%;">Due On</th>
-                    <th style="width:12%;">Quantity</th>
-                    <th style="width:10%;">Rate</th>
-                    <th style="width:8%;">Unit</th>
-                    <th style="width:12%;">Amount</th>
+                <tr>
+                    <th style="width:48%;">Description of Goods</th>
+                    <th style="width:12%;">Qty.</th>
+                    <th style="width:14%;">Rate.</th>
+                    <th style="width:10%;">per</th>
+                    <th style="width:16%;">Amount</th>
                 </tr>
             </thead>
-
             <tbody>
                 <?php
                     $printed = 0;
+                    $lastUnit = ""; 
                     foreach ($pageRows as $r) {
                         $qty = floatval($r["QTY"]);
                         $price = floatval($r["POD_PRICE"]);
                         $amount = $qty * $price;
+                        $unit = trim($r["POD_UNIT"]);
+                        $lastUnit = $unit;
                         $printed++;
                 ?>
-                    <tr>
+                    <tr class="item-row">
                         <td>
-                            <?php echo h(trim($r["ITEM_CODE"]) . " - " . trim($r["ITEM_NAME"])); ?>
+                            <?php echo h(trim($r["ITEM_CODE"]) . " " . trim($r["ITEM_NAME"])); ?>
                         </td>
-                        <td class="center"><?php echo h(fmt_date($r["POD_DUE"])); ?></td>
-                        <td class="right"><?php echo h(num($qty, 2)); ?></td>
-                        <td class="right"><?php echo h(money($price, 4)); ?></td>
-                        <td class="center"><?php echo h($r["POD_UNIT"]); ?></td>
+                        <td class="right"><?php echo h(num($qty, 2)) . " " . h($unit); ?></td>
+                        <td class="right"><?php echo h(money($price, 2)); ?></td>
+                        <td class="right"><?php echo h($unit); ?></td>
                         <td class="right"><?php echo h($currency . " " . money($amount, 2)); ?></td>
                     </tr>
                 <?php } ?>
@@ -621,8 +599,7 @@ $totalPages = count($pages);
                 <?php
                     for ($i = $printed; $i < $targetLines; $i++) {
                 ?>
-                    <tr>
-                        <td>&nbsp;</td>
+                    <tr class="item-row">
                         <td>&nbsp;</td>
                         <td>&nbsp;</td>
                         <td>&nbsp;</td>
@@ -637,74 +614,60 @@ $totalPages = count($pages);
                     <td></td>
                     <td></td>
                     <td></td>
-                    <td></td>
                 </tr>
+
+                <?php if ($isLastPage) { ?>
+                    <tr class="footer-part">
+                        <td class="right bold">Total</td>
+                        <td class="right bold"><?php echo h(num($totalQty, 2)) . " " . h($lastUnit); ?></td>
+                        <td></td>
+                        <td></td>
+                        <td class="right bold"><?php echo h($currency . " " . money($total, 2)); ?></td>
+                    </tr>
+                    
+                    <?php if ($useTax === 'yes') { ?>
+                    <tr>
+                        <td colspan="4" class="center bold">Tax</td>
+                        <td class="right bold"><?php echo h(money($tax, 2)); ?></td>
+                    </tr>
+                    <?php } ?>
+                    
+                    <tr>
+                        <td colspan="4" class="center bold">Amount</td>
+                        <td class="right bold"><?php echo h(money($grandTotal, 2)); ?></td>
+                    </tr>
+                    <tr>
+                        <td colspan="5">
+                            <span class="label" style="margin-bottom:0;">Chargeable (In words)</span>
+                            <span class="bold"><?php echo h(terbilang_en_simple($grandTotal)); ?></span>
+                        </td>
+                    </tr>
+                <?php } ?>
             </tbody>
         </table>
 
         <?php if ($isLastPage) { ?>
-            <div class="footer-block">
-                <table class="footer-table">
-                    <tr class="amount-row">
-                        <td style="width:74%;" class="right bold">Total</td>
-                        <td style="width:14%;" class="right bold"><?php echo h(num($total, 2)); ?></td>
-                        <td style="width:12%;" class="right bold"><?php echo h($currency . " " . money($total, 2)); ?></td>
-                    </tr>
-
-                    <tr class="amount-row">
-                        <td class="right bold">Tax</td>
-                        <td></td>
-                        <td class="right bold"><?php echo h(money($tax, 2)); ?></td>
-                    </tr>
-
-                    <tr class="amount-row">
-                        <td class="right bold">Amount</td>
-                        <td></td>
-                        <td class="right bold"><?php echo h($currency . " " . money($grandTotal, 2)); ?></td>
-                    </tr>
-
-                    <tr>
-                        <td colspan="3">
-                            <b>Chargeable (in words)</b><br>
-                            <?php echo h(terbilang_en_simple($grandTotal)); ?>
-                        </td>
-                    </tr>
-                </table>
-
-                <table class="main-table" style="margin-top:4px;">
-                    <tr>
-                        <td style="width:28%;" class="sign-box">
-                            <b>Supplier Confirmed</b>
-                        </td>
-
-                        <td style="width:42%; border:none;">
-                            &nbsp;
-                        </td>
-
-                        <td style="width:30%;" class="sign-box center">
-                            <b>for <?php echo htmlspecialchars($companyName); ?></b>
-                        </td>
-                    </tr>
-
-                    <tr>
-                        <td class="sign-name small">
-                            (Chop &amp; Sign)
-                        </td>
-
-                        <td style="border:none;" class="small">
-                            Please sign and send back by Fax :)
-                        </td>
-
-                        <td class="sign-name small">
-                            ( Koichi Hiraoka )<br>
+            <table class="signature-table" style="border: none; margin-top: 5px;">
+                <tr>
+                    <td style="width: 25%; border: 1px solid #000; height: 95px; position: relative;">
+                        <div style="text-align: center; margin-top: 2px;">Supplier Confirmed</div>
+                        <div style="position: absolute; bottom: 5px; width: 100%; text-align: center;">(Chop &amp; Sign)</div>
+                    </td>
+                    <td style="width: 40%; border: none; vertical-align: bottom; padding-left: 5px; padding-bottom: 5px;">
+                        ( Please sign and send back by fax )
+                    </td>
+                    <td style="width: 35%; border: 1px solid #000; height: 95px; position: relative;">
+                        <div style="text-align: right; margin-top: 2px; padding-right: 5px;">for <span class="bold"><?php echo htmlspecialchars($companyName); ?></span></div>
+                        <div style="position: absolute; bottom: 5px; width: 100%; text-align: center;">
+                            <b>( Koichi Hiraoka )</b><br>
                             President Director
-                        </td>
-                    </tr>
-                </table>
-            </div>
+                        </div>
+                    </td>
+                </tr>
+            </table>
         <?php } ?>
 
-        <div class="print-code">FM.CO-00-04</div>
+        <div class="print-code">FM.CO.00-64</div>
     </div>
 <?php } ?>
 

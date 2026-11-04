@@ -20,32 +20,35 @@ $bulan = isset($_POST['bulan']) ? (int)$_POST['bulan'] : (int)date('n');
 $custCode = isset($_POST['cust_code']) ? trim($_POST['cust_code']) : '';
 $totalDays = (int)date('t', strtotime("$tahun-$bulan-01"));
 
-$prevBulan = $bulan - 1;
-$prevTahun = $tahun;
-if ($prevBulan == 0) {
-    $prevBulan = 12;
-    $prevTahun = $tahun - 1;
-}
-
 $dataMatrix = array();
 
 try {
-    // 0. AMBIL DATA STATUS CENTANG AKTUAL (CHECKED DATES) DARI DATABASE
-    // Sesuaikan nama tabel [TBL_OVH_CHECKED_DATES] jika menggunakan nama lain di database Anda
-    $arrCheckedDates = array();
-    $sqlChecked = "SELECT MC_NO, ITEM_CODE, HARI FROM TBL_OVH_CHECKED_DATES WHERE TAHUN = ? AND BULAN = ?";
+    // 0. AMBIL DATA STATUS CENTANG AKTUAL & PLAN DARI DATABASE
+    $arrCheckedDatesAct = array();
+    $arrCheckedDatesPlan = array();
+    
+    // Pastikan kolom JENIS ikut di-SELECT
+    $sqlChecked = "SELECT MC_NO, ITEM_CODE, HARI, JENIS FROM TBL_OVH_CHECKED_DATES WHERE TAHUN = ? AND BULAN = ?";
     $stmtChecked = sqlsrv_query($conn, $sqlChecked, array($tahun, $bulan));
     if ($stmtChecked !== false) {
         while ($rowChk = sqlsrv_fetch_array($stmtChecked, SQLSRV_FETCH_ASSOC)) {
             $keyChk = trim($rowChk['MC_NO']) . '_' . trim($rowChk['ITEM_CODE']);
             $dayChk = (int)$rowChk['HARI'];
-            $arrCheckedDates[$keyChk][$dayChk] = 1;
+            $jenis = isset($rowChk['JENIS']) ? trim($rowChk['JENIS']) : 'act'; // Default ke 'act' jika kosong
+
+            // Pisahkan array berdasarkan jenis centang
+            if ($jenis === 'plan') {
+                $arrCheckedDatesPlan[$keyChk][$dayChk] = 1;
+            } else {
+                $arrCheckedDatesAct[$keyChk][$dayChk] = 1;
+            }
         }
     }
 
     // 1. GET LAST SHOOT
+    // PERBAIKAN: Ambil data berdasarkan TAHUN dan BULAN yang sedang aktif/dipilih, BUKAN prevTahun dan prevBulan
     $sqlLastShoot = "SELECT MAC_CODE, ITEM_CODE, LAST_SHOOT FROM MATRIX_LAST_SHOOT WHERE TAHUN = ? AND BULAN = ?";
-    $stmtLast = sqlsrv_query($conn, $sqlLastShoot, array($prevTahun, $prevBulan));
+    $stmtLast = sqlsrv_query($conn, $sqlLastShoot, array($tahun, $bulan)); 
     
     $arrLastShoot = array();
     if ($stmtLast !== false) {
@@ -77,7 +80,8 @@ try {
     $stmtPlan = sqlsrv_query($conn, $sqlPlan, $paramsPlan);
     if ($stmtPlan === false) throw new Exception(print_r(sqlsrv_errors(), true));
 
-    function initItemArray($mc_no, $item_code, $item_no, $item_name, $cavity, $max_days, $last_shoot, $checked_days) {
+    // Modifikasi fungsi ini untuk menerima dua array check (act dan plan)
+    function initItemArray($mc_no, $item_code, $item_no, $item_name, $cavity, $max_days, $last_shoot, $checked_days_act, $checked_days_plan) {
         $item = array(
             'mc_no' => !empty($mc_no) ? trim($mc_no) : '-', 
             'item_code' => !empty($item_code) ? trim($item_code) : '-',
@@ -85,7 +89,8 @@ try {
             'item_name' => !empty($item_name) ? trim($item_name) : '-',
             'plan_cavity' => !empty($cavity) ? $cavity : '-', 
             'last_shoot' => $last_shoot, 
-            'checked_dates' => $checked_days, // Menyertakan data centang aktual ke JSON
+            'checked_dates' => $checked_days_act,       // Data centang Aktual
+            'checked_dates_plan' => $checked_days_plan, // Data centang Plan
             'days' => array()
         );
         for ($d = 1; $d <= $max_days; $d++) { $item['days'][$d] = array('plan_ovh' => 0, 'act_ovh' => 0); }
@@ -105,8 +110,10 @@ try {
         
         if (!isset($dataMatrix[$custName][$itemKey])) {
             $last = isset($arrLastShoot[$itemKey]) ? $arrLastShoot[$itemKey] : 0;
-            $chkDays = isset($arrCheckedDates[$itemKey]) ? $arrCheckedDates[$itemKey] : array();
-            $dataMatrix[$custName][$itemKey] = initItemArray($mcNo, $itemCode, $row['ITEM_NO'], $row['ITEM_NAME'], $row['CAV'], $totalDays, $last, $chkDays);
+            $chkDaysAct = isset($arrCheckedDatesAct[$itemKey]) ? $arrCheckedDatesAct[$itemKey] : array();
+            $chkDaysPlan = isset($arrCheckedDatesPlan[$itemKey]) ? $arrCheckedDatesPlan[$itemKey] : array();
+            
+            $dataMatrix[$custName][$itemKey] = initItemArray($mcNo, $itemCode, $row['ITEM_NO'], $row['ITEM_NAME'], $row['CAV'], $totalDays, $last, $chkDaysAct, $chkDaysPlan);
         }
         $shots = ((float)$row['CAV'] > 0) ? ((float)$row['PS_QTY'] / (float)$row['CAV']) : 0;
         $dataMatrix[$custName][$itemKey]['days'][$day]['plan_ovh'] += round($shots);
@@ -147,8 +154,10 @@ try {
         
         if (!isset($dataMatrix[$custName][$itemKey])) {
             $last = isset($arrLastShoot[$itemKey]) ? $arrLastShoot[$itemKey] : 0;
-            $chkDays = isset($arrCheckedDates[$itemKey]) ? $arrCheckedDates[$itemKey] : array();
-            $dataMatrix[$custName][$itemKey] = initItemArray($mcNo, $itemCode, $row['ITEM_NO'], $row['ITEM_NAME'], $row['CAV'], $totalDays, $last, $chkDays);
+            $chkDaysAct = isset($arrCheckedDatesAct[$itemKey]) ? $arrCheckedDatesAct[$itemKey] : array();
+            $chkDaysPlan = isset($arrCheckedDatesPlan[$itemKey]) ? $arrCheckedDatesPlan[$itemKey] : array();
+            
+            $dataMatrix[$custName][$itemKey] = initItemArray($mcNo, $itemCode, $row['ITEM_NO'], $row['ITEM_NAME'], $row['CAV'], $totalDays, $last, $chkDaysAct, $chkDaysPlan);
         }
         $dataMatrix[$custName][$itemKey]['days'][$day]['act_ovh'] += round((float)$row['PD_SHOT']);
     }

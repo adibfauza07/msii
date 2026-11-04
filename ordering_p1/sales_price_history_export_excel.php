@@ -18,11 +18,6 @@ function get_param($name, $default = "") {
     return $default;
 }
 
-function html_clean($value) {
-    $value = (string)$value;
-    return htmlspecialchars($value, ENT_QUOTES, 'UTF-8');
-}
-
 function format_date($value) {
     if ($value === null || $value === "") return "";
     if ($value instanceof DateTimeInterface) {
@@ -92,16 +87,14 @@ $sql = "
 $stmt = sqlsrv_query($conn, $sql, array($cust_code, $cust_code));
 
 if ($stmt === false) {
-    die("<pre>Query Sales Price History gagal:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
+    die("Query Sales Price History gagal.");
 }
 
 $dataRows = array();
 
 while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
     $dataRows[] = array(
-        "PARTNUM"    => safe_trim($r["PARTNUM"]),
         "ITEM_CODE"  => safe_trim($r["ITEM_CODE"]),
-        "PRICE_CODE" => safe_trim($r["PRICE_CODE"]),
         "ITEM_NO"    => safe_trim($r["ITEM_NO"]),
         "ITEM_NAME"  => safe_trim($r["ITEM_NAME"]),
         "CUST_CODE"  => safe_trim($r["CUST_CODE"]),
@@ -117,7 +110,7 @@ sqlsrv_free_stmt($stmt);
 sqlsrv_close($conn);
 
 /* ============================================================
-   Susun Group Customer -> Item + Price dalam satu baris
+   Susun Group Customer -> Item + Price
    ============================================================ */
 $printRows = array();
 $lastCust = "";
@@ -143,10 +136,8 @@ foreach ($dataRows as $r) {
         "ROW_TYPE"   => "ITEM_PRICE",
         "SHOW_ITEM"  => $showItem ? 1 : 0,
         "ITEM_CODE"  => $r["ITEM_CODE"],
-        "PRICE_CODE" => $r["PRICE_CODE"],
         "ITEM_NO"    => $r["ITEM_NO"],
         "ITEM_NAME"  => $r["ITEM_NAME"],
-        "PARTNUM"    => $r["PARTNUM"],
         "PRDT_PRICE" => $r["PRDT_PRICE"],
         "PRDT_START" => $r["PRDT_START"],
         "PRDT_END"   => $r["PRDT_END"],
@@ -161,216 +152,61 @@ if (count($printRows) === 0) {
 }
 
 /* ============================================================
-   Output Excel (.xls) via HTML Table
+   Output Excel via CSV
    ============================================================ */
 $customerLabel = ($cust_code === "%") ? "ALL" : $cust_code;
-$fileName = "Sales_Price_History_" . safe_filename_part($customerLabel) . "_" . date("Ymd_His") . ".xls";
-
+$fileName = "Sales_Price_History_" . safe_filename_part($customerLabel) . "_" . date("Ymd_His") . ".csv";
 $exportedAt = date("d-M-Y H:i:s");
-
-header("Content-Type: application/vnd.ms-excel; charset=UTF-8");
-header("Content-Disposition: attachment; filename=\"" . $fileName . "\"");
-header("Pragma: no-cache");
-header("Expires: 0");
-header("Cache-Control: must-revalidate, post-check=0, pre-check=0");
 
 if (ob_get_length()) {
     @ob_clean();
 }
 
-// BOM untuk UTF-8 supaya Excel baca karakter khusus dengan benar
-echo "\xEF\xBB\xBF";
-?>
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        /* Reset & Base */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+// Set Header CSV
+header('Content-Type: text/csv; charset=UTF-8');
+header('Content-Disposition: attachment; filename="' . $fileName . '"');
+header('Pragma: no-cache');
+header('Expires: 0');
+
+$output = fopen('php://output', 'w');
+
+// Tambahkan BOM agar karakter terbaca UTF-8 di Excel
+fputs($output, "\xEF\xBB\xBF");
+
+// Header Laporan
+fputcsv($output, array("SALES PRICE HISTORY"));
+fputcsv($output, array("Company :", "P.T. IMC TEKNO INDONESIA"));
+fputcsv($output, array("Department :", "PPIC Department"));
+fputcsv($output, array("Customer :", $customerLabel, "", "Exported :", $exportedAt));
+fputcsv($output, array()); // Baris Kosong
+
+// Header Tabel (7 Kolom)
+fputcsv($output, array("Part Code", "Part No", "Part Name", "Price", "Start Date", "End Date", "Quot."));
+
+// Looping Data
+foreach ($printRows as $r) {
+    if ($r["ROW_TYPE"] === "CUSTOMER") {
+        // Tampilkan Identitas Customer di baris tersendiri
+        fputcsv($output, array("[" . $r["CUST_CODE"] . "] [" . $r["CUST_COMP"] . "]"));
+    } 
+    elseif ($r["ROW_TYPE"] === "ITEM_PRICE") {
+        // Tampilkan data Part jika setShowItem true, jika false kosongkan sel agar rapi
+        $iCode = !empty($r["SHOW_ITEM"]) ? $r["ITEM_CODE"] : "";
+        $iNo   = !empty($r["SHOW_ITEM"]) ? $r["ITEM_NO"] : "";
+        $iName = !empty($r["SHOW_ITEM"]) ? $r["ITEM_NAME"] : "";
         
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            font-size: 11pt;
-            padding: 10px;
-        }
+        $price = format_price($r["PRDT_PRICE"]);
+        $start = format_date($r["PRDT_START"]);
+        $end   = format_date($r["PRDT_END"]);
+        $qno   = $r["PRDT_QNO"];
 
-        /* Title */
-        .title {
-            font-size: 16pt;
-            font-weight: bold;
-            text-align: center;
-            padding: 10px 0;
-        }
+        fputcsv($output, array($iCode, $iNo, $iName, $price, $start, $end, $qno));
+    } 
+    elseif ($r["ROW_TYPE"] === "EMPTY") {
+        fputcsv($output, array("Data tidak ditemukan."));
+    }
+}
 
-        /* Meta Info */
-        .meta {
-            font-size: 10pt;
-            padding: 2px 0;
-        }
-
-        /* Table */
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-top: 10px;
-        }
-
-        th, td {
-            border: 1px solid #D9DEE5;
-            padding: 4px 6px;
-            vertical-align: middle;
-        }
-
-        /* Header Row */
-        th {
-            background-color: #D9E1F2;
-            font-weight: bold;
-            text-align: center;
-            font-size: 10pt;
-        }
-
-        /* Customer Row */
-        tr.customer td {
-            background-color: #E9ECEF;
-            font-weight: bold;
-            font-size: 10pt;
-        }
-
-        /* Item dan harga berada dalam satu baris */
-        tr.item-price td {
-            font-size: 10pt;
-        }
-
-        tr.item-price.first-item td {
-            border-top: 1px solid #ADB5BD;
-        }
-
-        tr.separator td {
-            height: 3px;
-            padding: 0;
-            border-top: 0;
-            border-left: 1px solid #D9DEE5;
-            border-right: 1px solid #D9DEE5;
-            border-bottom: 1px dashed #ADB5BD;
-        }
-
-        /* Alignment */
-        .text-left { text-align: left; }
-        .text-center { text-align: center; }
-        .text-right { text-align: right; }
-
-        /* Column Widths */
-        .col-part { width: 300px; }
-        .col-price { width: 100px; mso-number-format:"0.0000"; }
-        .col-date { width: 100px; }
-        .col-qno { width: 100px; }
-
-        /* Empty Row */
-        tr.empty td {
-            text-align: center;
-            padding: 20px;
-            font-style: italic;
-            color: #666;
-        }
-
-        /* Print Settings */
-        @page {
-            size: landscape;
-            margin: 1cm;
-        }
-
-        @media print {
-            body { padding: 0; }
-        }
-    </style>
-</head>
-<body>
-
-    <!-- Title -->
-    <div class="title">SALES PRICE HISTORY</div>
-    
-    <!-- Meta Information -->
-    <div class="meta">Company : P.T. IMC TEKNO INDONESIA</div>
-    <div class="meta">Department : PPIC Department</div>
-    <div class="meta">Customer : <?php echo html_clean($customerLabel); ?>&emsp;&emsp;Exported : <?php echo html_clean($exportedAt); ?></div>
-
-    <!-- Data Table -->
-    <table>
-        <thead>
-            <tr>
-                <th class="col-part">PART</th>
-                <th class="col-price">Price</th>
-                <th class="col-date">Start Date</th>
-                <th class="col-date">End Date</th>
-                <th class="col-qno">Quot.</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php for ($i = 0; $i < count($printRows); $i++): ?>
-                <?php $r = $printRows[$i]; ?>
-
-                <?php if ($r["ROW_TYPE"] === "CUSTOMER"): ?>
-                    <tr class="customer">
-                        <td colspan="5">
-                            [<?php echo html_clean($r["CUST_CODE"]); ?>]
-                            [<?php echo html_clean($r["CUST_COMP"]); ?>]
-                        </td>
-                    </tr>
-
-                <?php elseif ($r["ROW_TYPE"] === "ITEM_PRICE"): ?>
-                    <tr class="item-price<?php echo !empty($r["SHOW_ITEM"]) ? " first-item" : ""; ?>">
-                        <td class="text-left">
-                            <?php if (!empty($r["SHOW_ITEM"])): ?>
-                                [<?php echo html_clean($r["ITEM_CODE"]); ?>]
-                                [<?php echo html_clean($r["ITEM_NO"]); ?>]
-                                [<?php echo html_clean($r["ITEM_NAME"]); ?>]
-                            <?php endif; ?>
-                        </td>
-                        <td class="text-right col-price">
-                            <?php echo format_price($r["PRDT_PRICE"]); ?>
-                        </td>
-                        <td class="text-center">
-                            <?php echo format_date($r["PRDT_START"]); ?>
-                        </td>
-                        <td class="text-center">
-                            <?php echo format_date($r["PRDT_END"]); ?>
-                        </td>
-                        <td class="text-center">
-                            <?php echo html_clean($r["PRDT_QNO"]); ?>
-                        </td>
-                    </tr>
-
-                    <?php
-                        $next = isset($printRows[$i + 1]) ? $printRows[$i + 1] : null;
-                        $nextStartsItem = (
-                            $next !== null
-                            && $next["ROW_TYPE"] === "ITEM_PRICE"
-                            && !empty($next["SHOW_ITEM"])
-                        );
-                    ?>
-                    <?php if ($next === null || $next["ROW_TYPE"] === "CUSTOMER" || $nextStartsItem): ?>
-                        <tr class="separator"><td colspan="5"></td></tr>
-                    <?php endif; ?>
-
-                <?php elseif ($r["ROW_TYPE"] === "EMPTY"): ?>
-                    <tr class="empty">
-                        <td colspan="5">Data tidak ditemukan.</td>
-                    </tr>
-                <?php endif; ?>
-            <?php endfor; ?>
-        </tbody>
-    </table>
-
-    <!-- Excel Freeze Pane Instruction (via XML processing instruction) -->
-    <!-- Note: For true freeze panes, consider using PhpSpreadsheet library -->
-
-</body>
-</html>
-<?php
+fclose($output);
 exit;
 ?>

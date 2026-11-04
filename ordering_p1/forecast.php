@@ -82,13 +82,8 @@ function h($value) {
             padding: 5px;
         }
 
-        .cust-code {
-            width: 90px;
-        }
-
-        .cust-name {
-            width: 340px;
-        }
+        .cust-code { width: 90px; }
+        .cust-name { width: 340px; }
 
         .status {
             color: navy;
@@ -97,9 +92,7 @@ function h($value) {
             margin: 8px 0;
         }
 
-        .toolbar {
-            margin: 10px 0;
-        }
+        .toolbar { margin: 10px 0; }
 
         table {
             width: 100%;
@@ -124,38 +117,16 @@ function h($value) {
             text-align: left;
         }
 
-        .item-table .col-code {
-            width: 110px;
-        }
+        .item-table .col-code { width: 110px; }
+        .item-table .col-prcd { width: 120px; }
+        .item-table .col-no   { width: 120px; }
+        .item-table .col-name { width: auto; }
 
-        .item-table .col-prcd {
-            width: 120px;
-        }
+        .item-table tbody tr { cursor: pointer; }
+        .item-table tr:focus { outline: 2px solid #0033ff; }
 
-        .item-table .col-no {
-            width: 120px;
-        }
-
-        .item-table .col-name {
-            width: auto;
-        }
-
-        .item-table tbody tr {
-            cursor: pointer;
-        }
-
-        .item-table tr:focus {
-            outline: 2px solid #0033ff;
-        }
-
-        .forecast-table .col-month {
-            width: 130px;
-        }
-
-        .forecast-table .col-qty {
-            width: 100px;
-            text-align: right;
-        }
+        .forecast-table .col-month { width: 130px; }
+        .forecast-table .col-qty { width: 100px; text-align: right; }
 
         .forecast-table input {
             width: 100%;
@@ -165,18 +136,14 @@ function h($value) {
             font-size: 12px;
         }
 
-        .num {
-            text-align: right;
-        }
+        .num { text-align: right; }
 
         .selected {
             background: red;
             color: #fff;
         }
 
-        .selected input {
-            color: #000;
-        }
+        .selected input { color: #000; }
 
         .autocomplete-wrap {
             position: relative;
@@ -210,19 +177,11 @@ function h($value) {
             color: #fff;
         }
 
-        .autocomplete-main {
-            font-weight: bold;
-        }
-
-        .autocomplete-sub {
-            color: #555;
-            font-size: 11px;
-        }
+        .autocomplete-main { font-weight: bold; }
+        .autocomplete-sub { color: #555; font-size: 11px; }
 
         .autocomplete-item:hover .autocomplete-sub,
-        .autocomplete-item.active .autocomplete-sub {
-            color: #fff;
-        }
+        .autocomplete-item.active .autocomplete-sub { color: #fff; }
 
         .small-info {
             font-size: 11px;
@@ -253,17 +212,16 @@ function h($value) {
             <input type="text" id="CUST_COMP" class="cust-name" readonly>
 
             <div class="toolbar">
-    <button type="button" id="btnRefreshItem">REFRESH ITEM</button>
-    
-</div>
+                <button type="button" id="btnRefreshItem">REFRESH ITEM</button>
+            </div>
 
-<label>CARI ITEM CODE / NAME</label>
-<div class="autocomplete-wrap">
-    <input type="text" id="ITEM_SEARCH" class="item-search" autocomplete="off" placeholder="Ketik part code / part name / part no">
-    <div id="itemSearchSuggest" class="autocomplete-list"></div>
-</div>
+            <label>CARI ITEM CODE / NAME</label>
+            <div class="autocomplete-wrap">
+                <input type="text" id="ITEM_SEARCH" class="item-search" autocomplete="off" placeholder="Ketik part code / part name / part no">
+                <div id="itemSearchSuggest" class="autocomplete-list"></div>
+            </div>
 
-<div class="status" id="LabelStatus"></div>
+            <div class="status" id="LabelStatus"></div>
 
             <table class="item-table">
                 <thead>
@@ -285,6 +243,13 @@ function h($value) {
         <div class="right-panel">
             <div class="small-info" id="selectedPartInfo">Belum pilih part.</div>
 
+            <div class="toolbar">
+                <button type="button" id="btnAddMonth">+</button>
+                <button type="button" id="btnDeleteMonth">-</button>
+                <button type="button" id="btnSaveForecast">SIMPAN</button>
+                <button type="button" id="btnReloadForecast">REFRESH</button>
+            </div>
+
             <table class="forecast-table">
                 <thead>
                     <tr>
@@ -298,13 +263,6 @@ function h($value) {
                     </tr>
                 </tbody>
             </table>
-
-            <div class="toolbar">
-                <button type="button" id="btnAddMonth">+</button>
-                <button type="button" id="btnDeleteMonth">-</button>
-                <button type="button" id="btnSaveForecast">SIMPAN</button>
-                <button type="button" id="btnReloadForecast">REFRESH</button>
-            </div>
         </div>
     </div>
 </div>
@@ -338,16 +296,13 @@ function htmlEncode(value) {
 
 function ajaxPost(url, data, callback) {
     var xhr = new XMLHttpRequest();
-
     xhr.open("POST", url, true);
     xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-
     xhr.onreadystatechange = function () {
         if (xhr.readyState == 4) {
             callback(xhr.status, xhr.responseText);
         }
     };
-
     xhr.send(data);
 }
 
@@ -357,12 +312,10 @@ function setStatus(text) {
 
 function hideCustSuggest() {
     var box = document.getElementById("custSuggest");
-
     if (box) {
         box.style.display = "none";
         box.innerHTML = "";
     }
-
     custRows = [];
     custIndex = -1;
 }
@@ -376,13 +329,8 @@ function setActiveCust(index) {
         return;
     }
 
-    if (index < 0) {
-        index = items.length - 1;
-    }
-
-    if (index >= items.length) {
-        index = 0;
-    }
+    if (index < 0) { index = items.length - 1; }
+    if (index >= items.length) { index = 0; }
 
     for (var i = 0; i < items.length; i++) {
         items[i].className = "autocomplete-item";
@@ -399,12 +347,9 @@ function setActiveCust(index) {
 }
 
 function chooseCust(index) {
-    if (index < 0 || index >= custRows.length) {
-        return;
-    }
+    if (index < 0 || index >= custRows.length) return;
 
     var r = custRows[index];
-
     document.getElementById("CUST_ID").value = r.CUST_ID;
     document.getElementById("CUST_CODE").value = r.CUST_CODE;
     document.getElementById("CUST_COMP").value = r.CUST_COMP;
@@ -433,19 +378,12 @@ function showCustSuggest(rows) {
         (function (r, idx) {
             var div = document.createElement("div");
             div.className = "autocomplete-item";
-
             div.innerHTML =
                 '<div class="autocomplete-main">' + htmlEncode(r.CUST_CODE) + '</div>' +
                 '<div class="autocomplete-sub">' + htmlEncode(r.CUST_COMP) + '</div>';
 
-            div.onmouseover = function () {
-                setActiveCust(idx);
-            };
-
-            div.onclick = function () {
-                chooseCust(idx);
-            };
-
+            div.onmouseover = function () { setActiveCust(idx); };
+            div.onclick = function () { chooseCust(idx); };
             box.appendChild(div);
         })(rows[i], i);
     }
@@ -456,7 +394,6 @@ function showCustSuggest(rows) {
 
 function searchCustomer() {
     var q = document.getElementById("CUST_CODE").value;
-
     if (q.length < 1) {
         hideCustSuggest();
         return;
@@ -469,7 +406,6 @@ function searchCustomer() {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -481,50 +417,38 @@ function searchCustomer() {
             hideCustSuggest();
             return;
         }
-
         showCustSuggest(result.rows);
     });
 }
 
 function custKeyDown(e) {
     e = e || window.event;
-
     var key = e.keyCode || e.which;
     var box = document.getElementById("custSuggest");
 
-    if (!box || box.style.display != "block") {
-        return true;
-    }
+    if (!box || box.style.display != "block") return true;
 
     if (key == 40) {
         e.preventDefault ? e.preventDefault() : e.returnValue = false;
         setActiveCust(custIndex + 1);
         return false;
     }
-
     if (key == 38) {
         e.preventDefault ? e.preventDefault() : e.returnValue = false;
         setActiveCust(custIndex - 1);
         return false;
     }
-
     if (key == 13) {
         e.preventDefault ? e.preventDefault() : e.returnValue = false;
-
-        if (custIndex < 0 && custRows.length > 0) {
-            custIndex = 0;
-        }
-
+        if (custIndex < 0 && custRows.length > 0) custIndex = 0;
         chooseCust(custIndex);
         return false;
     }
-
     return true;
 }
 
 function loadItems() {
     var custId = document.getElementById("CUST_ID").value;
-
     if (custId == "") {
         alert("Pilih customer dulu.");
         document.getElementById("CUST_CODE").focus();
@@ -541,7 +465,6 @@ function loadItems() {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -567,38 +490,25 @@ function getItemRows() {
 
 function getSelectedItemIndex() {
     var rows = getItemRows();
-
     for (var i = 0; i < rows.length; i++) {
-        if (rows[i] === selectedItemRow) {
-            return i;
-        }
+        if (rows[i] === selectedItemRow) return i;
     }
-
     return -1;
 }
 
 function moveItemSelection(direction) {
     var rows = getItemRows();
-
-    if (!rows || rows.length == 0) {
-        return;
-    }
+    if (!rows || rows.length == 0) return;
 
     var index = getSelectedItemIndex();
-
     if (index < 0) {
         index = 0;
     } else {
         index = index + direction;
     }
 
-    if (index < 0) {
-        index = 0;
-    }
-
-    if (index >= rows.length) {
-        index = rows.length - 1;
-    }
+    if (index < 0) index = 0;
+    if (index >= rows.length) index = rows.length - 1;
 
     selectItemRow(rows[index]);
     loadForecast();
@@ -606,7 +516,6 @@ function moveItemSelection(direction) {
     if (rows[index].scrollIntoView) {
         rows[index].scrollIntoView({ block: "nearest" });
     }
-
     rows[index].focus();
 }
 
@@ -620,16 +529,13 @@ function focusForecastGrid() {
     }
 
     if (rows.length > 0) {
-        /*
-            TAB dari grid kiri langsung ke line paling bawah grid kanan.
-        */
-        var lastIndex = rows.length - 1;
-        var lastRow = rows[lastIndex];
+        // Fokus ke baris PALING ATAS (Z-A behavior)
+        var firstRow = rows[0];
 
-        selectForecastRow(lastRow);
+        selectForecastRow(firstRow);
 
-        var qtyInput = getForecastInput(lastRow, "FORE_QTY");
-        var monthInput = getForecastInput(lastRow, "FORE_MONTH");
+        var qtyInput = getForecastInput(firstRow, "FORE_QTY");
+        var monthInput = getForecastInput(firstRow, "FORE_MONTH");
 
         if (qtyInput) {
             qtyInput.focus();
@@ -639,17 +545,14 @@ function focusForecastGrid() {
             monthInput.select();
         }
 
-        if (lastRow.scrollIntoView) {
-            lastRow.scrollIntoView({
-                block: "nearest"
-            });
+        if (firstRow.scrollIntoView) {
+            firstRow.scrollIntoView({ block: "nearest" });
         }
     }
 }
 
 function itemGridKeyDown(e) {
     e = e || window.event;
-
     var key = e.keyCode || e.which;
 
     if (key == 40) {
@@ -657,36 +560,30 @@ function itemGridKeyDown(e) {
         moveItemSelection(1);
         return false;
     }
-
     if (key == 38) {
         e.preventDefault ? e.preventDefault() : e.returnValue = false;
         moveItemSelection(-1);
         return false;
     }
-
     if (key == 13) {
         e.preventDefault ? e.preventDefault() : e.returnValue = false;
         loadForecast();
         return false;
     }
-
     if (key == 9) {
         e.preventDefault ? e.preventDefault() : e.returnValue = false;
         focusForecastGrid();
         return false;
     }
-
     return true;
 }
 
 function hideItemSearchSuggest() {
     var box = document.getElementById("itemSearchSuggest");
-
     if (box) {
         box.style.display = "none";
         box.innerHTML = "";
     }
-
     itemSuggestRows = [];
     itemSuggestIndex = -1;
 }
@@ -700,13 +597,8 @@ function setActiveItemSuggest(index) {
         return;
     }
 
-    if (index < 0) {
-        index = items.length - 1;
-    }
-
-    if (index >= items.length) {
-        index = 0;
-    }
+    if (index < 0) { index = items.length - 1; }
+    if (index >= items.length) { index = 0; }
 
     for (var i = 0; i < items.length; i++) {
         items[i].className = "autocomplete-item";
@@ -724,42 +616,29 @@ function setActiveItemSuggest(index) {
 
 function findItemRowByPriceId(priceId) {
     var rows = document.getElementById("itemBody").getElementsByTagName("tr");
-
     for (var i = 0; i < rows.length; i++) {
-        if (rows[i].getAttribute("data-price-id") == priceId) {
-            return rows[i];
-        }
+        if (rows[i].getAttribute("data-price-id") == priceId) return rows[i];
     }
-
     return null;
 }
 
 function chooseItemSuggest(index) {
-    if (index < 0 || index >= itemSuggestRows.length) {
-        return;
-    }
+    if (index < 0 || index >= itemSuggestRows.length) return;
 
     var r = itemSuggestRows[index];
     var row = findItemRowByPriceId(r.PRICE_ID);
 
-    if (!row) {
-        return;
-    }
+    if (!row) return;
 
-    document.getElementById("ITEM_SEARCH").value =
-        r.PART_CODE + " - " + r.PART_NAME;
-
+    document.getElementById("ITEM_SEARCH").value = r.PART_CODE + " - " + r.PART_NAME;
     hideItemSearchSuggest();
 
     selectItemRow(row);
     loadForecast();
-
     row.focus();
 
     if (row.scrollIntoView) {
-        row.scrollIntoView({
-            block: "nearest"
-        });
+        row.scrollIntoView({ block: "nearest" });
     }
 }
 
@@ -779,25 +658,12 @@ function showItemSearchSuggest(rows) {
         (function (r, idx) {
             var div = document.createElement("div");
             div.className = "autocomplete-item";
-
             div.innerHTML =
-                '<div class="autocomplete-main">' +
-                    htmlEncode(r.PART_CODE) + " - " + htmlEncode(r.PART_NAME) +
-                '</div>' +
-                '<div class="autocomplete-sub">' +
-                    'PRCD: ' + htmlEncode(r.PRICE_CODE) +
-                    ' | PART NO: ' + htmlEncode(r.PART_NO) +
-                    ' | PRICE_ID: ' + htmlEncode(r.PRICE_ID) +
-                '</div>';
+                '<div class="autocomplete-main">' + htmlEncode(r.PART_CODE) + " - " + htmlEncode(r.PART_NAME) + '</div>' +
+                '<div class="autocomplete-sub">PRCD: ' + htmlEncode(r.PRICE_CODE) + ' | PART NO: ' + htmlEncode(r.PART_NO) + ' | PRICE_ID: ' + htmlEncode(r.PRICE_ID) + '</div>';
 
-            div.onmouseover = function () {
-                setActiveItemSuggest(idx);
-            };
-
-            div.onclick = function () {
-                chooseItemSuggest(idx);
-            };
-
+            div.onmouseover = function () { setActiveItemSuggest(idx); };
+            div.onclick = function () { chooseItemSuggest(idx); };
             box.appendChild(div);
         })(rows[i], i);
     }
@@ -812,55 +678,28 @@ function searchItemLocal() {
 
     if (q.length < 1) {
         hideItemSearchSuggest();
-
         itemRowsCache = itemRowsAll;
-        
-        // Memperbarui grid tabel tanpa merebut fokus kursor
-        renderItemGrid(itemRowsAll, true); 
-
+        renderItemGrid(itemRowsAll, true);
         setStatus("Item loaded: " + itemRowsAll.length);
         return;
     }
 
     for (var i = 0; i < itemRowsAll.length; i++) {
         var r = itemRowsAll[i];
+        var text = (String(r.PART_CODE || "") + " " + String(r.PART_NAME || "") + " " + String(r.PART_NO || "") + " " + String(r.PRICE_CODE || "")).toLowerCase();
 
-        var text = (
-            String(r.PART_CODE || "") + " " +
-            String(r.PART_NAME || "") + " " +
-            String(r.PART_NO || "") + " " +
-            String(r.PRICE_CODE || "")
-        ).toLowerCase();
-
-        if (text.indexOf(q) >= 0) {
-            result.push(r);
-        }
-
-        /*
-            Grid kiri dibatasi maksimal 15 item.
-        */
-        if (result.length >= 15) {
-            break;
-        }
+        if (text.indexOf(q) >= 0) result.push(r);
+        if (result.length >= 15) break;
     }
 
     itemRowsCache = result;
-
-    // 1. Memperbarui isi grid tabel berdasarkan hasil pencarian (tanpa merebut kursor)
-    renderItemGrid(result, true); 
-    
-    // 2. Memunculkan kotak dropdown saran pencarian (BARIS INI SANGAT PENTING)
+    renderItemGrid(result, true);
     showItemSearchSuggest(result);
-
-    // 3. Memperbarui status di bawah kotak pencarian
     setStatus("Hasil pencarian item: " + result.length + " dari " + itemRowsAll.length);
 }
 
-
-
 function itemSearchKeyDown(e) {
     e = e || window.event;
-
     var key = e.keyCode || e.which;
     var box = document.getElementById("itemSearchSuggest");
 
@@ -868,14 +707,8 @@ function itemSearchKeyDown(e) {
         if (key == 13) {
             e.preventDefault ? e.preventDefault() : e.returnValue = false;
             searchItemLocal();
-
-            // if (itemSuggestRows.length > 0) {
-            //     chooseItemSuggest(0);
-            // }
-
             return false;
         }
-
         return true;
     }
 
@@ -884,41 +717,32 @@ function itemSearchKeyDown(e) {
         setActiveItemSuggest(itemSuggestIndex + 1);
         return false;
     }
-
     if (key == 38) {
         e.preventDefault ? e.preventDefault() : e.returnValue = false;
         setActiveItemSuggest(itemSuggestIndex - 1);
         return false;
     }
-
     if (key == 13) {
         e.preventDefault ? e.preventDefault() : e.returnValue = false;
-
         if (itemSuggestIndex < 0 && itemSuggestRows.length > 0) {
             itemSuggestIndex = 0;
         }
-
         chooseItemSuggest(itemSuggestIndex);
         return false;
     }
-
     return true;
 }
 
 function renderItems(rows) {
     itemRowsAll = rows || [];
     itemRowsCache = itemRowsAll;
-
     document.getElementById("ITEM_SEARCH").value = "";
-
     renderItemGrid(itemRowsAll);
-
     setStatus("Item loaded: " + itemRowsAll.length);
 }
 
 function renderItemGrid(rows, preventFocus) {
     var body = document.getElementById("itemBody");
-
     body.innerHTML = "";
     selectedItemRow = null;
 
@@ -934,7 +758,6 @@ function renderItemGrid(rows, preventFocus) {
     for (var i = 0; i < rows.length; i++) {
         (function (r) {
             var tr = document.createElement("tr");
-
             tr.setAttribute("tabindex", "0");
             tr.setAttribute("data-price-id", r.PRICE_ID);
             tr.setAttribute("data-part-code", r.PART_CODE);
@@ -966,13 +789,11 @@ function renderItemGrid(rows, preventFocus) {
         })(rows[i]);
     }
 
-   var firstRow = body.getElementsByTagName("tr")[0];
-
+    var firstRow = body.getElementsByTagName("tr")[0];
     if (firstRow) {
-        // Blok ini MENCEGAH auto-load ke database dan mencegah kursor pindah saat sedang mengetik
         if (!preventFocus) {
             selectItemRow(firstRow);
-            loadSchedule();
+            loadForecast(); 
             firstRow.focus();
         }
     }
@@ -980,16 +801,12 @@ function renderItemGrid(rows, preventFocus) {
 
 function selectItemRow(row) {
     var rows = document.getElementById("itemBody").getElementsByTagName("tr");
-
-    for (var i = 0; i < rows.length; i++) {
-        rows[i].className = "";
-    }
+    for (var i = 0; i < rows.length; i++) rows[i].className = "";
 
     row.className = "selected";
     selectedItemRow = row;
 
     document.getElementById("PRICE_ID").value = row.getAttribute("data-price-id");
-
     document.getElementById("selectedPartInfo").innerHTML =
         "PRICE_ID: " + htmlEncode(row.getAttribute("data-price-id")) +
         " | " + htmlEncode(row.getAttribute("data-part-code")) +
@@ -998,17 +815,12 @@ function selectItemRow(row) {
 
 function loadForecast() {
     var priceId = document.getElementById("PRICE_ID").value;
-
-    if (priceId == "") {
-        return;
-    }
+    if (priceId == "") return;
 
     var currentSeq = ++forecastLoadSeq;
 
     ajaxPost("ajax_forecast_load.php", "PRICE_ID=" + enc(priceId), function (status, responseText) {
-        if (currentSeq != forecastLoadSeq) {
-            return;
-        }
+        if (currentSeq != forecastLoadSeq) return;
 
         if (status != 200) {
             alert("HTTP Error: " + status);
@@ -1016,7 +828,6 @@ function loadForecast() {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -1035,7 +846,6 @@ function loadForecast() {
 
 function renderForecast(rows) {
     var body = document.getElementById("forecastBody");
-
     body.innerHTML = "";
     selectedForecastRow = null;
 
@@ -1045,11 +855,11 @@ function renderForecast(rows) {
     }
 
     for (var i = 0; i < rows.length; i++) {
+        // PERUBAHAN: Selalu di-prepend dengan memanggil addForecastRow tanpa argumen true/false, sama persis seperti schedule
         addForecastRow(rows[i]);
     }
 
     var firstRow = body.getElementsByTagName("tr")[0];
-
     if (firstRow) {
         selectForecastRow(firstRow);
     }
@@ -1057,10 +867,7 @@ function renderForecast(rows) {
 
 function selectForecastRow(row) {
     var rows = document.getElementById("forecastBody").getElementsByTagName("tr");
-
-    for (var i = 0; i < rows.length; i++) {
-        rows[i].className = "";
-    }
+    for (var i = 0; i < rows.length; i++) rows[i].className = "";
 
     row.className = "selected";
     selectedForecastRow = row;
@@ -1068,13 +875,9 @@ function selectForecastRow(row) {
 
 function getForecastInput(row, name) {
     var inputs = row.getElementsByTagName("input");
-
     for (var i = 0; i < inputs.length; i++) {
-        if (inputs[i].getAttribute("data-name") == name) {
-            return inputs[i];
-        }
+        if (inputs[i].getAttribute("data-name") == name) return inputs[i];
     }
-
     return null;
 }
 
@@ -1085,7 +888,6 @@ function getNextMonthValue() {
 
     for (var i = 0; i < rows.length; i++) {
         var monthInput = getForecastInput(rows[i], "FORE_MONTH");
-
         if (monthInput && monthInput.value != "" && monthInput.value > maxValue) {
             maxValue = monthInput.value;
         }
@@ -1097,18 +899,15 @@ function getNextMonthValue() {
         var m = parseInt(parts[1], 10);
 
         m++;
-
         if (m > 12) {
             y++;
             m = 1;
         }
-
         return y + "-" + (m < 10 ? "0" + m : m);
     }
 
     var d = new Date();
     var month = d.getMonth() + 1;
-
     return d.getFullYear() + "-" + (month < 10 ? "0" + month : month);
 }
 
@@ -1118,13 +917,9 @@ function getForecastRows() {
 
 function getSelectedForecastIndex() {
     var rows = getForecastRows();
-
     for (var i = 0; i < rows.length; i++) {
-        if (rows[i] === selectedForecastRow) {
-            return i;
-        }
+        if (rows[i] === selectedForecastRow) return i;
     }
-
     return -1;
 }
 
@@ -1144,15 +939,13 @@ function moveForecastSelection(direction, fieldName) {
         index = index + direction;
     }
 
-    /*
-        Jika tekan panah bawah di baris terakhir,
-        otomatis tambah baris forecast baru.
-    */
-    if (direction > 0 && index >= rows.length) {
-        addForecastRow();
-
+    // PERUBAHAN: Menyamakan penambahan baris di atas / Z-A seperti milik Schedule
+    if (direction < 0 && index < 0) {
+        addForecastRow(); 
         rows = getForecastRows();
-        index = rows.length - 1;
+        index = 0; // Baris baru ada di paling atas
+    } else if (index >= rows.length) {
+        index = rows.length - 1; // Jangan tambah baris jika panah ke bawah ditekan di baris paling bawah
     }
 
     if (index < 0) {
@@ -1166,7 +959,6 @@ function moveForecastSelection(direction, fieldName) {
     selectForecastRow(rows[index]);
 
     var input = getForecastInput(rows[index], fieldName);
-
     if (input) {
         input.focus();
         input.select();
@@ -1177,9 +969,9 @@ function moveForecastSelection(direction, fieldName) {
     }
 }
 
+// PERUBAHAN: Parameter appendBottom dihapus agar perilaku fungsi sama dengan milik Schedule (selalu prepend ke atas)
 function addForecastRow(data) {
     data = data || {};
-
     var body = document.getElementById("forecastBody");
 
     if (body.getElementsByTagName("td").length == 1 && body.innerHTML.indexOf("Belum ada") >= 0) {
@@ -1207,22 +999,21 @@ function addForecastRow(data) {
             '<input type="number" class="num" data-name="FORE_QTY" value="' + htmlEncode(qtyValue) + '">' +
         '</td>';
 
-    body.appendChild(tr);
+    // PERUBAHAN: Selalu disisipkan di posisi paling atas / Z-A 
+    if (body.firstChild) {
+        body.insertBefore(tr, body.firstChild);
+    } else {
+        body.appendChild(tr);
+    }
 
     var monthInput = getForecastInput(tr, "FORE_MONTH");
     var qtyInput = getForecastInput(tr, "FORE_QTY");
 
-    monthInput.onfocus = function () {
-        selectForecastRow(tr);
-    };
-
-    qtyInput.onfocus = function () {
-        selectForecastRow(tr);
-    };
+    monthInput.onfocus = function () { selectForecastRow(tr); };
+    qtyInput.onfocus = function () { selectForecastRow(tr); };
 
     monthInput.onkeydown = function (e) {
         e = e || window.event;
-
         var key = e.keyCode || e.which;
 
         if (key == 13 || key == 9) {
@@ -1231,57 +1022,49 @@ function addForecastRow(data) {
             qtyInput.select();
             return false;
         }
-
         if (key == 40) {
             e.preventDefault ? e.preventDefault() : e.returnValue = false;
             moveForecastSelection(1, "FORE_MONTH");
             return false;
         }
-
         if (key == 38) {
             e.preventDefault ? e.preventDefault() : e.returnValue = false;
             moveForecastSelection(-1, "FORE_MONTH");
             return false;
         }
-
         return true;
     };
 
     qtyInput.onkeydown = function (e) {
         e = e || window.event;
-
         var key = e.keyCode || e.which;
 
-        if (key == 13) {
+        if (key == 13 || key == 9) { // Tab juga memicu submit line mirip dengan yg lain
             e.preventDefault ? e.preventDefault() : e.returnValue = false;
 
             saveForecast(function (ok) {
                 if (ok) {
-                    addForecastRow();
-
+                    addForecastRow(); // Disisipkan ke atas
+                    
                     var rows = document.getElementById("forecastBody").getElementsByTagName("tr");
-                    var lastRow = rows[rows.length - 1];
+                    var firstRow = rows[0]; // Kursor naik ke baris paling atas yang baru digenerate
 
-                    selectForecastRow(lastRow);
-                    getForecastInput(lastRow, "FORE_MONTH").focus();
+                    selectForecastRow(firstRow);
+                    getForecastInput(firstRow, "FORE_MONTH").focus();
                 }
             });
-
             return false;
         }
-
         if (key == 40) {
             e.preventDefault ? e.preventDefault() : e.returnValue = false;
             moveForecastSelection(1, "FORE_QTY");
             return false;
         }
-
         if (key == 38) {
             e.preventDefault ? e.preventDefault() : e.returnValue = false;
             moveForecastSelection(-1, "FORE_QTY");
             return false;
         }
-
         return true;
     };
 
@@ -1298,20 +1081,13 @@ function collectForecastRows() {
         var monthInput = getForecastInput(trs[i], "FORE_MONTH");
         var qtyInput = getForecastInput(trs[i], "FORE_QTY");
 
-        if (!monthInput || !qtyInput) {
-            continue;
-        }
+        if (!monthInput || !qtyInput) continue;
 
         var month = monthInput.value;
         var qtyText = qtyInput.value;
 
-        if (month == "") {
-            continue;
-        }
-
-        if (qtyText == "") {
-            qtyText = "0";
-        }
+        if (month == "") continue;
+        if (qtyText == "") qtyText = "0";
 
         var qty = parseInt(qtyText, 10);
 
@@ -1328,41 +1104,31 @@ function collectForecastRows() {
         }
 
         checkMonth[month] = true;
-
         rows.push({
             FORE_MONTH: month,
             FORE_QTY: qty
         });
     }
-
     return rows;
 }
 
 function saveForecast(callback) {
     var priceId = document.getElementById("PRICE_ID").value;
-
     if (priceId == "") {
         alert("Pilih item dulu.");
-        if (callback) {
-            callback(false);
-        }
+        if (callback) callback(false);
         return;
     }
 
     var rows = collectForecastRows();
-
     if (rows === false) {
-        if (callback) {
-            callback(false);
-        }
+        if (callback) callback(false);
         return;
     }
 
     if (rows.length == 0) {
         alert("Forecast kosong.");
-        if (callback) {
-            callback(false);
-        }
+        if (callback) callback(false);
         return;
     }
 
@@ -1372,37 +1138,27 @@ function saveForecast(callback) {
         function (status, responseText) {
             if (status != 200) {
                 alert("HTTP Error: " + status);
-                if (callback) {
-                    callback(false);
-                }
+                if (callback) callback(false);
                 return;
             }
 
             var result;
-
             try {
                 result = JSON.parse(responseText);
             } catch (e) {
                 alert("Response bukan JSON:\n\n" + responseText);
-                if (callback) {
-                    callback(false);
-                }
+                if (callback) callback(false);
                 return;
             }
 
             if (!result.success) {
                 alert(result.message);
-                if (callback) {
-                    callback(false);
-                }
+                if (callback) callback(false);
                 return;
             }
 
             setStatus(result.message);
-
-            if (callback) {
-                callback(true);
-            }
+            if (callback) callback(true);
         }
     );
 }
@@ -1416,11 +1172,6 @@ function deleteForecastRow() {
     var priceId = document.getElementById("PRICE_ID").value;
     var monthInput = getForecastInput(selectedForecastRow, "FORE_MONTH");
 
-    /*
-        Kalau baris baru belum ada month,
-        hapus dari layar saja.
-        Kalau habis dihapus jadi kosong, otomatis tambah 1 baris kosong.
-    */
     if (!monthInput || monthInput.value == "") {
         selectedForecastRow.parentNode.removeChild(selectedForecastRow);
         selectedForecastRow = null;
@@ -1428,7 +1179,6 @@ function deleteForecastRow() {
         if (document.getElementById("forecastBody").getElementsByTagName("tr").length == 0) {
             addForecastRow();
         }
-
         return;
     }
 
@@ -1437,9 +1187,7 @@ function deleteForecastRow() {
         return;
     }
 
-    if (!confirm("Hapus forecast month " + monthInput.value + "?")) {
-        return;
-    }
+    if (!confirm("Hapus forecast month " + monthInput.value + "?")) return;
 
     ajaxPost(
         "ajax_forecast_delete.php",
@@ -1451,7 +1199,6 @@ function deleteForecastRow() {
             }
 
             var result;
-
             try {
                 result = JSON.parse(responseText);
             } catch (e) {
@@ -1482,24 +1229,16 @@ document.getElementById("CUST_CODE").onkeydown = function (e) {
 
 document.getElementById("CUST_CODE").onkeyup = function (e) {
     e = e || window.event;
-
     var key = e.keyCode || e.which;
 
-    if (key == 13 || key == 38 || key == 40) {
-        return false;
-    }
+    if (key == 13 || key == 38 || key == 40) return false;
 
     clearTimeout(custTimer);
-
-    custTimer = setTimeout(function () {
-        searchCustomer();
-    }, 250);
+    custTimer = setTimeout(function () { searchCustomer(); }, 250);
 };
 
 document.getElementById("CUST_CODE").onblur = function () {
-    setTimeout(function () {
-        hideCustSuggest();
-    }, 250);
+    setTimeout(function () { hideCustSuggest(); }, 250);
 };
 
 document.getElementById("ITEM_SEARCH").onkeydown = function (e) {
@@ -1508,52 +1247,27 @@ document.getElementById("ITEM_SEARCH").onkeydown = function (e) {
 
 document.getElementById("ITEM_SEARCH").onkeyup = function (e) {
     e = e || window.event;
-
     var key = e.keyCode || e.which;
 
-    if (key == 13 || key == 38 || key == 40) {
-        return false;
-    }
+    if (key == 13 || key == 38 || key == 40) return false;
 
     clearTimeout(itemSearchTimer);
-
-    itemSearchTimer = setTimeout(function () {
-        searchItemLocal();
-    }, 800);
+    itemSearchTimer = setTimeout(function () { searchItemLocal(); }, 800);
 };
 
 document.getElementById("ITEM_SEARCH").onblur = function () {
-    setTimeout(function () {
-        hideItemSearchSuggest();
-    }, 250);
+    setTimeout(function () { hideItemSearchSuggest(); }, 250);
 };
 
-document.getElementById("btnRefreshItem").onclick = function () {
-    loadItems();
-};
-
-document.getElementById("btnAddMonth").onclick = function () {
-    addForecastRow();
-};
-
-document.getElementById("btnDeleteMonth").onclick = function () {
-    deleteForecastRow();
-};
-
-document.getElementById("btnSaveForecast").onclick = function () {
-    saveForecast();
-};
-
-document.getElementById("btnReloadForecast").onclick = function () {
-    loadForecast();
-};
+document.getElementById("btnRefreshItem").onclick = function () { loadItems(); };
+document.getElementById("btnAddMonth").onclick = function () { addForecastRow(); };
+document.getElementById("btnDeleteMonth").onclick = function () { deleteForecastRow(); };
+document.getElementById("btnSaveForecast").onclick = function () { saveForecast(); };
+document.getElementById("btnReloadForecast").onclick = function () { loadForecast(); };
 
 var btnClose = document.getElementById("btnClose");
-
 if (btnClose) {
-    btnClose.onclick = function () {
-        window.close();
-    };
+    btnClose.onclick = function () { window.close(); };
 }
 
 document.getElementById("CUST_CODE").focus();

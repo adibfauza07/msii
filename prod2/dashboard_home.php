@@ -173,6 +173,17 @@ function h($value) {
                 <div class="report-name">DAILY PRODUCTION</div>
                 <a class="button" href="daily_production.php" target="_blank">OPEN</a>
             </div>
+			
+			 <div class="report-item">
+                <div class="report-name">DAILY PRODUCTION VENDOR</div>
+                <a class="button" href="daily_production_vendor.php" target="_blank">OPEN</a>
+            </div>
+			
+			<div class="report-item">
+                <div class="report-name">SUMMARY PRODUCTION VENDOR</div>
+                <a class="button" href="sum_vendor.php" target="_blank">OPEN</a>
+            </div>
+			
 			<div class="report-item">
                 <div class="report-name">DAILY PRODUCTION SUM </div>
                 <a class="button" href="daily_production_sum.php" target="_blank">OPEN</a>

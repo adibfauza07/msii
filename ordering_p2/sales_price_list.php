@@ -51,26 +51,18 @@ function fmt_date($value) {
     return date("d-M-Y", $ts);
 }
 
-// UPDATE: Fungsi fmt_price menambahkan pemisah ribuan untuk IDR
 function fmt_price($value, $currency = "") {
     if ($value === null || $value === "") {
         $value = 0;
     }
 
-    // Jika mata uang IDR, format tanpa desimal (0) dan pakai koma (,) sebagai pemisah ribuan.
     if (strtoupper(trim($currency)) === "IDR") {
         return number_format((float)$value, 0, ".", ",");
     }
 
-    // Untuk mata uang lain, tetap 4 desimal, tanpa pemisah ribuan (sesuai kode asli Anda)
     return number_format((float)$value, 4, ".", "");
 }
 
-/*
- * Pagination berbasis tinggi relatif row, bukan sekadar jumlah row.
- * Ini lebih stabil setelah font diperbesar ke Segoe UI dan mencegah
- * satu blok report meluber ke halaman print berikutnya.
- */
 function print_row_units($row, $nextRow = null) {
     $type = isset($row["ROW_TYPE"]) ? $row["ROW_TYPE"] : "";
 
@@ -79,7 +71,6 @@ function print_row_units($row, $nextRow = null) {
     if ($type === "ITEM_PRICE") {
         $units = 1.05;
 
-        // Tambahkan sedikit ruang ketika item berikutnya mulai.
         if (
             $nextRow === null
             || $nextRow["ROW_TYPE"] === "CUSTOMER"
@@ -112,7 +103,6 @@ function paginate_print_rows($rows, $maxUnits = 30.5) {
             $page = array();
             $usedUnits = 0.0;
 
-            // Ulangi customer pada halaman lanjutan.
             if ($row["ROW_TYPE"] !== "CUSTOMER" && $currentCustomer !== null) {
                 $repeatCustomer = $currentCustomer;
                 $repeatCustomer["CONTINUED"] = 1;
@@ -120,8 +110,6 @@ function paginate_print_rows($rows, $maxUnits = 30.5) {
                 $usedUnits += 1.35;
             }
 
-            // Jika halaman terpotong di tengah beberapa harga untuk item yang sama,
-            // tampilkan kembali identitas item pada baris pertama halaman lanjutan.
             if ($row["ROW_TYPE"] === "ITEM_PRICE" && empty($row["SHOW_ITEM"])) {
                 $row["SHOW_ITEM"] = 1;
                 $row["CONTINUED"] = 1;
@@ -159,11 +147,6 @@ $totalPages = 0;
 $pageCapacity = 30.5;
 
 if ($is_filter) {
-
-    /*
-        % = semua customer
-        selain % = filter exact by CUST_CODE
-    */
     $sql = "
         SET NOCOUNT ON;
 
@@ -247,7 +230,6 @@ if ($is_filter) {
         $itemKey = $r["ITEM_CODE"] . "|" . $r["ITEM_NO"] . "|" . $r["ITEM_NAME"];
         $showItem = ($itemKey != $lastItem);
 
-        // Item dan detail harga dibuat dalam satu baris agar semua kolom sejajar.
         $printRows[] = array(
             "ROW_TYPE"   => "ITEM_PRICE",
             "SHOW_ITEM"  => $showItem ? 1 : 0,
@@ -279,11 +261,6 @@ if ($is_filter) {
     }
 }
 
-
-/* ============================================================
-   Bersihkan resource database
-   Export Excel dipisahkan ke: sales_price_history_export_excel.php
-   ============================================================ */
 if ($is_filter && isset($stmt) && $stmt !== false) {
     sqlsrv_free_stmt($stmt);
 }
@@ -304,345 +281,71 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 
     <style>
-        @page {
-            size: A4 portrait;
-            margin: 0;
-        }
-
-        :root {
-            --grid: #d9dee5;
-            --head: #f8f9fa;
-            --customer: #e9ecef;
-            --text: #212529;
-            --muted: #6c757d;
-        }
-
+        @page { size: A4 portrait; margin: 0; }
+        :root { --grid: #d9dee5; --head: #f8f9fa; --customer: #e9ecef; --text: #212529; --muted: #6c757d; }
         * { box-sizing: border-box; }
-
         html, body { margin: 0; padding: 0; }
-
-        body {
-            background: #9a9a9a;
-            font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            font-size: 12px;
-            color: var(--text);
-        }
-
-        .autocomplete-wrap {
-            position: relative;
-            display: inline-block;
-        }
-
-        .autocomplete-list {
-            position: absolute;
-            top: 36px;
-            left: 0;
-            width: 100%;
-            min-width: 340px;
-            max-height: 230px;
-            overflow-y: auto;
-            background: #ffffff;
-            border: 1px solid #ced4da;
-            z-index: 9999;
-            display: none;
-            border-radius: 0 0 6px 6px;
-            box-shadow: 0 6px 16px rgba(0,0,0,0.15);
-        }
-
-        .autocomplete-item {
-            padding: 7px 9px;
-            border-bottom: 1px solid #eef1f4;
-            cursor: pointer;
-            line-height: 17px;
-            font-family: "Segoe UI", Arial, sans-serif;
-            font-size: 12px;
-        }
-
-        .autocomplete-item:hover,
-        .autocomplete-item.active {
-            background: #0d6efd;
-            color: #ffffff;
-        }
-
-        /* Toolbar Bootstrap */
-        .report-toolbar {
-            width: min(1100px, calc(100% - 24px));
-            margin: 8px auto;
-            font-family: "Segoe UI", Arial, sans-serif;
-        }
-
-        .report-toolbar .card {
-            border: 0;
-            border-radius: 10px;
-        }
-
-        .report-toolbar .form-control {
-            min-width: 210px;
-            height: 34px;
-            font-size: 12px;
-        }
-
-        .report-toolbar .btn {
-            height: 34px;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 12px;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-
-        .report-toolbar .autocomplete-wrap {
-            width: min(360px, 100%);
-        }
-
-        .report-pages {
-            width: 100%;
-            margin: 0;
-            padding: 0;
-        }
-
-        /* Satu .page = tepat satu lembar A4 */
-        .page {
-            width: 210mm;
-            height: 297mm;
-            min-height: 297mm;
-            margin: 10px auto;
-            background: #ffffff;
-            padding: 9mm 10mm;
-            box-sizing: border-box;
-            overflow: hidden;
-            break-after: page;
-            page-break-after: always;
-            box-shadow: 0 2px 10px rgba(0,0,0,.22);
-        }
-
-        .page:last-child {
-            break-after: auto;
-            page-break-after: auto;
-        }
-
-        .header {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 12px;
-            font-family: "Segoe UI", Roboto, Arial, sans-serif;
-        }
-
-        .header td {
-            border: none;
-            padding: 0;
-            vertical-align: top;
-        }
-
-        .company {
-            width: 32%;
-            font-size: 11px;
-            line-height: 1.25;
-        }
-
-        .company-title {
-            font-size: 15px;
-            font-weight: 500;
-        }
-
-        .title-area {
-            width: 38%;
-            text-align: center;
-        }
-
-        .report-title {
-            font-size: 19px;
-            font-weight: 700;
-            margin-top: 2px;
-            letter-spacing: .1px;
-        }
-
-        .filter-title {
-            font-size: 11px;
-            margin-top: 7px;
-            font-weight: 400;
-        }
-
-        .right-info {
-            width: 30%;
-            text-align: right;
-            font-size: 10.5px;
-            line-height: 1.45;
-        }
-
+        body { background: #9a9a9a; font-family: "Segoe UI", Roboto, Arial, sans-serif; font-size: 12px; color: var(--text); }
+        .autocomplete-wrap { position: relative; display: inline-block; }
+        .autocomplete-list { position: absolute; top: 36px; left: 0; width: 100%; min-width: 340px; max-height: 230px; overflow-y: auto; background: #ffffff; border: 1px solid #ced4da; z-index: 9999; display: none; border-radius: 0 0 6px 6px; box-shadow: 0 6px 16px rgba(0,0,0,0.15); }
+        .autocomplete-item { padding: 7px 9px; border-bottom: 1px solid #eef1f4; cursor: pointer; line-height: 17px; font-family: "Segoe UI", Arial, sans-serif; font-size: 12px; }
+        .autocomplete-item:hover, .autocomplete-item.active { background: #0d6efd; color: #ffffff; }
+        .report-toolbar { width: min(1100px, calc(100% - 24px)); margin: 8px auto; font-family: "Segoe UI", Arial, sans-serif; }
+        .report-toolbar .card { border: 0; border-radius: 10px; }
+        .report-toolbar .form-control { min-width: 210px; height: 34px; font-size: 12px; }
+        .report-toolbar .btn { height: 34px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+        .report-toolbar .autocomplete-wrap { width: min(360px, 100%); }
+        .report-pages { width: 100%; margin: 0; padding: 0; }
+        .page { width: 210mm; height: 297mm; min-height: 297mm; margin: 10px auto; background: #ffffff; padding: 9mm 10mm; box-sizing: border-box; overflow: hidden; break-after: page; page-break-after: always; box-shadow: 0 2px 10px rgba(0,0,0,.22); }
+        .page:last-child { break-after: auto; page-break-after: auto; }
+        .header { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-family: "Segoe UI", Roboto, Arial, sans-serif; }
+        .header td { border: none; padding: 0; vertical-align: top; }
+        .company { width: 32%; font-size: 11px; line-height: 1.25; }
+        .company-title { font-size: 15px; font-weight: 500; }
+        .title-area { width: 38%; text-align: center; }
+        .report-title { font-size: 19px; font-weight: 700; margin-top: 2px; letter-spacing: .1px; }
+        .filter-title { font-size: 11px; margin-top: 7px; font-weight: 400; }
+        .right-info { width: 30%; text-align: right; font-size: 10.5px; line-height: 1.45; }
         .print-date { margin-top: 14px; }
-
-        /* Tampilan tabel disamakan dengan report referensi: Segoe UI + grid tipis */
-        .price-table {
-            width: 100%;
-            border-collapse: collapse;
-            table-layout: fixed;
-            font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            font-size: 11px;
-            color: #212529;
-            border: 1px solid var(--grid);
-        }
-
-        .price-table th {
-            background: var(--head);
-            border: 1px solid var(--grid);
-            padding: 6px 7px;
-            height: 29px;
-            font-weight: 600;
-            text-align: left;
-            font-size: 10.5px;
-            line-height: 1.2;
-            overflow: hidden;
-            white-space: nowrap;
-        }
-
-        .price-table td {
-            border: 1px solid var(--grid);
-            padding: 4px 7px;
-            height: 24px;
-            line-height: 15px;
-            vertical-align: middle;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            font-size: 11px;
-        }
-
-        .col-part { width: 48%; }
+        .price-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-family: "Segoe UI", Roboto, Arial, sans-serif; font-size: 11px; color: #212529; border: 1px solid var(--grid); }
+        .price-table th { background: var(--head); border: 1px solid var(--grid); padding: 6px 7px; height: 29px; font-weight: 600; text-align: left; font-size: 10.5px; line-height: 1.2; overflow: hidden; white-space: nowrap; }
+        .price-table td { border: 1px solid var(--grid); padding: 4px 7px; height: 24px; line-height: 15px; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+        
+        /* UPDATE KOLOM BARU */
+        .col-code { width: 12%; }
+        .col-no { width: 16%; }
+        .col-name { width: 20%; }
         .col-price { width: 11%; text-align: right; }
         .col-start { width: 13%; }
         .col-end { width: 13%; }
         .col-quot { width: 15%; }
 
-        .customer-row td {
-            height: 27px;
-            background: var(--customer);
-            font-weight: 700;
-            font-size: 11.5px;
-            padding-top: 5px;
-            padding-bottom: 5px;
-            letter-spacing: 0;
-        }
-
-        .part-label {
-            letter-spacing: 0;
-            font-weight: 600;
-        }
-
-        .item-price-row td {
-            height: 24px;
-            padding-top: 4px;
-            padding-bottom: 4px;
-            vertical-align: middle;
-        }
-
-        .item-price-row .col-part { font-weight: 500; }
-        .item-price-row .col-price {
-            text-align: right;
-            font-variant-numeric: tabular-nums;
-        }
-        .item-price-row .col-start,
-        .item-price-row .col-end,
-        .item-price-row .col-quot { text-align: left; }
-
-        .dash-row td {
-            border-left: 1px solid var(--grid);
-            border-right: 1px solid var(--grid);
-            border-top: none;
-            border-bottom: 1px dashed #adb5bd;
-            height: 3px;
-            min-height: 3px;
-            padding: 0;
-            line-height: 0;
-        }
-
+        .customer-row td { height: 27px; background: var(--customer); font-weight: 700; font-size: 11.5px; padding-top: 5px; padding-bottom: 5px; letter-spacing: 0; }
+        .item-price-row td { height: 24px; padding-top: 4px; padding-bottom: 4px; vertical-align: middle; }
+        .item-price-row .col-code, .item-price-row .col-no, .item-price-row .col-name { font-weight: 500; }
+        .item-price-row .col-price { text-align: right; font-variant-numeric: tabular-nums; }
+        .item-price-row .col-start, .item-price-row .col-end, .item-price-row .col-quot { text-align: left; }
+        .dash-row td { border-left: 1px solid var(--grid); border-right: 1px solid var(--grid); border-top: none; border-bottom: 1px dashed #adb5bd; height: 3px; min-height: 3px; padding: 0; line-height: 0; }
         .num { text-align: right; }
         .center { text-align: center; }
+        .continued-note { margin-left: 6px; color: var(--muted); font-size: 9px; font-weight: 500; font-style: italic; }
 
-        .continued-note {
-            margin-left: 6px;
-            color: var(--muted);
-            font-size: 9px;
-            font-weight: 500;
-            font-style: italic;
-        }
-
-
-        @media screen and (max-width: 900px) {
-            .page {
-                transform-origin: top center;
-            }
-        }
-
+        @media screen and (max-width: 900px) { .page { transform-origin: top center; } }
         @media print {
-            html, body {
-                width: 210mm;
-                margin: 0 !important;
-                padding: 0 !important;
-                background: #ffffff !important;
-            }
-
-            .report-toolbar {
-                display: none !important;
-            }
-
-            .report-pages {
-                width: 210mm;
-                margin: 0 !important;
-                padding: 0 !important;
-            }
-
-            .page {
-                width: 210mm;
-                height: 297mm;
-                min-height: 297mm;
-                margin: 0 !important;
-                padding: 9mm 10mm;
-                border: none !important;
-                box-shadow: none !important;
-                overflow: hidden;
-                break-inside: avoid;
-                page-break-inside: avoid;
-                break-after: page;
-                page-break-after: always;
-            }
-
-            .page:last-child {
-                break-after: auto;
-                page-break-after: auto;
-            }
-
-            .price-table {
-                font-size: 8.25pt;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-
-            .price-table th {
-                font-size: 8pt;
-                padding: 4px 6px;
-                height: 7mm;
-            }
-
-            .price-table td {
-                font-size: 8.25pt;
-                padding: 3px 6px;
-                height: 5.8mm;
-                line-height: 1.15;
-            }
-
-            .customer-row td {
-                font-size: 8.5pt;
-                height: 6.5mm;
-            }
-
+            html, body { width: 210mm; margin: 0 !important; padding: 0 !important; background: #ffffff !important; }
+            .report-toolbar { display: none !important; }
+            .report-pages { width: 210mm; margin: 0 !important; padding: 0 !important; }
+            .page { width: 210mm; height: 297mm; min-height: 297mm; margin: 0 !important; padding: 9mm 10mm; border: none !important; box-shadow: none !important; overflow: hidden; break-inside: avoid; page-break-inside: avoid; break-after: page; page-break-after: always; }
+            .page:last-child { break-after: auto; page-break-after: auto; }
+            .price-table { font-size: 8.25pt; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .price-table th { font-size: 8pt; padding: 4px 6px; height: 7mm; }
+            .price-table td { font-size: 8.25pt; padding: 3px 6px; height: 5.8mm; line-height: 1.15; }
+            .customer-row td { font-size: 8.5pt; height: 6.5mm; }
             .item-price-row td { height: 5.8mm; }
             .dash-row td { height: 1mm; }
         }
     </style>
 </head>
-
 <body>
 
 <div class="report-toolbar d-print-none">
@@ -652,37 +355,18 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                 <div class="col-12 col-lg-auto">
                     <label for="CUST_CODE" class="form-label mb-0 small fw-semibold text-secondary">Customer</label>
                 </div>
-
                 <div class="col-12 col-md-auto flex-grow-1">
                     <div class="autocomplete-wrap">
-                        <input
-                            type="text"
-                            id="CUST_CODE"
-                            name="CUST_CODE"
-                            class="form-control form-control-sm"
-                            value="<?php echo h($cust_code); ?>"
-                            placeholder="Ketik customer / % untuk semua"
-                        >
+                        <input type="text" id="CUST_CODE" name="CUST_CODE" class="form-control form-control-sm" value="<?php echo h($cust_code); ?>" placeholder="Ketik customer / % untuk semua">
                         <div id="custSuggest" class="autocomplete-list"></div>
                     </div>
                 </div>
-
                 <div class="col-12 col-md-auto d-flex flex-wrap gap-2">
-                    <button type="submit" class="btn btn-primary btn-sm">
-                        <i class="fas fa-filter"></i> FILTER
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setAllCustomer()">
-                        <i class="fas fa-users"></i> ALL
-                    </button>
-                    <button type="button" class="btn btn-outline-dark btn-sm" onclick="printReport()">
-                        <i class="fas fa-print"></i> PRINT
-                    </button>
-                    <button type="button" class="btn btn-success btn-sm" onclick="exportExcel()">
-                        <i class="fas fa-file-excel"></i> EXPORT EXCEL
-                    </button>
-                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="closeReport()">
-                        <i class="fas fa-times"></i> CLOSE
-                    </button>
+                    <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-filter"></i> FILTER</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="setAllCustomer()"><i class="fas fa-users"></i> ALL</button>
+                    <button type="button" class="btn btn-outline-dark btn-sm" onclick="printReport()"><i class="fas fa-print"></i> PRINT</button>
+                    <button type="button" class="btn btn-success btn-sm" onclick="exportExcel()"><i class="fas fa-file-excel"></i> EXPORT EXCEL</button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" onclick="closeReport()"><i class="fas fa-times"></i> CLOSE</button>
                 </div>
             </form>
         </div>
@@ -699,22 +383,18 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                     <div class="company-title">P.T. IMC TEKNO INDONESIA</div>
                     PPIC Department
                 </td>
-
                 <td class="title-area">
                     <div class="report-title">SALES PRICE HISTORY</div>
                     <div class="filter-title">Silahkan pilih customer lalu klik FILTER.</div>
                 </td>
-
                 <td class="right-info">
                     Page 0 of 0
-
                     <div class="print-date">
                         Print Date : <?php echo h(fmt_print_date()); ?>
                     </div>
                 </td>
             </tr>
         </table>
-
         <div style="font-family:Arial,sans-serif;font-size:14px;text-align:center;margin-top:80px;">
             Data belum ditampilkan.<br><br>
             Isi Customer Code lalu klik <b>FILTER</b>.<br>
@@ -722,32 +402,27 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
         </div>
     </div>
 <?php } ?>
+
 <?php for ($p = 0; $p < count($pages); $p++) { ?>
     <?php
         $pageRows = $pages[$p];
         $pageNo = $p + 1;
     ?>
-
     <div class="page">
-
         <table class="header">
             <tr>
                 <td class="company">
                     <div class="company-title">P.T. IMC TEKNO INDONESIA</div>
                     PPIC Department
                 </td>
-
                 <td class="title-area">
                     <div class="report-title">SALES PRICE HISTORY</div>
                     <div class="filter-title">
-                        Customer:
-                        <?php echo h($cust_code == "%" ? "ALL" : $cust_code); ?>
+                        Customer: <?php echo h($cust_code == "%" ? "ALL" : $cust_code); ?>
                     </div>
                 </td>
-
                 <td class="right-info">
                     Page <?php echo h($pageNo); ?> of <?php echo h($totalPages); ?>
-
                     <div class="print-date">
                         Print Date : <?php echo h(fmt_print_date()); ?>
                     </div>
@@ -758,23 +433,23 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
         <table class="price-table">
             <thead>
                 <tr>
-                    <th class="col-part">
-                        <span class="part-label">P&nbsp; A&nbsp; R&nbsp; T</span>
-                    </th>
+                    <th class="col-code">Part Code</th>
+                    <th class="col-no">Part No</th>
+                    <th class="col-name">Part Name</th>
                     <th class="col-price">Price</th>
                     <th class="col-start">Start Date</th>
                     <th class="col-end">End Date</th>
                     <th class="col-quot">Quot.</th>
                 </tr>
             </thead>
-
             <tbody>
                 <?php for ($i = 0; $i < count($pageRows); $i++) { ?>
                     <?php $r = $pageRows[$i]; ?>
 
                     <?php if ($r["ROW_TYPE"] == "CUSTOMER") { ?>
                         <tr class="customer-row">
-                            <td colspan="5">
+                            <!-- Update colspan menjadi 7 karena kolom bertambah -->
+                            <td colspan="7">
                                 [<?php echo h($r["CUST_CODE"]); ?>]
                                 [<?php echo h($r["CUST_COMP"]); ?>]
                                 <?php if (!empty($r["CONTINUED"])) { ?><span class="continued-note">(lanjutan)</span><?php } ?>
@@ -782,27 +457,28 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                         </tr>
                     <?php } elseif ($r["ROW_TYPE"] == "ITEM_PRICE") { ?>
                         <tr class="item-price-row">
-                            <td class="col-part">
-                                <?php if (!empty($r["SHOW_ITEM"])) { ?>
-                                    [<?php echo h($r["ITEM_CODE"]); ?>]
-                                    [<?php echo h($r["ITEM_NO"]); ?>]
-                                    [<?php echo h($r["ITEM_NAME"]); ?>]
+                            <?php if (!empty($r["SHOW_ITEM"])) { ?>
+                                <td class="col-code"><?php echo h($r["ITEM_CODE"]); ?></td>
+                                <td class="col-no"><?php echo h($r["ITEM_NO"]); ?></td>
+                                <td class="col-name">
+                                    <?php echo h($r["ITEM_NAME"]); ?>
                                     <?php if (!empty($r["CONTINUED"])) { ?><span class="continued-note">(lanjutan)</span><?php } ?>
-                                <?php } ?>
-                            </td>
+                                </td>
+                            <?php } else { ?>
+                                <td class="col-code"></td>
+                                <td class="col-no"></td>
+                                <td class="col-name"></td>
+                            <?php } ?>
 
                             <td class="col-price num">
                                 <?php echo h(fmt_price($r["PRDT_PRICE"], $r["CURR_CODE"])); ?>
                             </td>
-
                             <td class="col-start">
                                 <?php echo h(fmt_date($r["PRDT_START"])); ?>
                             </td>
-
                             <td class="col-end">
                                 <?php echo h(fmt_date($r["PRDT_END"])); ?>
                             </td>
-
                             <td class="col-quot">
                                 <?php echo h($r["PRDT_QNO"]); ?>
                             </td>
@@ -819,239 +495,103 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                             if ($next === null || $next["ROW_TYPE"] == "CUSTOMER" || $nextStartsItem) {
                         ?>
                             <tr class="dash-row">
-                                <td colspan="5"></td>
+                                <!-- Update colspan menjadi 7 -->
+                                <td colspan="7"></td>
                             </tr>
                         <?php } ?>
 
                     <?php } elseif ($r["ROW_TYPE"] == "EMPTY") { ?>
                         <tr>
-                            <td colspan="5" class="center">Data tidak ditemukan.</td>
+                            <td colspan="7" class="center">Data tidak ditemukan.</td>
                         </tr>
                     <?php } ?>
                 <?php } ?>
-
             </tbody>
         </table>
-
     </div>
 <?php } ?>
 
-</div><!-- /#reportPages -->
+</div>
 
 <script>
 var custRows = [];
 var custIndex = -1;
 var timer = null;
 
-function enc(v) {
-    return encodeURIComponent(v == null ? "" : v);
-}
-
-function htmlEncode(value) {
-    return String(value == null ? "" : value)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
-}
-
-function printReport() {
-    window.print();
-}
-
-function closeReport() {
-    try {
-        window.close();
-    } catch (e) {}
-
-    setTimeout(function () {
-        if (!window.closed) {
-            history.back();
-        }
-    }, 150);
-}
+function enc(v) { return encodeURIComponent(v == null ? "" : v); }
+function htmlEncode(value) { return String(value == null ? "" : value).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+function printReport() { window.print(); }
+function closeReport() { try { window.close(); } catch (e) {} setTimeout(function () { if (!window.closed) { history.back(); } }, 150); }
 
 function exportExcel() {
     var input = document.getElementById("CUST_CODE");
     var customer = input ? String(input.value || "").trim() : "";
-
-    if (customer === "") {
-        customer = "%";
-    }
-
-    var exportUrl = "sales_price_history_export_excel.php?CUST_CODE=" +
-        encodeURIComponent(customer);
-
-    // Export dilakukan oleh file PHP terpisah; halaman report tidak berpindah.
+    if (customer === "") { customer = "%"; }
+    var exportUrl = "sales_price_history_export_excel.php?CUST_CODE=" + encodeURIComponent(customer);
     window.location.href = exportUrl;
 }
 
-function setAllCustomer() {
-    document.getElementById("CUST_CODE").value = "%";
-    document.getElementById("filterForm").submit();
-}
-
-function hideSuggest() {
-    var box = document.getElementById("custSuggest");
-    box.style.display = "none";
-    box.innerHTML = "";
-    custRows = [];
-    custIndex = -1;
-}
-
+function setAllCustomer() { document.getElementById("CUST_CODE").value = "%"; document.getElementById("filterForm").submit(); }
+function hideSuggest() { var box = document.getElementById("custSuggest"); box.style.display = "none"; box.innerHTML = ""; custRows = []; custIndex = -1; }
 function setActiveCust(index) {
-    var box = document.getElementById("custSuggest");
-    var items = box.getElementsByClassName("autocomplete-item");
-
-    if (!items || items.length == 0) {
-        custIndex = -1;
-        return;
-    }
-
-    if (index < 0) {
-        index = items.length - 1;
-    }
-
-    if (index >= items.length) {
-        index = 0;
-    }
-
-    for (var i = 0; i < items.length; i++) {
-        items[i].className = "autocomplete-item";
-    }
-
-    items[index].className = "autocomplete-item active";
-    custIndex = index;
+    var box = document.getElementById("custSuggest"); var items = box.getElementsByClassName("autocomplete-item");
+    if (!items || items.length == 0) { custIndex = -1; return; }
+    if (index < 0) { index = items.length - 1; }
+    if (index >= items.length) { index = 0; }
+    for (var i = 0; i < items.length; i++) { items[i].className = "autocomplete-item"; }
+    items[index].className = "autocomplete-item active"; custIndex = index;
 }
 
 function chooseCust(index) {
-    if (index < 0 || index >= custRows.length) {
-        return;
-    }
-
-    var r = custRows[index];
-
-    document.getElementById("CUST_CODE").value = r.CUST_CODE;
-    hideSuggest();
-    document.getElementById("filterForm").submit();
+    if (index < 0 || index >= custRows.length) { return; }
+    var r = custRows[index]; document.getElementById("CUST_CODE").value = r.CUST_CODE;
+    hideSuggest(); document.getElementById("filterForm").submit();
 }
 
 function renderSuggest(rows) {
-    var box = document.getElementById("custSuggest");
-    box.innerHTML = "";
-
-    custRows = rows || [];
-    custIndex = -1;
-
-    if (!rows || rows.length == 0) {
-        box.style.display = "none";
-        return;
-    }
-
+    var box = document.getElementById("custSuggest"); box.innerHTML = ""; custRows = rows || []; custIndex = -1;
+    if (!rows || rows.length == 0) { box.style.display = "none"; return; }
     for (var i = 0; i < rows.length; i++) {
         (function (r, idx) {
-            var div = document.createElement("div");
-            div.className = "autocomplete-item";
-            div.innerHTML =
-                "<b>" + htmlEncode(r.CUST_CODE) + "</b> - " +
-                htmlEncode(r.CUST_COMP);
-
-            div.onmouseover = function () {
-                setActiveCust(idx);
-            };
-
-            div.onmousedown = function (e) {
-                if (e && e.preventDefault) {
-                    e.preventDefault();
-                }
-
-                chooseCust(idx);
-            };
-
+            var div = document.createElement("div"); div.className = "autocomplete-item";
+            div.innerHTML = "<b>" + htmlEncode(r.CUST_CODE) + "</b> - " + htmlEncode(r.CUST_COMP);
+            div.onmouseover = function () { setActiveCust(idx); };
+            div.onmousedown = function (e) { if (e && e.preventDefault) { e.preventDefault(); } chooseCust(idx); };
             box.appendChild(div);
         })(rows[i], i);
     }
-
-    box.style.display = "block";
-    setActiveCust(0);
+    box.style.display = "block"; setActiveCust(0);
 }
 
 function searchCustomer(q) {
-    if (q == "" || q == "%") {
-        hideSuggest();
-        return;
-    }
-
+    if (q == "" || q == "%") { hideSuggest(); return; }
     var xhr = new XMLHttpRequest();
     xhr.open("POST", "ajax_customer_autocomplete.php", true);
     xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-
     xhr.onreadystatechange = function () {
         if (xhr.readyState == 4 && xhr.status == 200) {
             var result;
-
-            try {
-                result = JSON.parse(xhr.responseText);
-            } catch (e) {
-                return;
-            }
-
-            if (result.rows) {
-                renderSuggest(result.rows);
-            } else {
-                renderSuggest(result);
-            }
+            try { result = JSON.parse(xhr.responseText); } catch (e) { return; }
+            if (result.rows) { renderSuggest(result.rows); } else { renderSuggest(result); }
         }
     };
-
     xhr.send("q=" + enc(q));
 }
 
 document.getElementById("CUST_CODE").onkeyup = function (e) {
-    e = e || window.event;
-
-    var key = e.keyCode || e.which;
-
-    if (key == 40) {
-        setActiveCust(custIndex + 1);
-        return;
-    }
-
-    if (key == 38) {
-        setActiveCust(custIndex - 1);
-        return;
-    }
-
+    e = e || window.event; var key = e.keyCode || e.which;
+    if (key == 40) { setActiveCust(custIndex + 1); return; }
+    if (key == 38) { setActiveCust(custIndex - 1); return; }
     if (key == 13) {
-        if (custRows.length > 0) {
-            if (custIndex < 0) {
-                custIndex = 0;
-            }
-
-            chooseCust(custIndex);
-            return;
-        }
-
-        document.getElementById("filterForm").submit();
-        return;
+        if (custRows.length > 0) { if (custIndex < 0) { custIndex = 0; } chooseCust(custIndex); return; }
+        document.getElementById("filterForm").submit(); return;
     }
-
-    clearTimeout(timer);
-
-    var q = this.value;
-
-    timer = setTimeout(function () {
-        searchCustomer(q);
-    }, 250);
+    clearTimeout(timer); var q = this.value;
+    timer = setTimeout(function () { searchCustomer(q); }, 250);
 };
 
-document.getElementById("CUST_CODE").onblur = function () {
-    setTimeout(function () {
-        hideSuggest();
-    }, 250);
-};
+document.getElementById("CUST_CODE").onblur = function () { setTimeout(function () { hideSuggest(); }, 250); };
 </script>
-
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
