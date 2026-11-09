@@ -3,7 +3,7 @@ if (session_id() == "") {
     session_start();
 }
 
-require_once dirname(__DIR__) . "/config/db_plant2.php";
+require_once dirname(__DIR__) . "/config/db_plant1.php";
 
 if ($conn === false) {
     die("Koneksi database gagal.");
@@ -39,7 +39,10 @@ if ($rcvId <= 0) {
     die("Data Receive belum dipilih atau ID tidak valid.");
 }
 
-// Mengambil Data Header dan Detail Receive (Kembali ke Query Asli ICL OTO)
+// =========================================================================
+// QUERY DIPERBARUI: Menggunakan SUM() dan GROUP BY agar item kembar 
+// langsung dijumlahkan Quantity-nya oleh Database.
+// =========================================================================
 $sql = "
     SELECT
         R.RCV_ID,
@@ -52,12 +55,23 @@ $sql = "
         I.ITEM_CODE,
         I.ITEM_NAME,
         I.ITEM_UNIT,
-        RD.RCVD_QTY
+        SUM(RD.RCVD_QTY) AS RCVD_QTY
     FROM dbo.RECEIVE R
     INNER JOIN dbo.RECEIVE_DETAIL RD ON R.RCV_ID = RD.RCV_ID
     INNER JOIN dbo.ITEMS I ON RD.ITEM_ID = I.ITEM_ID
     INNER JOIN dbo.SUPPLIER S ON R.SUP_ID = S.SUP_ID
     WHERE R.RCV_ID = ?
+    GROUP BY 
+        R.RCV_ID,
+        R.RCV_NO,
+        R.RCV_DATE,
+        R.RCV_DONO,
+        R.RCV_PIC,
+        S.SUP_CODE,
+        S.SUP_COMP,
+        I.ITEM_CODE,
+        I.ITEM_NAME,
+        I.ITEM_UNIT
     ORDER BY I.ITEM_CODE ASC
 ";
 
@@ -167,7 +181,7 @@ $totalPages = count($pages);
         
         <div class="header-container">
             <div class="header-left">
-                <div class="company-name">PT. IMC TEKNO INDONESIA PLANT 1</div>
+                <div class="company-name">PT. IMC TEKNO INDONESIA PLANT 2</div>
                 <div class="doc-title">INCOMING CHECK LIST</div>
                 <div class="company-addr">
                     Kawasan Industri Kota Bukit Indah<br>

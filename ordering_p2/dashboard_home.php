@@ -54,11 +54,16 @@ $rawReports = [
     ["name" => "Delivery Summary 6 month", "url" => "delivery_summary_6month_report.php", "category" => "Delivery", "target" => "_blank"],
     ["name" => "Delivery Summary 1 YEAR USD", "url" => "delivery_summary_12month.php", "category" => "Delivery", "target" => "_blank"],
     ["name" => "Delivery Summary 1 YEAR IDR", "url" => "DeliverySum12Month_idr.php", "category" => "Delivery", "target" => "_blank"],
+	
 
     // Kategori: Invoice
     ["name" => "Daily Invoice List", "url" => "daily_invoice_list_report.php", "category" => "Invoice", "target" => "_blank"],
     ["name" => "Monthly Invoice List", "url" => "monthly_invoice_list_report.php", "category" => "Invoice", "target" => "_blank"],
     ["name" => "Monthly Invoice List (price by po)", "url" => "#", "category" => "Invoice", "target" => "", "onclick" => "notReady('Monthly Invoice List price by po')"],
+	
+	// Kategori: Packing
+    ["name" => "Monthly Packing List", "url" => "montly_packing_list.php", "category" => "packing", "target" => "_blank"],
+	
 
     // Kategori: Production & Stock
     ["name" => "LOGICAL STOCK", "url" => "delivery_schedule_prod_report.php", "category" => "Production & Stock", "target" => "_blank"],

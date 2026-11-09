@@ -66,12 +66,15 @@ if (!empty($id_problem)) {
     }
 } else {
     // --- INSERT DATA BARU ---
-    $sql_ins = "INSERT INTO dbo.QC_PROBLEM (TANGGAL, SHIFT, ITEM_ID, STATUS_ID, PROBLEM, Penangan, Perbaikan, Tempat_Foto) VALUES (?, ?, ?, ?, ?, ?, ?, ?); SELECT SCOPE_IDENTITY() AS last_id;";
+    // Gunakan klausa OUTPUT inserted untuk langsung menangkap ID secara aman
+    $sql_ins = "INSERT INTO dbo.QC_PROBLEM (TANGGAL, SHIFT, ITEM_ID, STATUS_ID, PROBLEM, Penangan, Perbaikan, Tempat_Foto) 
+                OUTPUT inserted.ID_PROBLEM AS last_id 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
     $params_ins = array($tanggal, $shift, $item_id, $status_id, $problem, $penangan, $perbaikan, $tempat_foto);
     $stmt_ins = sqlsrv_query($conn, $sql_ins, $params_ins);
 
     if ($stmt_ins) {
-        sqlsrv_next_result($stmt_ins);
+        // Langsung fetch array tanpa perlu sqlsrv_next_result()
         $row_id = sqlsrv_fetch_array($stmt_ins, SQLSRV_FETCH_ASSOC);
         $new_id = isset($row_id['last_id']) ? $row_id['last_id'] : null;
 
@@ -91,9 +94,12 @@ if ($is_success) {
     sqlsrv_commit($conn);
     echo json_encode(array('status' => 'success', 'message' => 'Data pada baris ini berhasil disimpan!'));
 } else {
-    sqlsrv_rollback($conn);
+    // 1. AMBIL ERROR SEBELUM ROLLBACK agar tidak terhapus dari memori sqlsrv
     $errors = sqlsrv_errors();
-    $err_msg = !empty($errors) ? $errors[0]['message'] : 'Error Eksekusi Database';
+    $err_msg = !empty($errors) ? $errors[0]['message'] : 'Error Eksekusi Database (Detail tidak tertangkap)';
+    
+    // 2. LAKUKAN ROLLBACK SETELAH ERROR DIAMANKAN
+    sqlsrv_rollback($conn);
     echo json_encode(array('status' => 'error', 'message' => $err_msg));
 }
 exit;

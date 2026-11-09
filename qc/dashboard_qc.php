@@ -152,7 +152,7 @@ if ($page == 'report_qc' && isset($_GET['action']) && $_GET['action'] == 'excel'
 
                 <!-- Menu Operasional (Dropdown) -->
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle <?php echo in_array($page, ['kakotora','usulan_perubahan','usulan_perubahan_p1','input_usulan','edit_usulan','kalibrasi'])?'active':''; ?>" href="#" id="menuOperasional" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <a class="nav-link dropdown-toggle <?php echo in_array($page, ['kakotora','usulan_perubahan','usulan_perubahan_p1','input_usulan','edit_usulan','kalibrasi','spc','master_spec','input_ogr'])?'active':''; ?>" href="#" id="menuOperasional" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-list-check"></i> Menu Operasional
                     </a>
                     <ul class="dropdown-menu" aria-labelledby="menuOperasional">
@@ -160,10 +160,18 @@ if ($page == 'report_qc' && isset($_GET['action']) && $_GET['action'] == 'excel'
                             <li><a class="dropdown-item" href="?page=kakotora&plant=p1"><i class="bi bi-building text-primary"></i> Data Claim (Plant 1)</a></li>
                             <li><a class="dropdown-item" href="?page=usulan_perubahan_p1&plant=p1"><i class="bi bi-file-earmark-text text-primary"></i> Usulan Perubahan Plant 1</a></li>
                             <li><a class="dropdown-item" href="?page=kalibrasi"><i class="bi bi-tools text-primary"></i> Kalibrasi Plant 1</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="?page=input_ogr"><i class="bi bi-ui-checks text-primary"></i> INPUT OGR</a></li>
+                            <li><a class="dropdown-item" href="?page=spc"><i class="bi bi-clipboard2-data text-primary"></i> INPUT SPC</a></li>
+                            <li><a class="dropdown-item" href="?page=master_spec"><i class="bi bi-sliders text-primary"></i> MASTER SPEC SPC</a></li>
                         <?php else: ?>
                             <li><a class="dropdown-item" href="?page=kakotora&plant=p2"><i class="bi bi-building-fill text-warning"></i> Data Claim (Plant 2)</a></li>
                             <li><a class="dropdown-item" href="?page=usulan_perubahan&plant=p2"><i class="bi bi-file-earmark-text-fill text-warning"></i> Usulan Perubahan Plant 2</a></li>
                             <li><a class="dropdown-item" href="?page=kalibrasi"><i class="bi bi-tools text-warning"></i> Kalibrasi Plant 2</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="?page=input_ogr"><i class="bi bi-ui-checks text-warning"></i> INPUT OGR</a></li>
+                            <li><a class="dropdown-item" href="?page=spc"><i class="bi bi-clipboard2-data text-warning"></i> INPUT SPC</a></li>
+                            <li><a class="dropdown-item" href="?page=master_spec"><i class="bi bi-sliders text-warning"></i> MASTER SPEC SPC</a></li>
                         <?php endif; ?>
                     </ul>
                 </li>
@@ -253,14 +261,14 @@ if ($page == 'report_qc' && isset($_GET['action']) && $_GET['action'] == 'excel'
             echo "<div class='alert alert-danger'>File <b>ng_prod.php</b> tidak ditemukan!</div>";
         }
     }
-    // 5. HALAMAN DELIVERY ITEM LIST (MENDUKUNG KEDUA PARAMETER URL)
+    // 5. HALAMAN DELIVERY ITEM LIST
     elseif ($page == 'delivery_item_list' || $page == 'delivery_item_list_12month') {
         if (file_exists(__DIR__ . '/delivery_item_list_12month.php')) {
             include __DIR__ . '/delivery_item_list_12month.php';
         } elseif (file_exists(__DIR__ . '/../ordering/delivery_item_list_12month.php')) {
             include __DIR__ . '/../ordering/delivery_item_list_12month.php';
         } else {
-            echo "<div class='alert alert-danger'>File <b>delivery_item_list_12month.php</b> tidak ditemukan di folder <code>msii/qc/</code>! Pastikan file tersebut sudah disimpan di folder yang sama dengan <code>dashboard_qc.php</code>.</div>";
+            echo "<div class='alert alert-danger'>File <b>delivery_item_list_12month.php</b> tidak ditemukan!</div>";
         }
     }
     // 6. HALAMAN KALIBRASI
@@ -276,7 +284,31 @@ if ($page == 'report_qc' && isset($_GET['action']) && $_GET['action'] == 'excel'
             echo "<div class='alert alert-danger'>File <b>input_problem.php</b> tidak ditemukan!</div>";
         }
     }
-    // 8. JIKA HALAMAN TIDAK ADA
+    // 8. FORM INPUT OGR
+    elseif ($page == 'input_ogr') {
+        if (file_exists('ogr.php')) { // Mengasumsikan file form OGR Anda bernama ogr.php
+            include "ogr.php";
+        } else {
+            echo "<div class='alert alert-danger'>File <b>ogr.php</b> (Form OGR) tidak ditemukan!</div>";
+        }
+    }
+    // 9. FORM INPUT SPC & ANALISA REPORT
+    elseif ($page == 'spc') {
+        if (file_exists('input_spc.php')) {
+            include "input_spc.php";
+        } else {
+            echo "<div class='alert alert-danger'>File <b>input_spc.php</b> tidak ditemukan!</div>";
+        }
+    }
+    // 10. MASTER SPESIFIKASI PART SPC (USL, LSL, TARGET)
+    elseif ($page == 'master_spec') {
+        if (file_exists('master_spec.php')) {
+            include "master_spec.php";
+        } else {
+            echo "<div class='alert alert-danger'>File <b>master_spec.php</b> tidak ditemukan!</div>";
+        }
+    }
+    // 11. JIKA HALAMAN TIDAK ADA
     else {
         echo "<div class='alert alert-info'>Halaman tidak ditemukan.</div>";
     }

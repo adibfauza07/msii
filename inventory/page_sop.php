@@ -469,7 +469,16 @@ while($r=sqlsrv_fetch_array($qL)) {
                         
 
                         <a href="report_var_before.php?id=<?php echo $currentID; ?>" target="_blank" class="list-group-item list-group-item-action py-2">
-    <i class="bi bi-calculator me-2"></i> <b>Variance Before Adjust</b> 
+    <i class="bi bi-calculator me-2"></i> <b>Variance Before Adjust Material</b> 
+</a>
+
+
+                        <a href="report_var_before_barang.php?id=<?php echo $currentID; ?>" target="_blank" class="list-group-item list-group-item-action py-2">
+    <i class="bi bi-calculator me-2"></i> <b>Variance Before Adjust Barang Jadi</b> 
+</a>
+
+                        <a href="var_before_all.php?id=<?php echo $currentID; ?>" target="_blank" class="list-group-item list-group-item-action py-2">
+    <i class="bi bi-calculator me-2"></i> <b>Variance Before Adjust Barang Jadi ALL</b> 
 </a>
                         
                         

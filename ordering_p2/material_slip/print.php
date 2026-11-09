@@ -54,7 +54,6 @@ $details = get_details($header['ID']);
 $sql_count = count($details);
 
 // 2. LOGIC PENENTUAN JUMLAH BARIS DAN HALAMAN
-// Jika jumlah item 1 atau 2, maksimal 5 baris. Jika lebih, maksimal 7 baris per halaman.
 $max_rows_per_page = ($sql_count <= 2) ? 5 : 7;
 $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
 
@@ -65,23 +64,16 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
     <meta charset="UTF-8">
     <title>Surat Pengantar Barang - <?= htmlspecialchars($header['TRAN_DOC']) ?></title>
     <style>
-        /* Pengaturan Dasar Font dan Margin */
+        /* Pengaturan Dasar Font dan Margin (Tampilan Web) */
         body {
-            /* PERBAIKAN: Gunakan font standar seperti Arial yang lebih tebal dibaca jarum printer */
-            font-family: Arial, Helvetica, sans-serif; 
-            /* PERBAIKAN: Gunakan ukuran pt (point), bukan px agar pas di ukuran cetak kertas */
-            font-size: 11pt; 
-            color: #000000;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 13px; 
+            color: #000;
             margin: 0;
             padding: 15px;
             background-color: #f9f9f9;
-            
-            /* PERBAIKAN: Matikan anti-aliasing browser agar font tercetak sebagai blok hitam solid */
-            -webkit-font-smoothing: none;
-            text-rendering: optimizeSpeed;
         }
 
-        /* Container Pembungkus Kertas */
         .page-container {
             width: 100%;
             max-width: 850px; 
@@ -90,46 +82,44 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
             padding: 30px;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
             margin-bottom: 20px;
+            box-sizing: border-box;
         }
 
-        /* Header Perusahaan */
         .header-section {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         .company-info h3 {
             margin: 0 0 3px 0;
-            font-size: 14pt;
+            font-size: 16px;
             font-weight: bold;
         }
         .company-info p {
             margin: 0;
             line-height: 1.3;
-            font-size: 10pt;
+            font-size: 12px;
         }
         .time-info {
-            font-size: 10pt;
+            font-size: 12px;
             margin-top: 5px;
         }
 
-        /* Judul Dokumen */
         .doc-title {
             text-align: center;
-            font-size: 14pt;
+            font-size: 18px;
             font-weight: bold;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
 
-        /* Tabel Informasi */
         .info-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 10px;
-            font-size: 11pt;
+            margin-bottom: 8px;
+            font-size: 14px; /* Disamakan dengan items-table */
         }
         .info-table td {
-            border: 1px solid #000000;
+            border: 1px solid #000;
             padding: 5px 8px;
             vertical-align: top;
         }
@@ -138,16 +128,15 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
             background: #fcfcfc;
         }
 
-        /* Tabel Daftar Barang */
         .items-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 20px;
-            font-size: 10pt;
+            margin-bottom: 15px;
+            font-size: 14px; 
         }
         .items-table th, .items-table td {
-            border: 1px solid #000000;
-            padding: 5px 8px;
+            border: 1px solid #000;
+            padding: 6px 8px; 
         }
         .items-table th {
             background-color: #f5f5f5;
@@ -157,94 +146,89 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
         .tengah { text-align: center; }
         .kanan { text-align: right; }
 
-        /* Bagian Tanda Tangan */
         .signature-section {
             display: flex;
             justify-content: space-between;
             text-align: center;
-            margin-bottom: 15px;
-            font-size: 10pt;
+            margin-bottom: 10px;
+            font-size: 12px;
         }
-        .signature-box {
-            width: 30%;
-        }
-        .signature-space {
-            margin-top: 50px; 
-        }
+        .signature-box { width: 30%; }
+        .signature-space { margin-top: 50px; } 
 
-        /* Catatan Kaki */
         .footer-notes {
-            font-size: 9pt;
+            font-size: 11px;
             display: flex;
             justify-content: space-between;
-            margin-top: 10px;
+            margin-top: 5px;
         }
         .doc-control {
-            margin-top: 5px;
-            font-size: 9pt;
+            margin-top: 2px;
+            font-size: 11px;
             text-align: left;
         }
 
        /* --- SETTING KHUSUS SAAT DIPRINT --- */
         @media print {
             @page {
-                /* Format: Atas Kanan Bawah Kiri */
-                margin: 5mm 5mm 5mm 5mm; 
+                margin: 12mm 5mm 2mm 5mm; 
             }
             .no-print { display: none !important; }
             
-            * {
-                font-weight: normal !important;
-                color: #000000 !important; /* Paksa hitam pekat ke printer */
-            }
-
             body { 
                 padding: 0; 
                 margin: 0;
                 background-color: #fff;
-                font-size: 11pt; /* Dipertahankan ukurannya agar tegas */
+                font-size: 12px;
+                line-height: 1.1; 
                 -webkit-print-color-adjust: exact;
             }
+            
             .page-container { 
                 box-shadow: none; 
                 padding: 0; 
                 width: 100%; 
                 max-width: 100%; 
-                page-break-inside: avoid; /* Mencegah terpotong 2 halaman */
-                page-break-after: always; /* Pemisah per halaman */
+                page-break-inside: avoid;
+                page-break-after: always;
                 margin-bottom: 0;
             }
             .page-container:last-of-type {
-                page-break-after: auto; /* Hilangkan page-break di halaman terakhir */
+                page-break-after: auto; 
             }
             
-            /* Merapatkan tabel agar muat 1 lembar dan garis lebih hitam */
+            .header-section { margin-bottom: 2px; }
+            .doc-title { margin-bottom: 2px; }
+            
+            .info-table { margin-bottom: 3px; font-size: 13px; } /* Disamakan dengan items-table */
+            .items-table { margin-bottom: 3px; font-size: 13px; }
+            
             .info-table td, .items-table th, .items-table td {
-                border: 1px solid #000000 !important;
-                padding: 3px 5px;
+                padding: 2px 4px; 
             }
-            .signature-space { margin-top: 30px; } /* Jarak tanda tangan dikurangi saat print */
+            
+            .signature-section { margin-bottom: 2px; }
+            .signature-space { margin-top: 20px; } 
+            
+            .footer-notes { margin-top: 0px; font-size: 10px; }
+            .doc-control { margin-top: 0px; font-size: 10px; }
         }
     </style>
 </head>
 <body onload="window.print()">
 
-  <!-- Tombol Navigasi -->
     <div class="no-print" style="margin-bottom: 20px; text-align: right;">
         <a href="index.php" class="btn" style="padding: 6px 15px; cursor: pointer; text-decoration: none; border: 1px solid #ccc; background: #fff; color: #333; display: inline-block; border-radius: 4px;">&laquo; Kembali ke List</a>
         <button onclick="window.print()" class="btn" style="padding: 6px 15px; cursor: pointer; margin-left: 10px; font-weight: bold; border: 1px solid #333; background: #f0f0f0; border-radius: 4px;">Cetak Dokumen</button>
     </div>
 
-    <!-- LOOPING UNTUK MULTIPLE PAGES -->
     <?php for ($page = 0; $page < $total_pages; $page++): 
         $start_index = $page * $max_rows_per_page;
-        // Inisialisasi sub total khusus halaman terakhir
         $sub = 0;
         $sub_box = 0;
     ?>
     <div class="page-container">
         
-        <!-- Bagian Kop Perusahaan -->
         <div class="header-section">
             <div class="company-info">
                 <?php $instansi = get_instansi(); ?>
@@ -254,27 +238,24 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
                 </p>
             </div>
             <div class="time-info">
-                <!-- MENGGUNAKAN WAKTU CETAK REAL-TIME -->
                 TIME: <?= date('H:i:s') ?>
             </div>
         </div>
 
-        <!-- Judul -->
         <div class="doc-title">
             SURAT PENGANTAR BARANG
             <?php if ($total_pages > 1): ?>
-                <div style="font-size: 10pt; margin-top: 3px;">(Halaman <?= $page + 1 ?> dari <?= $total_pages ?>)</div>
+                <div style="font-size: 11px; margin-top: 2px; font-weight: normal;">(Halaman <?= $page + 1 ?> dari <?= $total_pages ?>)</div>
             <?php endif; ?>
         </div>
 
-        <!-- Tabel Informasi Dokumen -->
         <table class="info-table">
             <tr>
                 <td class="col-label" style="width: 15%;">Nomor</td>
-                <td class="col-value" style="width: 35%;">: <?= htmlspecialchars($header['TRAN_DOC']) ?></td>
+                <td class="col-value" style="width: 35%;">: <strong><?= htmlspecialchars($header['TRAN_DOC']) ?></strong></td>
                 <td class="col-recipient" colspan="2" style="width: 50%;" rowspan="2">
                     Kepada Yth.<br><br>
-                    <?= htmlspecialchars((isset($header['RECIPIENT']) && $header['RECIPIENT'] !== '') ? $header['RECIPIENT'] : 'PT. IMC TEKNO INDONESIA (Plan 2)') ?>
+                    <strong><?= htmlspecialchars((isset($header['RECIPIENT']) && $header['RECIPIENT'] !== '') ? $header['RECIPIENT'] : 'PT. IMC TEKNO INDONESIA (Plan 2)') ?></strong>
                 </td>
             </tr>
             <tr>
@@ -293,13 +274,11 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
                 <td class="col-label">No. Kend</td>
                 <td class="col-value">: <?= htmlspecialchars(isset($header['VEHICLE_NO']) ? $header['VEHICLE_NO'] : '') ?></td>
                 
-                <!-- Jenis BC Sejajar di Kolom Kanan -->
                 <td class="col-label" style="width: 15%;">Jenis/NO.BC</td>
                 <td class="col-value" style="width: 35%;">: <?= htmlspecialchars((isset($header['BC_NO']) && $header['BC_NO'] !== '') ? $header['BC_NO'] : '/') ?></td>
             </tr>
         </table>
 
-        <!-- Tabel Detail Barang (Kolom Baru) -->
         <table class="items-table">
             <thead>
                 <tr>
@@ -322,7 +301,7 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
                         $item_code = htmlspecialchars(isset($key['ITEM_CODE']) ? $key['ITEM_CODE'] : '');
                         $item_name = htmlspecialchars(isset($key['ITEM_NAME']) ? $key['ITEM_NAME'] : '');
                         $item_unit = htmlspecialchars(isset($key['ITEM_UNIT']) ? $key['ITEM_UNIT'] : '');
-                        $item_qty  = number_format(isset($key['IT_QTY']) ? $key['IT_QTY'] : 0, 0);
+                        $item_qty  = number_format(isset($key['IT_QTY']) ? $key['IT_QTY'] : 0, 2);
                         
                         $jumlah_box_raw = isset($key['JUMLAH_BOX']) ? $key['JUMLAH_BOX'] : null;
                         $jumlah_box = ($jumlah_box_raw !== null && $jumlah_box_raw !== '') ? number_format($jumlah_box_raw, 0) : '';
@@ -349,9 +328,7 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
                 <?php endfor; ?>
                 
                 <?php 
-                // Tampilkan baris Total Keseluruhan hanya pada Halaman Terakhir
                 if ($page == $total_pages - 1): 
-                    // Kalkulasi ulang subtotal untuk seluruh data
                     $total_qty = 0;
                     $total_box = 0;
                     foreach($details as $d) {
@@ -359,18 +336,16 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
                         $total_box += (int)(isset($d['JUMLAH_BOX']) ? $d['JUMLAH_BOX'] : 0);
                     }
                 ?>
-                <!-- Baris Total -->
-                <tr style="background-color:#f9f9f9;">
-                    <td colspan="4" class="kanan" style="font-weight: bold;">TOTAL KESELURUHAN</td>
-                    <td class="kanan" style="font-weight: bold;"><?= number_format($total_qty, 0) ?></td>
-                    <td class="kanan" style="font-weight: bold;"><?= $total_box > 0 ? number_format($total_box, 0) : '' ?></td>
+                <tr style="font-weight:bold; background-color:#f9f9f9;">
+                    <td colspan="4" class="kanan">TOTAL KESELURUHAN</td>
+                    <td class="kanan"><?= number_format($total_qty, 2) ?></td>
+                    <td class="kanan"><?= $total_box > 0 ? number_format($total_box, 0) : '' ?></td>
                     <td></td>
                 </tr>
                 <?php endif; ?>
             </tbody>
         </table>
 
-        <!-- Bagian Tanda Tangan -->
         <div class="signature-section">
             <div class="signature-box">
                 Penerima
@@ -392,7 +367,6 @@ $total_pages = ($sql_count > 0) ? ceil($sql_count / $max_rows_per_page) : 1;
             </div>
         </div>
 
-        <!-- Catatan Kaki (Distribusi Surat) -->
         <div class="footer-notes">
             <span>1. White:Customer</span>
             <span>2. Pink:Accounting</span>

@@ -109,11 +109,11 @@
       <p class="sub-title">Enterprise Resource Planning</p>
     </header>
 
-    <!-- 4 Panels Container -->
+    <!-- 5 Panels Container -->
     <div class="row g-4 text-start justify-content-center">
       
       <!-- PANEL 1: PLANNING -->
-      <div class="col-12 col-md-6 col-lg-3">
+      <div class="col-12 col-md-6 col-lg">
         <div class="card shadow-sm border-0 bg-white p-3 rounded-4 h-100">
           <h5 class="text-muted fw-bold mb-3 text-center" style="font-size: 0.9rem; letter-spacing: 1px;">PLANNING</h5>
           
@@ -136,7 +136,7 @@
       </div>
 
       <!-- PANEL 2: ORDERING -->
-      <div class="col-12 col-md-6 col-lg-3">
+      <div class="col-12 col-md-6 col-lg">
         <div class="card shadow-sm border-0 bg-white p-3 rounded-4 h-100">
           <h5 class="text-muted fw-bold mb-3 text-center" style="font-size: 0.9rem; letter-spacing: 1px;">ORDERING</h5>
 
@@ -159,7 +159,7 @@
       </div>
 
       <!-- PANEL 3: PROSES -->
-      <div class="col-12 col-md-6 col-lg-3">
+      <div class="col-12 col-md-6 col-lg">
         <div class="card shadow-sm border-0 bg-white p-3 rounded-4 h-100">
           <h5 class="text-muted fw-bold mb-3 text-center" style="font-size: 0.9rem; letter-spacing: 1px;">PROSES</h5>
 
@@ -185,15 +185,32 @@
       </div>
 
       <!-- PANEL 4: ACCOUNTING -->
-      <div class="col-12 col-md-6 col-lg-3">
+      <div class="col-12 col-md-6 col-lg">
         <div class="card shadow-sm border-0 bg-white p-3 rounded-4 h-100">
           <h5 class="text-muted fw-bold mb-3 text-center" style="font-size: 0.9rem; letter-spacing: 1px;">ACCOUNTING</h5>
 
           <a href="finance/dashboard.php" class="btn btn-success p-2 mb-2 w-100 text-start menu-btn">
             <i class="bi bi-wallet2 menu-icon"></i> Finance
           </a>
-          <a href="it/login.php" class="btn btn-info text-white p-2 w-100 text-start menu-btn">
+          <a href="it/login.php" class="btn btn-info text-white p-2 mb-2 w-100 text-start menu-btn">
             <i class="bi bi-laptop menu-icon"></i> Budgeting
+          </a>
+        </div>
+      </div>
+
+      <!-- PANEL 5: GENERAL -->
+      <div class="col-12 col-md-6 col-lg">
+        <div class="card shadow-sm border-0 bg-white p-3 rounded-4 h-100">
+          <h5 class="text-muted fw-bold mb-3 text-center" style="font-size: 0.9rem; letter-spacing: 1px;">GENERAL</h5>
+
+          <a href="admin/login.php" class="btn btn-primary p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-people menu-icon"></i> ADMINISTRATION
+          </a>
+          <a href="ga/login.php" class="btn btn-secondary p-2 mb-2 w-100 text-start menu-btn">
+            <i class="bi bi-building menu-icon"></i> General Affairs
+          </a>
+          <a href="it_support/login.php" class="btn btn-dark p-2 w-100 text-start menu-btn">
+            <i class="bi bi-pc-display menu-icon"></i> IT Support
           </a>
         </div>
       </div>

@@ -16,6 +16,7 @@ if ($code == 0) {
 // 1. Ambil Data Master Trial
 $sql = "SELECT T.*, 
         I.ITEM_NAME AS PART_NAME, 
+        I.ITEM_NO, /* <--- INI YANG WAJIB DITAMBAHKAN AGAR TIDAK KOSONG */
         C.CUST_COMP, 
         MAT.ITEM_NAME AS MAT_NAME,
         STD.WEIGHT_PART_STD, STD.WEIGHT_RUNNER_STD, STD.CYCLE_TIME_STD, STD.TONAGE_STD, STD.CAVITY_STD,
@@ -135,7 +136,7 @@ function chk($val) {
         </tr>
         <tr>
             <td class="label-col">PART NO.</td><td class="colon-col">:</td>
-            <td class="val-col"><?= isset($data['PART_CODE']) ? htmlspecialchars($data['PART_CODE']) : '' ?></td>
+            <td class="val-col"><?= isset($data['ITEM_NO']) ? htmlspecialchars($data['ITEM_NO']) : '' ?></td>
             <td class="spacer-col"></td>
             <td class="label-col">MATERIAL DRYING TIME</td><td class="colon-col">:</td>
             <td class="val-col"><?= isset($data['MAT_DRYING_TIME']) ? $data['MAT_DRYING_TIME'] : '' ?> Hours</td>

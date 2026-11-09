@@ -216,19 +216,35 @@ function loadHistory(part_code) {
 
 $(document).ready(function() {
     // Inisialisasi Select2 Part
-    $('#select_part').select2({
-        theme: 'bootstrap-5',
-        placeholder: 'Cari Part...',
-        minimumInputLength: 2,
-        ajax: {
-            url: 'ajax_get_item.php', 
-            dataType: 'json',
-            delay: 250,
-            data: function (params) { return { q: params.term }; },
-            processResults: function (data) { return { results: data.results }; },
-            cache: true
-        }
-    });
+    // Inisialisasi Select2 Part
+$('#select_part').select2({
+    theme: 'bootstrap-5',
+    placeholder: 'Cari Part...',
+    minimumInputLength: 2,
+    ajax: {
+        url: 'ajax_get_item.php', 
+        dataType: 'json',
+        delay: 250,
+        data: function (params) {
+            return {
+                q: params.term, // Parameter pencarian
+                page: params.page || 1 // Parameter halaman saat ini (wajib untuk pagination)
+            };
+        },
+        processResults: function (data, params) {
+            params.page = params.page || 1; // Default ke halaman 1 jika tidak ada
+
+            return {
+                results: data.results,
+                pagination: {
+                    // Beri tahu Select2 apakah ada data di halaman berikutnya
+                    more: (data.pagination && data.pagination.more) ? true : false
+                }
+            };
+        },
+        cache: true
+    }
+});
 
     $('#select_part').on('select2:select', function (e) {
         var data = e.params.data;
@@ -322,6 +338,15 @@ $(document).ready(function() {
                 btn.prop('disabled', false);
                 if (res.status === 'success') {
                     showAlert(res.message, 'success');
+                    
+                    // --- KODE PERBAIKAN DITAMBAHKAN DI SINI ---
+                    // Jika baris yang disimpan adalah baris input baru (ID Problem masih kosong),
+                    // hapus baris tersebut dari layar HTML karena data terbarunya akan dimuat ulang oleh loadHistory.
+                    if (!tr.find('.row-id-problem').val()) {
+                        tr.remove();
+                    }
+                    // ------------------------------------------
+
                     var selectedData = $('#select_part').select2('data');
                     if (selectedData && selectedData.length > 0 && selectedData[0].part_code) {
                         loadHistory(selectedData[0].part_code);

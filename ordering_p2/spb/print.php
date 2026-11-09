@@ -57,13 +57,13 @@ $sql_count = count($details);
     <meta charset="UTF-8">
     <title>Surat Pengantar Barang - <?= htmlspecialchars($header['TRAN_DOC']) ?></title>
     <style>
-        /* Pengaturan Dasar Font dan Margin */
+        /* Pengaturan Dasar Font dan Margin (Tampilan Web) */
         body {
             font-family: Arial, Helvetica, sans-serif;
-            font-size: 12px;
+            font-size: 13px; 
             color: #000;
             margin: 0;
-            padding: 20px;
+            padding: 15px;
             background-color: #f9f9f9;
         }
 
@@ -75,13 +75,15 @@ $sql_count = count($details);
             background: #fff;
             padding: 30px;
             box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            box-sizing: border-box;
         }
 
         /* Header Perusahaan */
         .header-section {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
         }
         .company-info h3 {
             margin: 0 0 3px 0;
@@ -91,27 +93,27 @@ $sql_count = count($details);
         .company-info p {
             margin: 0;
             line-height: 1.3;
-            font-size: 11px;
+            font-size: 12px;
         }
         .time-info {
-            font-size: 11px;
+            font-size: 12px;
             margin-top: 5px;
         }
 
         /* Judul Dokumen */
         .doc-title {
             text-align: center;
-            font-size: 16px;
+            font-size: 18px;
             font-weight: bold;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
 
         /* Tabel Informasi */
         .info-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 10px;
-            font-size: 12px;
+            margin-bottom: 8px;
+            font-size: 14px;
         }
         .info-table td {
             border: 1px solid #000;
@@ -127,12 +129,12 @@ $sql_count = count($details);
         .items-table {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 20px;
-            font-size: 11px;
+            margin-bottom: 15px;
+            font-size: 14px; 
         }
         .items-table th, .items-table td {
             border: 1px solid #000;
-            padding: 5px 8px;
+            padding: 6px 8px; 
         }
         .items-table th {
             background-color: #f5f5f5;
@@ -147,8 +149,8 @@ $sql_count = count($details);
             display: flex;
             justify-content: space-between;
             text-align: center;
-            margin-bottom: 15px;
-            font-size: 11px;
+            margin-bottom: 10px;
+            font-size: 12px;
         }
         .signature-box {
             width: 30%;
@@ -159,22 +161,22 @@ $sql_count = count($details);
 
         /* Catatan Kaki */
         .footer-notes {
-            font-size: 10px;
+            font-size: 11px;
             display: flex;
             justify-content: space-between;
-            margin-top: 10px;
+            margin-top: 5px;
         }
         .doc-control {
-            margin-top: 5px;
-            font-size: 10px;
+            margin-top: 2px;
+            font-size: 11px;
             text-align: left;
         }
 
        /* --- SETTING KHUSUS SAAT DIPRINT --- */
         @media print {
             @page {
-                /* Format: Atas Kanan Bawah Kiri */
-                margin: 10mm 5mm 5mm 5mm; /* Margin atas diperbesar menjadi 15mm */
+                /* Margin kertas disesuaikan: Atas cukup lebar, bawah minim */
+                margin: 12mm 5mm 2mm 5mm; 
             }
             .no-print { display: none !important; }
             
@@ -182,7 +184,8 @@ $sql_count = count($details);
                 padding: 0; 
                 margin: 0;
                 background-color: #fff;
-                font-size: 10px; 
+                font-size: 12px;
+                line-height: 1.1; 
                 -webkit-print-color-adjust: exact;
             }
             .page-container { 
@@ -190,14 +193,28 @@ $sql_count = count($details);
                 padding: 0; 
                 width: 100%; 
                 max-width: 100%; 
-                page-break-inside: avoid; /* Mencegah terpotong 2 halaman */
+                page-break-inside: avoid; 
+                margin-bottom: 0;
             }
             
-            /* Merapatkan tabel agar muat 1 lembar */
+            /* PENEKANAN SPASI VERTIKAL MAKSIMAL */
+            .header-section { margin-bottom: 2px; }
+            .doc-title { margin-bottom: 2px; }
+            
+            /* Font size saat print disamakan 13px */
+            .info-table { margin-bottom: 3px; font-size: 13px; }
+            .items-table { margin-bottom: 3px; font-size: 13px; }
+            
+            /* Padding tabel dibuat sangat tipis vertikalnya */
             .info-table td, .items-table th, .items-table td {
-                padding: 3px 5px;
+                padding: 2px 4px; 
             }
-            .signature-space { margin-top: 30px; } /* Jarak tanda tangan dikurangi saat print */
+            
+            .signature-section { margin-bottom: 2px; }
+            .signature-space { margin-top: 20px; } 
+            
+            .footer-notes { margin-top: 0px; font-size: 10px; }
+            .doc-control { margin-top: 0px; font-size: 10px; }
         }
     </style>
 </head>
@@ -215,10 +232,9 @@ $sql_count = count($details);
         <div class="header-section">
             <div class="company-info">
                 <?php $instansi = get_instansi(); ?>
-                 <?php $instansi = get_instansi(); ?>
                  <h3><?= $instansi['nama_instansi'] ?> PLANT 2</h3>
                 <p>Kawasan Industry Kota Bukit Indah ST-1<br>
-                Blok A-III Lot No.15E-15F,Purwakarta, Jawa Barat 41181, Indonesia.<br>			
+                Blok A-III Lot No.15E-15F,Purwakarta, Jawa Barat 41181, Indonesia.<br>          
                 </p>
             </div>
             <div class="time-info">

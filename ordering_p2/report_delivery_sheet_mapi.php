@@ -78,9 +78,9 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
         
         body { 
             margin: 0; 
-            background: #9a9a9a; 
-            font-family: "Courier New", monospace; 
-            font-size: 12px; 
+            background: #f9f9f9; 
+            font-family: Arial, Helvetica, sans-serif; 
+            font-size: 13px; 
             color: #000; 
         }
         
@@ -101,10 +101,11 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
             min-height: 297mm; 
             margin: 20px auto; 
             background: #fff; 
-            border: 1px solid #000; 
+            border: 1px solid #ccc; 
             padding: 7mm; 
             box-sizing: border-box; 
             overflow: hidden; 
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
         }
         
         .top { 
@@ -115,48 +116,47 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
         }
         
         .company { 
-            font-family: Arial, sans-serif; 
-            font-size: 11px; 
-            line-height: 14px; 
+            font-size: 14px; 
+            line-height: 1.4; 
         }
         
         .company-name { 
             font-weight: bold; 
-            font-size: 14px; 
-            letter-spacing: 1px; 
-            margin-bottom: 3px; 
+            font-size: 16px; 
+            letter-spacing: 0.5px; 
+            margin-bottom: 4px; 
         }
         
         .title { 
             text-align: center; 
-            font-family: Arial, sans-serif; 
-            font-size: 22px; 
-            font-weight: normal; 
+            font-size: 20px; 
+            font-weight: bold; 
             letter-spacing: 1px; 
-            padding-top: 34px; 
+            padding-top: 25px; 
         }
         
         .right-head { 
-            font-size: 11px; 
-            line-height: 16px; 
+            font-size: 12px; 
+            line-height: 1.4; 
         }
         
         .right-topline { 
             display: flex; 
             justify-content: space-between; 
-            margin-bottom: 28px; 
+            margin-bottom: 20px; 
         }
         
         .info-line { 
             display: grid; 
             grid-template-columns: 100px 1fr; 
-            font-size: 13px; 
-            line-height: 18px; 
+            font-size: 14px; 
+            line-height: 1.4; 
         }
         
         .info-line .label { 
             text-align: right; 
             padding-right: 5px; 
+            font-weight: bold;
         }
         
         .info-line .value { 
@@ -165,27 +165,26 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
         
         .separator { 
             border-top: 1px solid #000; 
-            margin: 15px 0 7px 0; 
+            margin: 15px 0 10px 0; 
         }
         
         .customer-area { 
-            min-height: 80px; 
+            min-height: 70px; 
             width: 100%; 
         }
         
         .messrs { 
-            font-size: 12px; 
-            line-height: 16px; 
+            font-size: 14px; 
+            line-height: 1.4; 
         }
         
         .messrs-title { 
-            margin-bottom: 5px; 
+            margin-bottom: 3px; 
         }
         
         .cust-name { 
             font-weight: bold; 
-            font-size: 14px; 
-            font-family: Arial, sans-serif; 
+            font-size: 16px; 
         }
         
         .detail { 
@@ -193,57 +192,56 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
             border-collapse: collapse; 
             border-top: 1px solid #000; 
             border-bottom: 1px solid #000; 
-            margin-top: 6px; 
+            margin-top: 10px; 
             table-layout: fixed; 
         }
         
         .detail th { 
-            font-size: 11px; 
+            font-size: 14px; 
             font-weight: bold; 
             text-align: center; 
-            padding: 3px 1px; 
+            padding: 5px 2px; 
             border-bottom: 1px solid #000; 
-            vertical-align: bottom; 
-            line-height: 13px; 
+            vertical-align: middle; 
             box-sizing: border-box; 
         }
         
         .detail td { 
-            font-size: 11px; 
-            padding: 2px 1px; 
+            font-size: 14px; 
+            padding: 4px 2px; 
             vertical-align: top; 
-            line-height: 14px; 
-            white-space: normal; /* Diubah ke normal agar teks panjang seperti PO bisa turun ke bawah jika tidak muat */
+            line-height: 1.3; 
+            white-space: normal; 
             overflow: hidden; 
             box-sizing: border-box; 
         }
         
-        /* Penyesuaian Lebar Kolom untuk memberi ruang pada PO No */
-        .detail .no { width: 4%; text-align: left; }
+        .detail .no { width: 4%; text-align: center; }
         .detail .partcode { width: 12%; text-align: left; }
         .detail .partno { width: 16%; text-align: left; }
         .detail .partname { width: 22%; text-align: left; }
         .detail .qty { width: 7%; text-align: right; }
         .detail .unit { width: 5%; text-align: center; }
         .detail .lotno { width: 13%; text-align: left; }
-        .detail .pono { width: 15%; text-align: left; } /* Menggantikan .packing, lebar diperbesar */
-        .detail .pqty { width: 6%; text-align: right; }
+        .detail .pono { width: 15%; text-align: left; } 
+        /* DIKEMBALIKAN KE RATA KANAN (RIGHT) */
+        .detail .pqty { width: 6%; text-align: right; } 
         
         .signature-line { 
             border-top: 1px solid #000; 
-            margin-top: 80mm; 
+            margin-top: 40mm; 
         }
         
         .sign-area { 
             display: grid; 
             grid-template-columns: 1fr 1fr 1fr; 
-            margin-top: 12px; 
-            font-size: 10px; 
+            margin-top: 15px; 
+            font-size: 12px; 
             text-align: center; 
         }
         
         .sign-box { 
-            height: 58px; 
+            height: 65px; 
             position: relative; 
         }
         
@@ -259,34 +257,38 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
         @media print {
             body { 
                 background: #fff; 
+                font-size: 12px; 
+                -webkit-print-color-adjust: exact;
             }
             .print-bar { 
                 display: none; 
             }
             .paper { 
-                width: 210mm; 
-                min-height: 297mm; 
                 margin: 0; 
                 border: none; 
                 padding: 0; 
-                overflow: hidden; 
+                box-shadow: none;
                 page-break-after: avoid; 
             }
             .detail th, .detail td { 
-                font-size: 10px; 
-                line-height: 12px; 
+                font-size: 13px; 
+                line-height: 1.2; 
+                padding: 3px 2px;
             }
             .company, .messrs { 
-                font-size: 11px; 
+                font-size: 13px; 
+            }
+            .company-name, .cust-name {
+                font-size: 15px; 
             }
             .right-head .right-topline {
-                font-size: 11px;
+                font-size: 12px;
             }
             .info-line { 
-                font-size: 12px; 
+                font-size: 13px; 
             }
             .signature-line { 
-                margin-top: 70mm; 
+                margin-top: 30mm; 
             }
         }
     </style>
@@ -337,7 +339,6 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
                 <th class="qty">Qty</th>
                 <th class="unit">Unit</th>
                 <th class="lotno">Lot Number</th> 
-                <!-- Kolom PO No menggantikan Packing -->
                 <th class="pono">PO No</th>
                 <th class="pqty">P.Qty</th>
             </tr>
@@ -348,7 +349,6 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
                 $r = $rows[$i];
                 $qty = isset($r["DIPA_QTY"]) ? (float)$r["DIPA_QTY"] : 0;
                 
-                // --- PERUBAHAN: Menarik data PO Number ---
                 $pono = isset($r["ORDR_PO"]) ? trim($r["ORDR_PO"]) : "";
                 
                 $pqty = isset($r["DIPA_PQTY"]) ? (float)$r["DIPA_PQTY"] : 0;
@@ -377,7 +377,6 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
                     <td class="qty"><?php echo h(fmt_qty($qty)); ?></td>
                     <td class="unit"><?php echo h($unit); ?></td>
                     <td class="lotno"><?php echo h($location); ?></td>
-                    <!-- Menampilkan Nomor PO -->
                     <td class="pono"><?php echo h($pono); ?></td>
                     <td class="pqty"><?php echo h(fmt_qty($pqty)); ?></td>
                 </tr>

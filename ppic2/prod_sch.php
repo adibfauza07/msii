@@ -244,6 +244,24 @@ if ($connCombo) {
         </div>
     </div>
 
+    <!-- ===== TOMBOL ADD DI PALING BAWAH ===== -->
+    <div id="bottomAddBlock" class="no-print" style="display:none; text-align:center; margin-top:20px; padding-bottom:30px;">
+        <hr style="border:0; border-top:2px dashed #b0bec5; margin-bottom:20px;">
+        <div style="background-color: #e9ecef; padding: 12px 20px; border-radius: 4px; display: inline-block; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label for="txtNewItemCodeBottom" style="color: #28a745;"><i class="fa fa-plus-circle"></i> Add Item Schedule:</label>
+                <input type="text" id="txtNewItemCodeBottom" value="" placeholder="Ketik Item Code..." size="25" autocomplete="off">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <input type="text" id="txtNoUrutBottom" placeholder="No. Urut" style="width: 70px; text-align: center; border: 1px solid #ccc; padding: 4px; height: 26px; box-sizing: border-box;" autocomplete="off">
+            </div>
+            <div class="form-group" style="margin-bottom: 0;">
+                <button id="btnAddItemBottom" class="btn-success"><i class="fa fa-plus"></i> Add Item</button>
+            </div>
+            <div style="font-size:11px; color:#666; margin-top: 8px;">(Pilih Mesin di atas, ketik Item Code & No Urut, lalu Add)</div>
+        </div>
+    </div>
+
     <!-- Gunakan jquery versi stabil -->
     <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
     <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
@@ -258,6 +276,32 @@ if ($connCombo) {
             return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[m];
         });
     }
+
+    // --- FUNGSI SCROLL KE NO URUT TERAKHIR ---
+    window.scrollToLastUrut = function() {
+        var $workspaces = $('.workspace');
+        if ($workspaces.length === 0) return;
+        
+        var maxUrut = -1;
+        var $target = null;
+        
+        $workspaces.each(function() {
+            var urut = parseInt($(this).attr('data-urut')) || 0;
+            // Gunakan >= agar jika ada banyak '99999' (default/kosong), sistem akan pilih elemen paling bawah
+            if (urut >= maxUrut) { 
+                maxUrut = urut;
+                $target = $(this);
+            }
+        });
+        
+        if (!$target) $target = $workspaces.last();
+
+        if ($target && $target.length) {
+            $('html, body').animate({ scrollTop: $target.offset().top - 20 }, 800);
+            $target.css({'box-shadow': '0 0 12px 3px #28a745', 'transition': 'box-shadow 0.5s ease'});
+            setTimeout(function() { $target.css('box-shadow', 'none'); }, 3000);
+        }
+    };
     
     // Fungsi khusus untuk menyimpan data R0 secara asynchronous
     function saveWorkspaceData(workspace) {
@@ -520,7 +564,7 @@ if ($connCombo) {
         html += '  <label style="color:#856404; margin-right: 8px;"><i class="fa fa-sitemap"></i> Assembly Part:</label>';
         html += '  <select class="cb-assembly" data-item="' + safeItemCode + '" style="width: 180px; margin-right: 8px;"><option value="">-- Memuat BOM... --</option></select>';
         html += '  <button type="button" class="btn-warning btn-load-assembly-del" data-idx="' + index + '" style="height: 24px; padding: 2px 10px; font-size: 11px;"><i class="fa fa-download"></i> Pull Delivery</button>';
-		html += '  <a href="' + historyUrl + '" target="_blank" class="btn-secondary" style="height: 24px; padding: 2px 10px; font-size: 11px; text-decoration:none; display:inline-flex; align-items:center; gap:4px; margin-left: 8px; background-color: #17a2b8; border-color: #117a8b; color: white;"><i class="fa fa-history"></i> Prod History</a>';
+        html += '  <a href="' + historyUrl + '" target="_blank" class="btn-secondary" style="height: 24px; padding: 2px 10px; font-size: 11px; text-decoration:none; display:inline-flex; align-items:center; gap:4px; margin-left: 8px; background-color: #17a2b8; border-color: #117a8b; color: white;"><i class="fa fa-history"></i> Prod History</a>';
         html += '</div>';
 
         html += '<div class="table-container"><table class="grid-table" id="matrix_' + index + '" data-begstock="' + begStock + '">';
@@ -758,6 +802,7 @@ if ($connCombo) {
                 .appendTo(ul);
         };
 
+        // Autocomplete Atas
         $('#txtNewItemCode').autocomplete({ 
             minLength: 2, 
             source: 'ajax_autocomplete.php?type=item',
@@ -771,19 +816,32 @@ if ($connCombo) {
                 .appendTo(ul);
         };
 
-        $('#btnAddItem').click(function() {
+        // Autocomplete Bawah (Baru ditambahkan)
+        $('#txtNewItemCodeBottom').autocomplete({ 
+            minLength: 2, 
+            source: 'ajax_autocomplete.php?type=item',
+            select: function(event, ui) {
+                $('#txtNewItemCodeBottom').val(ui.item.value);
+                return false; 
+            }
+        }).autocomplete("instance")._renderItem = function(ul, item) {
+            return $("<li>")
+                .append("<div><b>" + escapeHtml(item.value) + "</b><br><span style='font-size:10px; color:#666;'>" + escapeHtml(item.desc || '') + "</span></div>")
+                .appendTo(ul);
+        };
+
+        // Helper fungsi untuk Add Item (supaya tidak redundan antara atas dan bawah)
+        function addNewItemSchedule(itemCode, noUrut, btnElement) {
             var tahun = $('#cbTahun').val();
             var bulan = $('#cbBulan').val();
             var machGroup = $('#cbMachGroup').val();
             var mcNo  = $('#cbMachCode').val(); 
-            var itemCode = $('#txtNewItemCode').val();
-            var noUrut = $('#txtNoUrut').val(); 
             
             if ($.trim(mcNo) === '') { alert('Pilih Machine Code terlebih dahulu.'); $('#cbMachCode').focus(); return; }
-            if ($.trim(itemCode) === '') { alert('Ketik Item Code yang ingin ditambahkan.'); $('#txtNewItemCode').focus(); return; }
+            if ($.trim(itemCode) === '') { alert('Ketik Item Code yang ingin ditambahkan.'); return; }
             
-            var btn = $(this);
-            btn.html('<i class="fa fa-spinner fa-spin"></i> Adding...').prop('disabled', true);
+            var originalHtml = btnElement.html();
+            btnElement.html('<i class="fa fa-spinner fa-spin"></i> Adding...').prop('disabled', true);
             
             $.ajax({
                 url: urlAddScheduleItem, type: 'POST', 
@@ -791,14 +849,30 @@ if ($connCombo) {
                 dataType: 'json',
                 success: function(res) {
                     if (res.status === 'success') { 
-                        $('#txtNewItemCode').val(''); 
-                        $('#txtNoUrut').val(''); 
+                        // Kosongkan form yang atas & bawah
+                        $('#txtNewItemCode, #txtNewItemCodeBottom').val(''); 
+                        $('#txtNoUrut, #txtNoUrutBottom').val(''); 
+                        
+                        // Menyetel flag agar script mengeksekusi scroll setelah jadwal ter-load
+                        window.scrollToLastAfterLoad = true;
+                        
+                        // Trigger Load Ulang Jadwal
                         $('#btnLoad').trigger('click'); 
                     } else { alert('Gagal menambah item: ' + res.message); }
                 },
                 error: function() { alert("ERROR SISTEM: Gagal terhubung ke server."); },
-                complete: function() { btn.html('<i class="fa fa-plus"></i> Add Item').prop('disabled', false); }
+                complete: function() { btnElement.html(originalHtml).prop('disabled', false); }
             });
+        }
+
+        // Action klik Tombol Add Atas
+        $('#btnAddItem').click(function() {
+            addNewItemSchedule($('#txtNewItemCode').val(), $('#txtNoUrut').val(), $(this));
+        });
+
+        // Action klik Tombol Add Bawah
+        $('#btnAddItemBottom').click(function() {
+            addNewItemSchedule($('#txtNewItemCodeBottom').val(), $('#txtNoUrutBottom').val(), $(this));
         });
 
         var isProcessingAll = false;
@@ -815,6 +889,7 @@ if ($connCombo) {
             $('#minusAlert').hide();
             $('#emptyDatesAlert').hide(); 
             $('#workspaceContainer').html('<div class="panel" style="text-align:center; padding:50px;"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br><span id="loadingText">Memuat jadwal dari server...</span></div>');
+            $('#bottomAddBlock').hide(); // Hide bottom action during load
 
            $.ajax({
                 url: urlLoadGrid, 
@@ -853,6 +928,19 @@ if ($connCombo) {
                         });
                         
                         updateEmptyDatesSummary();
+
+                        // Memunculkan tombol Add bottom apabila ada Grid yang di Load
+                        if (res.items && res.items.length > 0) {
+                            $('#bottomAddBlock').fadeIn();
+                        } else {
+                            $('#bottomAddBlock').hide();
+                        }
+
+                        // Fitur Eksekusi SCROLL Otomatis setelah input di Add Item
+                        if (window.scrollToLastAfterLoad) {
+                            setTimeout(window.scrollToLastUrut, 600); // 600ms allowance rendering
+                            window.scrollToLastAfterLoad = false;
+                        }
 
                         if (workspacesToSave.length > 0) {
                             $('#workspaceContainer').prepend('<div id="progressOverlay" class="panel" style="background-color:#d1ecf1; border-color:#bee5eb; color:#0c5460; text-align:center; font-weight:bold; position:sticky; top:0; z-index:9999; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"><i class="fa fa-spinner fa-spin"></i> Sinkronisasi ke Database: <span id="saveProgress">0</span> dari ' + workspacesToSave.length + ' Item diselesaikan...</div>');

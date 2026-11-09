@@ -48,14 +48,14 @@ if ($action === 'get_item_list') {
 
 $sopDate = sprintf('%04d-%02d-01', $tahun, $bulan);
 
-// MODIFIKASI: Filter I.ITTY_CODE <> '01' di query utama agar material ini tidak diproses sama sekali
+// MODIFIKASI: BegStockCTE memfilter LOC_ID IN (2, 27) dan CAST tanggal
 $sqlMain = "
     WITH BegStockCTE AS (
-        SELECT T.ITEM_ID, SUM(T.TAG_QTY) AS begining_stok
-        FROM TAGS T
-        INNER JOIN SOP S ON T.SOP_ID = S.SOP_ID
-        INNER JOIN LOC L ON T.LOC_ID = L.LOC_ID
-        WHERE L.LOC_CODE IN ('WHS', 'PRD') AND S.SOP_SDATE = ? 
+        SELECT T.ITEM_ID, SUM(ISNULL(T.TAG_QTY, 0)) AS begining_stok
+        FROM dbo.TAGS T
+        INNER JOIN dbo.SOP S ON T.SOP_ID = S.SOP_ID
+        WHERE T.LOC_ID IN (2, 27) 
+          AND CAST(S.SOP_SDATE AS DATE) = CAST(? AS DATE)
         GROUP BY T.ITEM_ID
     )
     SELECT 
@@ -63,8 +63,8 @@ $sqlMain = "
         SI.SUP_COMP, 
         ISNULL(BS.begining_stok, 0) AS BEG_STOCK
     FROM dbo.RPT_MUS M
-    INNER JOIN ITEMS I ON M.ITEM_ID = I.ITEM_ID
-    OUTER APPLY (SELECT TOP 1 SUP_COMP FROM SUP_ITEMS WHERE ITEM_ID = I.ITEM_ID) SI
+    INNER JOIN dbo.ITEMS I ON M.ITEM_ID = I.ITEM_ID
+    OUTER APPLY (SELECT TOP 1 SUP_COMP FROM dbo.SUP_ITEMS WHERE ITEM_ID = I.ITEM_ID) SI
     LEFT JOIN BegStockCTE BS ON I.ITEM_ID = BS.ITEM_ID
     WHERE M.DOC_YEAR = ? 
       AND M.DOC_MONTH = ?
@@ -156,12 +156,12 @@ if ($stmtPlan !== false) {
         $ittyCodeMat = trim($rowPlan['ITTY_CODE']);
        $multiplier = 1;
 // MODIFIKASI: Hapus ITTY_CODE === '01', 03 dan 05 dikali langsung (tidak dibagi 1000)
-// MODIFIKASI: ITTY_CODE 02 dan 13 dibagi 1000, 03 dan 05 dikali langsung
-if ($ittyCodeMat === '02' || $ittyCodeMat === '13') { 
+if ($ittyCodeMat === '02') { 
     $multiplier = $nw / 1000; 
 } elseif ($ittyCodeMat === '03' || $ittyCodeMat === '05') { 
     $multiplier = $nw; 
 }
+
         $totalRow = 0;
         for ($i = 1; $i <= 31; $i++) {
             $val = round(((float)$rowPlan['D'.$i] * $multiplier), 4); 
@@ -212,12 +212,12 @@ if ($stmtAct !== false) {
         
         $multiplier = 1;
 // MODIFIKASI: Hapus ITTY_CODE === '01', 03 dan 05 dikali langsung (tidak dibagi 1000)
-// MODIFIKASI: ITTY_CODE 02 dan 13 dibagi 1000, 03 dan 05 dikali langsung
-if ($ittyCodeMat === '02' || $ittyCodeMat === '13') { 
+if ($ittyCodeMat === '02') { 
     $multiplier = $nw / 1000; 
 } elseif ($ittyCodeMat === '03' || $ittyCodeMat === '05') { 
     $multiplier = $nw; 
 }
+
         $val = round(((float)$rowAct['TOTAL_ACT'] * $multiplier), 4);
         $results[$matCode]['rows']['Used Act']['D'.$day] += $val;
         $results[$matCode]['rows']['Used Act']['G_TOTAL'] += $val;
@@ -232,21 +232,23 @@ $paramsActGlobal = array($tahun, $bulan);
 if ($itemCode !== '') { $paramsActGlobal[] = $itemCode; }
 
 $sqlInAct = "
-    SELECT I.ITEM_CODE, DAY(R.RCV_DATE) AS ACT_DAY, SUM(RD.RCVD_QTY) AS TOTAL_QTY
-    FROM RECEIVE R
-    INNER JOIN RECEIVE_DETAIL RD ON R.RCV_ID = RD.RCV_ID
-    INNER JOIN ITEMS I ON RD.ITEM_ID = I.ITEM_ID
-    WHERE YEAR(R.RCV_DATE) = ? AND MONTH(R.RCV_DATE) = ?
+    SELECT I.ITEM_CODE, DAY(T.TRAN_DATE) AS ACT_DAY, SUM(IT.IT_QTY) AS TOTAL_QTY
+    FROM TRANS T
+    INNER JOIN INV_TRAN IT ON T.TRAN_ID = IT.TRAN_ID
+    INNER JOIN ITEMS I ON IT.ITEM_ID = I.ITEM_ID
+    WHERE YEAR(T.TRAN_DATE) = ? AND MONTH(T.TRAN_DATE) = ? AND T.TRTY_CODE = '01'
 ";
 if ($itemCode !== '') { $sqlInAct .= " AND I.ITEM_CODE = ?"; }
-$sqlInAct .= " GROUP BY I.ITEM_CODE, DAY(R.RCV_DATE)";
+$sqlInAct .= " GROUP BY I.ITEM_CODE, DAY(T.TRAN_DATE)";
 
 $stmtIn = sqlsrv_query($conn, $sqlInAct, $paramsActGlobal);
 if ($stmtIn !== false) {
     while ($rowIn = sqlsrv_fetch_array($stmtIn, SQLSRV_FETCH_ASSOC)) {
         $code = trim($rowIn['ITEM_CODE']);
         $day = (int)$rowIn['ACT_DAY'];
-        if (isset($results[$code])) { $results[$code]['rows']['In Act']['D'.$day] = (float)$rowIn['TOTAL_QTY']; }
+        if (isset($results[$code])) { 
+            $results[$code]['rows']['In Act']['D'.$day] = (float)$rowIn['TOTAL_QTY']; 
+        }
     }
     sqlsrv_free_stmt($stmtIn);
 }

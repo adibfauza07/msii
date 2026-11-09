@@ -2042,6 +2042,7 @@ function selectPackItem(input, item) {
     }
 }
 
+
 function renderPackSuggest(input, items) {
     var wrap = input.parentNode;
     var box = wrap.getElementsByClassName("packSuggest")[0];
@@ -2074,10 +2075,21 @@ function renderPackSuggest(input, items) {
         div.className = "autocomplete-item";
         div.setAttribute("data-index", j);
 
-        div.innerHTML =
-            htmlEncode(filtered[j].PACK_CODE) +
-            " - ID: " +
-            htmlEncode(filtered[j].PACK_ID);
+        // --- MENGATUR TAMPILAN PACK_NAME DAN PACK_DESC ---
+        var pCode = filtered[j].PACK_CODE ? filtered[j].PACK_CODE : "";
+        var pName = filtered[j].PACK_NAME ? filtered[j].PACK_NAME : "";
+        var pDesc = filtered[j].PACK_DESC ? filtered[j].PACK_DESC : "";
+
+        var displayText = htmlEncode(pCode);
+        if (pName !== "") {
+            displayText += " - " + htmlEncode(pName);
+        }
+        if (pDesc !== "") {
+            displayText += " | " + htmlEncode(pDesc);
+        }
+
+        div.innerHTML = displayText;
+        // --------------------------------------------------
 
         div.onmousedown = function (e) {
             if (!e) {

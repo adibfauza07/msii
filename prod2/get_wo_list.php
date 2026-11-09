@@ -1,7 +1,7 @@
 <?php
 /**
  * API untuk mengambil list WO + Process + MAC + ITEMS
- * PHP 5.4 + SQL Server 2008
+ * Urutan berdasarkan WO_START terbaru (DESC), lalu WO_ID DESC
  * File: get_wo_list.php
  */
 ob_start();
@@ -44,25 +44,46 @@ function ac_utf8($value) {
 
 $like = '%' . $item_code . '%';
 
-// PERBAIKAN: Dikembalikan ke tabel ITEMS dan ditambahkan pencarian berdasarkan ITEM_NAME
+// PERBAIKAN: Diurutkan langsung berdasarkan WO.WO_START DESC (tanggal terbaru paling atas)
 $sql = "
     SELECT TOP 50 
-        WO.WO_ID, WO.WO_NUMBER, WO.WO_START, WO.WO_END, WO.WO_QTY, WO.WO_CAP, WO.PROC_ID,
-        ITEMS.ITEM_ID, ITEMS.ITEM_CODE, ITEMS.ITEM_NAME, ITEMS.ITEM_NO, 
-        MAC.MAC_CODE, MAC.MAC_SERIAL, 
+        WO.WO_ID, 
+        WO.WO_NUMBER, 
+        WO.WO_START, 
+        WO.WO_END, 
+        WO.WO_QTY, 
+        WO.WO_CAP, 
+        WO.PROC_ID,
+        ITEMS.ITEM_ID, 
+        ITEMS.ITEM_CODE, 
+        ITEMS.ITEM_NAME, 
+        ITEMS.ITEM_NO, 
+        MAC.MAC_CODE, 
+        MAC.MAC_SERIAL, 
         MAG.MAG_STATION,
-        PROCESS.PROC_NAME
-    FROM WO 
-    INNER JOIN PROCESS ON WO.PROC_ID = PROCESS.PROC_ID 
-    INNER JOIN MAC ON WO.MAC_ID = MAC.MAC_ID
-    INNER JOIN MAG ON MAC.MAG_ID = MAG.MAG_ID
-    INNER JOIN ITEMS ON WO.ITEM_ID = ITEMS.ITEM_ID
-    WHERE ITEMS.ITEM_CODE LIKE ? OR ITEMS.ITEM_NAME LIKE ?
-    ORDER BY WO.WO_ID DESC
+        PROCESS.PROC_NAME,
+        ISNULL(P.PROD_COUNT, 0) AS PROD_COUNT
+    FROM dbo.WO 
+    INNER JOIN dbo.PROCESS ON WO.PROC_ID = PROCESS.PROC_ID 
+    INNER JOIN dbo.MAC ON WO.MAC_ID = MAC.MAC_ID
+    INNER JOIN dbo.MAG ON MAC.MAG_ID = MAG.MAG_ID
+    INNER JOIN dbo.ITEMS ON WO.ITEM_ID = ITEMS.ITEM_ID
+    LEFT JOIN (
+        SELECT WO_ID, COUNT(PD_ID) AS PROD_COUNT
+        FROM dbo.PRODUCTION
+        GROUP BY WO_ID
+    ) P ON WO.WO_ID = P.WO_ID
+    WHERE ITEMS.ITEM_CODE LIKE ? 
+       OR ITEMS.ITEM_NO LIKE ? 
+       OR ITEMS.ITEM_NAME LIKE ? 
+       OR WO.WO_NUMBER LIKE ?
+    ORDER BY 
+        WO.WO_START DESC, 
+        WO.WO_ID DESC
 ";
 
-// Parameternya ada 2 karena kita pakai OR (Satu untuk CODE, satu untuk NAME)
-$stmt = sqlsrv_query($db, $sql, array($like, $like));
+$params = array($like, $like, $like, $like);
+$stmt = sqlsrv_query($db, $sql, $params);
 
 $data = array();
 if ($stmt !== false) {
@@ -92,8 +113,10 @@ if ($stmt !== false) {
             'PROC_ID'     => ac_utf8($row['PROC_ID']),
             'PROC_NAME'   => ac_utf8($row['PROC_NAME']),
             'ITEM_CODE'   => ac_utf8($row['ITEM_CODE']),
+            'ITEM_NO'     => ac_utf8($row['ITEM_NO']),
             'ITEM_NAME'   => ac_utf8($row['ITEM_NAME']),
-            'MAC_CODE'    => ac_utf8($row['MAC_CODE'])
+            'MAC_CODE'    => ac_utf8($row['MAC_CODE']),
+            'PROD_COUNT'  => (int)$row['PROD_COUNT']
         );
     }
     sqlsrv_free_stmt($stmt);

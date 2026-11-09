@@ -24,6 +24,9 @@ if ($db) {
 // =================================================================
 // 1. HANDLER AJAX: INSERT LOT BARU KE GRID
 // =================================================================
+// =================================================================
+// 1. HANDLER AJAX: INSERT LOT BARU KE GRID
+// =================================================================
 if (isset($_POST['action']) && $_POST['action'] === 'insert_new') {
     header('Content-Type: application/json');
     if (!$db) { echo json_encode(['status' => 'error', 'message' => 'DB disconnect']); exit; }
@@ -32,15 +35,22 @@ if (isset($_POST['action']) && $_POST['action'] === 'insert_new') {
     $pd_lot = trim($_POST['pd_lot']);
     $input_date = $_POST['input_date'];
 
-    $sql_prod = "INSERT INTO dbo.PRODUCTION (WO_ID, PD_LOT, PD_OK, PD_NG, PD_HO, PD_REM, PD_INPUT) 
-                 VALUES (?, ?, 0, 0, 0, '', ?)";
-    $stmt = sqlsrv_query($db, $sql_prod, array($wo_id, $pd_lot, $input_date));
+    // PERBAIKAN: Menyertakan PD_DATE agar terbaca di prod_report.php (dengan fallback jika kolom PD_DATE otomatis/tidak ada)
+    $sql_prod = "INSERT INTO dbo.PRODUCTION (WO_ID, PD_LOT, PD_OK, PD_NG, PD_HO, PD_REM, PD_DATE, PD_INPUT) 
+                 VALUES (?, ?, 0, 0, 0, '', ?, ?)";
+    $stmt = sqlsrv_query($db, $sql_prod, array($wo_id, $pd_lot, $input_date, $input_date));
+    
+    // Fallback apabila struktur tabel di salah satu plant tidak mengizinkan insert manual PD_DATE
+    if ($stmt === false) {
+        $sql_fallback = "INSERT INTO dbo.PRODUCTION (WO_ID, PD_LOT, PD_OK, PD_NG, PD_HO, PD_REM, PD_INPUT) 
+                         VALUES (?, ?, 0, 0, 0, '', ?)";
+        $stmt = sqlsrv_query($db, $sql_fallback, array($wo_id, $pd_lot, $input_date));
+    }
     
     if ($stmt) { echo json_encode(['status' => 'success']); } 
     else { echo json_encode(['status' => 'error', 'errors' => sqlsrv_errors()]); }
     exit;
 }
-
 // =================================================================
 // 2. HANDLER AJAX: UPDATE DETAIL GRID UTAMA
 // =================================================================
@@ -94,12 +104,18 @@ if (isset($_POST['action']) && $_POST['action'] === 'update_actual') {
 // =================================================================
 // 4. HANDLER AJAX: HAPUS BARIS DATA
 // =================================================================
+// =================================================================
+// 4. HANDLER AJAX: HAPUS BARIS DATA
+// =================================================================
 if (isset($_POST['action']) && $_POST['action'] === 'delete_detail') {
     header('Content-Type: application/json');
     if (!$db) { echo json_encode(['status' => 'error', 'message' => 'DB disconnect']); exit; }
     
     $pd_id = (int)$_POST['pd_id'];
     
+    // PERBAIKAN: Hapus detail NG terlebih dahulu agar tidak nyangkut / error constraint
+    sqlsrv_query($db, "DELETE FROM dbo.NG_PROD WHERE PD_ID=?", array($pd_id));
+
     $sql_del = "DELETE FROM dbo.PRODUCTION WHERE PD_ID=?";
     $stmt_del = sqlsrv_query($db, $sql_del, array($pd_id));
     
@@ -445,7 +461,7 @@ $(document).ready(function() {
 
     $('#search_item').on('keyup', function() {
         clearTimeout(delayTimer);
-        let query = $(this).val();
+        let query = $(this).val().trim();
 
         if (query.length >= 2) {
             delayTimer = setTimeout(function() {
@@ -458,14 +474,22 @@ $(document).ready(function() {
                         let html = '';
                         if(response.length > 0) {
                             $.each(response, function(index, wo) {
-                                html += `<tr data-woid="${wo.WO_ID}" 
+                                // Badge penanda status WO (Belum jalan vs Sudah ada data produksi)
+                                let statusBadge = (parseInt(wo.PROD_COUNT) === 0) 
+                                    ? '<span class="badge badge-success ml-1" style="font-size:9px;">BARU</span>' 
+                                    : '<span class="badge badge-secondary ml-1" style="font-size:9px;">' + wo.PROD_COUNT + ' Lot</span>';
+
+                                let rowStyle = (parseInt(wo.PROD_COUNT) === 0) ? 'style="font-weight: 600;"' : '';
+
+                                html += `<tr ${rowStyle}
+                                             data-woid="${wo.WO_ID}" 
                                              data-wonumber="${wo.WO_NUMBER}" 
                                              data-procid="${wo.PROC_ID}" 
                                              data-procname="${wo.PROC_NAME}" 
                                              data-itemcode="${wo.ITEM_CODE}" 
                                              data-itemname="${wo.ITEM_NAME}" 
                                              data-maccode="${wo.MAC_CODE}">
-                                            <td>${wo.WO_NUMBER}</td>
+                                            <td>${wo.WO_NUMBER} ${statusBadge}</td>
                                             <td>${wo.ITEM_CODE ? wo.ITEM_CODE : '-'}</td>
                                             <td class="text-right">${wo.WO_QTY ? wo.WO_QTY : '-'}</td> 
                                             <td class="text-center">${wo.MAC_CODE}</td>
@@ -481,6 +505,8 @@ $(document).ready(function() {
                     }
                 });
             }, 300);
+        } else if (query.length === 0) {
+            $('#wo_table_body').html('<tr><td colspan="7" class="text-center text-muted" style="padding: 20px;">Ketik kode / nama barang di sebelah kiri untuk menampilkan daftar WO...</td></tr>');
         }
     });
 

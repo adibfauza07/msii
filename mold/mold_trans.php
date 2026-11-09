@@ -12,80 +12,86 @@ $alertMsg = "";
 $alertType = "";
 
 // -------------------------------------------------------------
-// 1. QUERY MASTER MOLD & MASTER CUSTOMER
+// 1. QUERY MASTER MOLD & MASTER LOKASI (SESUAI DELPHI dm1)
 // -------------------------------------------------------------
-$sqlMasterMold = "SELECT MM.MOLD_ID, MM.PART_NO, MM.PART_NAME, MM.CUST_ALIAS 
-                  FROM MOLD_MASTER MM 
-                  WHERE MM.PART_NO IS NOT NULL 
-                  ORDER BY MM.PART_NO ASC";
+$sqlMasterMold = "SELECT MOLD_ID, PART_NO, PART_NAME, CUST_ALIAS 
+                  FROM MOLD_MASTER 
+                  WHERE PART_NO IS NOT NULL 
+                  ORDER BY PART_NO ASC";
 $resMasterMold = sqlsrv_query($conn, $sqlMasterMold);
 
 if ($resMasterMold === false) {
-    $sqlMasterMold = "SELECT MM.MOLD_ID, ICM.PART_NO, ICM.PART_NAME, ICM.CUST_ALIAS 
-                      FROM MOLD_MASTER MM 
-                      INNER JOIN ITEM_CUST_MOLD ICM ON MM.PART_ID = ICM.PART_ID 
-                      WHERE ICM.PART_NO IS NOT NULL 
-                      ORDER BY ICM.PART_NO ASC";
-    $resMasterMold = sqlsrv_query($conn, $sqlMasterMold);
-    if ($resMasterMold === false) {
-        die("<pre>Gagal mengambil data master mold:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
-    }
+    die("<pre>Gagal mengambil data MOLD_MASTER:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
 }
 
 $arrMasterMold = [];
-$mapMoldIdByPart = [];
+$mapMoldById = [];
 while ($m = sqlsrv_fetch_array($resMasterMold, SQLSRV_FETCH_ASSOC)) {
-    $cleanNo = strtoupper(trim($m['PART_NO'], " \t\n\r\0\x0B'"));
-    $arrMasterMold[] = [
-        'id'   => $m['MOLD_ID'],
+    $mId = intval($m['MOLD_ID']);
+    $cleanNo = trim($m['PART_NO'], " \t\n\r\0\x0B'");
+    $item = [
+        'id'   => $mId,
         'no'   => $cleanNo,
         'name' => isset($m['PART_NAME']) ? trim($m['PART_NAME']) : '',
         'cust' => isset($m['CUST_ALIAS']) ? trim($m['CUST_ALIAS']) : ''
     ];
-    $mapMoldIdByPart[$cleanNo] = $m['MOLD_ID'];
+    $arrMasterMold[] = $item;
+    $mapMoldById[$mId] = $item;
 }
 
-$sqlCust = "SELECT DISTINCT CUST_ALIAS FROM ITEM_CUST_MOLD WHERE CUST_ALIAS IS NOT NULL ORDER BY CUST_ALIAS ASC";
+// Lookup DS_loc_trans (MOLD_TRAN_LOC + TIPE)
+$sqlLoc = "SELECT MTL.ID, MTL.NAMA, MTLT.[TYPE] AS TIPE_DESC 
+           FROM MOLD_TRAN_LOC MTL 
+           LEFT JOIN MOLD_TRAN_LOC_TYPE MTLT ON MTL.TIPE_ID = MTLT.ID 
+           ORDER BY MTL.NAMA ASC";
+$resLoc = sqlsrv_query($conn, $sqlLoc);
+if ($resLoc === false) {
+    $sqlLoc = "SELECT ID, NAMA, '' AS TIPE_DESC FROM MOLD_TRAN_LOC ORDER BY NAMA ASC";
+    $resLoc = sqlsrv_query($conn, $sqlLoc);
+}
+
+$arrLoc = [];
+if ($resLoc !== false) {
+    while ($l = sqlsrv_fetch_array($resLoc, SQLSRV_FETCH_ASSOC)) {
+        $arrLoc[] = [
+            'id'   => intval($l['ID']),
+            'nama' => trim($l['NAMA']),
+            'tipe' => isset($l['TIPE_DESC']) ? trim($l['TIPE_DESC']) : ''
+        ];
+    }
+}
+
+// Lookup Customer untuk Filter
+$sqlCust = "SELECT DISTINCT CUST_ALIAS FROM MOLD_MASTER WHERE CUST_ALIAS IS NOT NULL AND CUST_ALIAS <> '' ORDER BY CUST_ALIAS ASC";
 $resCust = sqlsrv_query($conn, $sqlCust);
+$arrCust = [];
+if ($resCust !== false) {
+    while ($c = sqlsrv_fetch_array($resCust, SQLSRV_FETCH_ASSOC)) {
+        $arrCust[] = trim($c['CUST_ALIAS'], " \t\n\r\0\x0B'");
+    }
+}
 
 // -------------------------------------------------------------
-// 2. PROSES DELETE DATA TRANSAKSI MOLD
+// 2. PROSES DELETE DATA TRANSAKSI MOLD (BERDASARKAN ID_TRANS)
 // -------------------------------------------------------------
 if (isset($_POST['btnDeleteTrans'])) {
-    $delIdTrans = !empty($_POST['del_id_trans']) ? intval($_POST['del_id_trans']) : null;
-    $delMoldId  = !empty($_POST['del_mold_id']) ? intval($_POST['del_mold_id']) : null;
-    $delPartNo  = isset($_POST['del_part_no']) ? strtoupper(trim($_POST['del_part_no'], " \t\n\r\0\x0B'")) : '';
-    $delDateDay = !empty($_POST['del_date_day']) ? $_POST['del_date_day'] : null;
-    $delReason  = isset($_POST['del_reason']) ? trim($_POST['del_reason']) : '';
+    $delIdTrans = !empty($_POST['del_id_trans']) ? intval($_POST['del_id_trans']) : 0;
 
-    if (empty($delMoldId) && !empty($delPartNo) && isset($mapMoldIdByPart[$delPartNo])) {
-        $delMoldId = $mapMoldIdByPart[$delPartNo];
-    }
-
-    if ($delIdTrans) {
+    if ($delIdTrans > 0) {
         $sqlDelete = "DELETE FROM MOLD_TRANS_DETAIL WHERE ID_TRANS = ?";
         $stmtDel = sqlsrv_query($conn, $sqlDelete, [$delIdTrans]);
-    } else {
-        $sqlDelete = "DELETE FROM MOLD_TRANS_DETAIL 
-                      WHERE MOLD_ID = ? 
-                        AND CONVERT(VARCHAR(10), [DATE], 120) = ? 
-                        AND (ISNULL(REASON, '') = ? OR ? = '')";
-        $stmtDel = sqlsrv_query($conn, $sqlDelete, [$delMoldId, $delDateDay, $delReason, $delReason]);
-    }
 
-    if ($stmtDel === false) {
-        $err = sqlsrv_errors();
-        $alertMsg = "Gagal menghapus transaksi: " . (isset($err[0]['message']) ? $err[0]['message'] : 'Kesalahan query');
-        $alertType = "danger";
-    } else {
-        $rowsAffected = sqlsrv_rows_affected($stmtDel);
-        if ($rowsAffected > 0) {
-            $alertMsg = "Transaksi mutasi mold berhasil dihapus!";
-            $alertType = "success";
-        } else {
-            $alertMsg = "Peringatan: Data transaksi tidak ditemukan pada tabel fisik.";
+        if ($stmtDel === false) {
+            $err = sqlsrv_errors();
+            $alertMsg = "Gagal menghapus transaksi: " . (isset($err[0]['message']) ? $err[0]['message'] : 'Kesalahan query');
             $alertType = "danger";
+        } else {
+            $alertMsg = "Data transaksi mutasi mold berhasil dihapus!";
+            $alertType = "success";
         }
+    } else {
+        $alertMsg = "Gagal Hapus: ID Transaksi tidak valid.";
+        $alertType = "danger";
     }
 }
 
@@ -93,93 +99,68 @@ if (isset($_POST['btnDeleteTrans'])) {
 // 3. PROSES UPDATE (EDIT) DATA TRANSAKSI MOLD
 // -------------------------------------------------------------
 if (isset($_POST['btnUpdateTrans'])) {
-    $editIdTrans   = !empty($_POST['edit_id_trans']) ? intval($_POST['edit_id_trans']) : null;
-    $editMoldId    = intval($_POST['edit_mold_id']);
-    $editPartNo    = isset($_POST['edit_part_no']) ? strtoupper(trim($_POST['edit_part_no'], " \t\n\r\0\x0B'")) : '';
+    $editIdTrans = !empty($_POST['edit_id_trans']) ? intval($_POST['edit_id_trans']) : 0;
+    $editDate    = !empty($_POST['edit_date']) ? date('Y-m-d', strtotime($_POST['edit_date'])) : date('Y-m-d');
+    $editJenis   = !empty($_POST['edit_jenis_trans']) ? intval($_POST['edit_jenis_trans']) : 1; // 1 = IN, 2 = OUT
+    $editDari    = !empty($_POST['edit_dari_tran']) ? intval($_POST['edit_dari_tran']) : null;
+    $editKe      = !empty($_POST['edit_ke_tran']) ? intval($_POST['edit_ke_tran']) : null;
+    $editReason  = isset($_POST['edit_reason']) ? substr(trim($_POST['edit_reason']), 0, 30) : '';
 
-    if (empty($editMoldId) && !empty($editPartNo) && isset($mapMoldIdByPart[$editPartNo])) {
-        $editMoldId = $mapMoldIdByPart[$editPartNo];
-    }
-    
-    // Normalisasi format datetime 24 Jam
-    $editDateRaw   = !empty($_POST['edit_date']) ? str_replace('T', ' ', $_POST['edit_date']) : date('Y-m-d H:i:s');
-    $editDate      = date('Y-m-d H:i:s', strtotime($editDateRaw));
+    $moldIn  = ($editJenis === 1) ? 1 : 0;
+    $moldOut = ($editJenis === 2) ? 1 : 0;
 
-    $editJenis     = intval($_POST['edit_jenis_trans']); 
-    $editMoldIn    = ($editJenis === 1) ? 1 : 0;
-    $editMoldOut   = ($editJenis === 2) ? 1 : 0;
-    $editReason    = substr(trim($_POST['edit_reason']), 0, 30);
-    $editVendor    = substr(trim($_POST['edit_vendor']), 0, 30);
-    $editSupplier  = substr(trim($_POST['edit_supplier']), 0, 30);
-
-    if ($editIdTrans) {
+    if ($editIdTrans > 0) {
         $sqlUpdate = "UPDATE MOLD_TRANS_DETAIL 
                       SET [DATE] = ?,
                           JENIS_TRANSAKSI = ?,
                           MOLD_IN = ?,
                           MOLD_OUT = ?,
-                          REASON = ?,
-                          VENDOR = ?,
-                          SUPPLIER = ?
+                          DARI_TRAN = ?,
+                          KE_TRAN = ?,
+                          REASON = ?
                       WHERE ID_TRANS = ?";
-        $paramsUpd = [$editDate, $editJenis, $editMoldIn, $editMoldOut, $editReason, $editVendor, $editSupplier, $editIdTrans];
-    } else {
-        $editOrigDay = $_POST['edit_orig_day'];
-        $editOrigReason = trim($_POST['edit_orig_reason']);
-        $sqlUpdate = "UPDATE MOLD_TRANS_DETAIL 
-                      SET [DATE] = ?,
-                          JENIS_TRANSAKSI = ?,
-                          MOLD_IN = ?,
-                          MOLD_OUT = ?,
-                          REASON = ?,
-                          VENDOR = ?,
-                          SUPPLIER = ?
-                      WHERE MOLD_ID = ? 
-                        AND CONVERT(VARCHAR(10), [DATE], 120) = ? 
-                        AND (ISNULL(REASON, '') = ? OR ? = '')";
-        $paramsUpd = [$editDate, $editJenis, $editMoldIn, $editMoldOut, $editReason, $editVendor, $editSupplier, $editMoldId, $editOrigDay, $editOrigReason, $editOrigReason];
-    }
+        $paramsUpd = [$editDate, $editJenis, $moldIn, $moldOut, $editDari, $editKe, $editReason, $editIdTrans];
+        $stmtUpd = sqlsrv_query($conn, $sqlUpdate, $paramsUpd);
 
-    $stmtUpd = sqlsrv_query($conn, $sqlUpdate, $paramsUpd);
-    if ($stmtUpd === false) {
-        $err = sqlsrv_errors();
-        $alertMsg = "Gagal memperbarui data: " . (isset($err[0]['message']) ? $err[0]['message'] : 'Kesalahan query');
-        $alertType = "danger";
-    } else {
-        $rowsAffected = sqlsrv_rows_affected($stmtUpd);
-        if ($rowsAffected > 0) {
+        if ($stmtUpd === false) {
+            $err = sqlsrv_errors();
+            $alertMsg = "Gagal memperbarui data: " . (isset($err[0]['message']) ? $err[0]['message'] : 'Kesalahan query');
+            $alertType = "danger";
+        } else {
             $alertMsg = "Data transaksi berhasil diperbarui!";
             $alertType = "success";
-        } else {
-            $alertMsg = "Peringatan: Baris transaksi lama tidak cocok di database.";
-            $alertType = "danger";
         }
+    } else {
+        $alertMsg = "Gagal Update: ID Transaksi tidak ditemukan.";
+        $alertType = "danger";
     }
 }
 
 // -------------------------------------------------------------
-// 4. SIMPAN TRANSAKSI MOLD BARU
+// 4. SIMPAN TRANSAKSI MOLD BARU (SESUAI DS_Mold_Trans DELPHI)
 // -------------------------------------------------------------
 if (isset($_POST['btnSimpanTrans'])) {
-    $moldId         = !empty($_POST['in_mold_id']) ? intval($_POST['in_mold_id']) : null;
-    $rawDate        = !empty($_POST['in_date']) ? str_replace('T', ' ', $_POST['in_date']) : date('Y-m-d H:i:s');
-    $transDate      = date('Y-m-d H:i:s', strtotime($rawDate));
+    $moldId         = !empty($_POST['in_mold_id']) ? intval($_POST['in_mold_id']) : 0;
+    $transDate      = !empty($_POST['in_date']) ? date('Y-m-d', strtotime($_POST['in_date'])) : date('Y-m-d');
+    $jenisTransaksi = !empty($_POST['in_jenis_trans']) ? intval($_POST['in_jenis_trans']) : 1; // 1 = IN, 2 = OUT
+    $dariTran       = !empty($_POST['in_dari_tran']) ? intval($_POST['in_dari_tran']) : null;
+    $keTran         = !empty($_POST['in_ke_tran']) ? intval($_POST['in_ke_tran']) : null;
+    $reason         = isset($_POST['in_reason']) ? substr(trim($_POST['in_reason']), 0, 30) : '';
 
-    $jenisTransaksi = !empty($_POST['in_jenis_trans']) ? intval($_POST['in_jenis_trans']) : 1; 
-    $moldIn         = ($jenisTransaksi === 1) ? 1 : 0;
-    $moldOut        = ($jenisTransaksi === 2) ? 1 : 0;
-    $reason         = !empty($_POST['in_reason']) ? substr(trim($_POST['in_reason']), 0, 30) : '';
-    $vendor         = !empty($_POST['in_vendor']) ? substr(trim($_POST['in_vendor']), 0, 30) : '';
-    $supplier       = !empty($_POST['in_supplier']) ? substr(trim($_POST['in_supplier']), 0, 30) : '';
+    $moldIn  = ($jenisTransaksi === 1) ? 1 : 0;
+    $moldOut = ($jenisTransaksi === 2) ? 1 : 0;
 
-    if (empty($moldId)) {
-        $alertMsg = "Gagal Simpan: Part No / Mold harus dipilih dari master data!";
+    if ($moldId <= 0) {
+        $alertMsg = "Gagal Simpan: PART NO harus dipilih dari daftar Master Mold!";
+        $alertType = "danger";
+    } elseif (empty($dariTran)) {
+        $alertMsg = "Gagal Simpan: Lokasi DARI wajib dipilih!";
         $alertType = "danger";
     } else {
         $insertSql = "INSERT INTO MOLD_TRANS_DETAIL 
-                      (MOLD_ID, [DATE], MOLD_IN, MOLD_OUT, REASON, VENDOR, SUPPLIER, JENIS_TRANSAKSI) 
+                      (MOLD_ID, [DATE], JENIS_TRANSAKSI, MOLD_IN, MOLD_OUT, DARI_TRAN, KE_TRAN, REASON) 
                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-        $paramsInsert = [$moldId, $transDate, $moldIn, $moldOut, $reason, $vendor, $supplier, $jenisTransaksi];
+        $paramsInsert = [$moldId, $transDate, $jenisTransaksi, $moldIn, $moldOut, $dariTran, $keTran, $reason];
         $stmtInsert = sqlsrv_query($conn, $insertSql, $paramsInsert);
 
         if ($stmtInsert === false) {
@@ -187,135 +168,226 @@ if (isset($_POST['btnSimpanTrans'])) {
             $alertMsg = "Gagal menyimpan transaksi: " . (isset($errors[0]['message']) ? $errors[0]['message'] : 'Kesalahan query');
             $alertType = "danger";
         } else {
-            $alertMsg = "Transaksi Mold berhasil disimpan!";
+            $alertMsg = "Transaksi Mold berhasil disimpan ke database & langsung sinkron dengan Delphi!";
             $alertType = "success";
+            if (isset($mapMoldById[$moldId])) {
+                $_REQUEST['mold_no'] = $mapMoldById[$moldId]['no'];
+                $_REQUEST['page'] = 1;
+            }
         }
     }
 }
 
 // -------------------------------------------------------------
-// 5. FILTER LAPORAN & EXPORT EXCEL
+// 5. FILTER, PAGINATION & EXPORT EXCEL
 // -------------------------------------------------------------
-$showReport = false;
-$reportData = [];
-$startDateForm = isset($_REQUEST['start_date']) ? $_REQUEST['start_date'] : date('Y-m-01');
-$endDateForm   = isset($_REQUEST['end_date'])   ? $_REQUEST['end_date']   : date('Y-m-d');
+$filterMoldNo  = isset($_REQUEST['mold_no']) ? trim($_REQUEST['mold_no'], " \t\n\r\0\x0B'") : '';
+$filterCust    = isset($_REQUEST['cust_alias']) ? trim($_REQUEST['cust_alias'], " \t\n\r\0\x0B'") : '';
+$startDateForm = isset($_REQUEST['start_date']) ? $_REQUEST['start_date'] : '';
+$endDateForm   = isset($_REQUEST['end_date'])   ? $_REQUEST['end_date']   : '';
+
+// Pengaturan Pagination (10, 15, 20, 25 baris per halaman)
+$allowedLimits = [10, 15, 20, 25];
+$perPage = isset($_REQUEST['per_page']) && in_array(intval($_REQUEST['per_page']), $allowedLimits) 
+           ? intval($_REQUEST['per_page']) 
+           : 15;
+$currentPage = isset($_REQUEST['page']) && intval($_REQUEST['page']) > 0 ? intval($_REQUEST['page']) : 1;
 
 $isExport = isset($_POST['btnExport']);
-$isSubmit = isset($_POST['btnCetak']) || $isExport || isset($_POST['btnSimpanTrans']) || isset($_POST['btnUpdateTrans']) || isset($_POST['btnDeleteTrans']);
 
-if ($isSubmit) {
-    $startDate = !empty($startDateForm) ? date('Ymd', strtotime($startDateForm)) : date('Ym01');
-    $endDate   = !empty($endDateForm)   ? date('Ymd', strtotime($endDateForm . ' +1 day')) : date('Ymd', strtotime('+1 day'));
+$whereClauses = ["1=1"];
+$queryParams  = [];
 
-    $rawMoldNo = isset($_REQUEST['mold_no']) ? trim($_REQUEST['mold_no'], " \t\n\r\0\x0B'") : '';
-    $moldNo    = ($rawMoldNo !== '') ? '%' . $rawMoldNo . '%' : '%';
+if ($filterMoldNo !== '') {
+    $whereClauses[] = "MM.PART_NO LIKE ?";
+    $queryParams[]  = '%' . $filterMoldNo . '%';
+}
 
-    $rawCust   = isset($_REQUEST['cust_alias']) ? trim($_REQUEST['cust_alias'], " \t\n\r\0\x0B'") : '';
-    $custAlias = ($rawCust !== '') ? '%' . $rawCust . '%' : '%';
-    
-    $tsql = "{call sp_trans_mold_new(?, ?, ?, ?)}";
+if ($filterCust !== '') {
+    $whereClauses[] = "MM.CUST_ALIAS LIKE ?";
+    $queryParams[]  = '%' . $filterCust . '%';
+}
+
+if ($startDateForm !== '') {
+    $whereClauses[] = "MTD.[DATE] >= ?";
+    $queryParams[]  = date('Y-m-d 00:00:00', strtotime($startDateForm));
+}
+
+if ($endDateForm !== '') {
+    $whereClauses[] = "MTD.[DATE] <= ?";
+    $queryParams[]  = date('Y-m-d 23:59:59', strtotime($endDateForm));
+}
+
+$whereSql = implode(" AND ", $whereClauses);
+
+// Export Excel (Mengunduh seluruh data sesuai filter tanpa terpotong halaman)
+if ($isExport) {
+    $sqlExport = "SELECT 
+                    MTD.ID_TRANS,
+                    MTD.MOLD_ID,
+                    MM.PART_NO,
+                    MM.PART_NAME,
+                    MM.CUST_ALIAS,
+                    MTD.[DATE],
+                    MTD.JENIS_TRANSAKSI,
+                    MTD.MOLD_IN,
+                    MTD.MOLD_OUT,
+                    MTD.DARI_TRAN,
+                    LOC_DARI.NAMA AS DARI_DESC,
+                    MTD.KE_TRAN,
+                    LOC_KE.NAMA AS KE_DESC,
+                    MTD.REASON
+                 FROM MOLD_TRANS_DETAIL MTD
+                 LEFT JOIN MOLD_MASTER MM ON MTD.MOLD_ID = MM.MOLD_ID
+                 LEFT JOIN MOLD_TRAN_LOC LOC_DARI ON MTD.DARI_TRAN = LOC_DARI.ID
+                 LEFT JOIN MOLD_TRAN_LOC LOC_KE ON MTD.KE_TRAN = LOC_KE.ID
+                 WHERE {$whereSql}
+                 ORDER BY MTD.[DATE] DESC, MTD.ID_TRANS DESC";
+
+    $stmtExp = sqlsrv_query($conn, $sqlExport, $queryParams);
+    $fileName = "Mold_Transaction_" . date('Ymd_His') . ".xls";
+    header("Content-Type: application/vnd.ms-excel; charset=utf-8");
+    header("Content-Disposition: attachment; filename=\"$fileName\"");
+    header("Pragma: no-cache");
+    header("Expires: 0");
+    ?>
+    <table border="1">
+        <thead>
+            <tr style="background-color: #2e4053; color: #ffffff; font-weight: bold;">
+                <th>PART NO</th>
+                <th>MOLD NAME</th>
+                <th>CUSTOMER</th>
+                <th>TANGGAL</th>
+                <th>JENIS TRANSAKSI</th>
+                <th>DARI</th>
+                <th>PIC PENGIRIM</th>
+                <th>KE</th>
+                <th>PIC PENERIMA</th>
+                <th>KETERANGAN</th>
+            </tr>
+        </thead>
+        <tbody>
+            <?php if ($stmtExp !== false): ?>
+                <?php while ($row = sqlsrv_fetch_array($stmtExp, SQLSRV_FETCH_ASSOC)): ?>
+                    <?php
+                        $isOut = ($row['JENIS_TRANSAKSI'] == 2 || $row['MOLD_OUT'] == 1);
+                        $jenisText = ($row['JENIS_TRANSAKSI'] == 1 || $row['MOLD_IN'] == 1) ? 'IN' : ($isOut ? 'OUT' : '-');
+                        $tglStr = ($row['DATE'] instanceof DateTime) ? $row['DATE']->format('d - M - Y') : '-';
+                    ?>
+                    <tr>
+                        <td style="mso-number-format:'\@';"><?php echo h(trim($row['PART_NO'])); ?></td>
+                        <td><?php echo h(trim($row['PART_NAME'])); ?></td>
+                        <td><?php echo h(trim($row['CUST_ALIAS'])); ?></td>
+                        <td align="center"><?php echo h($tglStr); ?></td>
+                        <td align="center"><?php echo $jenisText; ?></td>
+                        <td><?php echo h($row['DARI_DESC']); ?></td>
+                        <td align="right"><?php echo h($row['DARI_TRAN']); ?></td>
+                        <td><?php echo h($row['KE_DESC']); ?></td>
+                        <td align="right"><?php echo h($row['KE_TRAN']); ?></td>
+                        <td><?php echo h($row['REASON']); ?></td>
+                    </tr>
+                <?php endwhile; ?>
+            <?php endif; ?>
+        </tbody>
+    </table>
+    <?php
+    exit;
+}
+
+// Hitung Total Baris Data untuk Pagination
+$sqlCount = "SELECT COUNT(*) AS total_rows
+             FROM MOLD_TRANS_DETAIL MTD
+             LEFT JOIN MOLD_MASTER MM ON MTD.MOLD_ID = MM.MOLD_ID
+             WHERE {$whereSql}";
+$stmtCount = sqlsrv_query($conn, $sqlCount, $queryParams);
+$totalRows = 0;
+if ($stmtCount !== false) {
+    $rCount = sqlsrv_fetch_array($stmtCount, SQLSRV_FETCH_ASSOC);
+    $totalRows = $rCount ? intval($rCount['total_rows']) : 0;
+    sqlsrv_free_stmt($stmtCount);
+}
+
+$totalPages = ($totalRows > 0) ? ceil($totalRows / $perPage) : 1;
+if ($currentPage > $totalPages) {
+    $currentPage = $totalPages;
+}
+if ($currentPage < 1) {
+    $currentPage = 1;
+}
+
+$startRow = (($currentPage - 1) * $perPage) + 1;
+$endRow   = $currentPage * $perPage;
+
+// Query Data dengan Paging (ROW_NUMBER() kompatibel SQL Server 2008+)
+$sqlPaged = "SELECT * FROM (
+                SELECT 
+                    ROW_NUMBER() OVER (ORDER BY MTD.[DATE] DESC, MTD.ID_TRANS DESC) AS RowNum,
+                    MTD.ID_TRANS,
+                    MTD.MOLD_ID,
+                    MM.PART_NO,
+                    MM.PART_NAME,
+                    MM.CUST_ALIAS,
+                    MTD.[DATE],
+                    MTD.JENIS_TRANSAKSI,
+                    MTD.MOLD_IN,
+                    MTD.MOLD_OUT,
+                    MTD.DARI_TRAN,
+                    LOC_DARI.NAMA AS DARI_DESC,
+                    MTD.KE_TRAN,
+                    LOC_KE.NAMA AS KE_DESC,
+                    MTD.REASON
+                FROM MOLD_TRANS_DETAIL MTD
+                LEFT JOIN MOLD_MASTER MM ON MTD.MOLD_ID = MM.MOLD_ID
+                LEFT JOIN MOLD_TRAN_LOC LOC_DARI ON MTD.DARI_TRAN = LOC_DARI.ID
+                LEFT JOIN MOLD_TRAN_LOC LOC_KE ON MTD.KE_TRAN = LOC_KE.ID
+                WHERE {$whereSql}
+             ) AS PagedResult
+             WHERE RowNum BETWEEN ? AND ?
+             ORDER BY RowNum ASC";
+
+$pagedParams = array_merge($queryParams, [$startRow, $endRow]);
+$stmtTrans = sqlsrv_query($conn, $sqlPaged, $pagedParams);
+if ($stmtTrans === false) {
+    die("<pre>Gagal mengambil data transaksi:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
+}
+
+$reportData = [];
+while ($row = sqlsrv_fetch_array($stmtTrans, SQLSRV_FETCH_ASSOC)) {
+    $reportData[] = $row;
+}
+sqlsrv_free_stmt($stmtTrans);
+
+// Fungsi pembantu membuat URL Pagination dengan tetap membawa filter aktif
+function buildPageUrl($pageNum, $perPage, $moldNo, $cust, $start, $end) {
     $params = [
-        [$startDate, SQLSRV_PARAM_IN],
-        [$endDate,   SQLSRV_PARAM_IN],
-        [$moldNo,    SQLSRV_PARAM_IN],
-        [$custAlias, SQLSRV_PARAM_IN]
+        'page'       => $pageNum,
+        'per_page'   => $perPage,
+        'mold_no'    => $moldNo,
+        'cust_alias' => $cust,
+        'start_date' => $start,
+        'end_date'   => $end
     ];
-    
-    $options = array("Scrollable" => SQLSRV_CURSOR_KEYSET);
-    $stmt = sqlsrv_query($conn, $tsql, $params, $options);
-    
-    if ($stmt === false) {
-        die(print_r(sqlsrv_errors(), true));
-    }
-    
-    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-        $reportData[] = $row;
-    }
-    sqlsrv_free_stmt($stmt);
-
-    // ==============================================================
-    // PENGURUTAN TRANSAKSI TANGGAL TERBARU KE TERLAMA (DESC)
-    // ==============================================================
-    if (!empty($reportData)) {
-        usort($reportData, function($a, $b) {
-            $rawDateA = isset($a['DATE']) ? $a['DATE'] : (isset($a['date']) ? $a['date'] : null);
-            $timeA = ($rawDateA instanceof DateTime) ? $rawDateA->getTimestamp() : strtotime($rawDateA);
-
-            $rawDateB = isset($b['DATE']) ? $b['DATE'] : (isset($b['date']) ? $b['date'] : null);
-            $timeB = ($rawDateB instanceof DateTime) ? $rawDateB->getTimestamp() : strtotime($rawDateB);
-
-            if ($timeB == $timeA) {
-                return 0;
-            }
-            return ($timeB > $timeA) ? 1 : -1;
-        });
-    }
-
-    $showReport = true;
-
-    // Export Excel Langsung (Sudah Terurut Tanggal Terbaru)
-    if ($isExport) {
-        $fileName = "Laporan_Mutasi_Mold_" . date('Ymd_His') . ".xls";
-        header("Content-Type: application/vnd.ms-excel; charset=utf-8");
-        header("Content-Disposition: attachment; filename=\"$fileName\"");
-        header("Pragma: no-cache");
-        header("Expires: 0");
-        ?>
-        <table border="1">
-            <thead>
-                <tr style="background-color: #2e4053; color: #ffffff; font-weight: bold;">
-                    <th>NO. PART</th>
-                    <th>NAMA PART</th>
-                    <th>ALIAS CUST</th>
-                    <th>TANGGAL MUTASI</th>
-                    <th>MOLD IN</th>
-                    <th>MOLD OUT</th>
-                    <th>REASON / KETERANGAN</th>
-                    <th>VENDOR</th>
-                    <th>SUPPLIER</th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php if (!empty($reportData)): ?>
-                    <?php foreach ($reportData as $row): ?>
-                        <tr>
-                            <td style="mso-number-format:'\@';"><?php echo isset($row['PART_NO']) ? h($row['PART_NO']) : '-'; ?></td>
-                            <td><?php echo isset($row['PART_NAME']) ? h($row['PART_NAME']) : '-'; ?></td>
-                            <td><?php echo isset($row['CUST_ALIAS']) ? h($row['CUST_ALIAS']) : '-'; ?></td>
-                            <td><?php echo (isset($row['DATE']) && $row['DATE'] instanceof DateTime) ? h($row['DATE']->format('d-M-Y H:i')) : '-'; ?></td>
-                            <td align="right"><?php echo (isset($row['MOLD_IN']) && ($row['MOLD_IN'] == 1 || $row['MOLD_IN'] === true)) ? '1' : '0'; ?></td>
-                            <td align="right"><?php echo (isset($row['MOLD_OUT']) && ($row['MOLD_OUT'] == 1 || $row['MOLD_OUT'] === true)) ? '1' : '0'; ?></td>
-                            <td><?php echo isset($row['REASON']) ? h($row['REASON']) : '-'; ?></td>
-                            <td><?php echo isset($row['VENDOR']) ? h($row['VENDOR']) : '-'; ?></td>
-                            <td><?php echo isset($row['SUPPLIER']) ? h($row['SUPPLIER']) : '-'; ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            </tbody>
-        </table>
-        <?php
-        exit;
-    }
+    return '?' . http_build_query($params);
 }
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="utf-8">
-    <title>Mold Transaction Entry & Report</title>
+    <title>Mold Transaction - Entry & Monitoring</title>
     <style>
         body { padding: 15px; background: #d4d0c8; font-family: Tahoma, Arial, sans-serif; font-size: 11px; margin: 0; color: #000; }
-        .box-container { border: 1px solid #808080; background: #eeeeee; padding: 12px; margin-bottom: 15px; }
+        .box-container { border: 1px solid #808080; background: #eeeeee; padding: 12px; margin-bottom: 12px; }
         .box-title { margin-top: 0; border-bottom: 1px solid #808080; padding-bottom: 4px; color: #2e4053; font-size: 12px; font-weight: bold; }
         
         .form-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 10px; }
         .form-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; }
+        .form-grid-6 { display: grid; grid-template-columns: 1.2fr 1fr 0.9fr 0.9fr 0.6fr auto; gap: 8px; align-items: flex-end; }
         .form-group label { display: block; font-weight: bold; margin-bottom: 3px; }
         .form-group input, .form-group select { width: 100%; padding: 4px; box-sizing: border-box; font-family: Tahoma; font-size: 11px; border: 1px solid #7f9db9; background: #ffffff; }
-        .form-group input[readonly] { background: #e0e0e0; color: #333; }
+        .form-group input[readonly] { background: #b9d1ea; color: #000; font-weight: bold; }
 
-        .btn-action { background: #d4d0c8; border: 2px outset #ffffff; padding: 5px 15px; font-weight: bold; cursor: pointer; font-family: Tahoma; font-size: 11px; }
+        .btn-action { background: #d4d0c8; border: 2px outset #ffffff; padding: 5px 12px; font-weight: bold; cursor: pointer; font-family: Tahoma; font-size: 11px; }
         .btn-action:active { border: 2px inset #ffffff; }
         .btn-save { background: #2980b9; color: #fff; border: 2px outset #5dade2; }
         .btn-save:hover { background: #1f618d; }
@@ -329,18 +401,29 @@ if ($isSubmit) {
         .alert-success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .alert-danger { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
 
-        .report-table { width: 100%; border-collapse: collapse; background: #ffffff; margin-top: 10px; }
-        .report-table th { background: #2e4053; color: white; padding: 7px; border: 1px solid #7f8c8d; font-size: 10px; }
-        .report-table td { padding: 5px; border: 1px solid #bdc3c7; }
+        .report-table { width: 100%; border-collapse: collapse; background: #ffffff; margin-top: 6px; font-size: 11px; }
+        .report-table th { background: #2e4053; color: white; padding: 6px; border: 1px solid #7f8c8d; font-size: 10px; text-align: left; }
+        .report-table td { padding: 5px 6px; border: 1px solid #bdc3c7; }
         .report-table tr:nth-child(even) { background: #f8f9fa; }
+        .report-table tr:hover { background: #eaf2f8; }
         .text-center { text-align: center; }
+        .text-right { text-align: right; }
+
+        /* Styling Navigasi Pagination */
+        .pagination-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 8px; border-top: 1px solid #dcdcdc; }
+        .pagination-info { font-weight: bold; color: #2e4053; font-size: 11px; }
+        .pagination-links { display: flex; gap: 4px; align-items: center; }
+        .page-link { display: inline-block; padding: 4px 9px; background: #eeeeee; border: 1px solid #808080; color: #000; text-decoration: none; font-weight: bold; border-radius: 2px; font-size: 11px; }
+        .page-link:hover { background: #d4d0c8; }
+        .page-link.active { background: #2980b9; color: #ffffff; border-color: #1f618d; }
+        .page-link.disabled { color: #999999; background: #f5f5f5; border-color: #cccccc; pointer-events: none; }
 
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); z-index: 9999; justify-content: center; align-items: center; }
-        .modal-content { background: #eeeeee; border: 2px solid #2c3e50; border-radius: 4px; width: 700px; max-width: 95%; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); font-family: Tahoma, Arial, sans-serif; font-size: 11px; }
+        .modal-content { background: #eeeeee; border: 2px solid #2c3e50; border-radius: 4px; width: 680px; max-width: 95%; padding: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.4); font-family: Tahoma, Arial, sans-serif; font-size: 11px; }
         .modal-header { font-size: 13px; font-weight: bold; color: #2c3e50; border-bottom: 1px solid #808080; padding-bottom: 6px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
         .modal-close { cursor: pointer; font-size: 18px; font-weight: bold; color: #c0392b; line-height: 1; }
 
-        @media print { .box-container, .alert, .col-action, .modal-overlay { display: none !important; } body { background: #fff; padding: 0; } }
+        @media print { .box-container, .alert, .col-action, .pagination-bar, .modal-overlay { display: none !important; } body { background: #fff; padding: 0; } .table-wrapper { display: block !important; border: none !important; padding: 0 !important; } }
     </style>
 </head>
 <body>
@@ -349,57 +432,73 @@ if ($isSubmit) {
     <div class="alert alert-<?php echo $alertType; ?>"><?php echo h($alertMsg); ?></div>
 <?php endif; ?>
 
-<!-- FORM INPUT TRANSAKSI MUTASI MOLD BARU -->
+<!-- ======================================================== -->
+<!-- 1. FORM INPUT TRANSAKSI BARU (IDENTIK DENGAN DELPHI)     -->
+<!-- ======================================================== -->
 <div class="box-container">
-    <div class="box-title">INPUT TRANSAKSI MUTASI MOLD BARU (MOLD_TRANS_DETAIL)</div>
+    <div class="box-title">INPUT TRANSAKSI MOLD BARU (MOLD TRANSACTION)</div>
     <form method="POST" action="">
         <div class="form-grid-3">
             <div class="form-group">
                 <label>PART NO <span style="color:red;">*</span></label>
-                <input type="text" id="input_part_no" list="list_master_part" placeholder="Ketik Part No..." required autocomplete="off">
+                <input type="text" id="input_part_no" list="list_master_part" placeholder="Ketik atau pilih Part No..." required autocomplete="off">
                 <datalist id="list_master_part">
                     <?php foreach ($arrMasterMold as $m): ?>
-                        <option value="<?php echo h($m['no']); ?>"><?php echo h($m['name']); ?></option>
+                        <option value="<?php echo h($m['no']); ?>"><?php echo h($m['name']); ?> (<?php echo h($m['cust']); ?>)</option>
                     <?php endforeach; ?>
                 </datalist>
                 <input type="hidden" name="in_mold_id" id="in_mold_id" required>
             </div>
             <div class="form-group">
-                <label>MOLD NAME (PART NAME)</label>
-                <input type="text" id="in_mold_name" readonly placeholder="(Otomatis terisi)">
+                <label>MOLD NAME</label>
+                <input type="text" id="in_mold_name" readonly placeholder="(Otomatis terisi sesuai Part No)">
             </div>
             <div class="form-group">
-                <label>CUSTOMER ALIAS</label>
-                <input type="text" id="in_cust_alias" readonly placeholder="(Otomatis terisi)">
+                <label>CUSTOMER</label>
+                <input type="text" id="in_cust_alias" readonly placeholder="(Otomatis terisi)" style="background:#e0e0e0; font-weight:normal;">
             </div>
         </div>
 
         <div class="form-grid-4">
             <div class="form-group">
-                <label>TANGGAL TRANSAKSI</label>
-                <input type="datetime-local" name="in_date" value="<?php echo date('Y-m-d\TH:i'); ?>" required>
+                <label>TANGGAL <span style="color:red;">*</span></label>
+                <input type="date" name="in_date" value="<?php echo date('Y-m-d'); ?>" required>
             </div>
             <div class="form-group">
-                <label>JENIS TRANSAKSI</label>
+                <label>JENIS TRANSAKSI <span style="color:red;">*</span></label>
                 <select name="in_jenis_trans" required>
-                    <option value="1">MOLD IN (1)</option>
-                    <option value="2">MOLD OUT (2)</option>
+                    <option value="1">IN</option>
+                    <option value="2">OUT</option>
                 </select>
             </div>
             <div class="form-group">
-                <label>VENDOR</label>
-                <input type="text" name="in_vendor" maxlength="30" placeholder="Nama Vendor...">
+                <label>DARI (LOKASI PENGIRIM) <span style="color:red;">*</span></label>
+                <select name="in_dari_tran" required>
+                    <option value="">-- PILIH DARI --</option>
+                    <?php foreach ($arrLoc as $l): ?>
+                        <option value="<?php echo h($l['id']); ?>">
+                            <?php echo h($l['nama']); ?><?php echo ($l['tipe'] !== '') ? ' [' . h($l['tipe']) . ']' : ''; ?> (ID: <?php echo h($l['id']); ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
             </div>
             <div class="form-group">
-                <label>SUPPLIER</label>
-                <input type="text" name="in_supplier" maxlength="30" placeholder="Nama Supplier...">
+                <label>KE (LOKASI PENERIMA)</label>
+                <select name="in_ke_tran">
+                    <option value="">-- PILIH KE --</option>
+                    <?php foreach ($arrLoc as $l): ?>
+                        <option value="<?php echo h($l['id']); ?>">
+                            <?php echo h($l['nama']); ?><?php echo ($l['tipe'] !== '') ? ' [' . h($l['tipe']) . ']' : ''; ?> (ID: <?php echo h($l['id']); ?>)
+                        </option>
+                    <?php endforeach; ?>
+                </select>
             </div>
         </div>
 
         <div style="display: flex; gap: 10px; align-items: flex-end;">
             <div class="form-group" style="flex: 1;">
-                <label>REASON / KETERANGAN (Maks 30 Karakter)</label>
-                <input type="text" name="in_reason" maxlength="30" placeholder="Alasan mutasi / perpindahan...">
+                <label>KETERANGAN / REMARK (Maks 30 Karakter)</label>
+                <input type="text" name="in_reason" maxlength="30" placeholder="Contoh: NEW MOLD / A/ Repair / Dikembalikan...">
             </div>
             <div style="margin-bottom: 1px;">
                 <button type="submit" name="btnSimpanTrans" class="btn-action btn-save">SIMPAN TRANSAKSI BARU</button>
@@ -408,23 +507,17 @@ if ($isSubmit) {
     </form>
 </div>
 
-<!-- FORM FILTER LAPORAN TRANSAKSI & EXPORT EXCEL -->
+<!-- ======================================================== -->
+<!-- 2. FILTER PENCARIAN & JUMLAH BARIS PER HALAMAN           -->
+<!-- ======================================================== -->
 <div class="box-container">
-    <div class="box-title">FILTER LAPORAN TRANSAKSI (MUTASI) MOLD</div>
-    <form method="POST" action="">
-        <div class="form-grid-4">
+    <div class="box-title">FILTER & PENCARIAN RIWAYAT TRANSAKSI MOLD</div>
+    <form method="GET" action="">
+        <input type="hidden" name="page" value="1">
+        <div class="form-grid-6">
             <div class="form-group">
-                <label>Tanggal Mulai</label>
-                <input type="date" name="start_date" value="<?php echo h($startDateForm); ?>" required>
-            </div>
-            <div class="form-group">
-                <label>Tanggal Selesai</label>
-                <input type="date" name="end_date" value="<?php echo h($endDateForm); ?>" required>
-            </div>
-            
-            <div class="form-group">
-                <label>Nomor Mold (Part No)</label>
-                <input type="text" name="mold_no" list="filter_part_list" value="<?php echo (isset($_REQUEST['mold_no'])) ? h(trim($_REQUEST['mold_no'], "'")) : ''; ?>" placeholder="Ketik atau pilih...">
+                <label>Pilih / Cari PART NO</label>
+                <input type="text" name="mold_no" list="filter_part_list" value="<?php echo h($filterMoldNo); ?>" placeholder="Ketik Part No (Contoh: 1904035)...">
                 <datalist id="filter_part_list">
                     <?php foreach ($arrMasterMold as $m): ?>
                         <option value="<?php echo h($m['no']); ?>"><?php echo h($m['name']); ?></option>
@@ -433,103 +526,141 @@ if ($isSubmit) {
             </div>
             
             <div class="form-group">
-                <label>Alias Customer</label>
-                <input type="text" name="cust_alias" list="filter_cust_list" value="<?php echo (isset($_REQUEST['cust_alias'])) ? h(trim($_REQUEST['cust_alias'], "'")) : ''; ?>" placeholder="Ketik atau pilih...">
+                <label>Customer</label>
+                <input type="text" name="cust_alias" list="filter_cust_list" value="<?php echo h($filterCust); ?>" placeholder="Semua Customer...">
                 <datalist id="filter_cust_list">
-                    <?php while($c = sqlsrv_fetch_array($resCust, SQLSRV_FETCH_ASSOC)): ?>
-                        <option value="<?php echo h(trim($c['CUST_ALIAS'], "'")); ?>"></option>
-                    <?php endwhile; ?>
+                    <?php foreach ($arrCust as $c): ?>
+                        <option value="<?php echo h($c); ?>"></option>
+                    <?php endforeach; ?>
                 </datalist>
             </div>
+
+            <div class="form-group">
+                <label>Dari Tanggal</label>
+                <input type="date" name="start_date" value="<?php echo h($startDateForm); ?>">
+            </div>
+
+            <div class="form-group">
+                <label>Sampai Tanggal</label>
+                <input type="date" name="end_date" value="<?php echo h($endDateForm); ?>">
+            </div>
+
+            <div class="form-group">
+                <label>Tampil / Hal</label>
+                <select name="per_page" onchange="this.form.submit()">
+                    <?php foreach ($allowedLimits as $lim): ?>
+                        <option value="<?php echo $lim; ?>" <?php echo ($perPage === $lim) ? 'selected' : ''; ?>>
+                            <?php echo $lim; ?> Baris
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div style="display: flex; gap: 4px; margin-bottom: 1px;">
+                <button type="submit" class="btn-action">CARI</button>
+                <a href="mold_trans.php" class="btn-action" style="text-decoration:none; color:#000; display:inline-block; line-height:14px;">RESET</a>
+                <button type="submit" formmethod="POST" name="btnExport" class="btn-action" style="background: #1d6f42; color: white; border-color: #1d6f42;">EXCEL</button>
+                <button type="button" class="btn-action" onclick="window.print();" style="background: #27ae60; color: white; border-color: #27ae60;">PRINT</button>
+            </div>
         </div>
-        <button type="submit" name="btnCetak" class="btn-action">TAMPILKAN TRANSAKSI</button>
-        <?php if($showReport): ?>
-            <button type="submit" name="btnExport" class="btn-action" style="margin-left: 5px; background: #1d6f42; color: white; border-color: #1d6f42;">EXPORT EXCEL</button>
-            <button type="button" class="btn-action" onclick="window.print();" style="margin-left: 5px; background: #27ae60; color: white; border-color: #27ae60;">PRINT / PDF</button>
-        <?php endif; ?>
     </form>
 </div>
 
-<!-- TABEL LAPORAN HASIL TRANSAKSI MUTASI -->
-<?php if ($showReport): ?>
+<!-- ======================================================== -->
+<!-- 3. TABEL DATA TRANSAKSI DENGAN PAGINATION                -->
+<!-- ======================================================== -->
+<div class="box-container table-wrapper" style="background: #ffffff;">
+    <?php
+        $displayFrom = ($totalRows > 0) ? $startRow : 0;
+        $displayTo   = ($endRow > $totalRows) ? $totalRows : $endRow;
+    ?>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <span style="font-weight:bold; color:#2e4053;">
+            DAFTAR TRANSAKSI MOLD 
+            <?php if ($filterMoldNo !== ''): ?>
+                (Part No: <span style="color:#c0392b;"><?php echo h($filterMoldNo); ?></span>)
+            <?php endif; ?>
+            — Menampilkan <?php echo number_format($displayFrom); ?> s/d <?php echo number_format($displayTo); ?> dari Total <?php echo number_format($totalRows); ?> Data
+        </span>
+        <span style="font-weight:bold; color:#555;">
+            Halaman <?php echo $currentPage; ?> dari <?php echo $totalPages; ?>
+        </span>
+    </div>
+
     <?php if (!empty($reportData)): ?>
         <table class="report-table">
             <thead>
                 <tr>
-                    <th style="width: 14%;">NO. PART</th>
-                    <th style="width: 18%;">NAMA PART</th>
-                    <th style="width: 8%;">ALIAS CUST</th>
-                    <th style="width: 12%;">TANGGAL MUTASI</th>
-                    <th style="width: 6%;">MOLD IN</th>
-                    <th style="width: 6%;">MOLD OUT</th>
-                    <th style="width: 14%;">REASON / KETERANGAN</th>
-                    <th style="width: 8%;">VENDOR</th>
-                    <th style="width: 8%;">SUPPLIER</th>
-                    <th class="col-action" style="width: 8%;">AKSI</th>
+                    <th style="width: 4%;" class="text-center">NO</th>
+                    <th style="width: 11%;">PART NO</th>
+                    <th style="width: 15%;">MOLD NAME</th>
+                    <th style="width: 9%;">CUSTOMER</th>
+                    <th style="width: 9%;" class="text-center">TANGGAL</th>
+                    <th style="width: 7%;" class="text-center">JENIS TRANSAKSI</th>
+                    <th style="width: 13%;">DARI</th>
+                    <th style="width: 5%;" class="text-right">PIC PENGIRIM</th>
+                    <th style="width: 13%;">KE</th>
+                    <th style="width: 5%;" class="text-right">PIC PENERIMA</th>
+                    <th style="width: 10%;">KETERANGAN</th>
+                    <th class="col-action text-center" style="width: 8%;">AKSI</th>
                 </tr>
             </thead>
             <tbody>
                 <?php foreach ($reportData as $row): ?>
                     <?php
-                        $partNo   = isset($row['PART_NO']) ? trim($row['PART_NO'], " \t\n\r\0\x0B'") : '';
-                        $partName = isset($row['PART_NAME']) ? trim($row['PART_NAME']) : '';
-                        $rDate    = isset($row['DATE']) ? $row['DATE'] : null;
-                        $rIn      = (isset($row['MOLD_IN']) && ($row['MOLD_IN'] == 1 || $row['MOLD_IN'] === true)) ? 1 : 0;
-                        $rOut     = (isset($row['MOLD_OUT']) && ($row['MOLD_OUT'] == 1 || $row['MOLD_OUT'] === true)) ? 1 : 0;
-                        $rReason  = isset($row['REASON']) ? trim($row['REASON']) : '';
-                        $rVendor  = isset($row['VENDOR']) ? trim($row['VENDOR']) : '';
-                        $rSupplier= isset($row['SUPPLIER']) ? trim($row['SUPPLIER']) : '';
-                        $idTrans  = isset($row['ID_TRANS']) ? intval($row['ID_TRANS']) : 0;
+                        $rowNum   = intval($row['RowNum']);
+                        $idTrans  = intval($row['ID_TRANS']);
+                        $moldId   = intval($row['MOLD_ID']);
+                        $partNo   = isset($row['PART_NO']) ? trim($row['PART_NO']) : '-';
+                        $partName = isset($row['PART_NAME']) ? trim($row['PART_NAME']) : '-';
+                        $custName = isset($row['CUST_ALIAS']) ? trim($row['CUST_ALIAS']) : '-';
+                        $rDate    = $row['DATE'];
+                        
+                        $jenisId  = intval($row['JENIS_TRANSAKSI']);
+                        $isOut    = ($jenisId === 2 || (!empty($row['MOLD_OUT']) && $row['MOLD_OUT'] == 1));
+                        $isIn     = ($jenisId === 1 || (!empty($row['MOLD_IN']) && $row['MOLD_IN'] == 1));
+                        $jenisTxt = $isIn ? 'IN' : ($isOut ? 'OUT' : '');
 
-                        $strDateIso = ($rDate instanceof DateTime) ? $rDate->format('Y-m-d\TH:i') : '';
-                        $strDateDay = ($rDate instanceof DateTime) ? $rDate->format('Y-m-d') : date('Y-m-d', strtotime($rDate));
-                        $strDateDisplay = ($rDate instanceof DateTime) ? $rDate->format('d-M-Y H:i') : '-';
+                        $dariDesc = !empty($row['DARI_DESC']) ? trim($row['DARI_DESC']) : '';
+                        $dariId   = !empty($row['DARI_TRAN']) ? intval($row['DARI_TRAN']) : '';
+                        $keDesc   = !empty($row['KE_DESC']) ? trim($row['KE_DESC']) : '';
+                        $keId     = !empty($row['KE_TRAN']) ? intval($row['KE_TRAN']) : '';
+                        $reason   = isset($row['REASON']) ? trim($row['REASON']) : '';
 
-                        $cleanPartKey = strtoupper($partNo);
-                        $rowMoldId = isset($mapMoldIdByPart[$cleanPartKey]) ? $mapMoldIdByPart[$cleanPartKey] : 0;
+                        $strDateDisplay = ($rDate instanceof DateTime) ? $rDate->format('d - M - Y') : '-';
+                        $strDateInput   = ($rDate instanceof DateTime) ? $rDate->format('Y-m-d') : '';
                     ?>
                     <tr>
-                        <td><?php echo h($partNo); ?></td>
+                        <td class="text-center" style="color:#666;"><?php echo $rowNum; ?></td>
+                        <td><strong><?php echo h($partNo); ?></strong></td>
                         <td><?php echo h($partName); ?></td>
-                        <td><?php echo isset($row['CUST_ALIAS']) ? h($row['CUST_ALIAS']) : '-'; ?></td>
+                        <td><?php echo h($custName); ?></td>
                         <td class="text-center"><?php echo h($strDateDisplay); ?></td>
-                        <td class="text-center" style="font-weight:bold; color:<?php echo ($rIn == 1) ? '#27ae60' : '#888'; ?>;">
-                            <?php echo $rIn; ?>
+                        <td class="text-center" style="font-weight:bold; color:<?php echo ($jenisTxt === 'IN') ? '#27ae60' : '#c0392b'; ?>;">
+                            <?php echo h($jenisTxt); ?>
                         </td>
-                        <td class="text-center" style="font-weight:bold; color:<?php echo ($rOut == 1) ? '#c0392b' : '#888'; ?>;">
-                            <?php echo $rOut; ?>
-                        </td>
-                        <td><?php echo ($rReason !== '') ? h($rReason) : '-'; ?></td>
-                        <td><?php echo ($rVendor !== '') ? h($rVendor) : '-'; ?></td>
-                        <td><?php echo ($rSupplier !== '') ? h($rSupplier) : '-'; ?></td>
+                        <td><?php echo h($dariDesc); ?></td>
+                        <td class="text-right"><?php echo h($dariId); ?></td>
+                        <td><?php echo h($keDesc); ?></td>
+                        <td class="text-right"><?php echo h($keId); ?></td>
+                        <td><?php echo h($reason); ?></td>
 
                         <td class="col-action text-center" style="white-space: nowrap;">
                             <button type="button" class="btn-edit" 
                                 data-id-trans="<?php echo h($idTrans); ?>"
-                                data-mold-id="<?php echo h($rowMoldId); ?>"
                                 data-part-no="<?php echo h($partNo); ?>"
                                 data-part-name="<?php echo h($partName); ?>"
-                                data-date="<?php echo h($strDateIso); ?>"
-                                data-orig-day="<?php echo h($strDateDay); ?>"
-                                data-orig-reason="<?php echo h($rReason); ?>"
-                                data-jenis="<?php echo ($rIn == 1) ? '1' : '2'; ?>"
-                                data-reason="<?php echo h($rReason); ?>"
-                                data-vendor="<?php echo h($rVendor); ?>"
-                                data-supplier="<?php echo h($rSupplier); ?>"
+                                data-date="<?php echo h($strDateInput); ?>"
+                                data-jenis="<?php echo ($jenisTxt === 'OUT') ? '2' : '1'; ?>"
+                                data-dari="<?php echo h($dariId); ?>"
+                                data-ke="<?php echo h($keId); ?>"
+                                data-reason="<?php echo h($reason); ?>"
                                 onclick="handleEditTransClick(this)">
                                 EDIT
                             </button>
 
-                            <form method="POST" action="" style="display:inline;" onsubmit="return confirm('Apakah Anda yakin ingin menghapus transaksi ini?');">
-                                <input type="hidden" name="start_date" value="<?php echo h($startDateForm); ?>">
-                                <input type="hidden" name="end_date" value="<?php echo h($endDateForm); ?>">
-                                <input type="hidden" name="mold_no" value="<?php echo isset($_REQUEST['mold_no']) ? h($_REQUEST['mold_no']) : ''; ?>">
-                                <input type="hidden" name="cust_alias" value="<?php echo isset($_REQUEST['cust_alias']) ? h($_REQUEST['cust_alias']) : ''; ?>">
+                            <form method="POST" action="<?php echo h(buildPageUrl($currentPage, $perPage, $filterMoldNo, $filterCust, $startDateForm, $endDateForm)); ?>" style="display:inline;" onsubmit="return confirm('Apakah Anda yakin ingin menghapus transaksi tanggal <?php echo h($strDateDisplay); ?> ini?');">
                                 <input type="hidden" name="del_id_trans" value="<?php echo h($idTrans); ?>">
-                                <input type="hidden" name="del_mold_id" value="<?php echo h($rowMoldId); ?>">
-                                <input type="hidden" name="del_part_no" value="<?php echo h($partNo); ?>">
-                                <input type="hidden" name="del_date_day" value="<?php echo h($strDateDay); ?>">
-                                <input type="hidden" name="del_reason" value="<?php echo h($rReason); ?>">
                                 <button type="submit" name="btnDeleteTrans" class="btn-del">HAPUS</button>
                             </form>
                         </td>
@@ -537,31 +668,76 @@ if ($isSubmit) {
                 <?php endforeach; ?>
             </tbody>
         </table>
+
+        <!-- BAR NAVIGASI PAGINATION BAWAH -->
+        <?php if ($totalPages > 1): ?>
+            <div class="pagination-bar">
+                <div class="pagination-info">
+                    Menampilkan <?php echo $displayFrom; ?> - <?php echo $displayTo; ?> dari <?php echo number_format($totalRows); ?> transaksi
+                </div>
+                <div class="pagination-links">
+                    <!-- Tombol Awal & Sebelumnya -->
+                    <a class="page-link <?php echo ($currentPage <= 1) ? 'disabled' : ''; ?>" 
+                       href="<?php echo h(buildPageUrl(1, $perPage, $filterMoldNo, $filterCust, $startDateForm, $endDateForm)); ?>" title="Halaman Pertama">&laquo; Awal</a>
+                    <a class="page-link <?php echo ($currentPage <= 1) ? 'disabled' : ''; ?>" 
+                       href="<?php echo h(buildPageUrl($currentPage - 1, $perPage, $filterMoldNo, $filterCust, $startDateForm, $endDateForm)); ?>" title="Sebelumnya">&lsaquo; Prev</a>
+
+                    <?php
+                        $range = 2; // Jumlah nomor halaman di kiri & kanan halaman aktif
+                        $startPage = max(1, $currentPage - $range);
+                        $endPage   = min($totalPages, $currentPage + $range);
+
+                        if ($startPage > 1) {
+                            echo '<a class="page-link" href="' . h(buildPageUrl(1, $perPage, $filterMoldNo, $filterCust, $startDateForm, $endDateForm)) . '">1</a>';
+                            if ($startPage > 2) {
+                                echo '<span style="padding:0 4px; color:#666;">...</span>';
+                            }
+                        }
+
+                        for ($p = $startPage; $p <= $endPage; $p++):
+                    ?>
+                        <a class="page-link <?php echo ($p === $currentPage) ? 'active' : ''; ?>" 
+                           href="<?php echo h(buildPageUrl($p, $perPage, $filterMoldNo, $filterCust, $startDateForm, $endDateForm)); ?>">
+                            <?php echo $p; ?>
+                        </a>
+                    <?php endfor; ?>
+
+                    <?php
+                        if ($endPage < $totalPages) {
+                            if ($endPage < $totalPages - 1) {
+                                echo '<span style="padding:0 4px; color:#666;">...</span>';
+                            }
+                            echo '<a class="page-link" href="' . h(buildPageUrl($totalPages, $perPage, $filterMoldNo, $filterCust, $startDateForm, $endDateForm)) . '">' . $totalPages . '</a>';
+                        }
+                    ?>
+
+                    <!-- Tombol Berikutnya & Akhir -->
+                    <a class="page-link <?php echo ($currentPage >= $totalPages) ? 'disabled' : ''; ?>" 
+                       href="<?php echo h(buildPageUrl($currentPage + 1, $perPage, $filterMoldNo, $filterCust, $startDateForm, $endDateForm)); ?>" title="Berikutnya">Next &rsaquo;</a>
+                    <a class="page-link <?php echo ($currentPage >= $totalPages) ? 'disabled' : ''; ?>" 
+                       href="<?php echo h(buildPageUrl($totalPages, $perPage, $filterMoldNo, $filterCust, $startDateForm, $endDateForm)); ?>" title="Halaman Terakhir">Akhir &raquo;</a>
+                </div>
+            </div>
+        <?php endif; ?>
+
     <?php else: ?>
-        <div style="text-align:center; padding:20px; background:#fff; border:1px solid #808080; font-weight:bold;">
-            Data transaksi tidak ditemukan.
+        <div style="text-align:center; padding:20px; background:#f9f9f9; border:1px solid #ccc; font-weight:bold; color:#555;">
+            Tidak ada data transaksi yang cocok dengan pencarian Anda.
         </div>
     <?php endif; ?>
-<?php endif; ?>
+</div>
 
-<!-- MODAL POPUP EDIT TRANSAKSI MOLD -->
+<!-- ======================================================== -->
+<!-- 4. MODAL POPUP EDIT TRANSAKSI MOLD                       -->
+<!-- ======================================================== -->
 <div id="modalEditTrans" class="modal-overlay">
     <div class="modal-content">
         <div class="modal-header">
-            <span>EDIT TRANSAKSI MUTASI MOLD</span>
+            <span>EDIT DATA TRANSAKSI MOLD</span>
             <span class="modal-close" onclick="closeEditTransModal()">&times;</span>
         </div>
-        <form method="POST" action="">
-            <input type="hidden" name="start_date" value="<?php echo h($startDateForm); ?>">
-            <input type="hidden" name="end_date" value="<?php echo h($endDateForm); ?>">
-            <input type="hidden" name="mold_no" value="<?php echo isset($_REQUEST['mold_no']) ? h($_REQUEST['mold_no']) : ''; ?>">
-            <input type="hidden" name="cust_alias" value="<?php echo isset($_REQUEST['cust_alias']) ? h($_REQUEST['cust_alias']) : ''; ?>">
-
+        <form method="POST" action="<?php echo h(buildPageUrl($currentPage, $perPage, $filterMoldNo, $filterCust, $startDateForm, $endDateForm)); ?>">
             <input type="hidden" name="edit_id_trans" id="edit_id_trans">
-            <input type="hidden" name="edit_mold_id" id="edit_mold_id">
-            <input type="hidden" name="edit_part_no" id="edit_hidden_part_no">
-            <input type="hidden" name="edit_orig_day" id="edit_orig_day">
-            <input type="hidden" name="edit_orig_reason" id="edit_orig_reason">
 
             <div class="form-grid-3">
                 <div class="form-group">
@@ -569,35 +745,49 @@ if ($isSubmit) {
                     <input type="text" id="edit_part_no" readonly>
                 </div>
                 <div class="form-group" style="grid-column: span 2;">
-                    <label>MOLD NAME (PART NAME)</label>
+                    <label>MOLD NAME</label>
                     <input type="text" id="edit_part_name" readonly>
                 </div>
             </div>
 
             <div class="form-grid-4">
                 <div class="form-group">
-                    <label>TANGGAL TRANSAKSI</label>
-                    <input type="datetime-local" name="edit_date" id="edit_date" required>
+                    <label>TANGGAL</label>
+                    <input type="date" name="edit_date" id="edit_date" required>
                 </div>
                 <div class="form-group">
                     <label>JENIS TRANSAKSI</label>
                     <select name="edit_jenis_trans" id="edit_jenis_trans" required>
-                        <option value="1">MOLD IN (1)</option>
-                        <option value="2">MOLD OUT (2)</option>
+                        <option value="1">IN</option>
+                        <option value="2">OUT</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>VENDOR</label>
-                    <input type="text" name="edit_vendor" id="edit_vendor" maxlength="30">
+                    <label>DARI (PENGIRIM)</label>
+                    <select name="edit_dari_tran" id="edit_dari_tran" required>
+                        <option value="">-- PILIH DARI --</option>
+                        <?php foreach ($arrLoc as $l): ?>
+                            <option value="<?php echo h($l['id']); ?>">
+                                <?php echo h($l['nama']); ?> (ID: <?php echo h($l['id']); ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
                 <div class="form-group">
-                    <label>SUPPLIER</label>
-                    <input type="text" name="edit_supplier" id="edit_supplier" maxlength="30">
+                    <label>KE (PENERIMA)</label>
+                    <select name="edit_ke_tran" id="edit_ke_tran">
+                        <option value="">-- PILIH KE --</option>
+                        <?php foreach ($arrLoc as $l): ?>
+                            <option value="<?php echo h($l['id']); ?>">
+                                <?php echo h($l['nama']); ?> (ID: <?php echo h($l['id']); ?>)
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
                 </div>
             </div>
 
             <div class="form-group">
-                <label>REASON / KETERANGAN</label>
+                <label>KETERANGAN / REMARK</label>
                 <input type="text" name="edit_reason" id="edit_reason" maxlength="30">
             </div>
 
@@ -632,17 +822,12 @@ if ($isSubmit) {
 
     function handleEditTransClick(btn) {
         document.getElementById('edit_id_trans').value = btn.dataset.idTrans;
-        document.getElementById('edit_mold_id').value = btn.dataset.moldId;
-        document.getElementById('edit_hidden_part_no').value = btn.dataset.partNo;
-        document.getElementById('edit_orig_day').value = btn.dataset.origDay;
-        document.getElementById('edit_orig_reason').value = btn.dataset.origReason;
-
         document.getElementById('edit_part_no').value = btn.dataset.partNo;
         document.getElementById('edit_part_name').value = btn.dataset.partName;
         document.getElementById('edit_date').value = btn.dataset.date;
         document.getElementById('edit_jenis_trans').value = btn.dataset.jenis;
-        document.getElementById('edit_vendor').value = btn.dataset.vendor;
-        document.getElementById('edit_supplier').value = btn.dataset.supplier;
+        document.getElementById('edit_dari_tran').value = btn.dataset.dari || '';
+        document.getElementById('edit_ke_tran').value = btn.dataset.ke || '';
         document.getElementById('edit_reason').value = btn.dataset.reason;
 
         document.getElementById('modalEditTrans').style.display = 'flex';

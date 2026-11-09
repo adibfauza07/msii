@@ -92,6 +92,131 @@ if ($action == "update_price") {
 }
 
 /* ======================================================
+   --- FITUR PINDAH ICL ---
+====================================================== */
+// 1. PINDAH KE ICL EXISTING (YANG SUDAH ADA)
+if ($action == "move_detail") {
+    $sourceRcvId = intval(postv("rcv_id", "0"));
+    $targetRcvId = intval(postv("target_rcv_id", "0"));
+    $moveItems = isset($_POST["move_check"]) ? $_POST["move_check"] : array();
+
+    if ($sourceRcvId <= 0 || $targetRcvId <= 0) {
+        $error = "Pilih ICL Sumber dan pastikan ICL Tujuan valid.";
+    } elseif ($sourceRcvId == $targetRcvId) {
+        $error = "ICL Tujuan tidak boleh sama dengan ICL saat ini.";
+    } elseif (count($moveItems) == 0) {
+        $error = "Centang minimal 1 detail yang akan dipindah.";
+    } else {
+        sqlsrv_begin_transaction($conn);
+        $ok = true;
+        foreach ($moveItems as $val) {
+            $arr = explode("|", $val);
+            if (count($arr) == 2) {
+                $mItemId = intval($arr[0]);
+                $mPoId = intval($arr[1]);
+                $sqlMv = "UPDATE dbo.RECEIVE_DETAIL SET RCV_ID = ? WHERE RCV_ID = ? AND ITEM_ID = ? AND PO_ID = ?";
+                $stmtMv = sqlsrv_query($conn, $sqlMv, array($targetRcvId, $sourceRcvId, $mItemId, $mPoId));
+                if ($stmtMv === false) { $ok = false; $error = "Gagal pindah detail:\n".sql_error_text(); break; }
+            }
+        }
+        if ($ok) {
+            sqlsrv_commit($conn);
+            header("Location: receive.php?edit=".$sourceRcvId."&msg=moved");
+            exit;
+        } else {
+            sqlsrv_rollback($conn);
+        }
+    }
+}
+
+// 2. PINDAH KE ICL BARU (AUTO GENERATE NEW ICL)
+if ($action == "move_to_new") {
+    $sourceRcvId = intval(postv("rcv_id", "0"));
+    $moveItems = isset($_POST["move_check"]) ? $_POST["move_check"] : array();
+
+    if ($sourceRcvId <= 0) {
+        $error = "Pilih ICL Sumber valid.";
+    } elseif (count($moveItems) == 0) {
+        $error = "Centang minimal 1 detail yang akan dipindah ke ICL Baru.";
+    } else {
+        sqlsrv_begin_transaction($conn);
+        $ok = true;
+
+        // Ambil data header ICL lama untuk di duplikat
+        $sqlSrc = "SELECT * FROM dbo.RECEIVE WHERE RCV_ID = ?";
+        $stmtSrc = sqlsrv_query($conn, $sqlSrc, array($sourceRcvId));
+        $srcHdr = sqlsrv_fetch_array($stmtSrc, SQLSRV_FETCH_ASSOC);
+
+        if (!$srcHdr) {
+            $ok = false; $error = "Data ICL sumber tidak ditemukan.";
+        } else {
+            // Buat ICL Baru
+            $newRcvNo = generate_rcv_no($conn);
+            $sqlH = "
+                SET NOCOUNT ON;
+                DECLARE @OutputTbl TABLE (NEW_ID INT);
+                INSERT INTO dbo.RECEIVE (RCV_NO, RCV_DONO, RCV_DATE, RCV_PIC, SUP_ID, RCV_TYPE) 
+                OUTPUT INSERTED.RCV_ID INTO @OutputTbl
+                VALUES (?, ?, ?, ?, ?, ?);
+                SELECT NEW_ID FROM @OutputTbl;
+            ";
+            $stmtH = sqlsrv_query($conn, $sqlH, array(
+                $newRcvNo, $srcHdr['RCV_DONO'], $srcHdr['RCV_DATE'], 
+                $srcHdr['RCV_PIC'], $srcHdr['SUP_ID'], $srcHdr['RCV_TYPE']
+            ));
+
+            $newRcvId = 0;
+            if ($stmtH === false) {
+                $ok=false; $error="Buat header ICL baru gagal:\n".sql_error_text();
+            } else {
+                $new = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_ASSOC);
+                if ($new && isset($new['NEW_ID'])) {
+                    $newRcvId = intval($new['NEW_ID']);
+                } else {
+                    if (sqlsrv_next_result($stmtH)) {
+                        $new = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_ASSOC);
+                        if ($new && isset($new['NEW_ID'])) $newRcvId = intval($new['NEW_ID']);
+                    }
+                }
+            }
+
+            if ($newRcvId <= 0) {
+                $ok = false;
+                if($error == "") $error = "Gagal mendapatkan ID ICL baru.";
+            }
+
+            // Pindahkan Detail ke ICL Baru
+            if ($ok) {
+                foreach ($moveItems as $val) {
+                    $arr = explode("|", $val);
+                    if (count($arr) == 2) {
+                        $mItemId = intval($arr[0]);
+                        $mPoId = intval($arr[1]);
+                        $sqlMv = "UPDATE dbo.RECEIVE_DETAIL SET RCV_ID = ? WHERE RCV_ID = ? AND ITEM_ID = ? AND PO_ID = ?";
+                        $stmtMv = sqlsrv_query($conn, $sqlMv, array($newRcvId, $sourceRcvId, $mItemId, $mPoId));
+                        if ($stmtMv === false) { $ok = false; $error = "Gagal pindah detail ke ICL baru:\n".sql_error_text(); break; }
+                    }
+                }
+            }
+
+            // Update Counter REFS
+            if ($ok) {
+                inc_next_rcv_no($conn);
+            }
+        }
+
+        if ($ok) {
+            sqlsrv_commit($conn);
+            // Redirect langsung ke ICL yang baru dibuat
+            header("Location: receive.php?edit=".$newRcvId."&msg=moved_new");
+            exit;
+        } else {
+            sqlsrv_rollback($conn);
+        }
+    }
+}
+
+/* ======================================================
    DELETE RECEIVE
 ====================================================== */
 if ($action == "delete") {
@@ -296,9 +421,11 @@ if ($editId > 0) {
 
 if (getv("msg") == "saved") $message = "Receive berhasil disimpan.";
 if (getv("msg") == "deleted") $message = "Receive berhasil dihapus.";
+if (getv("msg") == "moved") $message = "Detail berhasil dipindahkan ke ICL tujuan.";
+if (getv("msg") == "moved_new") $message = "Berhasil membuat ICL Baru dan memindahkan detail terpilih!";
 
 /* ======================================================
-   SUPPLIER & DEPT DATA
+   SUPPLIER, DEPT & DATA AUTOCOMPLETE ICL
 ====================================================== */
 $supplierAuto = array();
 $sqlSup = "SELECT TOP 1000 SUP_ID, SUP_CODE, SUP_COMP FROM dbo.SUPPLIER WHERE ISNULL(SUP_CODE,'') <> '' ORDER BY SUP_CODE";
@@ -314,6 +441,15 @@ $stmtDept = sqlsrv_query($conn,"SELECT DEP_ID, DEP_CODE, DEP_NAME FROM dbo.DEPT 
 if ($stmtDept !== false) {
     while ($d = sqlsrv_fetch_array($stmtDept, SQLSRV_FETCH_ASSOC)) {
         $deptAuto[] = array("DEP_NAME"=>trim((string)$d["DEP_NAME"]));
+    }
+}
+
+// --- DATA RCV UNTUK AUTOCOMPLETE TARGET ICL ---
+$rcvAuto = array();
+$stmtRcv = sqlsrv_query($conn,"SELECT TOP 500 RCV_ID, RCV_NO FROM dbo.RECEIVE ORDER BY RCV_DATE DESC, RCV_NO DESC");
+if ($stmtRcv !== false) {
+    while ($r = sqlsrv_fetch_array($stmtRcv, SQLSRV_FETCH_ASSOC)) {
+        $rcvAuto[] = array("RCV_ID"=>intval($r["RCV_ID"]), "RCV_NO"=>trim((string)$r["RCV_NO"]));
     }
 }
 
@@ -414,12 +550,15 @@ if (count($details) == 0) {
         .btn-x { background: #dc3545; color: #fff; width: 22px; padding: 0; border: none; border-radius: 3px; }
         .btn-x:hover { background: #c82333; }
 
-        .btn-po, .btn-os { background: #17a2b8; color: #fff; border-color: #17a2b8; }
-        .btn-po:hover, .btn-os:hover { background: #138496; }
+        .btn-os { background: #17a2b8; color: #fff; border-color: #17a2b8; }
+        .btn-os:hover { background: #138496; }
+
+        .btn-blue { background: #007bff; color: #fff; border-color: #007bff; }
+        .btn-blue:hover { background: #0056b3; }
 
         /* Notifikasi */
-        .msg { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 8px 12px; border-radius: 3px; margin-bottom: 15px; }
-        .err { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 8px 12px; border-radius: 3px; margin-bottom: 15px; white-space: pre-wrap; }
+        .msg { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 8px 12px; border-radius: 3px; margin-bottom: 15px; font-weight:bold; }
+        .err { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 8px 12px; border-radius: 3px; margin-bottom: 15px; white-space: pre-wrap; font-weight:bold; }
 
         /* Area Form Header */
         .label { display: block; margin-bottom: 3px; font-weight: normal; color: #555; font-size: 10px; text-transform: capitalize; }
@@ -442,9 +581,8 @@ if (count($details) == 0) {
         input[readonly], input[style*="background:#f9f9f9"], input[style*="background:#ddd;"] {
             background: #e9ecef !important; color: #495057; cursor: not-allowed;
         }
-        input[type=checkbox] { width: 12px; height: 12px; vertical-align: middle; cursor: pointer; margin: 0 4px 0 0; }
-        label { cursor: pointer; display: inline-flex; align-items: center; font-weight: normal; color: #333; margin-right: 10px; font-size: 11px; }
-
+        input[type=checkbox] { width: 16px; height: 16px; vertical-align: middle; cursor: pointer; margin: 0; }
+        
         /* Batasi lebar maksimal input header */
         .po-no, .rcv-no, .reqno { max-width: 150px; }
         .date { max-width: 120px; }
@@ -465,12 +603,12 @@ if (count($details) == 0) {
         table.detail td, table.grid td {
             border: 1px solid #dee2e6; padding: 2px 4px; vertical-align: middle; font-size: 11px;
         }
-        table.detail input {
+        table.detail input[type=text] {
             width: 100%; height: 20px; border: 1px solid transparent;
             padding: 0 4px; background: transparent; border-radius: 2px;
         }
-        table.detail input:focus { border-color: #80bdff; background: #fff; }
-        table.detail input:hover:not([readonly]) { border-color: #ccc; }
+        table.detail input[type=text]:focus { border-color: #80bdff; background: #fff; }
+        table.detail input[type=text]:hover:not([readonly]) { border-color: #ccc; }
 
         tr.detail-selected td { background: #f8f9fa; }
         table.grid tr:hover td { background: #f4f6f9; cursor: pointer; }
@@ -504,6 +642,7 @@ if (count($details) == 0) {
 <script>
 var supplierData = <?php echo json_encode($supplierAuto); ?>;
 var deptData = <?php echo json_encode($deptAuto); ?>;
+var rcvData = <?php echo json_encode($rcvAuto); ?>; 
 var acBox=null, acItems=[], acIndex=-1, acMode="", acRow=-1;
 var rowSeq=<?php echo count($details); ?>;
 var selectedDetailRow=null;
@@ -534,6 +673,31 @@ function showPicAC(input){initAC();var key=(input.value||"").toUpperCase();acMod
 function picKey(e,input){if(e.key==="ArrowDown"){e.preventDefault();if(acMode!=="pic"||acItems.length==0)showPicAC(input);acMove(1,function(d){return d.DEP_NAME;},pickPic);return false;}if(e.key==="ArrowUp"){e.preventDefault();if(acMode!=="pic"||acItems.length==0)showPicAC(input);acMove(-1,function(d){return d.DEP_NAME;},pickPic);return false;}if(e.key==="Enter"){if(acMode==="pic"&&acItems.length>0){e.preventDefault();acEnter(pickPic);return false;}e.preventDefault();return false;}if(e.key==="Escape")hideAC();}
 function pickPic(d){setValue("rcv_pic",d.DEP_NAME);hideAC();}
 
+function showRcvAC(input){
+    initAC();
+    var key = (input.value || "").toUpperCase();
+    acMode = "rcv"; acItems = []; acIndex = -1;
+    if(key.length < 1){ hideAC(); return; }
+    for(var i=0; i<rcvData.length; i++){
+        var r = rcvData[i];
+        if((r.RCV_NO || "").toUpperCase().indexOf(key) >= 0) acItems.push(r);
+        if(acItems.length >= 40) break;
+    }
+    positionAC(input);
+    renderAC(function(r){ return "<b>" + r.RCV_NO + "</b>"; }, pickRcv);
+}
+function rcvKey(e, input){
+    if(e.key === "ArrowDown"){ e.preventDefault(); if(acMode !== "rcv" || acItems.length == 0) showRcvAC(input); acMove(1, function(r){ return "<b>" + r.RCV_NO + "</b>"; }, pickRcv); return false; }
+    if(e.key === "ArrowUp"){ e.preventDefault(); if(acMode !== "rcv" || acItems.length == 0) showRcvAC(input); acMove(-1, function(r){ return "<b>" + r.RCV_NO + "</b>"; }, pickRcv); return false; }
+    if(e.key === "Enter"){ if(acMode === "rcv" && acItems.length > 0){ e.preventDefault(); acEnter(pickRcv); return false; } e.preventDefault(); return false; }
+    if(e.key === "Escape") hideAC();
+}
+function pickRcv(r){
+    setValue("target_rcv_id", r.RCV_ID);
+    setValue("target_rcv_no", r.RCV_NO);
+    hideAC();
+}
+
 function showPOItemAC(input, row) {
     initAC();
     var supId = byId("sup_id").value;
@@ -558,7 +722,7 @@ function showPOItemAC(input, row) {
 function poItemKey(e,input,row){if(e.key==="ArrowDown"){e.preventDefault();if(acMode!=="poitem"||acItems.length==0)showPOItemAC(input,row);acMove(1,function(o){return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY;},pickPOItem);return false;}if(e.key==="ArrowUp"){e.preventDefault();if(acMode!=="poitem"||acItems.length==0)showPOItemAC(input,row);acMove(-1,function(o){return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY;},pickPOItem);return false;}if(e.key==="Enter"){if(acMode==="poitem"&&acItems.length>0){e.preventDefault();acEnter(pickPOItem);return false;}e.preventDefault();return false;}if(e.key==="Escape")hideAC();}
 function pickPOItem(o){var row=acRow;setValue("item_id_"+row,o.ITEM_ID);setValue("po_id_"+row,o.PO_ID);setValue("item_code_"+row,o.ITEM_CODE);setValue("item_name_"+row,o.ITEM_NAME);setValue("po_num_"+row,o.PO_NUM);setValue("rcvd_qty_"+row,o.OS_QTY);setValue("pod_price_"+row,o.POD_PRICE);hideAC();var q=byId("rcvd_qty_"+row);if(q){q.focus();q.select();}}
 
-function addRow(){var tbody=byId("detailBody");var row=rowSeq;rowSeq++;var tr=document.createElement("tr");tr.onclick=function(){selectDetailRow(this);};tr.innerHTML='<td class="center row-no"></td><td><input type="hidden" name="item_id[]" id="item_id_'+row+'"><input type="hidden" name="po_id[]" id="po_id_'+row+'"><input type="text" name="item_code[]" id="item_code_'+row+'" autocomplete="off" oninput="showPOItemAC(this, '+row+')" onkeydown="poItemKey(event, this, '+row+')"></td><td><input type="text" name="item_name[]" id="item_name_'+row+'" readonly style="background:#f9f9f9"></td><td><input type="text" name="rcvd_qty[]" id="rcvd_qty_'+row+'" class="num" onkeydown="fieldEnterSave(event, '+row+')"></td><td><input type="text" name="pod_price[]" id="pod_price_'+row+'" class="num" readonly style="background:#f9f9f9"></td><td><input type="text" name="po_num[]" id="po_num_'+row+'" readonly style="background:#f9f9f9"></td><td><div class="action-cell"><button type="button" class="btn btn-x" onclick="deleteRow(this); event.stopPropagation();">X</button></div></td>';tbody.appendChild(tr);renumberRows();selectDetailRow(tr);byId("item_code_"+row).focus();}
+function addRow(){var tbody=byId("detailBody");var row=rowSeq;rowSeq++;var tr=document.createElement("tr");tr.onclick=function(){selectDetailRow(this);};tr.innerHTML='<td class="center row-no"></td><td><input type="hidden" name="item_id[]" id="item_id_'+row+'"><input type="hidden" name="po_id[]" id="po_id_'+row+'"><input type="text" name="item_code[]" id="item_code_'+row+'" autocomplete="off" oninput="showPOItemAC(this, '+row+')" onkeydown="poItemKey(event, this, '+row+')"></td><td><input type="text" name="item_name[]" id="item_name_'+row+'" readonly style="background:#f9f9f9"></td><td><input type="text" name="rcvd_qty[]" id="rcvd_qty_'+row+'" class="num" onkeydown="fieldEnterSave(event, '+row+')"></td><td><input type="text" name="pod_price[]" id="pod_price_'+row+'" class="num" readonly style="background:#f9f9f9"></td><td><input type="text" name="po_num[]" id="po_num_'+row+'" readonly style="background:#f9f9f9"></td><td class="center"></td><td><div class="action-cell"><button type="button" class="btn btn-x" onclick="deleteRow(this); event.stopPropagation();">X</button></div></td>';tbody.appendChild(tr);renumberRows();selectDetailRow(tr);byId("item_code_"+row).focus();}
 function deleteRow(btn){var tr=btn.parentNode.parentNode.parentNode;if(!confirm("Hapus baris detail ini?"))return;tr.parentNode.removeChild(tr);renumberRows();var id=byId("rcv_id").value;if(id!=""&&id!="0")submitSave(true);}
 function renumberRows(){var rows=byId("detailBody").getElementsByTagName("tr");for(var i=0;i<rows.length;i++){var c=rows[i].getElementsByClassName("row-no")[0];if(c)c.innerHTML=i+1;else rows[i].cells[0].innerHTML=i+1;}}
 
@@ -589,6 +753,40 @@ function triggerUpdatePrice() {
         byId("upd_item_id").value = itemId;
         byId("upd_po_id").value = poId;
         byId("execForm").submit();
+    }
+}
+
+// FUNGSI PINDAH KE ICL EXISTING (Ketik No ICL Manual)
+function triggerMoveDetail() {
+    var srcId = byId("rcv_id").value;
+    if (!srcId || srcId == "0") { alert("Harap simpan/pilih Receive (ICL) saat ini terlebih dahulu."); return; }
+    var tgtId = byId("target_rcv_id").value;
+    if (!tgtId || tgtId == "0") { alert("Pilih ICL Tujuan yang valid."); return; }
+    
+    var checkboxes = document.querySelectorAll('input[name="move_check[]"]:checked');
+    if (checkboxes.length == 0) { alert("Centang minimal 1 detail yang akan dipindah (di kolom 'Pindah')."); return; }
+    
+    if (confirm("Yakin pindahkan " + checkboxes.length + " item yang dipilih ke ICL: " + byId("target_rcv_no").value + "?")) {
+        var form = byId("rcvForm");
+        var actInput = form.querySelector('input[name="action"]');
+        actInput.value = "move_detail";
+        form.submit();
+    }
+}
+
+// FUNGSI BARU: PINDAH KE ICL BARU (Otomatis Buat Nomor ICL)
+function triggerMoveToNew() {
+    var srcId = byId("rcv_id").value;
+    if (!srcId || srcId == "0") { alert("Harap simpan/pilih Receive (ICL) saat ini terlebih dahulu."); return; }
+    
+    var checkboxes = document.querySelectorAll('input[name="move_check[]"]:checked');
+    if (checkboxes.length == 0) { alert("Centang minimal 1 baris detail di kolom 'Pindah'."); return; }
+    
+    if (confirm("Sistem akan otomatis:\n1. Membuat dokumen ICL BARU\n2. Memindahkan " + checkboxes.length + " item yang dicentang ke dalamnya.\n\nLanjutkan?")) {
+        var form = byId("rcvForm");
+        var actInput = form.querySelector('input[name="action"]');
+        actInput.value = "move_to_new";
+        form.submit();
     }
 }
 
@@ -699,6 +897,9 @@ document.addEventListener("click",function(e){initAC();if(acBox&&!acBox.contains
     <button type="button" class="btn" onclick="setNextICL()">SET NEXT ICL</button>
 </div>
 
+<!-- ==============================================
+     BAGIAN TABEL DETAIL YANG ADA CHECKBOXNYA
+     ============================================== -->
 <table class="detail">
 <thead>
 <tr>
@@ -708,6 +909,8 @@ document.addEventListener("click",function(e){initAC();if(acBox&&!acBox.contains
 <th style="width:80px;">Recv Qty</th>
 <th style="width:80px;">Price</th>
 <th style="width:140px;">PO #</th>
+<!-- Header Pindah -->
+<th style="width:50px; color:#0056b3;" class="center" title="Pindah ke ICL Lain">Pindah</th>
 <th style="width:30px;" class="center">X</th>
 </tr>
 </thead>
@@ -729,11 +932,40 @@ $price=isset($d["POD_PRICE"])?floatval($d["POD_PRICE"]):0;
 <td><input type="text" name="rcvd_qty[]" id="rcvd_qty_<?php echo h($i); ?>" class="num" value="<?php echo h($qty==0?"":$qty); ?>" onkeydown="fieldEnterSave(event, <?php echo h($i); ?>)"></td>
 <td><input type="text" name="pod_price[]" id="pod_price_<?php echo h($i); ?>" class="num" value="<?php echo h($price==0?"":$price); ?>" readonly style="background:#f9f9f9"></td>
 <td><input type="text" name="po_num[]" id="po_num_<?php echo h($i); ?>" value="<?php echo h(isset($d["PO_NUM"])?$d["PO_NUM"]:""); ?>" readonly style="background:#f9f9f9"></td>
+
+<!-- ==============================================
+     KOTAK CENTANG (CHECKBOX) PINDAH
+     ============================================== -->
+<td class="center" style="background:#f0f8ff;">
+    <?php if (!empty($d["ITEM_ID"]) && !empty($d["PO_ID"])) { ?>
+        <input type="checkbox" name="move_check[]" value="<?php echo h($d["ITEM_ID"].'|'.$d["PO_ID"]); ?>" onclick="event.stopPropagation();">
+    <?php } ?>
+</td>
+
 <td><div class="action-cell"><button type="button" class="btn btn-x" onclick="deleteRow(this); event.stopPropagation();">X</button></div></td>
 </tr>
 <?php } ?>
 </tbody>
 </table>
+
+<!-- ==============================================
+     FORM MENU PINDAH DETAIL 
+     ============================================== -->
+<?php if ($editId > 0) { ?>
+<div style="margin-top: 15px; padding: 12px; border: 1px solid #17a2b8; background: #e0f7fa; border-radius: 4px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+    <strong style="color: #006064; font-size:12px;">🛠 Centang kolom "Pindah", lalu pilih:</strong>
+    
+    <!-- TOMBOL BARU: Bikin ICL Baru Otomatis -->
+    <button type="button" class="btn btn-blue" onclick="triggerMoveToNew()">PINDAH KE ICL BARU</button>
+    
+    <span style="color:#555; font-weight:bold;">&nbsp;ATAU&nbsp;</span>
+    
+    <!-- TOMBOL EXISTING: Pindah ke ICL Lain yang sudah ada -->
+    <input type="hidden" name="target_rcv_id" id="target_rcv_id" value="">
+    <input type="text" name="target_rcv_no" id="target_rcv_no" placeholder="Ketik No ICL Tujuan Existing..." autocomplete="off" oninput="showRcvAC(this)" onkeydown="rcvKey(event, this)" style="width: 220px !important;">
+    <button type="button" class="btn btn-os" onclick="triggerMoveDetail()">PINDAH KE ICL INI</button>
+</div>
+<?php } ?>
 
 <div class="bottom-buttons">
     <div>

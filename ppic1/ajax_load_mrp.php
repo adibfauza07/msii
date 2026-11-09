@@ -232,21 +232,23 @@ $paramsActGlobal = array($tahun, $bulan);
 if ($itemCode !== '') { $paramsActGlobal[] = $itemCode; }
 
 $sqlInAct = "
-    SELECT I.ITEM_CODE, DAY(R.RCV_DATE) AS ACT_DAY, SUM(RD.RCVD_QTY) AS TOTAL_QTY
-    FROM RECEIVE R
-    INNER JOIN RECEIVE_DETAIL RD ON R.RCV_ID = RD.RCV_ID
-    INNER JOIN ITEMS I ON RD.ITEM_ID = I.ITEM_ID
-    WHERE YEAR(R.RCV_DATE) = ? AND MONTH(R.RCV_DATE) = ?
+    SELECT I.ITEM_CODE, DAY(T.TRAN_DATE) AS ACT_DAY, SUM(IT.IT_QTY) AS TOTAL_QTY
+    FROM TRANS T
+    INNER JOIN INV_TRAN IT ON T.TRAN_ID = IT.TRAN_ID
+    INNER JOIN ITEMS I ON IT.ITEM_ID = I.ITEM_ID
+    WHERE YEAR(T.TRAN_DATE) = ? AND MONTH(T.TRAN_DATE) = ? AND T.TRTY_CODE = '01'
 ";
 if ($itemCode !== '') { $sqlInAct .= " AND I.ITEM_CODE = ?"; }
-$sqlInAct .= " GROUP BY I.ITEM_CODE, DAY(R.RCV_DATE)";
+$sqlInAct .= " GROUP BY I.ITEM_CODE, DAY(T.TRAN_DATE)";
 
 $stmtIn = sqlsrv_query($conn, $sqlInAct, $paramsActGlobal);
 if ($stmtIn !== false) {
     while ($rowIn = sqlsrv_fetch_array($stmtIn, SQLSRV_FETCH_ASSOC)) {
         $code = trim($rowIn['ITEM_CODE']);
         $day = (int)$rowIn['ACT_DAY'];
-        if (isset($results[$code])) { $results[$code]['rows']['In Act']['D'.$day] = (float)$rowIn['TOTAL_QTY']; }
+        if (isset($results[$code])) { 
+            $results[$code]['rows']['In Act']['D'.$day] = (float)$rowIn['TOTAL_QTY']; 
+        }
     }
     sqlsrv_free_stmt($stmtIn);
 }
