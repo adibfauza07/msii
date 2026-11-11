@@ -1197,12 +1197,18 @@ if (count($details) == 0) {
             if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
             window.open("print_icl_oto.php?id=" + encodeURIComponent(rcvId), "CETAK_OTO", "width=900,height=700,scrollbars=yes");
         }
-        function cetakSchedule() {
+       
+	   function cetakSchedule() {
             var rcvNo = document.querySelector('.rcv-no').value;
             if (!rcvNo) { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
-            var shortNo = rcvNo.substring(0, 6);
-            window.open("print_schedule.php?no=" + encodeURIComponent(shortNo), "CETAK_SCH", "width=900,height=700,scrollbars=yes");
+            
+            // HAPUS ATAU KOMENTARI BARIS INI
+            // var shortNo = rcvNo.substring(0, 6); 
+            
+            // GANTI DENGAN rcvNo LANGSUNG
+            window.open("print_schedule.php?no=" + encodeURIComponent(rcvNo), "CETAK_SCH", "width=900,height=700,scrollbars=yes");
         }
+	   
         function setNextICL() {
             var nextNum = prompt("Masukkan nilai antrian untuk ICL selanjutnya:", "");
             if (nextNum !== null && nextNum.trim() !== "") {

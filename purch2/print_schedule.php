@@ -3,7 +3,7 @@ if (session_id() == "") {
     session_start();
 }
 
-// Sesuaikan dengan koneksi database plant yang Anda gunakan
+// Menggunakan koneksi database Plant 1
 require_once dirname(__DIR__) . "/config/db_plant2.php";
 
 if ($conn === false) {
@@ -208,13 +208,14 @@ $deptName = $header["RCV_PIC"] != "" ? $header["RCV_PIC"] : "PPIC";
     <!-- Tombol Print (Akan hilang saat kertas dicetak) -->
     <button class="btn-print no-print" onclick="window.print()">🖨️ Cetak Halaman</button>
 
-    <!-- KOP SURAT -->
-    <div class="company-name">PT.IMC TEKNO INDONESIA PLANT 1</div>
+    <!-- KOP SURAT UNTUK PLANT 1 -->
+    <div class="company-name">PT.IMC TEKNO INDONESIA PLANT 2</div>
     <div class="report-title">SCHEDULE MATERIAL</div>
     <div class="company-address">
-                    Kawasan Berikat Kota Bukit Indah<br>
-                    ST-4D Block A-II No.29, Purwakarta,<br>
-                    Jawa Barat 41181, Indonesia.<br>
+        Kawasan Industri Kota Bukit Indah<br>
+        Blok A-III No.15E Dangdeur Bungursari<br>
+        Kab. Purwakarta, Jawa Barat 41181<br>
+        Phone : (0264)351440
     </div>
 
     <!-- INFO DOKUMEN -->
