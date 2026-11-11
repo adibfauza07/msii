@@ -1,456 +1,530 @@
 <?php
-// ============================================================
-// PURCHASE REPORT
-// PHP 5.4 + SQL Server sqlsrv + Bootstrap 3 + jQuery UI
-// ============================================================
-set_time_limit(180);
+// Cek apakah tombol Export Excel ditekan
+$isExportExcel = (isset($_GET['export']) && $_GET['export'] == 'excel');
 
-if (session_id() === '') {
-    session_start();
+// Menangkap parameter bulan dari filter (Default: bulan saat ini)
+$reqMonth = isset($_GET['month']) ? $_GET['month'] : date('Y-m'); 
+
+// Set tanggal selalu ke tanggal 1 di bulan yang dipilih
+$rawDate = $reqMonth . '-01'; 
+$reqDate = str_replace('-', '', $rawDate); // Format YYYYMMDD untuk SP
+
+if ($isExportExcel) {
+    $filename = "Purchase_Report_" . date('Ymd') . ".xls";
+    header("Content-type: application/vnd-ms-excel");
+    header("Content-Disposition: attachment; filename=\"$filename\"");
+    header("Pragma: no-cache");
+    header("Expires: 0");
 }
 
-require_once __DIR__ . "/../config/global.php";
+// Memuat konfigurasi global
+require_once dirname(__DIR__) . "/config/global.php";
 
-function h($value) {
-    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+/**
+ * ASUMSI: $conn adalah resource dari sqlsrv_connect() yang ada di global.php
+ */
+
+// Menangkap parameter supplier dari filter
+$reqSupplier = isset($_GET['supplier']) ? trim($_GET['supplier']) : '';
+
+// Eksekusi Stored Procedure menggunakan sqlsrv_query (Tanggal selalu tgl 1 sesuai input Cut-Off)
+$sql = "EXEC [dbo].[RPT_PURCHASE_CR8] @DATE = ?";
+$params = array(
+    array($reqDate, SQLSRV_PARAM_IN)
+);
+
+// Jalankan query
+$stmt = sqlsrv_query($conn, $sql, $params);
+
+// Cek jika terjadi error pada query
+if ($stmt === false) {
+    die("<pre>Error Query:\n" . print_r(sqlsrv_errors(), true) . "</pre>");
 }
 
-function sql_error_text() {
-    $errors = sqlsrv_errors(SQLSRV_ERR_ERRORS);
-    if (!is_array($errors) || count($errors) === 0) return 'Kesalahan SQL Server tidak diketahui.';
-    $messages = array();
-    foreach ($errors as $error) {
-        $messages[] = trim('[' . (isset($error['SQLSTATE']) ? $error['SQLSTATE'] : '') . '] ' . (isset($error['message']) ? $error['message'] : ''));
+// ====================================================================================
+// GROUPING DATA
+// ====================================================================================
+$reportData = array();
+
+while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+    // 1. Filter berdasarkan Supplier (jika dipilih di dropdown)
+    if (!empty($reqSupplier) && trim($row['SUP_CODE']) !== $reqSupplier) {
+        continue;
     }
-    return implode(' | ', $messages);
-}
 
-function display_date($value) {
-    if ($value === null || $value === '') return '';
-    if ($value instanceof DateTime) return $value->format('d-M-Y');
-    $timestamp = strtotime((string)$value);
-    return $timestamp !== false ? date('d-M-Y', $timestamp) : (string)$value;
-}
+    // Format kunci grouping
+    $catKey  = trim($row['ITTY_CODE']) . " " . trim($row['ITTY_DESC']);
+    $supKey  = $row['SUP_CODE'] . " ~ " . $row['SUP_COMP'];
+    $itemKey = $row['ITEM_CODE'] . " " . $row['ITEM_NAME'];
+    $poNum   = $row['PO_NUM'];
 
-function display_number($value, $decimals) {
-    if ($value === null || $value === '') return '';
-    return number_format((float)$value, (int)$decimals, '.', ',');
-}
-
-function valid_date_ymd($value) {
-    if (!is_string($value) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) return false;
-    $parts = explode('-', $value);
-    return checkdate((int)$parts[1], (int)$parts[2], (int)$parts[0]);
-}
-
-if (!isset($conn) || $conn === false) {
-    die('<div class="alert alert-danger">Koneksi database belum tersedia.</div>');
-}
-
-$defaultStartDate = date('Y-m-01');
-$defaultEndDate = date('Y-m-d');
-
-$startDate = isset($_GET['start_date']) ? trim($_GET['start_date']) : $defaultStartDate;
-$endDate = isset($_GET['end_date']) ? trim($_GET['end_date']) : $defaultEndDate;
-$itemCode = isset($_GET['item_code']) ? trim($_GET['item_code']) : '';
-$supCode = isset($_GET['sup_code']) ? trim($_GET['sup_code']) : '';
-$receiveNo = isset($_GET['receive_no']) ? trim($_GET['receive_no']) : '';
-
-$submitted = isset($_GET['show_report']);
-$errorMessage = '';
-$reportRows = array();
-$suppliers = array();
-
-/* =========================================================
-   Ambil data supplier untuk Autocomplete
-========================================================= */
-$supplierStmt = @sqlsrv_query($conn, "SELECT SUP_CODE, SUP_COMP FROM dbo.SUPPLIER WHERE SUP_CODE IS NOT NULL ORDER BY SUP_CODE");
-if ($supplierStmt !== false) {
-    while ($supplierRow = sqlsrv_fetch_array($supplierStmt, SQLSRV_FETCH_ASSOC)) {
-        $suppliers[] = $supplierRow;
+    // Inisialisasi array jika belum ada
+    if (!isset($reportData[$catKey])) {
+        $reportData[$catKey] = array();
     }
-    sqlsrv_free_stmt($supplierStmt);
+    if (!isset($reportData[$catKey][$supKey])) {
+        $reportData[$catKey][$supKey] = array();
+    }
+    if (!isset($reportData[$catKey][$supKey][$itemKey])) {
+        $reportData[$catKey][$supKey][$itemKey] = array();
+    }
+    if (!isset($reportData[$catKey][$supKey][$itemKey][$poNum])) {
+        $reportData[$catKey][$supKey][$itemKey][$poNum] = array(
+            'PO_DATE'   => $row['PO_DATE'],
+            'POD_PRICE' => $row['POD_PRICE'],
+            'PO_QTY'    => $row['PO_QTY'],
+            'OS_QTY'    => $row['OS_QTY'], // Outstanding QTY dari SP
+            'RECEIPTS'  => array()
+        );
+    }
+
+    // 2. Masukkan data ICL (Receive) hanya jika memang ada
+    if (!empty($row['RCV_NO'])) {
+        $reportData[$catKey][$supKey][$itemKey][$poNum]['RECEIPTS'][] = array(
+            'RCV_NO'   => $row['RCV_NO'],
+            'RCV_DATE' => $row['RCV_DATE'],
+            'RCV_QTY'  => $row['RCV_QTY']
+        );
+    }
 }
 
-/* =========================================================
-   Jalankan Report & Filtering
-========================================================= */
-if ($submitted && $errorMessage === '') {
-    if (!valid_date_ymd($startDate) || !valid_date_ymd($endDate)) {
-        $errorMessage = 'Tanggal awal atau tanggal akhir tidak valid.';
-    } elseif (strtotime($startDate) > strtotime($endDate)) {
-        $errorMessage = 'Tanggal awal tidak boleh lebih besar dari tanggal akhir.';
-    } else {
-        
-        $startDateYmd = date('Y-m-d', strtotime($startDate));
-        $endDateYmd   = date('Y-m-d', strtotime($endDate));
+// Bebaskan resource memori SQL
+sqlsrv_free_stmt($stmt);
 
-        $itemParam = $itemCode !== '' ? $itemCode . '%' : '';
-        $supParam  = $supCode !== '' ? $supCode . '%' : '';
-        $rcvParam  = $receiveNo !== '' ? $receiveNo . '%' : '';
 
-        $reportSql = "EXEC dbo.RPT_PURCHASE_YEAR2 @CODE = ?, @SUP_CODE = ?, @RCV_NOMOR = ?";
-        $reportParams = array($itemParam, $supParam, $rcvParam);
-        $reportStmt = @sqlsrv_query($conn, $reportSql, $reportParams);
-
-        if ($reportStmt === false) {
-            $errorMessage = 'Report gagal dijalankan: ' . sql_error_text();
-        } else {
-            $hasColumns = sqlsrv_num_fields($reportStmt) !== false;
-            while (!$hasColumns && sqlsrv_next_result($reportStmt)) {
-                $hasColumns = sqlsrv_num_fields($reportStmt) !== false;
-            }
-
-            if ($hasColumns) {
-                while ($reportRow = sqlsrv_fetch_array($reportStmt, SQLSRV_FETCH_ASSOC)) {
-                    
-                    // =====================================================
-                    // FILTERING PRESISI DI PHP
-                    // =====================================================
-                    
-                    // 1. Filter Tanggal (PO Date)
-                    $poDate = isset($reportRow['PO_DATE']) ? $reportRow['PO_DATE'] : null;
-                    if ($poDate !== null) {
-                        $poDateYmd = ($poDate instanceof DateTime) ? $poDate->format('Y-m-d') : date('Y-m-d', strtotime((string)$poDate));
-                        if ($poDateYmd < $startDateYmd || $poDateYmd > $endDateYmd) {
-                            continue; 
-                        }
-                    }
-
-                    // 2. Filter Item Code / Name
-                    if ($itemCode !== '') {
-                        $rItemCode = isset($reportRow['ITEM_CODE']) ? trim((string)$reportRow['ITEM_CODE']) : '';
-                        $rItemName = isset($reportRow['ITEM_NAME']) ? trim((string)$reportRow['ITEM_NAME']) : '';
-                        if (stripos($rItemCode, $itemCode) === false && stripos($rItemName, $itemCode) === false) {
-                            continue;
-                        }
-                    }
-
-                    // 3. Filter Supplier
-                    if ($supCode !== '') {
-                        $rSupCode = isset($reportRow['SUP_CODE']) ? trim((string)$reportRow['SUP_CODE']) : '';
-                        if (stripos($rSupCode, $supCode) === false) {
-                            continue;
-                        }
-                    }
-
-                    // 4. Filter Receive No
-                    if ($receiveNo !== '') {
-                        $rRcvNo = isset($reportRow['RCV_NOMOR']) ? trim((string)$reportRow['RCV_NOMOR']) : '';
-                        if (stripos($rRcvNo, $receiveNo) === false) {
-                            continue;
-                        }
-                    }
-                    
-                    $reportRows[] = $reportRow;
-                }
-            }
-            sqlsrv_free_stmt($reportStmt);
+// ====================================================================================
+// SORTING DATA (A-Z DAN URUTAN TANGGAL PO TERLAMA KE TERBARU)
+// ====================================================================================
+ksort($reportData); // Sort Kategori A-Z
+foreach ($reportData as $catKey => &$suppliers) {
+    ksort($suppliers); // Sort Supplier A-Z
+    foreach ($suppliers as $supKey => &$items) {
+        ksort($items); // Sort Item A-Z
+        foreach ($items as $itemKey => &$pos) {
+            // Sort PO berdasarkan Tanggal (Ascending / Lama ke Baru)
+            uasort($pos, function($a, $b) {
+                $d1 = is_object($a['PO_DATE']) ? $a['PO_DATE']->format('Y-m-d') : date('Y-m-d', strtotime($a['PO_DATE']));
+                $d2 = is_object($b['PO_DATE']) ? $b['PO_DATE']->format('Y-m-d') : date('Y-m-d', strtotime($b['PO_DATE']));
+                
+                if ($d1 == $d2) return 0;
+                return ($d1 < $d2) ? -1 : 1;
+            });
         }
     }
 }
+unset($suppliers, $items, $pos); // Clean up references
+// ====================================================================================
 
-// Data Perusahaan
-$companyName = "PT. IMC TEKNO INDONESIA PLANT 1";
-$companyAddress = "Kawasan Berikat, NSS Indonesia<br>Kota Bukit Indah Dangdeur Bungursari<br>Kab. Purwakarta, Jawa Barat 41181<br>Phone : (0264)351440";
-if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
-    $companyName = "PT. IMC TEKNO INDONESIA PLANT 2";
-    $companyAddress = "Kawasan Industri Kota Bukit Indah<br>Blok A-III No. 15E Dangdeur Bungursari<br>Kab. Purwakarta, Jawa Barat 41181<br>Phone : (0264)351440";
-}
-
-$linesPerPage = 12; 
-$chunks = array_chunk($reportRows, $linesPerPage);
-if (empty($chunks)) $chunks = [[]];
-$totalPages = count($chunks);
 ?>
+
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <title>Purchase Report</title>
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
-    <style type="text/css">
-        /* ==== CSS GLOBAL & NO-PRINT (Form Pencarian) ==== */
-        body { background: #eef3f8; font-family: Arial, sans-serif; }
-        .no-print { padding: 20px; }
-        .ui-autocomplete { z-index: 99999; max-height: 260px; overflow-y: auto; font-size: 12px; }
+    
+    <?php if (!$isExportExcel): ?>
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+    <?php endif; ?>
 
-        /* ==== CSS KHUSUS PRINT & PAGE CONTAINER ==== */
-        .page-container {
-            background: #fff; width: 210mm; min-height: 140mm; 
-            margin: 0 auto 20px auto; padding: 15px 20px; box-sizing: border-box;
-            position: relative; overflow: hidden; border: 1px solid #ccc; box-shadow: 0 0 5px rgba(0,0,0,0.1);
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 10mm;
         }
-        .header-container { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5px; }
-        .company-name { font-size: 14px; font-weight: bold; text-decoration: underline; margin-bottom: 2px; line-height: 1.1; color:#000;}
-        .doc-title { font-size: 14px; font-weight: bold; margin-bottom: 2px; line-height: 1.1; color:#000;}
-        .company-addr { font-size: 10px; line-height: 1; color: #000;}
-        .page-info { font-size: 10px; font-weight: bold; text-align: right; margin-bottom: 2px; line-height: 1; color:#000;}
 
-        .meta-table { width: 100%; font-size: 11px; font-weight: bold; margin-bottom: 5px; border-collapse: collapse; color:#000;}
-        .meta-table td { padding: 0; line-height: 1.1; vertical-align: top;}
+        /* MENGUNCI LAYAR AGAR TIDAK BISA SCROLL DI LUAR */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden; 
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 13px; 
+            color: #000;
+        }
 
-        /* Data Tabel 15 Kolom */
-        .data-table { width: 100%; border-collapse: collapse; font-size: 8px; margin-bottom: 5px; color:#000; }
-        .data-table th, .data-table td { border: 1px solid #000; padding: 2px 3px; }
-        .data-table th { font-weight: bold; text-align: center; vertical-align: middle; background-color: #f8f9fa; }
-        .data-table td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .wrap-text { white-space: normal !important; }
+        .page-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .filter-section {
+            background-color: #f1f4f9;
+            padding: 8px 10px;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-shrink: 0; 
+        }
+        .filter-section label { font-weight: bold; font-size: 13px; }
+        .filter-section input[type="month"], .filter-section select { padding: 4px; border: 1px solid #ccc; }
         
-        .center { text-align: center; }
-        .right { text-align: right; }
-        .bold { font-weight: bold; }
+        .btn { padding: 4px 10px; font-size: 12px; color: #fff; border: none; cursor: pointer; border-radius: 2px; }
+        .btn-filter { background: #0056b3; }
+        .btn-print { background: #28a745; }
+        .btn-excel { background: #17a2b8; }
 
+        .layout-wrapper {
+            display: flex;
+            flex-grow: 1;
+            overflow: hidden; 
+        }
+        
+        /* AREA SCROLL KHUSUS SIDEBAR KIRI */
+        .sidebar-nav {
+            width: 250px; 
+            flex-shrink: 0;
+            border-right: 2px solid #888;
+            background-color: #f5f5f5;
+            padding: 10px;
+            overflow-y: auto; 
+            box-sizing: border-box;
+            font-family: Tahoma, Arial, sans-serif;
+            font-size: 12px;
+        }
+        
+        /* AREA SCROLL KHUSUS REPORT (Kanan) */
+        .report-content {
+            flex-grow: 1;
+            padding: 15px 20px;
+            background-color: #fff;
+            overflow-y: auto; 
+            box-sizing: border-box;
+        }
+
+        .tree-list { list-style: none; padding: 0; margin: 0; }
+        .tree-sublist { list-style: none; padding-left: 15px; margin-top: 5px; }
+        .tree-node { margin-bottom: 4px; display: flex; align-items: center; }
+        .tree-node a { text-decoration: none; color: #000; }
+        .tree-node a:hover { text-decoration: underline; color: #0056b3; }
+        .btn-tree { 
+            border: 1px solid #999; 
+            padding: 0 3px; 
+            font-size: 10px; 
+            margin-right: 6px; 
+            font-family: monospace; 
+            background: #fff; 
+            display: inline-block; 
+            color: #000; 
+            text-decoration: none;
+            line-height: 12px;
+            cursor: pointer;
+            width: 8px;
+            text-align: center;
+        }
+
+        .header-table { width: 100%; margin-bottom: 10px; }
+        .header-title { font-size: 18px; font-weight: normal; text-align: center; }
+        
+        .report-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: auto; }
+        .report-table th, .report-table td { padding: 2px 4px; vertical-align: top; }
+        
+        /* KONFIGURASI STICKY HEADER TABEL */
+        .report-table thead th { 
+            font-weight: normal; 
+            border: none; 
+            position: sticky; 
+            top: 0; 
+            background-color: #ffffff; 
+            z-index: 10; 
+            box-shadow: inset 0 1px 0 #000, inset 0 -1px 0 #000; 
+        }
+        
+        /* SCROLL MARGIN AGAR ANCHOR LINK TIDAK TERTUTUP HEADER */
+        tr[id^="cat-"], tr[id^="sup-"] { scroll-margin-top: 35px; }
+
+        .row-category { font-style: italic; padding-top: 6px; }
+        .row-supplier { background-color: #e6e6e6; text-align: center; padding: 4px; }
+        .row-item { font-weight: bold; padding-top: 5px; }
+        
+        .row-total td { border-top: 1px solid #000; font-weight: bold; padding-top: 4px; }
+        .row-total-sub td { font-weight: bold; padding-bottom: 15px; }
+
+        .text-right { text-align: right; }
+        .text-left { text-align: left; }
+        .text-center { text-align: center; }
+        
+        .row-po { color: #000; }
+        .row-icl { color: #0000FF; } 
+
+        /* OVERRIDE SCROLL KHUSUS UNTUK PRINT / CETAK */
         @media print {
-            @page { size: 210mm 140mm; margin: 5mm 8mm; }
-            body { background: #fff; padding: 0; margin: 0; }
-            .no-print { display: none !important; }
-            .page-container { 
-                width: 100%; height: 130mm; min-height: 130mm; 
-                padding: 0; margin: 0; border: none; box-shadow: none; 
+            html, body { height: auto; overflow: visible; }
+            .page-container { display: block; height: auto; }
+            .layout-wrapper { display: block; overflow: visible; }
+            .report-content { overflow: visible; padding: 0; }
+            .report-table thead th { 
+                position: static; 
+                box-shadow: none; 
+                border-top: 1px solid #000; 
+                border-bottom: 1px solid #000; 
             }
-            .page-break { page-break-after: always; }
+            .no-print { display: none !important; }
+            .sidebar-nav { display: none !important; }
         }
     </style>
 </head>
 <body>
 
-<!-- ================= FORM PENCARIAN (NO-PRINT) ================= -->
-<div class="no-print">
-    <div class="panel panel-primary" style="margin: 0 auto; max-width: 1200px;">
-        <div class="panel-heading">
-            <h3 class="panel-title"><span class="glyphicon glyphicon-shopping-cart"></span> Purchase Report</h3>
-        </div>
-        <div class="panel-body">
-            <?php if ($errorMessage !== '') { echo '<div class="alert alert-danger">'.h($errorMessage).'</div>'; } ?>
-            <form method="get" action="" autocomplete="off">
-                <div class="row">
-                    <div class="col-sm-2">
-                        <div class="form-group">
-                            <label>Tanggal Awal (PO Date)</label>
-                            <input type="date" class="form-control" name="start_date" value="<?php echo h($startDate); ?>" required>
-                        </div>
-                    </div>
-                    <div class="col-sm-2">
-                        <div class="form-group">
-                            <label>Tanggal Akhir (PO Date)</label>
-                            <input type="date" class="form-control" name="end_date" value="<?php echo h($endDate); ?>" required>
-                        </div>
-                    </div>
-                    <div class="col-sm-2">
-                        <div class="form-group">
-                            <label>Item Code / Name</label>
-                            <input type="text" class="form-control" id="item_code" name="item_code" value="<?php echo h($itemCode); ?>" placeholder="Kosong = Semua">
-                        </div>
-                    </div>
-                    <div class="col-sm-3">
-                        <div class="form-group">
-                            <label>Supplier Code / Name</label>
-                            <input type="text" class="form-control" id="sup_code" name="sup_code" value="<?php echo h($supCode); ?>" placeholder="Kosong = Semua">
-                        </div>
-                    </div>
-                    <div class="col-sm-3">
-                        <div class="form-group">
-                            <label>Receive No.</label>
-                            <input type="text" class="form-control" id="receive_no" name="receive_no" value="<?php echo h($receiveNo); ?>" placeholder="Kosong = Semua">
-                        </div>
-                    </div>
-                </div>
-                <button type="submit" class="btn btn-primary" name="show_report" value="1"><span class="glyphicon glyphicon-search"></span> Tampilkan</button>
-                <a href="<?php echo h(basename($_SERVER['PHP_SELF'])); ?>" class="btn btn-default"><span class="glyphicon glyphicon-refresh"></span> Reset</a>
-                <?php if ($submitted && $errorMessage === '' && count($reportRows) > 0) { ?>
-                    <button type="button" class="btn btn-success" onclick="window.print();"><span class="glyphicon glyphicon-print"></span> Cetak Report</button>
-                <?php } ?>
-            </form>
-        </div>
-    </div>
-</div>
-
-<!-- ================= CETAKAN REPORT (PAGE CONTAINER) ================= -->
-<?php if ($submitted && $errorMessage === '' && count($reportRows) > 0) { 
-    $globalNo = 1;
-    $grandTotalPo = 0;
-    $grandTotalRcv = 0;
-
-    foreach ($chunks as $pageIndex => $chunk) {
-        $pageNumber = $pageIndex + 1;
-        $isLastPage = ($pageNumber == $totalPages);
-?>
-<div class="page-container <?php echo !$isLastPage ? 'page-break' : ''; ?>">
-    
-    <div class="header-container">
-        <div class="header-left">
-            <div class="company-name"><?php echo $companyName; ?></div>
-            <div class="doc-title">PURCHASE REPORT</div>
-            <div class="company-addr"><?php echo $companyAddress; ?></div>
-        </div>
-        <div class="header-right">
-            <div class="page-info">Page <?php echo $pageNumber; ?> of <?php echo $totalPages; ?></div>
-        </div>
-    </div>
-
-    <table class="meta-table">
-        <tr>
-            <td style="width: 8%;">Periode</td>
-            <td style="width: 2%;">:</td>
-            <td style="width: 45%; font-weight: normal;"><?php echo h(display_date($startDate)) . " s/d " . h(display_date($endDate)); ?></td>
-            <td style="width: 12%;">Item Code</td>
-            <td style="width: 2%;">:</td>
-            <td style="width: 31%; font-weight: normal;"><?php echo $itemCode === '' ? 'ALL' : h($itemCode); ?></td>
-        </tr>
-        <tr>
-            <td>Supplier</td>
-            <td>:</td>
-            <td style="font-weight: normal;"><?php echo $supCode === '' ? 'ALL' : h($supCode); ?></td>
-            <td>Receive No</td>
-            <td>:</td>
-            <td style="font-weight: normal;"><?php echo $receiveNo === '' ? 'ALL' : h($receiveNo); ?></td>
-        </tr>
-    </table>
-
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th style="width: 2%;">No</th>
-                <th style="width: 6%;">PO Date</th>
-                <th style="width: 8%;">PO No.</th>
-                <th style="width: 8%;">Item Code</th>
-                <th style="width: 16%;">Item Name</th>
-                <th style="width: 14%;">Supplier</th>
-                <th style="width: 6%;">Qty PO</th>
-                <th style="width: 6%;">Qty Rcv</th>
-                <th style="width: 4%;">Unit</th>
-                <th style="width: 6%;">PO Price</th>
-                <th style="width: 6%;">Rcv Price</th>
-                <th style="width: 3%;">Cur</th>
-                <th style="width: 6%;">Due Date</th>
-                <th style="width: 9%;">Receive No.</th>
-            </tr>
-        </thead>
-        <tbody>
-            <?php 
-            $pageTotalPo = 0;
-            $pageTotalRcv = 0;
+<div class="page-container">
+    <?php if (!$isExportExcel): ?>
+    <div class="filter-section no-print">
+        <form method="GET" action="" style="display: flex; align-items: center; gap: 10px; margin: 0;">
             
-            foreach ($chunk as $row) {
-                $qtyPo = isset($row['QTY']) ? (float)$row['QTY'] : 0;
-                $qtyRcv = isset($row['RCVD_QTY']) ? (float)$row['RCVD_QTY'] : 0;
-                $pageTotalPo += $qtyPo;
-                $pageTotalRcv += $qtyRcv;
-                $grandTotalPo += $qtyPo;
-                $grandTotalRcv += $qtyRcv;
-                
-                $supName = isset($row['SUP_COMP']) ? trim((string)$row['SUP_COMP']) : '';
-            ?>
-                <tr>
-                    <td class="center"><?php echo $globalNo++; ?></td>
-                    <td class="center"><?php echo h(display_date(isset($row['PO_DATE']) ? $row['PO_DATE'] : '')); ?></td>
-                    <td><?php echo h(isset($row['PO_NUM']) ? $row['PO_NUM'] : ''); ?></td>
-                    <td><?php echo h(isset($row['ITEM_CODE']) ? $row['ITEM_CODE'] : ''); ?></td>
-                    <td class="wrap-text" style="max-width: 100px;"><?php echo h(isset($row['ITEM_NAME']) ? $row['ITEM_NAME'] : ''); ?></td>
-                    <td class="wrap-text" style="max-width: 90px;"><?php echo h($supName); ?></td>
-                    <td class="right"><?php echo h(display_number($qtyPo, 2)); ?></td>
-                    <td class="right"><?php echo h(display_number($qtyRcv, 2)); ?></td>
-                    <td class="center"><?php echo h(isset($row['POD_UNIT']) ? $row['POD_UNIT'] : ''); ?></td>
-                    <td class="right"><?php echo h(display_number(isset($row['POD_PRICE']) ? $row['POD_PRICE'] : '', 2)); ?></td>
-                    <td class="right"><?php echo h(display_number(isset($row['RCV_PRICE']) ? $row['RCV_PRICE'] : '', 2)); ?></td>
-                    <td class="center"><?php echo h(isset($row['PO_CUR']) ? $row['PO_CUR'] : ''); ?></td>
-                    <td class="center"><?php echo h(display_date(isset($row['POD_DUE']) ? $row['POD_DUE'] : '')); ?></td>
-                    <td><?php echo h(isset($row['RCV_NOMOR']) ? $row['RCV_NOMOR'] : ''); ?></td>
-                </tr>
-            <?php } ?>
-        </tbody>
-        <tfoot>
-            <?php if ($isLastPage) { ?>
-                <tr>
-                    <th colspan="6" class="right bold">GRAND TOTAL :</th>
-                    <th class="right bold"><?php echo h(display_number($grandTotalPo, 2)); ?></th>
-                    <th class="right bold"><?php echo h(display_number($grandTotalRcv, 2)); ?></th>
-                    <th colspan="6"></th>
-                </tr>
-            <?php } ?>
-        </tfoot>
-    </table>
+            <label for="month">Bulan (SP Cut-off):</label>
+            <input type="month" name="month" id="month" value="<?php echo htmlspecialchars($reqMonth); ?>">
 
-</div>
-<?php } 
-} elseif ($submitted && $errorMessage === '') { ?>
-    <div class="no-print">
-        <div style="max-width:1200px; margin:0 auto;" class="alert alert-warning text-center">
-            <strong>Data kosong!</strong> Tidak ada transaksi yang sesuai dengan filter pencarian Anda.
-        </div>
+            <label for="supplier">Supplier:</label>
+            <select name="supplier" id="supplier" style="width: 250px;">
+                <?php if (!empty($reqSupplier)): ?>
+                    <option value="<?php echo htmlspecialchars($reqSupplier); ?>" selected="selected"><?php echo htmlspecialchars($reqSupplier); ?></option>
+                <?php endif; ?>
+            </select>
+
+            <button type="submit" class="btn btn-filter">Filter</button>
+            <button type="button" class="btn btn-print" onclick="window.print()">Cetak (Print)</button>
+            <button type="submit" name="export" value="excel" class="btn btn-excel">Export Excel</button>
+        </form>
     </div>
-<?php } ?>
+    <?php endif; ?>
 
-<script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
-<script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
-<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+    <div class="layout-wrapper">
+        
+        <?php if (!$isExportExcel): ?>
+        <!-- SIDEBAR GROUP TREE (Hierarki Kategori & Supplier) -->
+        <div class="sidebar-nav no-print">
+            <ul class="tree-list">
+                <li>
+                    <div class="tree-node">
+                        <span class="btn-tree toggle-btn">-</span> <strong>PURCHASE</strong>
+                    </div>
+                    <ul class="tree-sublist">
+                        <?php 
+                        if (!empty($reportData)) {
+                            foreach ($reportData as $catKey => $suppliers) { 
+                                $catId = md5($catKey); 
+                        ?>
+                            <li>
+                                <div class="tree-node">
+                                    <span class="btn-tree toggle-btn">-</span> 
+                                    <a href="#cat-<?php echo $catId; ?>"><?php echo htmlspecialchars($catKey); ?></a>
+                                </div>
+                                <ul class="tree-sublist">
+                                    <?php 
+                                    foreach ($suppliers as $supKey => $items) { 
+                                        $supId = md5($supKey); 
+                                    ?>
+                                        <li>
+                                            <div class="tree-node" style="padding-left: 10px;">
+                                                <span class="btn-tree toggle-btn" style="visibility:hidden;">+</span>
+                                                <a href="#sup-<?php echo $supId; ?>" style="color:#555;"><?php echo htmlspecialchars($supKey); ?></a>
+                                            </div>
+                                        </li>
+                                    <?php } ?>
+                                </ul>
+                            </li>
+                        <?php 
+                            }
+                        } 
+                        ?>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+        <?php endif; ?>
 
-<script type="text/javascript">
-$(function () {
-    
-    // Autocomplete Item Code (Ajax)
-    $("#item_code").autocomplete({
-        minLength: 1, delay: 250,
-        source: function (request, response) {
-            $("#item_code").addClass("autocomplete-loading");
-            $.ajax({
-                url: "search_item.php", type: "POST", dataType: "json", data: { q: request.term },
-                success: function (data) {
-                    response($.map(data, function (item) {
-                        return { label: (item.ITEM_CODE||"") + (item.ITEM_NAME ? " - "+item.ITEM_NAME : ""), value: item.ITEM_CODE||"" };
-                    }));
-                },
-                complete: function () { $("#item_code").removeClass("autocomplete-loading"); }
-            });
+        <!-- REPORT UTAMA -->
+        <div class="report-content">
+            <table class="header-table">
+                <tr>
+                    <td width="33%" class="text-left" style="vertical-align: top;">
+                        <strong>P.T. IMCTEKNO INDONESIA</strong><br>
+                        PPIC
+                    </td>
+                    <td width="34%" class="header-title" style="vertical-align: top; padding-top: 5px;">
+                        PURCHASE
+                    </td>
+                    <td width="33%" class="text-right" style="vertical-align: top;">
+                        Page 1 of 1<br><br>
+                        Print Date: <?php echo date('d-M-Y H:i:s'); ?>
+                    </td>
+                </tr>
+            </table>
+
+            <table class="report-table">
+                <thead>
+                    <tr>
+                        <th class="text-left" style="width: 20%;">PO #<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;ICL #</th>
+                        <th class="text-center" style="width: 12%;">PO DATE<br>ICL DATE</th>
+                        <th class="text-right" style="width: 12%;">PO PRICE</th>
+                        <th class="text-right" style="width: 14%;">PO Qty<br>ICL Qty</th>
+                        <th class="text-right" style="width: 14%;">PO.Bal</th>
+                        <th class="text-right" style="width: 14%;">PO Amount<br>ICL Amount</th>
+                        <th class="text-right" style="width: 14%;">PO.Bal. Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php 
+                    if (empty($reportData)) {
+                        echo '<tr><td colspan="7" class="text-center" style="padding: 20px;">Data tidak ditemukan.</td></tr>';
+                    }
+                    
+                    foreach ($reportData as $catKey => $suppliers): 
+                        $catId = md5($catKey); 
+                    ?>
+                        <tr id="cat-<?php echo $catId; ?>">
+                            <td colspan="7" class="row-category">[ <?php echo htmlspecialchars($catKey); ?> ]</td>
+                        </tr>
+
+                        <?php 
+                        foreach ($suppliers as $supKey => $items): 
+                            $supId = md5($supKey);
+                            
+                            // Variabel Akumulasi Total per Supplier
+                            $sumPoAmount = 0;
+                            $sumIclAmount = 0;
+                            $sumPoBalAmount = 0;
+                        ?>
+                            <!-- Tambah Anchor ID di row supplier -->
+                            <tr id="sup-<?php echo $supId; ?>">
+                                <td colspan="7" class="row-supplier"><?php echo htmlspecialchars($supKey); ?></td>
+                            </tr>
+
+                            <?php foreach ($items as $itemKey => $pos): ?>
+                                <tr>
+                                    <td colspan="7" class="row-item"><?php echo htmlspecialchars($itemKey); ?></td>
+                                </tr>
+
+                                <?php foreach ($pos as $poNum => $poData): 
+                                    $poQty = (float)$poData['PO_QTY'];
+                                    $poPrice = (float)$poData['POD_PRICE'];
+                                    $poAmount = $poQty * $poPrice;
+                                    
+                                    // Tambah ke akumulasi Total PO Supplier
+                                    $sumPoAmount += $poAmount;
+
+                                    $poDateRaw = $poData['PO_DATE'];
+                                    if (is_object($poDateRaw)) {
+                                        $poDate = $poDateRaw->format('d-M-Y');
+                                    } else {
+                                        $poDate = $poDateRaw ? date('d-M-Y', strtotime($poDateRaw)) : '';
+                                    }
+                                    
+                                    $runningBalQty = $poQty;
+                                    $runningBalAmount = $poAmount;
+                                ?>
+                                    <tr class="row-po">
+                                        <td class="text-left">&nbsp;&nbsp;&nbsp;&nbsp;<?php echo htmlspecialchars($poNum); ?></td>
+                                        <td class="text-center"><?php echo $poDate; ?></td>
+                                        <td class="text-right"><?php echo number_format($poPrice, 2); ?></td>
+                                        <td class="text-right"><?php echo number_format($poQty, 2); ?></td>
+                                        <td class="text-right"><?php echo number_format($runningBalQty, 2); ?></td>
+                                        <td class="text-right"><?php echo number_format($poAmount, 2); ?></td>
+                                        <td class="text-right"><?php echo number_format($runningBalAmount, 2); ?></td>
+                                    </tr>
+
+                                    <?php foreach ($poData['RECEIPTS'] as $rcv): 
+                                        $rcvQty = (float)$rcv['RCV_QTY'];
+                                        $rcvAmount = $rcvQty * $poPrice;
+                                        
+                                        // Tambah ke akumulasi Total ICL Supplier
+                                        $sumIclAmount += $rcvAmount;
+
+                                        $runningBalQty -= $rcvQty;
+                                        $runningBalAmount -= $rcvAmount;
+
+                                        $rcvDateRaw = $rcv['RCV_DATE'];
+                                        if (is_object($rcvDateRaw)) {
+                                            $rcvDate = $rcvDateRaw->format('d-M-Y');
+                                        } else {
+                                            $rcvDate = $rcvDateRaw ? date('d-M-Y', strtotime($rcvDateRaw)) : '';
+                                        }
+                                    ?>
+                                    <tr class="row-icl">
+                                        <td class="text-left">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<?php echo htmlspecialchars($rcv['RCV_NO']); ?></td>
+                                        <td class="text-center" style="color:#000;"><?php echo $rcvDate; ?></td>
+                                        <td class="text-right"></td>
+                                        <td class="text-right" style="color:#000;"><?php echo number_format($rcvQty, 2); ?></td>
+                                        <td class="text-right" style="color:#000;"><?php echo number_format($runningBalQty, 2); ?></td>
+                                        <td class="text-right" style="color:#000;"><?php echo number_format($rcvAmount, 2); ?></td>
+                                        <td class="text-right" style="color:#000;"><?php echo number_format($runningBalAmount, 2); ?></td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                    
+                                    <?php 
+                                        // Tambah ke akumulasi Total Balance Supplier (Nilai akhir balance dari setiap PO)
+                                        $sumPoBalAmount += $runningBalAmount;
+                                    ?>
+                                <?php endforeach; ?>
+                            <?php endforeach; ?>
+                            
+                            <!-- SUMMARY TOTAL PER SUPPLIER -->
+                            <tr class="row-total">
+                                <td colspan="5" class="text-right" style="padding-right: 20px;">Total PO / Balance</td>
+                                <td class="text-right"><?php echo number_format($sumPoAmount, 2); ?></td>
+                                <td class="text-right"><?php echo number_format($sumPoBalAmount, 2); ?></td>
+                            </tr>
+                            <tr class="row-total-sub">
+                                <td colspan="5" class="text-right" style="padding-right: 20px;">Total ICL</td>
+                                <td class="text-right"><?php echo number_format($sumIclAmount, 2); ?></td>
+                                <td class="text-right"></td>
+                            </tr>
+
+                        <?php endforeach; ?>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div> <!-- END OF REPORT CONTENT -->
+    </div> <!-- END OF LAYOUT WRAPPER -->
+</div> <!-- END OF PAGE CONTAINER -->
+
+<?php if (!$isExportExcel): ?>
+<script>
+$(document).ready(function() {
+    // Select2 untuk filter
+    $('#supplier').select2({
+        placeholder: 'Pilih / Ketik Nama Supplier...',
+        allowClear: true,
+        ajax: {
+            url: 'search_sup.php',
+            type: 'POST',
+            dataType: 'json',
+            delay: 250,
+            data: function (params) {
+                return { q: params.term };
+            },
+            processResults: function (data) {
+                return {
+                    results: $.map(data, function (item) {
+                        return {
+                            text: item.SUP_CODE + ' ~ ' + item.SUP_COMP,
+                            id: item.SUP_CODE
+                        }
+                    })
+                };
+            },
+            cache: true
         }
     });
 
-    // Autocomplete Receive No (Ajax)
-    $("#receive_no").autocomplete({
-        minLength: 1, delay: 250,
-        source: function (request, response) {
-            $("#receive_no").addClass("autocomplete-loading");
-            $.ajax({
-                url: "search_receive.php", type: "POST", dataType: "json", data: { q: request.term },
-                success: function (data) {
-                    response($.map(data, function (item) {
-                        return { label: item.RCV_NOMOR||"", value: item.RCV_NOMOR||"" };
-                    }));
-                },
-                complete: function () { $("#receive_no").removeClass("autocomplete-loading"); }
-            });
+    // Interaktivitas Sidebar Tree (Expand / Collapse)
+    $('.toggle-btn').click(function(e) {
+        e.preventDefault();
+        var $sublist = $(this).closest('.tree-node').next('.tree-sublist');
+        if($sublist.length > 0) {
+            $sublist.toggle();
+            // Ganti text + atau -
+            $(this).text($(this).text() === '-' ? '+' : '-');
         }
     });
-
-    // Data Supplier dari PHP diproses menjadi JavaScript Array
-    var availableSuppliers = <?php
-        $supJsArr = array();
-        foreach ($suppliers as $s) {
-            $sCode = trim((string)$s['SUP_CODE']);
-            $sName = trim((string)$s['SUP_COMP']);
-            $label = $sCode . ($sName !== '' ? ' - ' . $sName : '');
-            $supJsArr[] = array('label' => $label, 'value' => $sCode);
-        }
-        echo json_encode($supJsArr);
-    ?>;
-
-    // Autocomplete Supplier (Lokal Data)
-    $("#sup_code").autocomplete({
-        minLength: 1, delay: 100,
-        source: function(request, response) {
-            var term = $.ui.autocomplete.escapeRegex(request.term);
-            var matcher = new RegExp(term, "i");
-            var results = $.grep(availableSuppliers, function(item) {
-                return matcher.test(item.label) || matcher.test(item.value);
-            });
-            response(results);
-        }
-    });
-
 });
 </script>
+<?php endif; ?>
+
 </body>
 </html>
-<?php sqlsrv_close($conn); ?>

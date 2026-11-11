@@ -28,6 +28,23 @@ if (isset($_POST['ajax_action'])) {
 
     $item_code_master = substr($item_code, 0, 8);
 
+    // [BARU] Handler untuk update STD_PACK
+    if ($action === 'update_std_pack') {
+        $pack_val = floatval($value);
+        $sql = "UPDATE dbo.STD_PACK SET STD_PACK = ? WHERE ITEM_CODE = ?";
+        $stmt = sqlsrv_query($conn, $sql, array($pack_val, $item_code_master));
+        if ($stmt) {
+            if (sqlsrv_rows_affected($stmt) === 0) {
+                $sql_ins = "INSERT INTO dbo.STD_PACK (ITEM_CODE, STD_PACK) VALUES (?, ?)";
+                $stmt_ins = sqlsrv_query($conn, $sql_ins, array($item_code_master, $pack_val));
+                echo $stmt_ins ? json_encode(['status' => 'success', 'msg' => 'Inserted']) : json_encode(['status' => 'error', 'msg' => 'Gagal Insert']);
+            } else { echo json_encode(['status' => 'success', 'msg' => 'Updated']); }
+        } else {
+             echo json_encode(['status' => 'error', 'msg' => 'Query Failed']);
+        }
+        exit;
+    }
+
     if ($action === 'update_std_box') {
         $box_val = floatval($value);
         $sql = "UPDATE dbo.STD_PACK SET STD_PACK_BOX = ? WHERE ITEM_CODE = ?";
@@ -287,7 +304,8 @@ while ($stmt_pack && $row = sqlsrv_fetch_array($stmt_pack, SQLSRV_FETCH_ASSOC)) 
                                                 <tr>
                                                     <th rowspan="2" style="width:8%">Item Code</th>
                                                     <th rowspan="2" style="width:8%">Item No</th>
-                                                    <th rowspan="2" style="width:14%">Item Name</th>
+                                                    <th rowspan="2" style="width:10%">Item Name</th>
+                                                    <th rowspan="2" style="width:4%">Std Pack</th> <!-- KOLOM BARU -->
                                                     <th rowspan="2" style="width:4%">Std Box</th>
                                                     <th rowspan="2" style="width:5%">Pack ID</th>
                                                     <th rowspan="2" style="width:10%">Pack Desc</th>
@@ -310,7 +328,8 @@ while ($stmt_pack && $row = sqlsrv_fetch_array($stmt_pack, SQLSRV_FETCH_ASSOC)) 
                                     echo "</tbody>";
                                     echo "<tfoot>";
                                     echo "<tr style='background:#f1f3f5; font-weight:bold;'>";
-                                    echo "<td colspan='6' class='center'>TOTAL KESELURUHAN</td>";
+                                    // Berubah dari 6 ke 7 kolom colspan karena ketambahan Std Pack
+                                    echo "<td colspan='7' class='center'>TOTAL KESELURUHAN</td>";
                                     
                                     // Gunakan format angka yang sesuai agar terbaca value di Excel jika $is_export true
                                     $f = $is_export ? 'fmt_excel' : 'fmt_num';
@@ -425,10 +444,19 @@ while ($stmt_pack && $row = sqlsrv_fetch_array($stmt_pack, SQLSRV_FETCH_ASSOC)) 
                                         
                                         <?php if ($is_export): ?>
                                             <!-- Render plain text saat export agar terbaca normal di Excel -->
+                                            <td class="center"><?php echo isset($r['STD_PACK']) ? h($r['STD_PACK']) : ''; ?></td>
                                             <td class="center"><?php echo h($r['STD_PACK_BOX']); ?></td>
                                             <td class="center"><?php echo h($r['PACK_CODE']); ?></td>
                                         <?php else: ?>
                                             <!-- Render input textbox seperti biasa saat dibuka di Web -->
+                                            
+                                            <!-- KOLOM BARU STD PACK -->
+                                            <td class="center input-cell">
+                                                <input type="number" step="any" class="input-edit std-pack-trigger" 
+                                                       data-item="<?php echo h($r["ITEM_CODE"]); ?>" 
+                                                       value="<?php echo isset($r['STD_PACK']) ? h($r['STD_PACK']) : ''; ?>">
+                                            </td>
+
                                             <td class="center input-cell">
                                                 <input type="number" step="any" class="input-edit std-box-trigger" 
                                                        data-item="<?php echo h($r["ITEM_CODE"]); ?>" 
@@ -494,12 +522,20 @@ while ($stmt_pack && $row = sqlsrv_fetch_array($stmt_pack, SQLSRV_FETCH_ASSOC)) 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 <script>
 $(document).ready(function() {
-    $(document).on('change', '.std-box-trigger, .pack-code-trigger', function() {
+    // [BARU] Tambahkan class std-pack-trigger pada deteksi event
+    $(document).on('change', '.std-pack-trigger, .std-box-trigger, .pack-code-trigger', function() {
         var input = $(this);
         var itemCode = input.data('item');
         var newValue = input.val();
+        
+        var isPack = input.hasClass('std-pack-trigger');
         var isBox = input.hasClass('std-box-trigger');
-        var actionName = isBox ? 'update_std_box' : 'update_pack_code';
+        
+        // Pilih Action Name secara dinamis
+        var actionName = '';
+        if (isPack) actionName = 'update_std_pack';
+        else if (isBox) actionName = 'update_std_box';
+        else actionName = 'update_pack_code';
         
         $.post(window.location.href, { ajax_action: actionName, item_code: itemCode, value: newValue }, function(res) {
             if(res.status === 'success') {
@@ -508,6 +544,7 @@ $(document).ready(function() {
                 
                 var tr = input.closest('tr');
                 
+                // Kalkulasi BOX hanya dijalankan jika user mengupdate kolom Std Box
                 if(isBox) {
                     var stdBox = parseFloat(newValue) || 0;
                     var m1 = parseFloat(input.data('m1')) || 0;
@@ -533,7 +570,7 @@ $(document).ready(function() {
                     tr.find('.calc-diff-b1').text(bal1.toLocaleString('en-US')).toggleClass('text-red', bal1 < 0);
                     tr.find('.calc-diff-b2').text(bal2.toLocaleString('en-US')).toggleClass('text-red', bal2 < 0);
                     tr.find('.calc-diff-b3').text(bal3.toLocaleString('en-US')).toggleClass('text-red', bal3 < 0);
-                } else {
+                } else if (actionName === 'update_pack_code') {
                     // Update Text di kolom "Pack Desc"
                     if (res.pack_desc !== undefined) {
                         tr.find('.pack-desc-cell').text(res.pack_desc);
@@ -548,7 +585,7 @@ $(document).ready(function() {
         });
     });
 
-    $(document).on('keydown', '.std-box-trigger, .pack-code-trigger', function(e) {
+    $(document).on('keydown', '.std-pack-trigger, .std-box-trigger, .pack-code-trigger', function(e) {
         if (e.key === 'Enter' || e.keyCode === 13) { e.preventDefault(); $(this).blur(); }
     });
 });

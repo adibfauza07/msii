@@ -31,8 +31,11 @@ $currentMonth = (int)date('n');
         select, input[type="text"] { padding: 4px 8px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px; height: 28px; outline: none; box-sizing: border-box; }
         button { padding: 4px 15px; font-weight: bold; cursor: pointer; border: none; border-radius: 3px; height: 28px; color: #fff; background-color: #0056b3; transition: background 0.2s;}
         button:hover { background-color: #004494; }
+        
         .btn-print { background-color: #28a745; }
         .btn-print:hover { background-color: #218838; }
+        .btn-excel { background-color: #217346; margin-left: 5px; }
+        .btn-excel:hover { background-color: #175232; }
         .btn-sync { background-color: #17a2b8; margin-left: 5px; }
         .btn-sync:hover { background-color: #138496; }
         .btn-clear { background-color: #dc3545; padding: 4px 10px; margin-left: -5px; }
@@ -114,7 +117,8 @@ $currentMonth = (int)date('n');
     
     <button id="btnLoadReport"><i class="fa fa-search"></i> Generate Report</button>
     <button type="button" class="btn-print" onclick="window.print();"><i class="fa fa-print"></i> Print / PDF</button>
-    <button type="button" id="btnSyncNextMonth" class="btn-sync"><i class="fa fa-share-square-o"></i> Carry Over Actual ke Bulan Depan</button>
+    <button type="button" id="btnExportExcel" class="btn-excel"><i class="fa fa-file-excel-o"></i> Export Excel</button>
+    <button type="button" id="btnSyncNextMonth" class="btn-sync"><i class="fa fa-share-square-o"></i> Carry Over Actual</button>
 </div>
 
 <div class="table-container">
@@ -165,7 +169,6 @@ $(document).ready(function() {
 
     $('#btnClearCust').click(function(){ $('#inputCustomer, #cust_code').val(''); $('#inputCustomer').focus(); });
 
-
     function formatNumber(num) {
         if(num === 0 || num === "0" || num === null || isNaN(num)) return "0";
         return parseFloat(num).toLocaleString('id-ID');
@@ -176,7 +179,7 @@ $(document).ready(function() {
         var btn = $(this);
         var thn = $('#cbTahun').val();
         var bln = $('#cbBulan').val();
-        var ccode = $('#cust_code').val(); // Ambil dari input hidden customer
+        var ccode = $('#cust_code').val(); 
         var tbody = $('#tblReportOvh tbody');
         var stdLimit = 25000;
         var namaBulanText = $('#cbBulan option:selected').text().split(' ')[0];
@@ -210,7 +213,6 @@ $(document).ready(function() {
                             var nextTargetPlan = (Math.floor(initialLastShoot / stdLimit) + 1) * stdLimit;
                             var cumulativeAct = initialLastShoot;
 
-                            // Kalkulasi Harian & Penangkapan Nilai Centang
                             if (row.days) {
                                 for (var d = 1; d <= 31; d++) {
                                     var dPlan = (row.days[d]) ? parseFloat(row.days[d].plan_ovh) || 0 : 0;
@@ -227,7 +229,6 @@ $(document).ready(function() {
                                             autoTargetDatePlan = d + ' ' + namaBulanText + ' ' + thn;
                                         }
                                     }
-                                    // Jika dicentang, tangkap nilainya lalu reset
                                     if (isCheckedDatePlan) {
                                         checkedPlanDates.push(d + ' ' + namaBulanText + ' ' + thn + ' <b>(' + formatNumber(cumulativePlan) + ')</b>');
                                         cumulativePlan = 0; 
@@ -238,7 +239,6 @@ $(document).ready(function() {
                                         sumActOvh += dAct;
                                         cumulativeAct += dAct;
                                     }
-                                    // Jika dicentang, tangkap nilainya lalu reset
                                     if (isCheckedDateAct) {
                                         checkedActualDates.push(d + ' ' + namaBulanText + ' ' + thn + ' <b>(' + formatNumber(cumulativeAct) + ')</b>');
                                         cumulativeAct = 0;  
@@ -270,7 +270,6 @@ $(document).ready(function() {
                                 customerRowsHtml += '<td>' + planDateDisplay + '</td>';
                                 customerRowsHtml += '</tr>';
 
-                                // --- PENAMBAHAN ATRIBUT DATA PADA TR ACTUAL ---
                                 customerRowsHtml += '<tr class="row-act" data-mc="' + row.mc_no + '" data-item="' + row.item_code + '" data-totalact="' + grandTotalAct + '">';
                                 customerRowsHtml += '<td><i class="fa fa-industry"></i> Actual Shots</td>';
                                 customerRowsHtml += '<td class="text-right"><b>' + formatNumber(sumActOvh) + '</b></td>';
@@ -303,12 +302,51 @@ $(document).ready(function() {
         });
     });
 
+    // --- EXPORT KE EXCEL ---
+    $('#btnExportExcel').click(function() {
+        var table = document.getElementById("tblReportOvh");
+        
+        if ($(table).find('tbody tr.row-plan').length === 0) {
+            alert("Tidak ada data untuk diexport. Silakan Generate Report terlebih dahulu.");
+            return;
+        }
+
+        var html = table.outerHTML;
+        
+        var template = '<html xmlns:o="urn:schemas-microsoft-com:office:office" ' +
+                       'xmlns:x="urn:schemas-microsoft-com:office:excel" ' +
+                       'xmlns="http://www.w3.org/TR/REC-html40">' +
+                       '<head><meta charset="UTF-8">' +
+                       '<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>' +
+                       '<x:Name>Report OVH</x:Name>' +
+                       '<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>' +
+                       '</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->' +
+                       '<style>table { border-collapse: collapse; } th, td { border: 1px solid #000; padding: 5px; }</style>' +
+                       '</head><body>' + html + '</body></html>';
+
+        var blob = new Blob([template], { type: 'application/vnd.ms-excel' });
+        var url = URL.createObjectURL(blob);
+        
+        var a = document.createElement('a');
+        var bulan = $('#cbBulan option:selected').text().split(' ')[0];
+        var tahun = $('#cbTahun').val();
+        
+        a.href = url;
+        a.download = 'Report_OVH_Molding_' + bulan + '_' + tahun + '.xls';
+        document.body.appendChild(a);
+        a.click();
+        
+        setTimeout(function() {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }, 100);
+    });
+
     // --- CARRY OVER ACTUAL SHOTS KE LAST SHOOT BULAN DEPAN ---
     $('#btnSyncNextMonth').click(function() {
         var thn = parseInt($('#cbTahun').val());
         var bln = parseInt($('#cbBulan').val());
         
-        // Kalkulasi bulan dan tahun berikutnya
         var nextBln = bln + 1;
         var nextThn = thn;
         if (nextBln > 12) {
@@ -318,7 +356,6 @@ $(document).ready(function() {
 
         var dataToSync = [];
         
-        // Looping semua baris actual shots yang memiliki data pada tabel report
         $('#tblReportOvh tbody tr.row-act').each(function() {
             var mc = $(this).data('mc');
             var item = $(this).data('item');
@@ -347,7 +384,7 @@ $(document).ready(function() {
         btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Menyimpan...');
 
         $.ajax({
-            url: 'ajax_sync_last_shoot_next_month.php', // Memanggil file backend dari jawaban sebelumnya
+            url: 'ajax_sync_last_shoot_next_month.php', 
             type: 'POST',
             dataType: 'json',
             data: { 

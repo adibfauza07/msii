@@ -46,6 +46,9 @@ $error = "";
 $action = postv("action","");
 $editId = intval(getv("edit","0"));
 
+// Deteksi AJAX murni via URL atau POST
+$isAjax = (isset($_GET['ajax']) && $_GET['ajax'] == '1') || (isset($_POST['is_ajax']) && $_POST['is_ajax'] == '1');
+
 /* ======================================================
    AKSI SPESIFIK: SET NEXT ICL, TRIGGER ON/OFF, UPDATE PRICE 
 ====================================================== */
@@ -89,6 +92,126 @@ if ($action == "update_price") {
     $stmtUpd = sqlsrv_query($conn, "EXEC sp_update_price_rec ?, ?, ?", array($updRcvId, $updItemId, $updPoId));
     if ($stmtUpd === false) $error = "Update Price Gagal:\n".sql_error_text();
     else $message = "UPDATE PRICE SELESAI";
+}
+
+/* ======================================================
+   --- FITUR PINDAH ICL ---
+====================================================== */
+// 1. PINDAH KE ICL EXISTING (YANG SUDAH ADA)
+if ($action == "move_detail") {
+    $sourceRcvId = intval(postv("rcv_id", "0"));
+    $targetRcvId = intval(postv("target_rcv_id", "0"));
+    $moveItems = isset($_POST["move_check"]) ? $_POST["move_check"] : array();
+
+    if ($sourceRcvId <= 0 || $targetRcvId <= 0) {
+        $error = "Pilih ICL Sumber dan pastikan ICL Tujuan valid.";
+    } elseif ($sourceRcvId == $targetRcvId) {
+        $error = "ICL Tujuan tidak boleh sama dengan ICL saat ini.";
+    } elseif (count($moveItems) == 0) {
+        $error = "Centang minimal 1 detail yang akan dipindah.";
+    } else {
+        sqlsrv_begin_transaction($conn);
+        $ok = true;
+        foreach ($moveItems as $val) {
+            $arr = explode("|", $val);
+            if (count($arr) == 2) {
+                $mItemId = intval($arr[0]);
+                $mPoId = intval($arr[1]);
+                $sqlMv = "UPDATE dbo.RECEIVE_DETAIL SET RCV_ID = ? WHERE RCV_ID = ? AND ITEM_ID = ? AND PO_ID = ?";
+                $stmtMv = sqlsrv_query($conn, $sqlMv, array($targetRcvId, $sourceRcvId, $mItemId, $mPoId));
+                if ($stmtMv === false) { $ok = false; $error = "Gagal pindah detail:\n".sql_error_text(); break; }
+            }
+        }
+        if ($ok) {
+            sqlsrv_commit($conn);
+            header("Location: receive.php?edit=".$sourceRcvId."&msg=moved");
+            exit;
+        } else {
+            sqlsrv_rollback($conn);
+        }
+    }
+}
+
+// 2. PINDAH KE ICL BARU (AUTO GENERATE NEW ICL)
+if ($action == "move_to_new") {
+    $sourceRcvId = intval(postv("rcv_id", "0"));
+    $moveItems = isset($_POST["move_check"]) ? $_POST["move_check"] : array();
+
+    if ($sourceRcvId <= 0) {
+        $error = "Pilih ICL Sumber valid.";
+    } elseif (count($moveItems) == 0) {
+        $error = "Centang minimal 1 detail yang akan dipindah ke ICL Baru.";
+    } else {
+        sqlsrv_begin_transaction($conn);
+        $ok = true;
+
+        $sqlSrc = "SELECT * FROM dbo.RECEIVE WHERE RCV_ID = ?";
+        $stmtSrc = sqlsrv_query($conn, $sqlSrc, array($sourceRcvId));
+        $srcHdr = sqlsrv_fetch_array($stmtSrc, SQLSRV_FETCH_ASSOC);
+
+        if (!$srcHdr) {
+            $ok = false; $error = "Data ICL sumber tidak ditemukan.";
+        } else {
+            $newRcvNo = generate_rcv_no($conn);
+            $sqlH = "
+                SET NOCOUNT ON;
+                DECLARE @OutputTbl TABLE (NEW_ID INT);
+                INSERT INTO dbo.RECEIVE (RCV_NO, RCV_DONO, RCV_DATE, RCV_PIC, SUP_ID, RCV_TYPE) 
+                OUTPUT INSERTED.RCV_ID INTO @OutputTbl
+                VALUES (?, ?, ?, ?, ?, ?);
+                SELECT NEW_ID FROM @OutputTbl;
+            ";
+            $stmtH = sqlsrv_query($conn, $sqlH, array(
+                $newRcvNo, $srcHdr['RCV_DONO'], $srcHdr['RCV_DATE'], 
+                $srcHdr['RCV_PIC'], $srcHdr['SUP_ID'], $srcHdr['RCV_TYPE']
+            ));
+
+            $newRcvId = 0;
+            if ($stmtH === false) {
+                $ok=false; $error="Buat header ICL baru gagal:\n".sql_error_text();
+            } else {
+                $new = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_ASSOC);
+                if ($new && isset($new['NEW_ID'])) {
+                    $newRcvId = intval($new['NEW_ID']);
+                } else {
+                    if (sqlsrv_next_result($stmtH)) {
+                        $new = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_ASSOC);
+                        if ($new && isset($new['NEW_ID'])) $newRcvId = intval($new['NEW_ID']);
+                    }
+                }
+            }
+
+            if ($newRcvId <= 0) {
+                $ok = false;
+                if($error == "") $error = "Gagal mendapatkan ID ICL baru.";
+            }
+
+            if ($ok) {
+                foreach ($moveItems as $val) {
+                    $arr = explode("|", $val);
+                    if (count($arr) == 2) {
+                        $mItemId = intval($arr[0]);
+                        $mPoId = intval($arr[1]);
+                        $sqlMv = "UPDATE dbo.RECEIVE_DETAIL SET RCV_ID = ? WHERE RCV_ID = ? AND ITEM_ID = ? AND PO_ID = ?";
+                        $stmtMv = sqlsrv_query($conn, $sqlMv, array($newRcvId, $sourceRcvId, $mItemId, $mPoId));
+                        if ($stmtMv === false) { $ok = false; $error = "Gagal pindah detail ke ICL baru:\n".sql_error_text(); break; }
+                    }
+                }
+            }
+
+            if ($ok) {
+                inc_next_rcv_no($conn);
+            }
+        }
+
+        if ($ok) {
+            sqlsrv_commit($conn);
+            header("Location: receive.php?edit=".$newRcvId."&msg=moved_new");
+            exit;
+        } else {
+            sqlsrv_rollback($conn);
+        }
+    }
 }
 
 /* ======================================================
@@ -243,14 +366,42 @@ if ($action == "save") {
             if ($ok) {
                 sqlsrv_commit($conn);
                 if ($isNewRecord) inc_next_rcv_no($conn); 
+                
+                // ==== JIKA DISIMPAN LEWAT ENTER (AJAX) ====
+                if ($isAjax) {
+                    ob_clean();
+                    header('Content-Type: application/json');
+                    echo json_encode(array("status" => "success", "rcv_id" => $rcvId));
+                    exit;
+                }
+                // ==========================================
+
                 header("Location: receive.php?edit=".$rcvId."&msg=saved");
                 exit;
             } else {
                 sqlsrv_rollback($conn);
                 if ($error == "") $error = "Simpan Receive gagal:\n".sql_error_text();
+
+                // ==== JIKA ERROR LEWAT ENTER (AJAX) ====
+                if ($isAjax) {
+                    ob_clean();
+                    header('Content-Type: application/json');
+                    echo json_encode(array("status" => "error", "message" => $error));
+                    exit;
+                }
+                // =======================================
             }
         }
     }
+    
+    // ==== TANGKAP ERROR VALIDASI FORM JIKA VIA AJAX ====
+    if ($error != "" && $isAjax) {
+        ob_clean();
+        header('Content-Type: application/json');
+        echo json_encode(array("status" => "error", "message" => $error));
+        exit;
+    }
+    // ===================================================
 }
 
 /* ======================================================
@@ -296,6 +447,8 @@ if ($editId > 0) {
 
 if (getv("msg") == "saved") $message = "Receive berhasil disimpan.";
 if (getv("msg") == "deleted") $message = "Receive berhasil dihapus.";
+if (getv("msg") == "moved") $message = "Detail berhasil dipindahkan ke ICL tujuan.";
+if (getv("msg") == "moved_new") $message = "Berhasil membuat ICL Baru dan memindahkan detail terpilih!";
 
 /* ======================================================
    SUPPLIER & DEPT DATA (Untuk Autocomplete)
@@ -346,7 +499,6 @@ if ($stmtRcvAuto !== false) {
     }
 }
 
-
 /* LIST RECEIVE */
 $q = getv("q","");
 $where = "";
@@ -369,7 +521,7 @@ $sqlList = "
 $stmtList = sqlsrv_query($conn,$sqlList,$paramsList);
 
 if (count($details) == 0) {
-    for ($i=0; $i<3; $i++) {
+    for ($i=0; $i<10; $i++) { // Render 10 blank rows initial to match screenshot
         $details[] = array("ITEM_ID"=>"","PO_ID"=>"","ITEM_CODE"=>"","ITEM_NAME"=>"","PO_NUM"=>"","RCVD_QTY"=>"","POD_PRICE"=>"");
     }
 }
@@ -379,73 +531,208 @@ if (count($details) == 0) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Purchase Receive - Purchasing</title>
+    <title>Items Receive</title>
 
-    <!-- Google Font: Source Sans Pro -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <!-- Theme style (AdminLTE 3) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
-
+    
     <style>
+        /* CSS KHUSUS TAMPILAN WINDOWS CLASSIC / DELPHI */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 12px;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .main-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #ece9d8;
+        }
+
+        .title-bar {
+            background-color: #ffffff;
+            text-align: center;
+            font-size: 24px;
+            font-family: Arial, sans-serif;
+            padding: 5px 0;
+            color: #000;
+        }
+
+        .teal-header {
+            background-color: #008080;
+            padding: 5px 10px;
+            color: #ffff00;
+        }
+
+        .lbl-yellow {
+            color: #ffff00;
+            font-size: 11px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        .lbl-white {
+            color: #ffffff;
+            font-size: 11px;
+            margin-bottom: 2px;
+            display: block;
+            font-weight: bold;
+        }
+
+        .input-classic {
+            width: 100%;
+            height: 20px;
+            font-size: 12px;
+            padding: 0 4px;
+            border: 1px solid #7f9db9;
+            box-sizing: border-box;
+            background: #fff;
+            transition: background-color 0.3s;
+        }
+
+        .input-classic:read-only { background-color: #e0e0e0; }
+        
+        select.input-classic { padding: 0; }
+
+        .btn-classic {
+            background: #f0f0f0;
+            border: 1px solid #888;
+            border-bottom-color: #444;
+            border-right-color: #444;
+            padding: 2px 10px;
+            font-size: 12px;
+            color: #000;
+            cursor: pointer;
+            box-shadow: inset 1px 1px 0px #fff;
+        }
+        .btn-classic:active {
+            box-shadow: inset 1px 1px 2px #888;
+            border: 1px solid #444;
+            border-bottom-color: #888;
+            border-right-color: #888;
+        }
+        .btn-action-wide { width: 80px; margin-right: 2px; }
+        .btn-action-side { margin-bottom: 3px; min-width: 80px; }
+
+        .fieldset-control {
+            border: 1px solid #fff;
+            padding: 6px;
+            margin-top: 5px;
+            position: relative;
+        }
+        
+        .fieldset-control legend {
+            color: #fff;
+            font-size: 11px;
+            background: #008080;
+            padding: 0 4px;
+            position: absolute;
+            top: -8px;
+            left: 5px;
+        }
+
+        /* GRID TABLE CLASSIC */
+        .datagrid-wrapper {
+            flex-grow: 1;
+            overflow: auto;
+            background: #fff;
+            border-top: 2px solid #888;
+            border-bottom: 2px solid #fff;
+        }
+
+        table.datagrid {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: auto;
+        }
+
+        table.datagrid th {
+            background-color: #ece9d8;
+            border-right: 1px solid #c0c0c0;
+            border-bottom: 1px solid #c0c0c0;
+            font-weight: normal;
+            font-size: 11px;
+            padding: 2px 4px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        table.datagrid td {
+            border-right: 1px solid #e0e0e0;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 0;
+            font-size: 11px;
+        }
+
+        table.datagrid input {
+            width: 100%;
+            height: 18px;
+            border: none;
+            padding: 0 4px;
+            font-size: 11px;
+            background: transparent;
+            box-sizing: border-box;
+            transition: background-color 0.3s;
+        }
+        table.datagrid input:focus {
+            background: #e7f1ff;
+            outline: 1px solid #000;
+        }
+        table.datagrid tr.detail-selected td {
+            background-color: #d0d0d0;
+        }
+
+        .footer-bar {
+            background: #ece9d8;
+            padding: 5px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #c0c0c0;
+        }
+
+        /* AUTOCOMPLETE STYLING */
         .ac-box {
             position: absolute;
             z-index: 9999;
             background: #ffffff;
             color: #333;
             border: 1px solid #ccc;
-            border-radius: 4px;
-            max-height: 250px;
+            border-radius: 2px;
+            max-height: 200px;
             overflow-y: auto;
-            min-width: 360px;
+            min-width: 300px;
             display: none;
-            font-size: 14px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            font-size: 12px;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
         }
-        .ac-item {
-            padding: 8px 12px;
-            cursor: pointer;
-            border-bottom: 1px solid #f4f4f4;
-        }
-        .ac-item:last-child { border-bottom: none; }
-        .ac-item:hover, .ac-item.active { background: #007bff; color: #ffffff; }
+        .ac-item { padding: 4px 8px; cursor: pointer; border-bottom: 1px solid #f4f4f4; }
+        .ac-item:hover, .ac-item.active { background: #008080; color: #ffffff; }
 
-        /* CUSTOM COMPACT TABLE ROW */
-        #detailTable th, #detailTable td {
-            padding: 2px 4px !important;
-            vertical-align: middle !important;
-        }
-        .table-input-transparent {
-            border: 1px solid transparent;
-            background: transparent;
-            height: 22px !important;
-            padding: 0px 4px !important;
-            font-size: 12px !important;
-            border-radius: 0;
-        }
-        .table-input-transparent:focus {
-            background: #fff;
-            border-color: #80bdff;
-            outline: 0;
-            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-        }
-        #detailTable .btn-xs {
-            padding: 1px 6px !important;
-            font-size: 11px !important;
-            height: 22px !important;
-            line-height: 1.5 !important;
-        }
-        tr.pointer:hover, tr.detail-selected td {
-            cursor: pointer;
-            background-color: #e7f1ff !important;
-        }
+        /* Bootstrap grid system utilitas (minimalis) */
+        .row { display: flex; flex-wrap: wrap; margin-right: -5px; margin-left: -5px; }
+        .col-2 { flex: 0 0 16.666%; max-width: 16.666%; padding: 0 5px; }
+        .col-3 { flex: 0 0 25%; max-width: 25%; padding: 0 5px; }
+        .col-4 { flex: 0 0 33.333%; max-width: 33.333%; padding: 0 5px; }
+        .col-6 { flex: 0 0 50%; max-width: 50%; padding: 0 5px; }
+        .col-8 { flex: 0 0 66.666%; max-width: 66.666%; padding: 0 5px; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
     </style>
 
     <script>
-        var supplierData = <?php echo json_encode($supplierAuto); ?>;
-        var deptData = <?php echo json_encode($deptAuto); ?>;
-        var rcvData = <?php echo json_encode($rcvAuto); ?>;
+        var supplierData = <?php echo json_encode($supplierAuto) ? json_encode($supplierAuto) : '[]'; ?>;
+        var deptData = <?php echo json_encode($deptAuto) ? json_encode($deptAuto) : '[]'; ?>;
+        var rcvData = <?php echo json_encode($rcvAuto) ? json_encode($rcvAuto) : '[]'; ?>;
         
         var acBox=null, acItems=[], acIndex=-1, acMode="", acRow=-1;
         var rowSeq=<?php echo count($details); ?>;
@@ -461,9 +748,9 @@ if (count($details) == 0) {
         }
         function positionAC(input){
             initAC();var r=input.getBoundingClientRect();
-            acBox.style.left=(r.left+window.scrollX)+"px";
-            acBox.style.top=(r.bottom+window.scrollY)+"px";
-            acBox.style.width=(r.width<360?360:r.width)+"px";
+            acBox.style.left=(r.left+(window.scrollX||window.pageXOffset))+"px";
+            acBox.style.top=(r.bottom+(window.scrollY||window.pageYOffset))+"px";
+            acBox.style.width=(r.width<300?300:r.width)+"px";
         }
         function renderAC(renderText,pickFunc){
             initAC();acBox.innerHTML="";
@@ -509,15 +796,117 @@ if (count($details) == 0) {
                 e.preventDefault();submitSave(false);return false;
             }
         }
-        function fieldEnterSave(e){
-            if(e.key==="Enter"){e.preventDefault();submitSave(false);return false;}
+
+        // ==========================================================
+        // FUNGSI BANTUAN UNTUK MENCARI BARIS BARU / PINDAH FOKUS
+        // ==========================================================
+        function focusNextRow(input) {
+            var tbody = byId("detailBody");
+            if (!tbody) return;
+            var rows = tbody.getElementsByTagName("tr");
+            var currentRowIndex = -1;
+            
+            // Cari elemen TR yang mengelilingi input ini
+            var el = input;
+            while(el && el.nodeName !== "TR") {
+                el = el.parentNode;
+            }
+            
+            // Cari indeks baris saat ini
+            if (el) {
+                for(var i = 0; i < rows.length; i++) {
+                    if(rows[i] === el) {
+                        currentRowIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (currentRowIndex === -1) return;
+
+            // Jika ini baris terakhir, buat baris baru
+            if (currentRowIndex === rows.length - 1) {
+                addRow();
+            } else {
+                // Jika bukan baris terakhir, pindah fokus ke baris bawahnya
+                var nextRow = rows[currentRowIndex + 1];
+                var inputs = nextRow.getElementsByTagName("input");
+                for(var j=0; j < inputs.length; j++){
+                    if(inputs[j].name === "item_code[]") {
+                        inputs[j].focus();
+                        inputs[j].select();
+                        break;
+                    }
+                }
+            }
         }
+        
+        // ==== FUNGSI SIMPAN AJAX (MENGGUNAKAN XMLHTTPREQUEST) ====
+        function fieldEnterSave(e, inputEl){
+            if(e.key==="Enter"){
+                e.preventDefault();
+                
+                var form = byId("rcvForm");
+                
+                if(typeof FormData === "undefined" || typeof XMLHttpRequest === "undefined") {
+                    submitSave(false);
+                    return false;
+                }
+
+                var formData = new FormData(form);
+                formData.append("is_ajax", "1"); 
+                
+                var oldBg = inputEl.style.backgroundColor;
+                inputEl.style.backgroundColor = "#fff9c4"; 
+                
+                var xhr = new XMLHttpRequest();
+                xhr.open("POST", "receive.php?ajax=1", true);
+                
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            try {
+                                var data = JSON.parse(xhr.responseText);
+                                if (data.status === "success") {
+                                    inputEl.style.backgroundColor = "#c8e6c9"; 
+                                    setTimeout(function(){ inputEl.style.backgroundColor = oldBg; }, 1000);
+                                    
+                                    var currId = byId("rcv_id").value;
+                                    if(currId === "" || currId === "0") {
+                                        byId("rcv_id").value = data.rcv_id;
+                                        if(window.history && window.history.replaceState) {
+                                            window.history.replaceState(null, null, "?edit=" + data.rcv_id);
+                                        }
+                                    }
+                                } else {
+                                    alert("Gagal Simpan:\n" + data.message);
+                                    inputEl.style.backgroundColor = "#ffcdd2"; 
+                                }
+                            } catch (err) {
+                                alert("Gagal membaca respon server.");
+                                inputEl.style.backgroundColor = "#ffcdd2";
+                            }
+                        } else {
+                            alert("Error saat menghubungi server.");
+                            inputEl.style.backgroundColor = "#ffcdd2"; 
+                        }
+                    }
+                };
+                xhr.send(formData);
+                
+                // --- Kunci Perbaikan: Tambah Baris Baru Secara Otomatis ---
+                focusNextRow(inputEl); 
+                
+                return false;
+            }
+        }
+        // =============================================
 
         function selectDetailRow(tr){
             var rows=document.querySelectorAll("#detailBody tr");
-            for(var i=0;i<rows.length;i++) rows[i].classList.remove("detail-selected");
+            for(var i=0;i<rows.length;i++) rows[i].className = rows[i].className.replace(" detail-selected", "");
             selectedDetailRow=tr;
-            if(tr)tr.classList.add("detail-selected");
+            if(tr) tr.className += " detail-selected";
         }
 
         // Receive Search AutoComplete (Header)
@@ -535,17 +924,17 @@ if (count($details) == 0) {
             }
             positionAC(input);
             renderAC(function(r){
-                return "<b>" + r.RCV_NO + "</b> - DO: " + r.RCV_DONO + "<br><small class='text-muted'>" + r.SUP_CODE + " - " + r.SUP_COMP + "</small>";
+                return "<b>" + r.RCV_NO + "</b> - DO: " + r.RCV_DONO + "<br><small style='color:#666;'>" + r.SUP_CODE + " - " + r.SUP_COMP + "</small>";
             }, pickRcv);
         }
         function rcvKey(e,input){
             if(e.key==="ArrowDown"){
                 e.preventDefault(); if(acMode!=="rcv"||acItems.length==0) showRcvAC(input);
-                acMove(1, function(r){ return "<b>" + r.RCV_NO + "</b> - DO: " + r.RCV_DONO + "<br><small class='text-muted'>" + r.SUP_CODE + " - " + r.SUP_COMP + "</small>"; }, pickRcv); return false;
+                acMove(1, function(r){ return "<b>" + r.RCV_NO + "</b> - DO: " + r.RCV_DONO + "<br><small style='color:#666;'>" + r.SUP_CODE + " - " + r.SUP_COMP + "</small>"; }, pickRcv); return false;
             }
             if(e.key==="ArrowUp"){
                 e.preventDefault(); if(acMode!=="rcv"||acItems.length==0) showRcvAC(input);
-                acMove(-1, function(r){ return "<b>" + r.RCV_NO + "</b> - DO: " + r.RCV_DONO + "<br><small class='text-muted'>" + r.SUP_CODE + " - " + r.SUP_COMP + "</small>"; }, pickRcv); return false;
+                acMove(-1, function(r){ return "<b>" + r.RCV_NO + "</b> - DO: " + r.RCV_DONO + "<br><small style='color:#666;'>" + r.SUP_CODE + " - " + r.SUP_COMP + "</small>"; }, pickRcv); return false;
             }
             if(e.key==="Enter"){
                 if(acMode==="rcv"&&acItems.length>0){e.preventDefault(); acEnter(pickRcv); return false;}
@@ -556,6 +945,45 @@ if (count($details) == 0) {
         function pickRcv(r){
             hideAC();
             goEdit(r.RCV_ID);
+        }
+
+        // Target RCV (Pindah ICL Bawah)
+        function showTargetRcvAC(input){
+            initAC();
+            var key=(input.value||"").toUpperCase();
+            acMode="target_rcv"; acItems=[]; acIndex=-1;
+            if(key.length<1){hideAC();return;}
+            
+            for(var i=0; i<rcvData.length; i++){
+                var r = rcvData[i];
+                var t = (r.RCV_NO||""); 
+                if(t.toUpperCase().indexOf(key) >= 0) acItems.push(r);
+                if(acItems.length >= 40) break;
+            }
+            positionAC(input);
+            renderAC(function(r){
+                return "<b>" + r.RCV_NO + "</b>";
+            }, pickTargetRcv);
+        }
+        function targetRcvKey(e,input){
+            if(e.key==="ArrowDown"){
+                e.preventDefault(); if(acMode!=="target_rcv"||acItems.length==0) showTargetRcvAC(input);
+                acMove(1, function(r){ return "<b>" + r.RCV_NO + "</b>"; }, pickTargetRcv); return false;
+            }
+            if(e.key==="ArrowUp"){
+                e.preventDefault(); if(acMode!=="target_rcv"||acItems.length==0) showTargetRcvAC(input);
+                acMove(-1, function(r){ return "<b>" + r.RCV_NO + "</b>"; }, pickTargetRcv); return false;
+            }
+            if(e.key==="Enter"){
+                if(acMode==="target_rcv"&&acItems.length>0){e.preventDefault(); acEnter(pickTargetRcv); return false;}
+                return true; 
+            }
+            if(e.key==="Escape") hideAC();
+        }
+        function pickTargetRcv(r){
+            setValue("target_rcv_id", r.RCV_ID);
+            setValue("target_rcv_no", r.RCV_NO);
+            hideAC();
         }
 
         // Supplier Autocomplete
@@ -622,7 +1050,7 @@ if (count($details) == 0) {
         }
         function pickPic(d){setValue("rcv_pic",d.DEP_NAME);hideAC();}
 
-        // PO Item Autocomplete (AJAX Request)
+        // PO Item Autocomplete
         function showPOItemAC(input, row) {
             initAC();
             var supId = byId("sup_id").value;
@@ -637,9 +1065,11 @@ if (count($details) == 0) {
             xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
             xhr.onreadystatechange = function() {
                 if (xhr.readyState == 4 && xhr.status == 200) {
-                    acItems = JSON.parse(xhr.responseText);
-                    positionAC(input);
-                    renderAC(function(o){ return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY; }, pickPOItem);
+                    try {
+                        acItems = JSON.parse(xhr.responseText);
+                        positionAC(input);
+                        renderAC(function(o){ return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY; }, pickPOItem);
+                    } catch(e) {}
                 }
             };
             xhr.send("q=" + encodeURIComponent(key) + "&sup_id=" + encodeURIComponent(supId));
@@ -670,38 +1100,97 @@ if (count($details) == 0) {
             var q=byId("rcvd_qty_"+row);if(q){q.focus();q.select();}
         }
 
+        // PO Number Autocomplete
+        function showPONumAC(input, row) {
+            initAC();
+            var supId = byId("sup_id").value;
+            var itemId = byId("item_id_" + row).value;
+            
+            if(!supId || supId == "0") { alert("Pilih supplier dulu."); input.value = ""; return; }
+            if(!itemId || itemId == "") { alert("Pilih item dulu sebelum mencari PO."); input.value = ""; return; }
+            
+            var key = (input.value || "").toUpperCase();
+            acMode = "ponum"; acRow = row; acItems = []; acIndex = -1;
+            if(key.length < 1){ hideAC(); return; }
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "search_po_num.php", true);
+            xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4 && xhr.status == 200) {
+                    try {
+                        acItems = JSON.parse(xhr.responseText);
+                        positionAC(input);
+                        renderAC(function(o){ return "<b>PO: "+o.PO_NUM+"</b> | Price: "+o.POD_PRICE+" | O/S: "+o.OS_QTY; }, pickPONum);
+                    } catch(e) {}
+                }
+            };
+            xhr.send("q=" + encodeURIComponent(key) + "&sup_id=" + encodeURIComponent(supId) + "&item_id=" + encodeURIComponent(itemId));
+        }
+
+        function poNumKey(e, input, row){
+            if(e.key === "ArrowDown"){
+                e.preventDefault(); if(acMode !== "ponum" || acItems.length == 0) showPONumAC(input, row);
+                acMove(1, function(o){ return "<b>PO: "+o.PO_NUM+"</b> | Price: "+o.POD_PRICE+" | O/S: "+o.OS_QTY; }, pickPONum); return false;
+            }
+            if(e.key === "ArrowUp"){
+                e.preventDefault(); if(acMode !== "ponum" || acItems.length == 0) showPONumAC(input, row);
+                acMove(-1, function(o){ return "<b>PO: "+o.PO_NUM+"</b> | Price: "+o.POD_PRICE+" | O/S: "+o.OS_QTY; }, pickPONum); return false;
+            }
+            if(e.key === "Enter"){
+                if(acMode === "ponum" && acItems.length > 0){ e.preventDefault(); acEnter(pickPONum); return false; }
+                e.preventDefault(); return false;
+            }
+            if(e.key === "Escape") hideAC();
+        }
+
+        function pickPONum(o){
+            var row = acRow;
+            setValue("po_id_"+row, o.PO_ID);
+            setValue("po_num_"+row, o.PO_NUM);
+            setValue("pod_price_"+row, o.POD_PRICE);
+            hideAC();
+            var q = byId("rcvd_qty_"+row); if(q){ q.focus(); q.select(); }
+        }
+
         function addRow(){
             var tbody=byId("detailBody");var row=rowSeq;rowSeq++;
             var tr=document.createElement("tr");
             tr.onclick=function(){selectDetailRow(this);};
             tr.innerHTML=
-                '<td class="text-center align-middle row-no"></td>' +
-                '<td>' +
+                '<td class="text-center align-middle row-no" style="width:25px;"></td>' +
+                '<td style="width:130px;">' +
                     '<input type="hidden" name="item_id[]" id="item_id_'+row+'">' +
                     '<input type="hidden" name="po_id[]" id="po_id_'+row+'">' +
-                    '<input type="text" class="form-control form-control-sm table-input-transparent" name="item_code[]" id="item_code_'+row+'" autocomplete="off" oninput="showPOItemAC(this, '+row+')" onkeydown="poItemKey(event, this, '+row+')">' +
+                    '<input type="text" name="item_code[]" id="item_code_'+row+'" autocomplete="off" oninput="showPOItemAC(this, '+row+')" onkeydown="poItemKey(event, this, '+row+')">' +
                 '</td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent bg-light" name="item_name[]" id="item_name_'+row+'" readonly></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent text-right" name="rcvd_qty[]" id="rcvd_qty_'+row+'" onkeydown="fieldEnterSave(event)"></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent text-right bg-light" name="pod_price[]" id="pod_price_'+row+'" readonly></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent bg-light" name="po_num[]" id="po_num_'+row+'" readonly></td>' +
-                '<td class="text-center"><button type="button" class="btn btn-danger btn-xs" onclick="deleteRow(this); event.stopPropagation();" title="Delete"><i class="fas fa-times"></i></button></td>';
+                '<td><input type="text" name="item_name[]" id="item_name_'+row+'" readonly></td>' +
+                '<td style="width:70px;"><input type="text" class="text-right" name="rcvd_qty[]" id="rcvd_qty_'+row+'" onkeydown="fieldEnterSave(event, this)"></td>' +
+                '<td style="width:80px;"><input type="text" class="text-right" name="pod_price[]" id="pod_price_'+row+'"></td>' +
+                '<td style="width:160px;"><input type="text" name="po_num[]" id="po_num_'+row+'" autocomplete="off" oninput="showPONumAC(this, '+row+')" onkeydown="poNumKey(event, this, '+row+')"></td>' +
+                '<td class="text-center" style="width:40px; background:#f0f8ff;">' +
+                    '<input type="checkbox" name="move_check[]" value="" onclick="event.stopPropagation();">' +
+                '</td>' +
+                '<td class="text-center" style="width:40px;"><button type="button" class="btn-classic" style="padding:0 5px;" onclick="deleteRow(this); event.stopPropagation();" title="Delete">X</button></td>';
 
             tbody.appendChild(tr);
             renumberRows();selectDetailRow(tr);byId("item_code_"+row).focus();
         }
 
         function deleteRow(btn){
-            var tr=btn.closest("tr");
+            var tr=btn.parentNode ? btn.parentNode.parentNode : null;
             if(!confirm("Hapus baris detail ini?"))return;
-            tr.parentNode.removeChild(tr);renumberRows();
+            if(tr) tr.parentNode.removeChild(tr);
+            renumberRows();
             var id=byId("rcv_id").value;if(id!=""&&id!="0")submitSave(true);
         }
         function renumberRows(){
             var rows=byId("detailBody").getElementsByTagName("tr");
             for(var i=0;i<rows.length;i++){
                 var c=rows[i].getElementsByClassName("row-no")[0];
-                if(c)c.innerHTML=i+1;
+                if(c) {
+                    c.innerHTML = (i==0) ? "<i class='fas fa-caret-right'></i>" : "";
+                }
             }
         }
 
@@ -739,329 +1228,305 @@ if (count($details) == 0) {
             }
         }
 
-        // Aksi Tombol Cetak ICL
+        function triggerMoveDetail() {
+            var srcId = byId("rcv_id").value;
+            if (!srcId || srcId == "0") { alert("Harap simpan/pilih Receive (ICL) saat ini terlebih dahulu."); return; }
+            var tgtId = byId("target_rcv_id").value;
+            if (!tgtId || tgtId == "0") { alert("Pilih ICL Tujuan yang valid."); return; }
+            
+            var checkboxes = document.querySelectorAll('input[name="move_check[]"]:checked');
+            if (checkboxes.length == 0) { alert("Centang minimal 1 detail yang akan dipindah."); return; }
+            
+            if (confirm("Yakin pindahkan " + checkboxes.length + " item yang dipilih ke ICL: " + byId("target_rcv_no").value + "?")) {
+                var form = byId("rcvForm");
+                form.querySelector('input[name="action"]').value = "move_detail";
+                form.submit();
+            }
+        }
+
+        function triggerMoveToNew() {
+            var srcId = byId("rcv_id").value;
+            if (!srcId || srcId == "0") { alert("Harap simpan/pilih Receive (ICL) saat ini terlebih dahulu."); return; }
+            
+            var checkboxes = document.querySelectorAll('input[name="move_check[]"]:checked');
+            if (checkboxes.length == 0) { alert("Centang minimal 1 baris detail di kolom 'Pindah'."); return; }
+            
+            if (confirm("Sistem akan otomatis:\n1. Membuat dokumen ICL BARU\n2. Memindahkan " + checkboxes.length + " item yang dicentang ke dalamnya.\n\nLanjutkan?")) {
+                var form = byId("rcvForm");
+                form.querySelector('input[name="action"]').value = "move_to_new";
+                form.submit();
+            }
+        }
+
         function cetakICL() {
             var rcvId = byId("rcv_id").value;
             if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
             window.open("print_icl.php?id=" + encodeURIComponent(rcvId), "CETAK_ICL", "width=900,height=700,scrollbars=yes");
         }
-
-        // Aksi Tombol ICL OTO
         function cetakICLOto() {
             var rcvId = byId("rcv_id").value;
             if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
             window.open("print_icl_oto.php?id=" + encodeURIComponent(rcvId), "CETAK_OTO", "width=900,height=700,scrollbars=yes");
         }
-
-        // Aksi Tombol Sch Material
         function cetakSchedule() {
             var rcvNo = document.querySelector('.rcv-no').value;
             if (!rcvNo) { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
             var shortNo = rcvNo.substring(0, 6);
             window.open("print_schedule.php?no=" + encodeURIComponent(shortNo), "CETAK_SCH", "width=900,height=700,scrollbars=yes");
         }
-
-        // Aksi Tombol SET NEXT ICL
         function setNextICL() {
             var nextNum = prompt("Masukkan nilai antrian untuk ICL selanjutnya:", "");
             if (nextNum !== null && nextNum.trim() !== "") {
-                if (isNaN(nextNum)) {
-                    alert("Format harus berupa angka!");
-                    return;
-                }
+                if (isNaN(nextNum)) { alert("Format harus berupa angka!"); return; }
                 byId("exec_action").value = "set_next_icl";
                 byId("upd_rcv_id").value = nextNum; 
                 byId("execForm").submit();
             }
         }
 
-        document.addEventListener("DOMContentLoaded",function(){
-            var rows=document.querySelectorAll("#detailBody tr");
-            for(var i=0;i<rows.length;i++){rows[i].onclick=function(){selectDetailRow(this);};}
+        // Cross-browser DOMContentLoaded alternative
+        function ready(fn) {
+            if (document.readyState != 'loading'){
+                fn();
+            } else if (document.addEventListener) {
+                document.addEventListener('DOMContentLoaded', fn);
+            } else {
+                document.attachEvent('onreadystatechange', function() {
+                    if (document.readyState != 'loading') fn();
+                });
+            }
+        }
+
+        ready(function(){
+            var rows=document.getElementById("detailBody").getElementsByTagName("tr");
+            for(var i=0;i<rows.length;i++){
+                rows[i].onclick=function(){selectDetailRow(this);};
+            }
+            renumberRows();
         });
-        document.addEventListener("click",function(e){
-            initAC();if(acBox&&!acBox.contains(e.target)){if(!e.target||!e.target.getAttribute||e.target.getAttribute("autocomplete")!=="off")hideAC();}
-        });
+        
+        if(document.addEventListener) {
+            document.addEventListener("click", function(e){
+                initAC();if(acBox&&!acBox.contains(e.target)){if(!e.target||!e.target.getAttribute||e.target.getAttribute("autocomplete")!=="off")hideAC();}
+            });
+        } else {
+            document.attachEvent("onclick", function (e) {
+                var target = e.srcElement || e.target;
+                initAC();
+                if (acBox && !acBox.contains(target)) {
+                    if (!target || !target.getAttribute || target.getAttribute("autocomplete") !== "off") hideAC();
+                }
+            });
+        }
     </script>
 </head>
-<body class="hold-transition layout-top-nav">
-<div class="wrapper">
+<body>
 
-    <!-- Navbar -->
-    <nav class="main-header navbar navbar-expand-md navbar-light navbar-white">
-        <div class="container-fluid">
-            <a href="dashboard_home.php" class="navbar-brand">
-                <span class="brand-text font-weight-light"><i class="fas fa-truck-loading text-primary mr-2"></i> Purchasing System</span>
-            </a>
-            <ul class="navbar-nav ml-auto">
-                <li class="nav-item">
-                    <a href="dashboard_home.php" class="nav-link"><i class="fas fa-sign-out-alt"></i> Close</a>
-                </li>
-            </ul>
-        </div>
-    </nav>
-
-    <div class="content-wrapper">
-        <div class="content-header">
-            <div class="container-fluid">
-                <div class="row mb-2">
-                    <div class="col-sm-6">
-                        <h1 class="m-0">Purchase Receive</h1>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="content">
-            <div class="container-fluid">
-
-                <?php if ($message != "") { ?>
-                    <div class="alert alert-success alert-dismissible">
-                        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                        <h5><i class="icon fas fa-check"></i> Success!</h5>
-                        <?php echo h($message); ?>
-                    </div>
-                <?php } ?>
-
-                <?php if ($error != "") { ?>
-                    <div class="alert alert-danger alert-dismissible">
-                        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                        <h5><i class="icon fas fa-ban"></i> Error!</h5>
-                        <?php echo h($error); ?>
-                    </div>
-                <?php } ?>
-
-                <div class="card card-primary card-outline">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h3 class="card-title mb-0">
-                            <button type="button" class="btn btn-sm btn-default mr-1" onclick="newData()"><i class="fas fa-file"></i> New</button>
-                            <button type="button" class="btn btn-sm btn-success mr-1" onclick="submitSave(false)"><i class="fas fa-save"></i> Save Receive</button>
-                            <button type="button" class="btn btn-sm btn-danger" onclick="deleteCurrent()"><i class="fas fa-trash"></i> Delete</button>
-                        </h3>
-                        
-                        <div class="card-tools">
-                            <form method="get" action="receive.php" class="form-inline m-0" id="searchFormTop">
-                                <div class="input-group input-group-sm" style="width: 300px;">
-                                    <input type="text" name="q" class="form-control float-right" value="<?php echo h($q); ?>" placeholder="Search RCV No / DO / Sup" autocomplete="off" oninput="showRcvAC(this)" onkeydown="rcvKey(event, this)">
-                                    <div class="input-group-append">
-                                        <button type="submit" class="btn btn-default"><i class="fas fa-search"></i></button>
-                                        <a href="receive.php" class="btn btn-default" title="Reset"><i class="fas fa-sync"></i></a>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-
-                    <form id="rcvForm" method="post" action="receive.php">
-                        <input type="hidden" name="action" value="save">
-                        <input type="hidden" name="rcv_id" id="rcv_id" value="<?php echo h($header["RCV_ID"]); ?>">
-                        <input type="hidden" name="sup_id" id="sup_id" value="<?php echo h($header["SUP_ID"]); ?>">
-                        <input type="hidden" name="allow_empty_detail" id="allow_empty_detail" value="0">
-
-                        <div class="card-body">
-                            <!-- Panel 1: Receive Header -->
-                            <div class="p-3 rounded mb-3" style="background-color: #008080;">
-                                <div class="row">
-                                    <div class="col-md-3">
-                                        <div class="form-group">
-                                            <label class="text-warning">I.C.L No.</label>
-                                            <input type="text" class="form-control form-control-sm rcv-no" name="rcv_no" value="<?php echo h($header["RCV_NO"]); ?>">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="form-group">
-                                            <label class="text-warning">Date</label>
-                                            <input type="date" class="form-control form-control-sm" name="rcv_date" value="<?php echo h($header["RCV_DATE"]); ?>">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-6">
-                                        <div class="form-group">
-                                            <label class="text-warning">D.O #</label>
-                                            <input type="text" class="form-control form-control-sm" name="rcv_dono" value="<?php echo h($header["RCV_DONO"]); ?>">
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="row">
-                                    <div class="col-md-5">
-                                        <div class="form-group">
-                                            <label class="text-warning">Supplier</label>
-                                            <div class="input-group input-group-sm">
-                                                <input type="text" class="form-control" style="max-width:100px;" name="sup_code" id="sup_code" value="<?php echo h($header["SUP_CODE"]); ?>" autocomplete="off" oninput="showSupplierAC(this)" onkeydown="supplierKey(event, this)">
-                                                <input type="text" class="form-control bg-light" name="sup_comp" id="sup_comp" value="<?php echo h($header["SUP_COMP"]); ?>" readonly>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-3">
-                                        <div class="form-group">
-                                            <label class="text-warning">PIC</label>
-                                            <input type="text" class="form-control form-control-sm" name="rcv_pic" id="rcv_pic" value="<?php echo h($header["RCV_PIC"]); ?>" autocomplete="off" oninput="showPicAC(this)" onkeydown="picKey(event, this)">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="form-group">
-                                            <label class="text-warning">TYPE</label>
-                                            <select class="form-control form-control-sm" name="rcv_type">
-                                                <option value="1" <?php echo $header["RCV_TYPE"]=="1"?"selected":""; ?>>Material - Supplier</option>
-                                                <option value="2" <?php echo $header["RCV_TYPE"]=="2"?"selected":""; ?>>Spare Part - Supplier</option>
-                                                <option value="3" <?php echo $header["RCV_TYPE"]=="3"?"selected":""; ?>>Part - Vendor</option>
-                                                <option value="4" <?php echo $header["RCV_TYPE"]=="4"?"selected":""; ?>>Others</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Panel 2: Bea Cukai -->
-                            <div class="p-3 rounded mb-3" style="background-color: #008000;">
-                                <div class="row">
-                                    <div class="col-md-4">
-                                        <div class="form-group mb-0">
-                                            <label class="text-warning">Jenis BC</label>
-                                            <select class="form-control form-control-sm" name="jenis_bc">
-                                                <option value="">- Pilih BC -</option>
-                                                <?php foreach($bcList as $b) { ?>
-                                                    <option value="<?php echo h($b); ?>" <?php echo $header["JENIS_BC"]==$b?"selected":""; ?>><?php echo h($b); ?></option>
-                                                <?php } ?>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="form-group mb-0">
-                                            <label class="text-warning">Nomor BC</label>
-                                            <input type="text" class="form-control form-control-sm" name="nomor_bc" value="<?php echo h($header["NOMOR_BC"]); ?>">
-                                        </div>
-                                    </div>
-                                    <div class="col-md-4">
-                                        <div class="form-group mb-0">
-                                            <label class="text-warning">Tanggal BC</label>
-                                            <input type="date" class="form-control form-control-sm" name="bc_date" value="<?php echo h($header["BC_DATE"]); ?>">
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="mb-2">
-                                <button type="button" class="btn btn-sm btn-outline-primary mr-1" onclick="cetakICL()"><i class="fas fa-print"></i> Cetak ICL</button>
-                                <button type="button" class="btn btn-sm btn-outline-primary mr-1" onclick="cetakICLOto()"><i class="fas fa-print"></i> ICL OTO</button>
-                                <button type="button" class="btn btn-sm btn-outline-primary mr-1" onclick="cetakSchedule()"><i class="fas fa-calendar-alt"></i> Sch Material</button>
-                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="setNextICL()"><i class="fas fa-cogs"></i> SET NEXT ICL</button>
-                            </div>
-
-                            <div class="table-responsive p-0 border mt-3">
-                                <table class="table table-bordered table-sm text-sm m-0" id="detailTable">
-                                    <thead class="bg-light">
-                                        <tr>
-                                            <th class="text-center" style="width:40px;">No</th>
-                                            <th style="width:140px;">Item Code</th>
-                                            <th>Item Name</th>
-                                            <th style="width:100px;">Recv Qty</th>
-                                            <th style="width:120px;">Price</th>
-                                            <th style="width:150px;">PO #</th>
-                                            <th class="text-center" style="width:50px;">ACT</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="detailBody">
-                                        <?php for($i=0;$i<count($details);$i++){ 
-                                            $d=$details[$i];
-                                            $qty=isset($d["RCVD_QTY"])?floatval($d["RCVD_QTY"]):0;
-                                            $price=isset($d["POD_PRICE"])?floatval($d["POD_PRICE"]):0;
-                                        ?>
-                                            <tr>
-                                                <td class="text-center align-middle row-no"><?php echo h($i+1); ?></td>
-                                                <td>
-                                                    <input type="hidden" name="item_id[]" id="item_id_<?php echo h($i); ?>" value="<?php echo h($d["ITEM_ID"]); ?>">
-                                                    <input type="hidden" name="po_id[]" id="po_id_<?php echo h($i); ?>" value="<?php echo h($d["PO_ID"]); ?>">
-                                                    <input type="text" class="form-control form-control-sm table-input-transparent" name="item_code[]" id="item_code_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_CODE"])?$d["ITEM_CODE"]:""); ?>" autocomplete="off" oninput="showPOItemAC(this, <?php echo h($i); ?>)" onkeydown="poItemKey(event, this, <?php echo h($i); ?>)">
-                                                </td>
-                                                <td><input type="text" class="form-control form-control-sm table-input-transparent bg-light" name="item_name[]" id="item_name_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_NAME"])?$d["ITEM_NAME"]:""); ?>" readonly></td>
-                                                <td><input type="text" class="form-control form-control-sm table-input-transparent text-right" name="rcvd_qty[]" id="rcvd_qty_<?php echo h($i); ?>" value="<?php echo h($qty==0?"":$qty); ?>" onkeydown="fieldEnterSave(event)"></td>
-                                                <td><input type="text" class="form-control form-control-sm table-input-transparent text-right bg-light" name="pod_price[]" id="pod_price_<?php echo h($i); ?>" value="<?php echo h($price==0?"":$price); ?>" readonly></td>
-                                                <td><input type="text" class="form-control form-control-sm table-input-transparent bg-light" name="po_num[]" id="po_num_<?php echo h($i); ?>" value="<?php echo h(isset($d["PO_NUM"])?$d["PO_NUM"]:""); ?>" readonly></td>
-                                                <td class="text-center"><button type="button" class="btn btn-danger btn-xs" onclick="deleteRow(this); event.stopPropagation();" title="Delete"><i class="fas fa-times"></i></button></td>
-                                            </tr>
-                                        <?php } ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <div class="card-footer bg-white d-flex justify-content-between align-items-center">
-                            <div>
-                                <button type="button" class="btn btn-primary btn-sm" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
-                            </div>
-                            <div class="text-right">
-                                <div class="mb-1">
-                                    <button type="button" class="btn btn-sm btn-danger mr-1" onclick="triggerAction('trigger_off')">OFF</button>
-                                    <button type="button" class="btn btn-sm btn-warning mr-1" onclick="triggerUpdatePrice()">UPDATE</button>
-                                    <button type="button" class="btn btn-sm btn-success" onclick="triggerAction('trigger_on')">ON</button>
-                                </div>
-                                <span class="text-danger font-weight-bold border border-danger px-2 py-1 bg-white d-inline-block rounded" style="font-size: 11px;">
-                                    JANGAN LUPA KLIK TOMBOL ON LAGI SETELAH KLIK TOMBOL OFF
-                                </span>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-
-                <form id="deleteForm" method="post" action="receive.php">
-                    <input type="hidden" name="action" value="delete">
-                    <input type="hidden" name="rcv_id" id="delete_rcv_id" value="">
-                </form>
-
-                <form id="execForm" method="post" action="receive.php">
-                    <input type="hidden" name="action" id="exec_action" value="">
-                    <input type="hidden" name="upd_rcv_id" id="upd_rcv_id" value="">
-                    <input type="hidden" name="upd_item_id" id="upd_item_id" value="">
-                    <input type="hidden" name="upd_po_id" id="upd_po_id" value="">
-                    <input type="hidden" name="edit" value="<?php echo h($editId); ?>">
-                </form>
-
-                <div class="card">
-                    <div class="card-body p-0 table-responsive" style="max-height: 400px;">
-                        <table class="table table-striped table-hover table-head-fixed text-nowrap table-sm text-sm">
-                            <thead>
-                                <tr>
-                                    <th style="width:30px;"></th>
-                                    <th>RCV NO</th>
-                                    <th>Date</th>
-                                    <th>DO #</th>
-                                    <th>PIC</th>
-                                    <th>Sup.Code</th>
-                                    <th>Supplier</th>
-                                    <th class="text-right">Detail</th>
-                                </tr>
-                            </thead>
-                            <tbody id="rcvListBody">
-                                <?php while($r=sqlsrv_fetch_array($stmtList, SQLSRV_FETCH_ASSOC)){ ?>
-                                    <?php $rcvIdLink=intval($r["RCV_ID"]); ?>
-                                    <tr class="pointer po-row" onclick="goEdit('<?php echo h($rcvIdLink); ?>')">
-                                        <td class="text-center text-primary"><i class="fas fa-caret-right"></i></td>
-                                        <td class="font-weight-bold text-dark"><?php echo h($r["RCV_NO"]); ?></td>
-                                        <td><?php echo h(fmt_date_view($r["RCV_DATE"])); ?></td>
-                                        <td><?php echo h($r["RCV_DONO"]); ?></td>
-                                        <td><?php echo h($r["RCV_PIC"]); ?></td>
-                                        <td><?php echo h($r["SUP_CODE"]); ?></td>
-                                        <td><?php echo h($r["SUP_COMP"]); ?></td>
-                                        <td class="text-right"><?php echo h(number_format(floatval($r["DETAIL_COUNT"]),0,".",",")); ?></td>
-                                    </tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-            </div>
-        </div>
+<div class="main-container">
+    <div class="title-bar">
+        Receive
     </div>
+
+    <?php if ($message != "") { echo "<div style='background:#d4edda; color:#155724; padding:5px; text-align:center; font-size:12px;'>$message</div>"; } ?>
+    <?php if ($error != "") { echo "<div style='background:#f8d7da; color:#721c24; padding:5px; text-align:center; font-size:12px;'>$error</div>"; } ?>
+
+    <form id="rcvForm" method="post" action="receive.php" style="display: flex; flex-direction: column; flex-grow: 1;">
+        <input type="hidden" name="action" value="save">
+        <input type="hidden" name="rcv_id" id="rcv_id" value="<?php echo h($header["RCV_ID"]); ?>">
+        <input type="hidden" name="sup_id" id="sup_id" value="<?php echo h($header["SUP_ID"]); ?>">
+        <input type="hidden" name="allow_empty_detail" id="allow_empty_detail" value="0">
+
+        <!-- HEADER TEAL AREA -->
+        <div class="teal-header">
+            <div class="row">
+                <!-- Kiri: Data Utama -->
+                <div class="col-8">
+                    <div class="row">
+                        <div class="col-3">
+                            <label class="lbl-yellow">I.C.L No.</label>
+                            <input type="text" class="input-classic rcv-no" name="rcv_no" value="<?php echo h($header["RCV_NO"]); ?>">
+                        </div>
+                        <div class="col-3">
+                            <label class="lbl-yellow">Date</label>
+                            <input type="date" class="input-classic" name="rcv_date" value="<?php echo h($header["RCV_DATE"]); ?>">
+                        </div>
+                        <div class="col-6">
+                            <label class="lbl-yellow">D.O #</label>
+                            <input type="text" class="input-classic" name="rcv_dono" value="<?php echo h($header["RCV_DONO"]); ?>">
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-1">
+                        <div class="col-3">
+                            <label class="lbl-yellow">Sup.Code</label>
+                            <input type="text" class="input-classic" name="sup_code" id="sup_code" value="<?php echo h($header["SUP_CODE"]); ?>" autocomplete="off" oninput="showSupplierAC(this)" onkeydown="supplierKey(event, this)">
+                        </div>
+                        <div class="col-9">
+                            <label class="lbl-yellow">Sup.Company</label>
+                            <input type="text" class="input-classic bg-light" name="sup_comp" id="sup_comp" value="<?php echo h($header["SUP_COMP"]); ?>" readonly>
+                        </div>
+                    </div>
+
+                    <div class="row mt-1">
+                        <div class="col-3">
+                            <label class="lbl-yellow">PIC</label>
+                            <input type="text" class="input-classic" name="rcv_pic" id="rcv_pic" value="<?php echo h($header["RCV_PIC"]); ?>" autocomplete="off" oninput="showPicAC(this)" onkeydown="picKey(event, this)">
+                        </div>
+                        <div class="col-3">
+                            <label class="lbl-yellow">TYPE</label>
+                            <select class="input-classic" name="rcv_type">
+                                <option value="1" <?php echo $header["RCV_TYPE"]=="1"?"selected":""; ?>>Material - Supplier</option>
+                                <option value="2" <?php echo $header["RCV_TYPE"]=="2"?"selected":""; ?>>Spare Part - Supplier</option>
+                                <option value="3" <?php echo $header["RCV_TYPE"]=="3"?"selected":""; ?>>Part - Vendor</option>
+                                <option value="4" <?php echo $header["RCV_TYPE"]=="4"?"selected":""; ?>>Others</option>
+                            </select>
+                        </div>
+                        <div class="col-2">
+                            <label class="lbl-yellow">Jenis BC</label>
+                            <select class="input-classic" name="jenis_bc">
+                                <option value=""></option>
+                                <?php foreach($bcList as $b) { ?>
+                                    <option value="<?php echo h($b); ?>" <?php echo $header["JENIS_BC"]==$b?"selected":""; ?>><?php echo h($b); ?></option>
+                                <?php } ?>
+                            </select>
+                        </div>
+                        <div class="col-2">
+                            <label class="lbl-yellow">No BC</label>
+                            <input type="text" class="input-classic" name="nomor_bc" value="<?php echo h($header["NOMOR_BC"]); ?>">
+                        </div>
+                        <div class="col-2">
+                            <label class="lbl-yellow">Tgl BC</label>
+                            <input type="date" class="input-classic" name="bc_date" value="<?php echo h($header["BC_DATE"]); ?>">
+                        </div>
+                    </div>
+
+                    <div class="row mt-2">
+                        <div class="col-12">
+                            <fieldset class="fieldset-control">
+                                <legend>Control</legend>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="newData()">Tambah</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="goEdit('<?php echo h($editId); ?>')">Rubah</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="deleteCurrent()">Hapus</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="submitSave(false)">Simpan</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="newData()">Batal</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="window.location.href='receive.php'">Refresh</button>
+                            </fieldset>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Kanan: Tombol Cetak & Search Data -->
+                <div class="col-4">
+                    <div style="display:flex; flex-direction:column; align-items:flex-end;">
+                        <!-- Pencarian Data -->
+                        <div style="margin-bottom: 20px; width: 100%;">
+                            <label class="lbl-white text-right">SEARCH DATA</label>
+                            <input type="text" name="q" class="input-classic" style="width:100%;" value="<?php echo h($q); ?>" placeholder="Search RCV No / DO / Sup" autocomplete="off" oninput="showRcvAC(this)" onkeydown="rcvKey(event, this)">
+                        </div>
+                        
+                        <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">
+                            <button type="button" class="btn-classic btn-action-side mr-1" onclick="cetakICLOto()">ICL OTO</button>
+                           
+                        </div>
+                        <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">
+                            
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GRID DATA AREA -->
+        <div class="datagrid-wrapper">
+            <table class="datagrid" id="detailTable">
+                <thead>
+                    <tr>
+                        <th style="width:25px;" class="text-center"></th>
+                        <th style="width:130px;">ITEM_CODE</th>
+                        <th>ITEM_NAME</th>
+                        <th style="width:70px;" class="text-right">RCVD_QTY</th>
+                        <th style="width:80px;" class="text-right">POD_PRICE</th>
+                        <th style="width:160px;">PO_NUM</th>
+                        <th style="width:40px;" class="text-center" title="Pindah ICL">Pindah</th>
+                        <th style="width:40px;" class="text-center">ACT</th>
+                    </tr>
+                </thead>
+                <tbody id="detailBody">
+                    <?php for($i=0;$i<count($details);$i++){ 
+                        $d=$details[$i];
+                        $qty=isset($d["RCVD_QTY"])?floatval($d["RCVD_QTY"]):0;
+                        $price=isset($d["POD_PRICE"])?floatval($d["POD_PRICE"]):0;
+                    ?>
+                        <tr>
+                            <td class="text-center align-middle row-no" style="width:25px;"></td>
+                            <td style="width:130px;">
+                                <input type="hidden" name="item_id[]" id="item_id_<?php echo h($i); ?>" value="<?php echo h($d["ITEM_ID"]); ?>">
+                                <input type="hidden" name="po_id[]" id="po_id_<?php echo h($i); ?>" value="<?php echo h($d["PO_ID"]); ?>">
+                                <input type="text" name="item_code[]" id="item_code_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_CODE"])?$d["ITEM_CODE"]:""); ?>" autocomplete="off" oninput="showPOItemAC(this, <?php echo h($i); ?>)" onkeydown="poItemKey(event, this, <?php echo h($i); ?>)">
+                            </td>
+                            <td><input type="text" name="item_name[]" id="item_name_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_NAME"])?$d["ITEM_NAME"]:""); ?>" readonly></td>
+                            
+                            <!-- Memanggil fieldEnterSave dengan 'this' -->
+                            <td style="width:70px;"><input type="text" class="text-right" name="rcvd_qty[]" id="rcvd_qty_<?php echo h($i); ?>" value="<?php echo h($qty==0?"":$qty); ?>" onkeydown="fieldEnterSave(event, this)"></td>
+                            
+                            <td style="width:80px;"><input type="text" class="text-right" name="pod_price[]" id="pod_price_<?php echo h($i); ?>" value="<?php echo h($price==0?"":$price); ?>"></td>
+                            <td style="width:160px;"><input type="text" name="po_num[]" id="po_num_<?php echo h($i); ?>" value="<?php echo h(isset($d["PO_NUM"])?$d["PO_NUM"]:""); ?>" autocomplete="off" oninput="showPONumAC(this, <?php echo h($i); ?>)" onkeydown="poNumKey(event, this, <?php echo h($i); ?>)"></td>
+                            <td class="text-center" style="width:40px; background:#f0f8ff;">
+                                <?php if (!empty($d["ITEM_ID"]) && !empty($d["PO_ID"])) { ?>
+                                    <input type="checkbox" name="move_check[]" value="<?php echo h($d["ITEM_ID"].'|'.$d["PO_ID"]); ?>" onclick="event.stopPropagation();">
+                                <?php } ?>
+                            </td>
+                            <td class="text-center" style="width:40px;"><button type="button" class="btn-classic" style="padding:0 5px;" onclick="deleteRow(this); event.stopPropagation();" title="Delete">X</button></td>
+                        </tr>
+                    <?php } ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- FITUR PANEL PINDAH ICL -->
+        <?php if ($editId > 0) { ?>
+        <div style="background: #e0f7fa; padding: 6px 10px; border-top: 1px solid #b2ebf2; display: flex; align-items: center; gap: 8px;">
+            <strong style="font-size:11px; color:#006064;">Pindah Item Diconteng:</strong>
+            <button type="button" class="btn-classic" style="background:#b2dfdb;" onclick="triggerMoveToNew()">Pindah ke ICL Baru</button>
+            <span>atau</span>
+            <input type="hidden" name="target_rcv_id" id="target_rcv_id" value="">
+            <input type="text" class="input-classic" style="width: 180px;" name="target_rcv_no" id="target_rcv_no" placeholder="Ketik No ICL Tujuan..." autocomplete="off" oninput="showTargetRcvAC(this)" onkeydown="targetRcvKey(event, this)">
+            <button type="button" class="btn-classic" onclick="triggerMoveDetail()">Pindah ke ICL Ini</button>
+        </div>
+        <?php } ?>
+
+        <!-- FOOTER BAR -->
+        <div class="footer-bar">
+            <div>
+                <button type="button" class="btn-classic" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+            </div>
+            <div style="text-align: right;">
+                <button type="button" class="btn-classic" onclick="triggerAction('trigger_off')">OFF</button>
+                <button type="button" class="btn-classic" onclick="triggerUpdatePrice()">UPDATE</button>
+                <button type="button" class="btn-classic" onclick="triggerAction('trigger_on')">ON</button>
+                <br>
+                <span style="font-weight: bold; font-size: 11px; color: #000; margin-top:2px; display:inline-block;">
+                    JANGAN LUPA KLIK TOMBOL ON LAGI SETELAH KLIK TOMBOL OFF
+                </span>
+            </div>
+        </div>
+    </form>
+
+    <form id="deleteForm" method="post" action="receive.php" style="display:none;">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="rcv_id" id="delete_rcv_id" value="">
+    </form>
+
+    <form id="execForm" method="post" action="receive.php" style="display:none;">
+        <input type="hidden" name="action" id="exec_action" value="">
+        <input type="hidden" name="upd_rcv_id" id="upd_rcv_id" value="">
+        <input type="hidden" name="upd_item_id" id="upd_item_id" value="">
+        <input type="hidden" name="upd_po_id" id="upd_po_id" value="">
+        <input type="hidden" name="edit" value="<?php echo h($editId); ?>">
+    </form>
 </div>
 
 <div id="acBox" class="ac-box"></div>
 
-<!-- jQuery -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-<!-- Bootstrap 4 -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
-<!-- AdminLTE App -->
-<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
 </body>
 </html>

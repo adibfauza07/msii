@@ -46,6 +46,9 @@ $error = "";
 $action = postv("action","");
 $editId = intval(getv("edit","0"));
 
+// Deteksi AJAX murni via URL atau POST
+$isAjax = (isset($_GET['ajax']) && $_GET['ajax'] == '1') || (isset($_POST['is_ajax']) && $_POST['is_ajax'] == '1');
+
 /* ======================================================
    AKSI SPESIFIK: SET NEXT ICL, TRIGGER ON/OFF, UPDATE PRICE 
 ====================================================== */
@@ -142,7 +145,6 @@ if ($action == "move_to_new") {
         sqlsrv_begin_transaction($conn);
         $ok = true;
 
-        // Ambil data header ICL lama untuk di duplikat
         $sqlSrc = "SELECT * FROM dbo.RECEIVE WHERE RCV_ID = ?";
         $stmtSrc = sqlsrv_query($conn, $sqlSrc, array($sourceRcvId));
         $srcHdr = sqlsrv_fetch_array($stmtSrc, SQLSRV_FETCH_ASSOC);
@@ -150,7 +152,6 @@ if ($action == "move_to_new") {
         if (!$srcHdr) {
             $ok = false; $error = "Data ICL sumber tidak ditemukan.";
         } else {
-            // Buat ICL Baru
             $newRcvNo = generate_rcv_no($conn);
             $sqlH = "
                 SET NOCOUNT ON;
@@ -185,7 +186,6 @@ if ($action == "move_to_new") {
                 if($error == "") $error = "Gagal mendapatkan ID ICL baru.";
             }
 
-            // Pindahkan Detail ke ICL Baru
             if ($ok) {
                 foreach ($moveItems as $val) {
                     $arr = explode("|", $val);
@@ -199,7 +199,6 @@ if ($action == "move_to_new") {
                 }
             }
 
-            // Update Counter REFS
             if ($ok) {
                 inc_next_rcv_no($conn);
             }
@@ -207,7 +206,6 @@ if ($action == "move_to_new") {
 
         if ($ok) {
             sqlsrv_commit($conn);
-            // Redirect langsung ke ICL yang baru dibuat
             header("Location: receive.php?edit=".$newRcvId."&msg=moved_new");
             exit;
         } else {
@@ -368,11 +366,30 @@ if ($action == "save") {
             if ($ok) {
                 sqlsrv_commit($conn);
                 if ($isNewRecord) inc_next_rcv_no($conn); 
+                
+                // ==== PENANGANAN SAVE VIA AJAX / ENTER ====
+                if ($isAjax) {
+                    ob_clean();
+                    header('Content-Type: application/json');
+                    echo json_encode(array("status" => "success", "rcv_id" => $rcvId));
+                    exit;
+                }
+                // ==========================================
+
                 header("Location: receive.php?edit=".$rcvId."&msg=saved");
                 exit;
             } else {
                 sqlsrv_rollback($conn);
                 if ($error == "") $error = "Simpan Receive gagal:\n".sql_error_text();
+                
+                // ==== PENANGANAN ERROR VIA AJAX ====
+                if ($isAjax) {
+                    ob_clean();
+                    header('Content-Type: application/json');
+                    echo json_encode(array("status" => "error", "message" => $error));
+                    exit;
+                }
+                // ===================================
             }
         }
     }
@@ -444,12 +461,23 @@ if ($stmtDept !== false) {
     }
 }
 
-// --- DATA RCV UNTUK AUTOCOMPLETE TARGET ICL ---
 $rcvAuto = array();
-$stmtRcv = sqlsrv_query($conn,"SELECT TOP 500 RCV_ID, RCV_NO FROM dbo.RECEIVE ORDER BY RCV_DATE DESC, RCV_NO DESC");
-if ($stmtRcv !== false) {
-    while ($r = sqlsrv_fetch_array($stmtRcv, SQLSRV_FETCH_ASSOC)) {
-        $rcvAuto[] = array("RCV_ID"=>intval($r["RCV_ID"]), "RCV_NO"=>trim((string)$r["RCV_NO"]));
+$sqlRcvAuto = "
+    SELECT TOP 1000 R.RCV_ID, R.RCV_NO, R.RCV_DONO, S.SUP_CODE, S.SUP_COMP
+    FROM dbo.RECEIVE R
+    LEFT JOIN dbo.SUPPLIER S ON R.SUP_ID = S.SUP_ID
+    ORDER BY R.RCV_DATE DESC, R.RCV_NO DESC
+";
+$stmtRcvAuto = sqlsrv_query($conn, $sqlRcvAuto);
+if ($stmtRcvAuto !== false) {
+    while ($ra = sqlsrv_fetch_array($stmtRcvAuto, SQLSRV_FETCH_ASSOC)) {
+        $rcvAuto[] = array(
+            "RCV_ID" => intval($ra["RCV_ID"]),
+            "RCV_NO" => trim((string)$ra["RCV_NO"]),
+            "RCV_DONO" => trim((string)$ra["RCV_DONO"]),
+            "SUP_CODE" => trim((string)$ra["SUP_CODE"]),
+            "SUP_COMP" => trim((string)$ra["SUP_COMP"])
+        );
     }
 }
 
@@ -459,7 +487,6 @@ if ($stmtBc !== false) {
     while ($b = sqlsrv_fetch_array($stmtBc, SQLSRV_FETCH_ASSOC)) $bcList[] = trim((string)$b["BCTY_NAME"]);
 }
 
-/* LIST RECEIVE */
 $q = getv("q","");
 $where = "";
 $paramsList = array();
@@ -481,555 +508,953 @@ $sqlList = "
 $stmtList = sqlsrv_query($conn,$sqlList,$paramsList);
 
 if (count($details) == 0) {
-    for ($i=0; $i<3; $i++) {
+    for ($i=0; $i<10; $i++) { 
         $details[] = array("ITEM_ID"=>"","PO_ID"=>"","ITEM_CODE"=>"","ITEM_NAME"=>"","PO_NUM"=>"","RCVD_QTY"=>"","POD_PRICE"=>"");
     }
 }
 ?>
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Items Receive</title>
-<style>
-        /* ==== CSS UNIVERSAL - COMPACT, MINIMALIS, FIT TO FONT ==== */
-        html, body {
-            margin: 0; padding: 0;
-            background-color: #f4f6f9;
-            font-family: Arial, Helvetica, sans-serif;
-            font-size: 11px; color: #333;
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Items Receive</title>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    
+    <style>
+        /* CSS KLASIK WINDOWS / DELPHI STYLING */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 12px;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .main-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #ece9d8;
         }
 
-        .wrap {
+        .title-bar {
+            background-color: #ffffff;
+            text-align: center;
+            font-size: 24px;
+            font-family: Arial, sans-serif;
+            padding: 5px 0;
+            color: #000;
+        }
+
+        .teal-header {
+            background-color: #008080;
+            padding: 5px 10px;
+            color: #ffff00;
+        }
+
+        .lbl-yellow {
+            color: #ffff00;
+            font-size: 11px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        .lbl-white {
+            color: #ffffff;
+            font-size: 11px;
+            margin-bottom: 2px;
+            display: block;
+            font-weight: bold;
+        }
+
+        .input-classic {
+            width: 100%;
+            height: 20px;
+            font-size: 12px;
+            padding: 0 4px;
+            border: 1px solid #7f9db9;
+            box-sizing: border-box;
             background: #fff;
-            padding: 15px 20px;
-            margin: 15px auto;
-            max-width: 98%;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            overflow-x: auto;
+            transition: background-color 0.3s;
         }
 
-        .page-title {
-            font-size: 15px; font-weight: bold; color: #333;
-            border-bottom: 2px solid #28a745;
-            padding-bottom: 8px; margin: -5px -5px 15px -5px;
-            text-transform: uppercase;
-        }
-        .page-title::before { content: "🛒 Manajemen "; } 
+        .input-classic:read-only { background-color: #e0e0e0; }
+        select.input-classic { padding: 0; }
 
-        /* === GABUNGAN ACTION BUTTON & SEARCH BOX === */
-        .top-action-bar {
-            display: flex; justify-content: space-between; align-items: center;
-            background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px;
-            padding: 8px 12px; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;
+        .btn-classic {
+            background: #f0f0f0;
+            border: 1px solid #888;
+            border-bottom-color: #444;
+            border-right-color: #444;
+            padding: 2px 10px;
+            font-size: 12px;
+            color: #000;
+            cursor: pointer;
+            box-shadow: inset 1px 1px 0px #fff;
         }
-        .action-buttons { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+        .btn-classic:active {
+            box-shadow: inset 1px 1px 2px #888;
+            border: 1px solid #444;
+            border-bottom-color: #888;
+            border-right-color: #888;
+        }
+        .btn-action-wide { width: 80px; margin-right: 2px; }
+        .btn-action-side { margin-bottom: 3px; min-width: 80px; }
+
+        .fieldset-control {
+            border: 1px solid #fff;
+            padding: 6px;
+            margin-top: 5px;
+            position: relative;
+        }
         
-        .search-box form { display: flex; align-items: center; gap: 5px; margin: 0; white-space: nowrap; }
-        .search-box input { width: 220px !important; margin: 0; }
-
-        .bottom-buttons { margin-top: 15px; justify-content: space-between; border-top: 1px solid #ddd; padding-top: 10px; display: flex; gap: 5px; }
-        .header-toolbar { display: flex; gap: 5px; margin-bottom: 15px; align-items: center; flex-wrap: wrap; }
-
-        .btn {
-            height: 24px; padding: 0 10px; border: 1px solid #ccc; border-radius: 3px;
-            background: #fff; color: #333; font-family: inherit; font-size: 11px; font-weight: bold;
-            cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
-            text-decoration: none; text-transform: uppercase; transition: background 0.1s;
+        .fieldset-control legend {
+            color: #fff;
+            font-size: 11px;
+            background: #008080;
+            padding: 0 4px;
+            position: absolute;
+            top: -8px;
+            left: 5px;
         }
-        .btn:hover { background: #e2e6ea; }
 
-        .btn-save { background: #28a745; color: #fff; border-color: #28a745; }
-        .btn-save:hover { background: #218838; }
-
-        .btn-del { background: #dc3545; color: #fff; border-color: #dc3545; }
-        .btn-del:hover { background: #c82333; }
-
-        .btn-x { background: #dc3545; color: #fff; width: 22px; padding: 0; border: none; border-radius: 3px; }
-        .btn-x:hover { background: #c82333; }
-
-        .btn-os { background: #17a2b8; color: #fff; border-color: #17a2b8; }
-        .btn-os:hover { background: #138496; }
-
-        .btn-blue { background: #007bff; color: #fff; border-color: #007bff; }
-        .btn-blue:hover { background: #0056b3; }
-
-        /* Notifikasi */
-        .msg { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; padding: 8px 12px; border-radius: 3px; margin-bottom: 15px; font-weight:bold; }
-        .err { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; padding: 8px 12px; border-radius: 3px; margin-bottom: 15px; white-space: pre-wrap; font-weight:bold; }
-
-        /* Area Form Header */
-        .label { display: block; margin-bottom: 3px; font-weight: normal; color: #555; font-size: 10px; text-transform: capitalize; }
-
-        table.form-table, table.bc-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; }
-        table.form-table td, table.bc-table td { padding: 0 15px 10px 0; vertical-align: top; }
-
-        /* Input Field Styling */
-        input[type=text], input[type=date], select, textarea {
-            width: 100% !important;
-            height: 24px; border: 1px solid #ccc; border-radius: 3px;
-            padding: 2px 6px; font-family: inherit; font-size: 11px; box-sizing: border-box;
-            background: #fff; color: #333;
+        /* GRID TABLE CLASSIC */
+        .datagrid-wrapper {
+            flex-grow: 1;
+            overflow: auto;
+            background: #fff;
+            border-top: 2px solid #888;
+            border-bottom: 2px solid #fff;
         }
-        input[type=text]:focus, input[type=date]:focus, select:focus, textarea:focus {
-            outline: none; border-color: #80bdff; box-shadow: 0 0 0 0.1rem rgba(0,123,255,.25);
-        }
-        textarea { height: 35px; resize: vertical; }
 
-        input[readonly], input[style*="background:#f9f9f9"], input[style*="background:#ddd;"] {
-            background: #e9ecef !important; color: #495057; cursor: not-allowed;
+        table.datagrid {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: auto;
         }
-        input[type=checkbox] { width: 16px; height: 16px; vertical-align: middle; cursor: pointer; margin: 0; }
-        
-        /* Batasi lebar maksimal input header */
-        .po-no, .rcv-no, .reqno { max-width: 150px; }
-        .date { max-width: 120px; }
-        .supplier-code, .sup-code { max-width: 100px; }
-        .cur, .curr { max-width: 80px; }
-        .term { max-width: 250px; }
 
-        /* Area Tabel Data */
-        table.detail, table.grid {
-            width: 100%; min-width: 800px;
-            border-collapse: collapse; background: #fff;
-            border: 1px solid #dee2e6; margin-bottom: 10px;
+        table.datagrid th {
+            background-color: #ece9d8;
+            border-right: 1px solid #c0c0c0;
+            border-bottom: 1px solid #c0c0c0;
+            font-weight: normal;
+            font-size: 11px;
+            padding: 2px 4px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+            z-index: 2;
         }
-        table.detail th, table.grid th {
-            background: #e9ecef; color: #495057; border: 1px solid #dee2e6;
-            padding: 4px 6px; text-align: left; font-weight: bold; font-size: 11px;
-        }
-        table.detail td, table.grid td {
-            border: 1px solid #dee2e6; padding: 2px 4px; vertical-align: middle; font-size: 11px;
-        }
-        table.detail input[type=text] {
-            width: 100%; height: 20px; border: 1px solid transparent;
-            padding: 0 4px; background: transparent; border-radius: 2px;
-        }
-        table.detail input[type=text]:focus { border-color: #80bdff; background: #fff; }
-        table.detail input[type=text]:hover:not([readonly]) { border-color: #ccc; }
 
-        tr.detail-selected td { background: #f8f9fa; }
-        table.grid tr:hover td { background: #f4f6f9; cursor: pointer; }
-
-        .num { text-align: right; }
-        .center { text-align: center; }
-        .action-cell { display: flex; justify-content: center; align-items: center; gap: 4px; }
-
-        .grid-wrap {
-            width: 100%; max-height: 250px; overflow: auto;
-            border: 1px solid #dee2e6; margin-top: 10px; background: #fff;
+        table.datagrid td {
+            border-right: 1px solid #e0e0e0;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 0;
+            font-size: 11px;
         }
-        .go-btn { color: #007bff; font-weight: bold; font-size: 12px; }
 
-        /* Autocomplete */
+        table.datagrid input {
+            width: 100%;
+            height: 18px;
+            border: none;
+            padding: 0 4px;
+            font-size: 11px;
+            background: transparent;
+            box-sizing: border-box;
+            transition: background-color 0.3s;
+        }
+        table.datagrid input:focus {
+            background: #e7f1ff;
+            outline: 1px solid #000;
+        }
+        table.datagrid tr.detail-selected td {
+            background-color: #d0d0d0;
+        }
+
+        .footer-bar {
+            background: #ece9d8;
+            padding: 5px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #c0c0c0;
+        }
+
+        /* AUTOCOMPLETE STYLING */
         .ac-box {
-            position: absolute; z-index: 9999; background: #fff; border: 1px solid #ccc;
-            border-radius: 3px; max-height: 200px; overflow-y: auto; min-width: 250px;
-            display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 0;
+            position: absolute;
+            z-index: 9999;
+            background: #ffffff;
+            color: #333;
+            border: 1px solid #ccc;
+            border-radius: 2px;
+            max-height: 200px;
+            overflow-y: auto;
+            min-width: 300px;
+            display: none;
+            font-size: 12px;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
         }
-        .ac-item { padding: 4px 8px; cursor: pointer; border-bottom: 1px solid #f4f4f4; font-size: 11px; }
-        .ac-item:hover, .ac-item.active { background: #007bff; color: #fff; }
+        .ac-item { padding: 4px 8px; cursor: pointer; border-bottom: 1px solid #f4f4f4; }
+        .ac-item:hover, .ac-item.active { background: #008080; color: #ffffff; }
 
-        /* Mode Print */
-        @media print {
-            body { background: #fff; padding: 0; }
-            .no-print, .top-action-bar, .bottom-buttons, .header-toolbar { display: none !important; }
-            .wrap { border: none; padding: 0; margin: 0; box-shadow: none; }
-        }
+        /* Bootstrap grid system utilitas (minimalis) */
+        .row { display: flex; flex-wrap: wrap; margin-right: -5px; margin-left: -5px; }
+        .col-2 { flex: 0 0 16.666%; max-width: 16.666%; padding: 0 5px; }
+        .col-3 { flex: 0 0 25%; max-width: 25%; padding: 0 5px; }
+        .col-4 { flex: 0 0 33.333%; max-width: 33.333%; padding: 0 5px; }
+        .col-6 { flex: 0 0 50%; max-width: 50%; padding: 0 5px; }
+        .col-8 { flex: 0 0 66.666%; max-width: 66.666%; padding: 0 5px; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
     </style>
-<script>
-var supplierData = <?php echo json_encode($supplierAuto); ?>;
-var deptData = <?php echo json_encode($deptAuto); ?>;
-var rcvData = <?php echo json_encode($rcvAuto); ?>; 
-var acBox=null, acItems=[], acIndex=-1, acMode="", acRow=-1;
-var rowSeq=<?php echo count($details); ?>;
-var selectedDetailRow=null;
 
-function byId(id){return document.getElementById(id);}
-function setValue(id,value){var el=byId(id); if(el) el.value=(value==null?"":value);}
-function initAC(){acBox=byId("acBox");}
-function hideAC(){if(acBox){acBox.style.display="none";acBox.innerHTML="";} acItems=[];acIndex=-1;acMode="";acRow=-1;}
-function positionAC(input){initAC();var r=input.getBoundingClientRect();acBox.style.left=(r.left+window.scrollX)+"px";acBox.style.top=(r.bottom+window.scrollY)+"px";acBox.style.width=(r.width<360?360:r.width)+"px";}
-function renderAC(renderText,pickFunc){initAC();acBox.innerHTML="";for(var i=0;i<acItems.length;i++){var d=document.createElement("div");d.className="ac-item"+(i==acIndex?" active":"");d.innerHTML=renderText(acItems[i]);d.setAttribute("data-index",i);d.onmousedown=function(){pickFunc(acItems[parseInt(this.getAttribute("data-index"),10)]);};acBox.appendChild(d);}acBox.style.display=acItems.length>0?"block":"none";}
-function acMove(step,renderText,pickFunc){if(acItems.length<=0)return;acIndex+=step;if(acIndex<0)acIndex=acItems.length-1;if(acIndex>=acItems.length)acIndex=0;renderAC(renderText,pickFunc);}
-function acEnter(pickFunc){if(acItems.length<=0)return false;if(acIndex<0)acIndex=0;pickFunc(acItems[acIndex]);return true;}
+    <script>
+        var supplierData = <?php echo json_encode($supplierAuto) ? json_encode($supplierAuto) : '[]'; ?>;
+        var deptData = <?php echo json_encode($deptAuto) ? json_encode($deptAuto) : '[]'; ?>;
+        var rcvData = <?php echo json_encode($rcvAuto) ? json_encode($rcvAuto) : '[]'; ?>;
+        
+        var acBox=null, acItems=[], acIndex=-1, acMode="", acRow=-1;
+        var rowSeq=<?php echo count($details); ?>;
+        var selectedDetailRow=null;
 
-function submitSave(allowEmpty){if(byId("allow_empty_detail")) byId("allow_empty_detail").value=allowEmpty?"1":"0";var f=byId("rcvForm");if(f) f.submit();}
-function newData(){window.location.href="receive.php";}
-function goEdit(id){if(!id)return;window.location.href="receive.php?edit="+encodeURIComponent(id);}
-function deleteCurrent(){var id=byId("rcv_id").value;if(id==""||id=="0"){alert("Pilih Receive dulu.");return;}if(!confirm("Yakin hapus Receive ini?"))return;byId("delete_rcv_id").value=id;byId("deleteForm").submit();}
-function headerKey(e){if(e.key==="Enter"){if(acMode!==""&&acItems.length>0)return true;e.preventDefault();submitSave(false);return false;}}
-function fieldEnterSave(e){if(e.key==="Enter"){e.preventDefault();submitSave(false);return false;}}
+        function byId(id){return document.getElementById(id);}
+        function setValue(id,value){var el=byId(id); if(el) el.value=(value==null?"":value);}
 
-function selectDetailRow(tr){var rows=document.querySelectorAll("#detailBody tr");for(var i=0;i<rows.length;i++) rows[i].classList.remove("detail-selected");selectedDetailRow=tr;if(tr)tr.classList.add("detail-selected");}
-
-function showSupplierAC(input){initAC();var key=(input.value||"").toUpperCase();acMode="supplier";acItems=[];acIndex=-1;if(key.length<1){hideAC();return;}for(var i=0;i<supplierData.length;i++){var s=supplierData[i];var t=(s.SUP_CODE||"")+" "+(s.SUP_COMP||"");if(t.toUpperCase().indexOf(key)>=0)acItems.push(s);if(acItems.length>=40)break;}positionAC(input);renderAC(function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);}
-function supplierKey(e,input){if(e.key==="ArrowDown"){e.preventDefault();if(acMode!=="supplier"||acItems.length==0)showSupplierAC(input);acMove(1,function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);return false;}if(e.key==="ArrowUp"){e.preventDefault();if(acMode!=="supplier"||acItems.length==0)showSupplierAC(input);acMove(-1,function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);return false;}if(e.key==="Enter"){if(acMode==="supplier"&&acItems.length>0){e.preventDefault();acEnter(pickSupplier);return false;}e.preventDefault();submitSave(false);return false;}if(e.key==="Escape")hideAC();}
-function pickSupplier(s){setValue("sup_id",s.SUP_ID);setValue("sup_code",s.SUP_CODE);setValue("sup_comp",s.SUP_COMP);hideAC();}
-
-function showPicAC(input){initAC();var key=(input.value||"").toUpperCase();acMode="pic";acItems=[];acIndex=-1;if(key.length<1){hideAC();return;}for(var i=0;i<deptData.length;i++){var d=deptData[i];if((d.DEP_NAME||"").toUpperCase().indexOf(key)>=0)acItems.push(d);if(acItems.length>=40)break;}positionAC(input);renderAC(function(d){return d.DEP_NAME;},pickPic);}
-function picKey(e,input){if(e.key==="ArrowDown"){e.preventDefault();if(acMode!=="pic"||acItems.length==0)showPicAC(input);acMove(1,function(d){return d.DEP_NAME;},pickPic);return false;}if(e.key==="ArrowUp"){e.preventDefault();if(acMode!=="pic"||acItems.length==0)showPicAC(input);acMove(-1,function(d){return d.DEP_NAME;},pickPic);return false;}if(e.key==="Enter"){if(acMode==="pic"&&acItems.length>0){e.preventDefault();acEnter(pickPic);return false;}e.preventDefault();return false;}if(e.key==="Escape")hideAC();}
-function pickPic(d){setValue("rcv_pic",d.DEP_NAME);hideAC();}
-
-function showRcvAC(input){
-    initAC();
-    var key = (input.value || "").toUpperCase();
-    acMode = "rcv"; acItems = []; acIndex = -1;
-    if(key.length < 1){ hideAC(); return; }
-    for(var i=0; i<rcvData.length; i++){
-        var r = rcvData[i];
-        if((r.RCV_NO || "").toUpperCase().indexOf(key) >= 0) acItems.push(r);
-        if(acItems.length >= 40) break;
-    }
-    positionAC(input);
-    renderAC(function(r){ return "<b>" + r.RCV_NO + "</b>"; }, pickRcv);
-}
-function rcvKey(e, input){
-    if(e.key === "ArrowDown"){ e.preventDefault(); if(acMode !== "rcv" || acItems.length == 0) showRcvAC(input); acMove(1, function(r){ return "<b>" + r.RCV_NO + "</b>"; }, pickRcv); return false; }
-    if(e.key === "ArrowUp"){ e.preventDefault(); if(acMode !== "rcv" || acItems.length == 0) showRcvAC(input); acMove(-1, function(r){ return "<b>" + r.RCV_NO + "</b>"; }, pickRcv); return false; }
-    if(e.key === "Enter"){ if(acMode === "rcv" && acItems.length > 0){ e.preventDefault(); acEnter(pickRcv); return false; } e.preventDefault(); return false; }
-    if(e.key === "Escape") hideAC();
-}
-function pickRcv(r){
-    setValue("target_rcv_id", r.RCV_ID);
-    setValue("target_rcv_no", r.RCV_NO);
-    hideAC();
-}
-
-function showPOItemAC(input, row) {
-    initAC();
-    var supId = byId("sup_id").value;
-    if(!supId || supId == "0") { alert("Pilih supplier dulu."); input.value = ""; return; }
-    var key = (input.value || "").toUpperCase();
-    acMode = "poitem"; acRow = row; acItems = []; acIndex = -1;
-    if(key.length < 1){ hideAC(); return; }
-
-    var xhr = new XMLHttpRequest();
-    xhr.open("POST", "search_po_item.php", true);
-    xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState == 4 && xhr.status == 200) {
-            acItems = JSON.parse(xhr.responseText);
-            positionAC(input);
-            renderAC(function(o){ return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY; }, pickPOItem);
+        function initAC(){acBox=byId("acBox");}
+        function hideAC(){
+            if(acBox){acBox.style.display="none";acBox.innerHTML="";}
+            acItems=[];acIndex=-1;acMode="";acRow=-1;
         }
-    };
-    xhr.send("q=" + encodeURIComponent(key) + "&sup_id=" + encodeURIComponent(supId));
-}
+        function positionAC(input){
+            initAC();var r=input.getBoundingClientRect();
+            acBox.style.left=(r.left+(window.scrollX||window.pageXOffset))+"px";
+            acBox.style.top=(r.bottom+(window.scrollY||window.pageYOffset))+"px";
+            acBox.style.width=(r.width<300?300:r.width)+"px";
+        }
+        function renderAC(renderText,pickFunc){
+            initAC();acBox.innerHTML="";
+            for(var i=0;i<acItems.length;i++){
+                var d=document.createElement("div");
+                d.className="ac-item"+(i==acIndex?" active":"");
+                d.innerHTML=renderText(acItems[i]);
+                d.setAttribute("data-index",i);
+                d.onmousedown=function(){pickFunc(acItems[parseInt(this.getAttribute("data-index"),10)]);};
+                acBox.appendChild(d);
+            }
+            acBox.style.display=acItems.length>0?"block":"none";
+        }
+        function acMove(step,renderText,pickFunc){
+            if(acItems.length<=0)return;
+            acIndex+=step;
+            if(acIndex<0)acIndex=acItems.length-1;
+            if(acIndex>=acItems.length)acIndex=0;
+            renderAC(renderText,pickFunc);
+        }
+        function acEnter(pickFunc){
+            if(acItems.length<=0)return false;
+            if(acIndex<0)acIndex=0;
+            pickFunc(acItems[acIndex]);
+            return true;
+        }
 
-function poItemKey(e,input,row){if(e.key==="ArrowDown"){e.preventDefault();if(acMode!=="poitem"||acItems.length==0)showPOItemAC(input,row);acMove(1,function(o){return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY;},pickPOItem);return false;}if(e.key==="ArrowUp"){e.preventDefault();if(acMode!=="poitem"||acItems.length==0)showPOItemAC(input,row);acMove(-1,function(o){return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY;},pickPOItem);return false;}if(e.key==="Enter"){if(acMode==="poitem"&&acItems.length>0){e.preventDefault();acEnter(pickPOItem);return false;}e.preventDefault();return false;}if(e.key==="Escape")hideAC();}
-function pickPOItem(o){var row=acRow;setValue("item_id_"+row,o.ITEM_ID);setValue("po_id_"+row,o.PO_ID);setValue("item_code_"+row,o.ITEM_CODE);setValue("item_name_"+row,o.ITEM_NAME);setValue("po_num_"+row,o.PO_NUM);setValue("rcvd_qty_"+row,o.OS_QTY);setValue("pod_price_"+row,o.POD_PRICE);hideAC();var q=byId("rcvd_qty_"+row);if(q){q.focus();q.select();}}
+        function submitSave(allowEmpty){
+            if(byId("allow_empty_detail")) byId("allow_empty_detail").value=allowEmpty?"1":"0";
+            var f=byId("rcvForm");if(f) f.submit();
+        }
+        
+        // ==== FUNGSI SIMPAN AJAX (MENGGUNAKAN XMLHTTPREQUEST) ====
+        function triggerAjaxSave(inputEl) {
+            var form = byId("rcvForm");
+            
+            if(typeof FormData === "undefined" || typeof XMLHttpRequest === "undefined") {
+                submitSave(false); 
+                return;
+            }
 
-function addRow(){var tbody=byId("detailBody");var row=rowSeq;rowSeq++;var tr=document.createElement("tr");tr.onclick=function(){selectDetailRow(this);};tr.innerHTML='<td class="center row-no"></td><td><input type="hidden" name="item_id[]" id="item_id_'+row+'"><input type="hidden" name="po_id[]" id="po_id_'+row+'"><input type="text" name="item_code[]" id="item_code_'+row+'" autocomplete="off" oninput="showPOItemAC(this, '+row+')" onkeydown="poItemKey(event, this, '+row+')"></td><td><input type="text" name="item_name[]" id="item_name_'+row+'" readonly style="background:#f9f9f9"></td><td><input type="text" name="rcvd_qty[]" id="rcvd_qty_'+row+'" class="num" onkeydown="fieldEnterSave(event, '+row+')"></td><td><input type="text" name="pod_price[]" id="pod_price_'+row+'" class="num" readonly style="background:#f9f9f9"></td><td><input type="text" name="po_num[]" id="po_num_'+row+'" readonly style="background:#f9f9f9"></td><td class="center"></td><td><div class="action-cell"><button type="button" class="btn btn-x" onclick="deleteRow(this); event.stopPropagation();">X</button></div></td>';tbody.appendChild(tr);renumberRows();selectDetailRow(tr);byId("item_code_"+row).focus();}
-function deleteRow(btn){var tr=btn.parentNode.parentNode.parentNode;if(!confirm("Hapus baris detail ini?"))return;tr.parentNode.removeChild(tr);renumberRows();var id=byId("rcv_id").value;if(id!=""&&id!="0")submitSave(true);}
-function renumberRows(){var rows=byId("detailBody").getElementsByTagName("tr");for(var i=0;i<rows.length;i++){var c=rows[i].getElementsByClassName("row-no")[0];if(c)c.innerHTML=i+1;else rows[i].cells[0].innerHTML=i+1;}}
+            var formData = new FormData(form);
+            formData.append("is_ajax", "1"); 
+            
+            var oldBg = inputEl.style.backgroundColor;
+            inputEl.style.backgroundColor = "#fff9c4"; 
+            
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "receive.php?ajax=1", true);
+            
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        try {
+                            var data = JSON.parse(xhr.responseText);
+                            if (data.status === "success") {
+                                inputEl.style.backgroundColor = "#c8e6c9"; 
+                                setTimeout(function(){ inputEl.style.backgroundColor = oldBg; }, 1000);
+                                
+                                var currId = byId("rcv_id").value;
+                                if (currId === "" || currId === "0") {
+                                    byId("rcv_id").value = data.rcv_id;
+                                    if (window.history && window.history.replaceState) {
+                                        window.history.replaceState(null, null, "?edit=" + data.rcv_id);
+                                    }
+                                }
+                            } else {
+                                alert("Gagal Simpan:\n" + data.message);
+                                inputEl.style.backgroundColor = "#ffcdd2"; 
+                            }
+                        } catch (e) {
+                            alert("Gagal membaca respon server.");
+                            inputEl.style.backgroundColor = "#ffcdd2";
+                        }
+                    } else {
+                        alert("Error saat menghubungi server.");
+                        inputEl.style.backgroundColor = "#ffcdd2";
+                    }
+                }
+            };
+            xhr.send(formData);
+        }
 
-function triggerAction(actionName) {
-    if(!confirm("Jalankan aksi " + actionName.toUpperCase() + "?")) return;
-    byId("exec_action").value = actionName;
-    byId("execForm").submit();
-}
+        // ==========================================================
+        // FUNGSI BANTUAN UNTUK MENCARI BARIS BARU / PINDAH FOKUS
+        // ==========================================================
+        function focusNextRow(input) {
+            var tbody = byId("detailBody");
+            if (!tbody) return;
+            var rows = tbody.getElementsByTagName("tr");
+            var currentRowIndex = -1;
+            
+            var el = input;
+            while(el && el.nodeName !== "TR") {
+                el = el.parentNode;
+            }
+            
+            if (el) {
+                for(var i = 0; i < rows.length; i++) {
+                    if(rows[i] === el) {
+                        currentRowIndex = i;
+                        break;
+                    }
+                }
+            }
 
-function triggerUpdatePrice() {
-    var rcvId = byId("rcv_id").value;
-    if(!rcvId || rcvId == "0") { alert("Pilih / simpan Receive terlebih dahulu."); return; }
-    var tr = selectedDetailRow;
-    if(!tr){
-        var rows=byId("detailBody").getElementsByTagName("tr");
-        if(rows.length>0) tr=rows[0];
-    }
-    if(!tr) { alert("Pilih baris detail item dulu."); return; }
-    var itemInput = tr.querySelector('input[name="item_id[]"]');
-    var poInput = tr.querySelector('input[name="po_id[]"]');
-    var itemId = itemInput ? itemInput.value : "";
-    var poId = poInput ? poInput.value : "";
-    if(!itemId || !poId) { alert("Pilih detail item yang valid."); return; }
-    
-    if(confirm("Jalankan Update Price untuk item yang dipilih?")) {
-        byId("exec_action").value = "update_price";
-        byId("upd_rcv_id").value = rcvId;
-        byId("upd_item_id").value = itemId;
-        byId("upd_po_id").value = poId;
-        byId("execForm").submit();
-    }
-}
+            if (currentRowIndex === -1) return;
 
-// FUNGSI PINDAH KE ICL EXISTING (Ketik No ICL Manual)
-function triggerMoveDetail() {
-    var srcId = byId("rcv_id").value;
-    if (!srcId || srcId == "0") { alert("Harap simpan/pilih Receive (ICL) saat ini terlebih dahulu."); return; }
-    var tgtId = byId("target_rcv_id").value;
-    if (!tgtId || tgtId == "0") { alert("Pilih ICL Tujuan yang valid."); return; }
-    
-    var checkboxes = document.querySelectorAll('input[name="move_check[]"]:checked');
-    if (checkboxes.length == 0) { alert("Centang minimal 1 detail yang akan dipindah (di kolom 'Pindah')."); return; }
-    
-    if (confirm("Yakin pindahkan " + checkboxes.length + " item yang dipilih ke ICL: " + byId("target_rcv_no").value + "?")) {
-        var form = byId("rcvForm");
-        var actInput = form.querySelector('input[name="action"]');
-        actInput.value = "move_detail";
-        form.submit();
-    }
-}
+            if (currentRowIndex === rows.length - 1) {
+                addRow();
+            } else {
+                var nextRow = rows[currentRowIndex + 1];
+                var inputs = nextRow.getElementsByTagName("input");
+                for(var j=0; j < inputs.length; j++){
+                    if(inputs[j].name === "item_code[]") {
+                        inputs[j].focus();
+                        inputs[j].select();
+                        break;
+                    }
+                }
+            }
+        }
 
-// FUNGSI BARU: PINDAH KE ICL BARU (Otomatis Buat Nomor ICL)
-function triggerMoveToNew() {
-    var srcId = byId("rcv_id").value;
-    if (!srcId || srcId == "0") { alert("Harap simpan/pilih Receive (ICL) saat ini terlebih dahulu."); return; }
-    
-    var checkboxes = document.querySelectorAll('input[name="move_check[]"]:checked');
-    if (checkboxes.length == 0) { alert("Centang minimal 1 baris detail di kolom 'Pindah'."); return; }
-    
-    if (confirm("Sistem akan otomatis:\n1. Membuat dokumen ICL BARU\n2. Memindahkan " + checkboxes.length + " item yang dicentang ke dalamnya.\n\nLanjutkan?")) {
-        var form = byId("rcvForm");
-        var actInput = form.querySelector('input[name="action"]');
-        actInput.value = "move_to_new";
-        form.submit();
-    }
-}
+        function fieldEnterSave(e, inputEl){
+            if(e.key === "Enter"){
+                e.preventDefault();
+                triggerAjaxSave(inputEl);
+                focusNextRow(inputEl);
+                return false;
+            }
+        }
+        // =============================================
 
-function cetakICL() {
-    var rcvId = byId("rcv_id").value;
-    if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
-    window.open("print_icl.php?id=" + encodeURIComponent(rcvId), "CETAK_ICL", "width=900,height=700,scrollbars=yes");
-}
+        function newData(){window.location.href="receive.php";}
+        function goEdit(id){if(!id)return;window.location.href="receive.php?edit="+encodeURIComponent(id);}
+        function deleteCurrent(){
+            var id=byId("rcv_id").value;
+            if(id==""||id=="0"){alert("Pilih Receive dulu.");return;}
+            if(!confirm("Yakin hapus Receive ini?"))return;
+            byId("delete_rcv_id").value=id;byId("deleteForm").submit();
+        }
+        function headerKey(e){
+            if(e.key==="Enter"){
+                if(acMode!==""&&acItems.length>0)return true;
+                e.preventDefault();submitSave(false);return false;
+            }
+        }
 
-function cetakICLOto() {
-    var rcvId = byId("rcv_id").value;
-    if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
-    window.open("print_icl_oto.php?id=" + encodeURIComponent(rcvId), "CETAK_OTO", "width=900,height=700,scrollbars=yes");
-}
+        function selectDetailRow(tr){
+            var rows=document.querySelectorAll("#detailBody tr");
+            for(var i=0;i<rows.length;i++) rows[i].className = rows[i].className.replace(" detail-selected", "");
+            selectedDetailRow=tr;
+            if(tr) tr.className += " detail-selected";
+        }
 
-function cetakSchedule() {
-    var rcvNo = document.querySelector('.rcv-no').value;
-    if (!rcvNo) { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
-    var shortNo = rcvNo.substring(0, 6);
-    window.open("print_schedule.php?no=" + encodeURIComponent(shortNo), "CETAK_SCH", "width=900,height=700,scrollbars=yes");
-}
+        // 1. Receive Search AutoComplete (Header Utama)
+        function showRcvAC(input){
+            initAC();
+            var key=(input.value||"").toUpperCase();
+            acMode="rcv"; acItems=[]; acIndex=-1;
+            if(key.length<1){hideAC();return;}
+            
+            for(var i=0; i<rcvData.length; i++){
+                var r = rcvData[i];
+                var t = (r.RCV_NO||"")+" "+(r.RCV_DONO||"")+" "+(r.SUP_CODE||"")+" "+(r.SUP_COMP||"");
+                if(t.toUpperCase().indexOf(key) >= 0) acItems.push(r);
+                if(acItems.length >= 40) break;
+            }
+            positionAC(input);
+            renderAC(function(r){
+                return "<b>" + r.RCV_NO + "</b> - DO: " + r.RCV_DONO + "<br><small style='color:#666;'>" + r.SUP_CODE + " - " + r.SUP_COMP + "</small>";
+            }, pickRcv);
+        }
+        function rcvKey(e,input){
+            if(e.key==="ArrowDown"){
+                e.preventDefault(); if(acMode!=="rcv"||acItems.length==0) showRcvAC(input);
+                acMove(1, function(r){ return "<b>" + r.RCV_NO + "</b> - DO: " + r.RCV_DONO + "<br><small style='color:#666;'>" + r.SUP_CODE + " - " + r.SUP_COMP + "</small>"; }, pickRcv); return false;
+            }
+            if(e.key==="ArrowUp"){
+                e.preventDefault(); if(acMode!=="rcv"||acItems.length==0) showRcvAC(input);
+                acMove(-1, function(r){ return "<b>" + r.RCV_NO + "</b> - DO: " + r.RCV_DONO + "<br><small style='color:#666;'>" + r.SUP_CODE + " - " + r.SUP_COMP + "</small>"; }, pickRcv); return false;
+            }
+            if(e.key==="Enter"){
+                if(acMode==="rcv"&&acItems.length>0){e.preventDefault(); acEnter(pickRcv); return false;}
+                return true; 
+            }
+            if(e.key==="Escape") hideAC();
+        }
+        function pickRcv(r){
+            hideAC();
+            goEdit(r.RCV_ID); 
+        }
 
-function setNextICL() {
-    var nextNum = prompt("Masukkan nilai antrian untuk ICL selanjutnya:", "");
-    if (nextNum !== null && nextNum.trim() !== "") {
-        if (isNaN(nextNum)) { alert("Format harus berupa angka!"); return; }
-        byId("exec_action").value = "set_next_icl";
-        byId("upd_rcv_id").value = nextNum; 
-        byId("execForm").submit();
-    }
-}
+        // 2. Receive Search AutoComplete Khusus Untuk "Pindah ICL" (Bawah)
+        function showTargetRcvAC(input){
+            initAC();
+            var key=(input.value||"").toUpperCase();
+            acMode="target_rcv"; acItems=[]; acIndex=-1;
+            if(key.length<1){hideAC();return;}
+            
+            for(var i=0; i<rcvData.length; i++){
+                var r = rcvData[i];
+                var t = (r.RCV_NO||""); 
+                if(t.toUpperCase().indexOf(key) >= 0) acItems.push(r);
+                if(acItems.length >= 40) break;
+            }
+            positionAC(input);
+            renderAC(function(r){
+                return "<b>" + r.RCV_NO + "</b>";
+            }, pickTargetRcv);
+        }
+        function targetRcvKey(e,input){
+            if(e.key==="ArrowDown"){
+                e.preventDefault(); if(acMode!=="target_rcv"||acItems.length==0) showTargetRcvAC(input);
+                acMove(1, function(r){ return "<b>" + r.RCV_NO + "</b>"; }, pickTargetRcv); return false;
+            }
+            if(e.key==="ArrowUp"){
+                e.preventDefault(); if(acMode!=="target_rcv"||acItems.length==0) showTargetRcvAC(input);
+                acMove(-1, function(r){ return "<b>" + r.RCV_NO + "</b>"; }, pickTargetRcv); return false;
+            }
+            if(e.key==="Enter"){
+                if(acMode==="target_rcv"&&acItems.length>0){e.preventDefault(); acEnter(pickTargetRcv); return false;}
+                return true; 
+            }
+            if(e.key==="Escape") hideAC();
+        }
+        function pickTargetRcv(r){
+            setValue("target_rcv_id", r.RCV_ID);
+            setValue("target_rcv_no", r.RCV_NO);
+            hideAC();
+        }
 
-document.addEventListener("DOMContentLoaded",function(){var rows=document.querySelectorAll("#detailBody tr");for(var i=0;i<rows.length;i++){rows[i].onclick=function(){selectDetailRow(this);};}});
-document.addEventListener("click",function(e){initAC();if(acBox&&!acBox.contains(e.target)){if(!e.target||!e.target.getAttribute||e.target.getAttribute("autocomplete")!=="off")hideAC();}});
-</script>
+        // Supplier Autocomplete
+        function showSupplierAC(input){
+            initAC();
+            var key=(input.value||"").toUpperCase();
+            acMode="supplier";acItems=[];acIndex=-1;
+            if(key.length<1){hideAC();return;}
+            for(var i=0;i<supplierData.length;i++){
+                var s=supplierData[i];var t=(s.SUP_CODE||"")+" "+(s.SUP_COMP||"");
+                if(t.toUpperCase().indexOf(key)>=0)acItems.push(s);
+                if(acItems.length>=40)break;
+            }
+            positionAC(input);
+            renderAC(function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);
+        }
+        function supplierKey(e,input){
+            if(e.key==="ArrowDown"){
+                e.preventDefault();if(acMode!=="supplier"||acItems.length==0)showSupplierAC(input);
+                acMove(1,function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);return false;
+            }
+            if(e.key==="ArrowUp"){
+                e.preventDefault();if(acMode!=="supplier"||acItems.length==0)showSupplierAC(input);
+                acMove(-1,function(s){return "<b>"+s.SUP_CODE+"</b> - "+s.SUP_COMP;},pickSupplier);return false;
+            }
+            if(e.key==="Enter"){
+                if(acMode==="supplier"&&acItems.length>0){e.preventDefault();acEnter(pickSupplier);return false;}
+                e.preventDefault();submitSave(false);return false;
+            }
+            if(e.key==="Escape")hideAC();
+        }
+        function pickSupplier(s){
+            setValue("sup_id",s.SUP_ID);setValue("sup_code",s.SUP_CODE);setValue("sup_comp",s.SUP_COMP);hideAC();
+        }
+
+        // PIC / Dept Autocomplete
+        function showPicAC(input){
+            initAC();
+            var key=(input.value||"").toUpperCase();
+            acMode="pic";acItems=[];acIndex=-1;
+            if(key.length<1){hideAC();return;}
+            for(var i=0;i<deptData.length;i++){
+                var d=deptData[i];
+                if((d.DEP_NAME||"").toUpperCase().indexOf(key)>=0)acItems.push(d);
+                if(acItems.length>=40)break;
+            }
+            positionAC(input);
+            renderAC(function(d){return d.DEP_NAME;},pickPic);
+        }
+        function picKey(e,input){
+            if(e.key==="ArrowDown"){
+                e.preventDefault();if(acMode!=="pic"||acItems.length==0)showPicAC(input);
+                acMove(1,function(d){return d.DEP_NAME;},pickPic);return false;
+            }
+            if(e.key==="ArrowUp"){
+                e.preventDefault();if(acMode!=="pic"||acItems.length==0)showPicAC(input);
+                acMove(-1,function(d){return d.DEP_NAME;},pickPic);return false;
+            }
+            if(e.key==="Enter"){
+                if(acMode==="pic"&&acItems.length>0){e.preventDefault();acEnter(pickPic);return false;}
+                e.preventDefault();return false;
+            }
+            if(e.key==="Escape")hideAC();
+        }
+        function pickPic(d){setValue("rcv_pic",d.DEP_NAME);hideAC();}
+
+        // PO Item Autocomplete
+        function showPOItemAC(input, row) {
+            initAC();
+            var supId = byId("sup_id").value;
+            if(!supId || supId == "0") { alert("Pilih supplier dulu."); input.value = ""; return; }
+            
+            var key = (input.value || "").toUpperCase();
+            acMode = "poitem"; acRow = row; acItems = []; acIndex = -1;
+            if(key.length < 1){ hideAC(); return; }
+
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "search_po_item.php", true);
+            xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4 && xhr.status == 200) {
+                    try {
+                        acItems = JSON.parse(xhr.responseText);
+                        positionAC(input);
+                        renderAC(function(o){ return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY; }, pickPOItem);
+                    } catch (e) {}
+                }
+            };
+            xhr.send("q=" + encodeURIComponent(key) + "&sup_id=" + encodeURIComponent(supId));
+        }
+
+        function poItemKey(e,input,row){
+            if(e.key==="ArrowDown"){
+                e.preventDefault();if(acMode!=="poitem"||acItems.length==0)showPOItemAC(input,row);
+                acMove(1,function(o){return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY;},pickPOItem);return false;
+            }
+            if(e.key==="ArrowUp"){
+                e.preventDefault();if(acMode!=="poitem"||acItems.length==0)showPOItemAC(input,row);
+                acMove(-1,function(o){return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY;},pickPOItem);return false;
+            }
+            if(e.key==="Enter"){
+                if(acMode==="poitem"&&acItems.length>0){e.preventDefault();acEnter(pickPOItem);return false;}
+                e.preventDefault();return false;
+            }
+            if(e.key==="Escape")hideAC();
+        }
+        function pickPOItem(o){
+            var row=acRow;
+            setValue("item_id_"+row,o.ITEM_ID);setValue("po_id_"+row,o.PO_ID);
+            setValue("item_code_"+row,o.ITEM_CODE);setValue("item_name_"+row,o.ITEM_NAME);
+            setValue("po_num_"+row,o.PO_NUM);setValue("rcvd_qty_"+row,o.OS_QTY);
+            setValue("pod_price_"+row,o.POD_PRICE);
+            hideAC();
+            var q=byId("rcvd_qty_"+row);if(q){q.focus();q.select();}
+        }
+
+        function addRow(){
+            var tbody=byId("detailBody");var row=rowSeq;rowSeq++;
+            var tr=document.createElement("tr");
+            tr.onclick=function(){selectDetailRow(this);};
+            tr.innerHTML=
+                '<td class="text-center align-middle row-no" style="width:25px;"></td>' +
+                '<td style="width:130px;">' +
+                    '<input type="hidden" name="item_id[]" id="item_id_'+row+'">' +
+                    '<input type="hidden" name="po_id[]" id="po_id_'+row+'">' +
+                    '<input type="text" name="item_code[]" id="item_code_'+row+'" autocomplete="off" oninput="showPOItemAC(this, '+row+')" onkeydown="poItemKey(event, this, '+row+')">' +
+                '</td>' +
+                '<td><input type="text" name="item_name[]" id="item_name_'+row+'" readonly></td>' +
+                '<td style="width:70px;"><input type="text" class="text-right" name="rcvd_qty[]" id="rcvd_qty_'+row+'" onkeydown="fieldEnterSave(event, this)"></td>' + 
+                '<td style="width:80px;"><input type="text" class="text-right" name="pod_price[]" id="pod_price_'+row+'" readonly></td>' +
+                '<td style="width:160px;"><input type="text" name="po_num[]" id="po_num_'+row+'" readonly></td>' +
+                '<td class="text-center" style="width:40px; background:#f0f8ff;">' +
+                    '<input type="checkbox" name="move_check[]" value="" onclick="event.stopPropagation();">' +
+                '</td>' +
+                '<td class="text-center" style="width:40px;"><button type="button" class="btn-classic" style="padding:0 5px;" onclick="deleteRow(this); event.stopPropagation();" title="Delete">X</button></td>';
+
+            tbody.appendChild(tr);
+            renumberRows();selectDetailRow(tr);byId("item_code_"+row).focus();
+        }
+
+        function deleteRow(btn){
+            var tr=btn.parentNode ? btn.parentNode.parentNode : null;
+            if(!confirm("Hapus baris detail ini?"))return;
+            if(tr) tr.parentNode.removeChild(tr);
+            renumberRows();
+            var id=byId("rcv_id").value;if(id!=""&&id!="0")submitSave(true);
+        }
+        function renumberRows(){
+            var rows=byId("detailBody").getElementsByTagName("tr");
+            for(var i=0;i<rows.length;i++){
+                var c=rows[i].getElementsByClassName("row-no")[0];
+                if(c) {
+                    c.innerHTML = (i==0) ? "<i class='fas fa-caret-right'></i>" : "";
+                }
+            }
+        }
+
+        function triggerAction(actionName) {
+            if(!confirm("Jalankan aksi " + actionName.toUpperCase() + "?")) return;
+            byId("exec_action").value = actionName;
+            byId("execForm").submit();
+        }
+
+        function triggerUpdatePrice() {
+            var rcvId = byId("rcv_id").value;
+            if(!rcvId || rcvId == "0") { alert("Pilih / simpan Receive terlebih dahulu."); return; }
+            
+            var tr = selectedDetailRow;
+            if(!tr){
+                var rows=byId("detailBody").getElementsByTagName("tr");
+                if(rows.length>0) tr=rows[0];
+            }
+            if(!tr) { alert("Pilih baris detail item dulu."); return; }
+            
+            var itemInput = tr.querySelector('input[name="item_id[]"]');
+            var poInput = tr.querySelector('input[name="po_id[]"]');
+            var itemId = itemInput ? itemInput.value : "";
+            var poId = poInput ? poInput.value : "";
+            
+            if(!itemId || !poId) { alert("Pilih detail item yang valid."); return; }
+            
+            if(confirm("Jalankan Update Price untuk item yang dipilih?")) {
+                byId("exec_action").value = "update_price";
+                byId("upd_rcv_id").value = rcvId;
+                byId("upd_item_id").value = itemId;
+                byId("upd_po_id").value = poId;
+                byId("execForm").submit();
+            }
+        }
+
+        function triggerMoveDetail() {
+            var srcId = byId("rcv_id").value;
+            if (!srcId || srcId == "0") { alert("Harap simpan/pilih Receive (ICL) saat ini terlebih dahulu."); return; }
+            var tgtId = byId("target_rcv_id").value;
+            if (!tgtId || tgtId == "0") { alert("Pilih ICL Tujuan yang valid."); return; }
+            
+            var checkboxes = document.querySelectorAll('input[name="move_check[]"]:checked');
+            if (checkboxes.length == 0) { alert("Centang minimal 1 detail yang akan dipindah."); return; }
+            
+            if (confirm("Yakin pindahkan " + checkboxes.length + " item yang dipilih ke ICL: " + byId("target_rcv_no").value + "?")) {
+                var form = byId("rcvForm");
+                form.querySelector('input[name="action"]').value = "move_detail";
+                form.submit();
+            }
+        }
+
+        function triggerMoveToNew() {
+            var srcId = byId("rcv_id").value;
+            if (!srcId || srcId == "0") { alert("Harap simpan/pilih Receive (ICL) saat ini terlebih dahulu."); return; }
+            
+            var checkboxes = document.querySelectorAll('input[name="move_check[]"]:checked');
+            if (checkboxes.length == 0) { alert("Centang minimal 1 baris detail di kolom 'Pindah'."); return; }
+            
+            if (confirm("Sistem akan otomatis:\n1. Membuat dokumen ICL BARU\n2. Memindahkan " + checkboxes.length + " item yang dicentang ke dalamnya.\n\nLanjutkan?")) {
+                var form = byId("rcvForm");
+                form.querySelector('input[name="action"]').value = "move_to_new";
+                form.submit();
+            }
+        }
+
+        function cetakICL() {
+            var rcvId = byId("rcv_id").value;
+            if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
+            window.open("print_icl.php?id=" + encodeURIComponent(rcvId), "CETAK_ICL", "width=900,height=700,scrollbars=yes");
+        }
+        function cetakICLOto() {
+            var rcvId = byId("rcv_id").value;
+            if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
+            window.open("print_icl_oto.php?id=" + encodeURIComponent(rcvId), "CETAK_OTO", "width=900,height=700,scrollbars=yes");
+        }
+        function cetakSchedule() {
+            var rcvNo = document.querySelector('.rcv-no').value;
+            if (!rcvNo) { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
+            var shortNo = rcvNo.substring(0, 6);
+            window.open("print_schedule.php?no=" + encodeURIComponent(shortNo), "CETAK_SCH", "width=900,height=700,scrollbars=yes");
+        }
+        function setNextICL() {
+            var nextNum = prompt("Masukkan nilai antrian untuk ICL selanjutnya:", "");
+            if (nextNum !== null && nextNum.trim() !== "") {
+                if (isNaN(nextNum)) { alert("Format harus berupa angka!"); return; }
+                byId("exec_action").value = "set_next_icl";
+                byId("upd_rcv_id").value = nextNum; 
+                byId("execForm").submit();
+            }
+        }
+
+        // Cross-browser DOMContentLoaded alternative
+        function ready(fn) {
+            if (document.readyState != 'loading'){
+                fn();
+            } else if (document.addEventListener) {
+                document.addEventListener('DOMContentLoaded', fn);
+            } else {
+                document.attachEvent('onreadystatechange', function() {
+                    if (document.readyState != 'loading') fn();
+                });
+            }
+        }
+
+        ready(function(){
+            var rows=document.getElementById("detailBody").getElementsByTagName("tr");
+            for(var i=0;i<rows.length;i++){
+                rows[i].onclick=function(){selectDetailRow(this);};
+            }
+            renumberRows();
+        });
+        
+        if(document.addEventListener) {
+            document.addEventListener("click",function(e){
+                initAC();if(acBox&&!acBox.contains(e.target)){if(!e.target||!e.target.getAttribute||e.target.getAttribute("autocomplete")!=="off")hideAC();}
+            });
+        } else {
+            document.attachEvent("onclick", function (e) {
+                var target = e.srcElement || e.target;
+                initAC();
+                if (acBox && !acBox.contains(target)) {
+                    if (!target || !target.getAttribute || target.getAttribute("autocomplete") !== "off") hideAC();
+                }
+            });
+        }
+    </script>
 </head>
 <body>
-<div class="page-title">Purchase Receive</div>
-<div class="wrap">
-<?php if ($message != "") { ?><div class="msg"><?php echo h($message); ?></div><?php } ?>
-<?php if ($error != "") { ?><div class="err"><?php echo h($error); ?></div><?php } ?>
 
-<div class="top-action-bar no-print">
-    <div class="action-buttons">
-        <button type="button" class="btn" onclick="newData()">NEW</button>
-        <button type="submit" form="rcvForm" class="btn btn-save">SAVE RECEIVE</button>
-        <button type="button" class="btn btn-del" onclick="deleteCurrent()">DELETE</button>
-        <a href="dashboard_purchasing.php" class="btn">CLOSE</a>
+<div class="main-container">
+    <div class="title-bar">
+        Receive
     </div>
-    <div class="search-box">
-        <form method="get" action="receive.php" id="searchForm">
-            <span style="font-weight:bold; margin-right:5px; color:#555;">Search:</span>
-            <input type="text" name="q" value="<?php echo h($q); ?>" placeholder="RCV No / DO No / Supplier">
-            <button type="submit" class="btn">SEARCH</button>
-            <a href="receive.php" class="btn">ALL</a>
-        </form>
-    </div>
-</div>
 
-<form id="rcvForm" method="post" action="receive.php">
-<input type="hidden" name="action" value="save">
-<input type="hidden" name="rcv_id" id="rcv_id" value="<?php echo h($header["RCV_ID"]); ?>">
-<input type="hidden" name="sup_id" id="sup_id" value="<?php echo h($header["SUP_ID"]); ?>">
-<input type="hidden" name="allow_empty_detail" id="allow_empty_detail" value="0">
+    <?php if ($message != "") { echo "<div style='background:#d4edda; color:#155724; padding:5px; text-align:center; font-size:12px;'>$message</div>"; } ?>
+    <?php if ($error != "") { echo "<div style='background:#f8d7da; color:#721c24; padding:5px; text-align:center; font-size:12px;'>$error</div>"; } ?>
 
-<table class="form-table">
-<tr>
-<td style="width:25%"><span class="label">I.C.L No.</span><input type="text" name="rcv_no" class="rcv-no" value="<?php echo h($header["RCV_NO"]); ?>"></td>
-<td style="width:25%"><span class="label">Date</span><input type="date" name="rcv_date" class="date" value="<?php echo h($header["RCV_DATE"]); ?>"></td>
-<td style="width:50%"><span class="label">D.O #</span><input type="text" name="rcv_dono" value="<?php echo h($header["RCV_DONO"]); ?>"></td>
-</tr>
-<tr>
-<td><span class="label">Sup.Code</span><input type="text" name="sup_code" id="sup_code" class="supplier-code" value="<?php echo h($header["SUP_CODE"]); ?>" autocomplete="off" oninput="showSupplierAC(this)" onkeydown="supplierKey(event, this)"></td>
-<td colspan="2"><span class="label">Sup.Company</span><input type="text" name="sup_comp" id="sup_comp" class="supplier-name" value="<?php echo h($header["SUP_COMP"]); ?>" style="background:#ddd;" readonly></td>
-</tr>
-<tr>
-<td><span class="label">PIC</span><input type="text" name="rcv_pic" id="rcv_pic" value="<?php echo h($header["RCV_PIC"]); ?>" autocomplete="off" oninput="showPicAC(this)" onkeydown="picKey(event, this)"></td>
-<td colspan="2"><span class="label">TYPE</span>
-    <select name="rcv_type">
-        <option value="1" <?php echo $header["RCV_TYPE"]=="1"?"selected":""; ?>>Material - Supplier</option>
-        <option value="2" <?php echo $header["RCV_TYPE"]=="2"?"selected":""; ?>>Spare Part - Supplier</option>
-        <option value="3" <?php echo $header["RCV_TYPE"]=="3"?"selected":""; ?>>Part - Vendor</option>
-        <option value="4" <?php echo $header["RCV_TYPE"]=="4"?"selected":""; ?>>Others</option>
-    </select>
-</td>
-</tr>
-</table>
+    <form id="rcvForm" method="post" action="receive.php" style="display: flex; flex-direction: column; flex-grow: 1;">
+        <input type="hidden" name="action" value="save">
+        <input type="hidden" name="rcv_id" id="rcv_id" value="<?php echo h($header["RCV_ID"]); ?>">
+        <input type="hidden" name="sup_id" id="sup_id" value="<?php echo h($header["SUP_ID"]); ?>">
+        <input type="hidden" name="allow_empty_detail" id="allow_empty_detail" value="0">
 
-<table class="bc-table">
-<tr>
-<td style="width:25%"><span class="label">Jenis BC</span>
-    <select name="jenis_bc">
-        <option value="">- Pilih BC -</option>
-        <?php foreach($bcList as $b) { ?>
-            <option value="<?php echo h($b); ?>" <?php echo $header["JENIS_BC"]==$b?"selected":""; ?>><?php echo h($b); ?></option>
+        <!-- HEADER TEAL AREA -->
+        <div class="teal-header">
+            <div class="row">
+                <!-- Kiri: Data Utama -->
+                <div class="col-8">
+                    <div class="row">
+                        <div class="col-3">
+                            <label class="lbl-yellow">I.C.L No.</label>
+                            <input type="text" class="input-classic rcv-no" name="rcv_no" value="<?php echo h($header["RCV_NO"]); ?>" onkeydown="headerKey(event)">
+                        </div>
+                        <div class="col-3">
+                            <label class="lbl-yellow">Date</label>
+                            <input type="date" class="input-classic" name="rcv_date" value="<?php echo h($header["RCV_DATE"]); ?>" onkeydown="headerKey(event)">
+                        </div>
+                        <div class="col-6">
+                            <label class="lbl-yellow">D.O #</label>
+                            <input type="text" class="input-classic" name="rcv_dono" value="<?php echo h($header["RCV_DONO"]); ?>" onkeydown="headerKey(event)">
+                        </div>
+                    </div>
+                    
+                    <div class="row mt-1">
+                        <div class="col-3">
+                            <label class="lbl-yellow">Sup.Code</label>
+                            <input type="text" class="input-classic" name="sup_code" id="sup_code" value="<?php echo h($header["SUP_CODE"]); ?>" autocomplete="off" oninput="showSupplierAC(this)" onkeydown="supplierKey(event, this)">
+                        </div>
+                        <div class="col-9">
+                            <label class="lbl-yellow">Sup.Company</label>
+                            <input type="text" class="input-classic bg-light" name="sup_comp" id="sup_comp" value="<?php echo h($header["SUP_COMP"]); ?>" readonly>
+                        </div>
+                    </div>
+
+                    <div class="row mt-1">
+                        <div class="col-3">
+                            <label class="lbl-yellow">PIC</label>
+                            <input type="text" class="input-classic" name="rcv_pic" id="rcv_pic" value="<?php echo h($header["RCV_PIC"]); ?>" autocomplete="off" oninput="showPicAC(this)" onkeydown="picKey(event, this)">
+                        </div>
+                        <div class="col-3">
+                            <label class="lbl-yellow">TYPE</label>
+                            <select class="input-classic" name="rcv_type" onkeydown="headerKey(event)">
+                                <option value="1" <?php echo $header["RCV_TYPE"]=="1"?"selected":""; ?>>Material - Supplier</option>
+                                <option value="2" <?php echo $header["RCV_TYPE"]=="2"?"selected":""; ?>>Spare Part - Supplier</option>
+                                <option value="3" <?php echo $header["RCV_TYPE"]=="3"?"selected":""; ?>>Part - Vendor</option>
+                                <option value="4" <?php echo $header["RCV_TYPE"]=="4"?"selected":""; ?>>Others</option>
+                            </select>
+                        </div>
+                        <div class="col-2">
+                            <label class="lbl-yellow">Jenis BC</label>
+                            <select class="input-classic" name="jenis_bc" onkeydown="headerKey(event)">
+                                <option value=""></option>
+                                <?php foreach($bcList as $b) { ?>
+                                    <option value="<?php echo h($b); ?>" <?php echo $header["JENIS_BC"]==$b?"selected":""; ?>><?php echo h($b); ?></option>
+                                <?php } ?>
+                            </select>
+                        </div>
+                        <div class="col-2">
+                            <label class="lbl-yellow">No BC</label>
+                            <input type="text" class="input-classic" name="nomor_bc" value="<?php echo h($header["NOMOR_BC"]); ?>" onkeydown="headerKey(event)">
+                        </div>
+                        <div class="col-2">
+                            <label class="lbl-yellow">Tgl BC</label>
+                            <input type="date" class="input-classic" name="bc_date" value="<?php echo h($header["BC_DATE"]); ?>" onkeydown="headerKey(event)">
+                        </div>
+                    </div>
+
+                    <div class="row mt-2">
+                        <div class="col-12">
+                            <fieldset class="fieldset-control">
+                                <legend>Control</legend>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="newData()">Tambah</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="goEdit('<?php echo h($editId); ?>')">Rubah</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="deleteCurrent()">Hapus</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="submitSave(false)">Simpan</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="newData()">Batal</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="window.location.href='receive.php'">Refresh</button>
+                            </fieldset>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Kanan: Tombol Cetak & Search Data -->
+                <div class="col-4">
+                    <div style="display:flex; flex-direction:column; align-items:flex-end;">
+                        <div style="margin-bottom: 20px; width: 100%;">
+                            <label class="lbl-white text-right">SEARCH DATA</label>
+                            <input type="text" name="q" class="input-classic" style="width:100%;" value="<?php echo h($q); ?>" placeholder="Search RCV No / DO / Sup" autocomplete="off" oninput="showRcvAC(this)" onkeydown="rcvKey(event, this)">
+                        </div>
+                        
+                        <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">
+                            <button type="button" class="btn-classic btn-action-side mr-1" onclick="cetakICLOto()">ICL OTO</button>
+                         
+                        </div>
+                        <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">
+                            
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GRID DATA AREA -->
+        <div class="datagrid-wrapper">
+            <table class="datagrid" id="detailTable">
+                <thead>
+                    <tr>
+                        <th style="width:25px;" class="text-center"></th>
+                        <th style="width:130px;">ITEM_CODE</th>
+                        <th>ITEM_NAME</th>
+                        <th style="width:70px;" class="text-right">RCVD_QTY</th>
+                        <th style="width:80px;" class="text-right">POD_PRICE</th>
+                        <th style="width:160px;">PO_NUM</th>
+                        <th style="width:40px;" class="text-center" title="Pindah ICL">Pindah</th>
+                        <th style="width:40px;" class="text-center">ACT</th>
+                    </tr>
+                </thead>
+                <tbody id="detailBody">
+                    <?php for($i=0;$i<count($details);$i++){ 
+                        $d=$details[$i];
+                        $qty=isset($d["RCVD_QTY"])?floatval($d["RCVD_QTY"]):0;
+                        $price=isset($d["POD_PRICE"])?floatval($d["POD_PRICE"]):0;
+                    ?>
+                        <tr>
+                            <td class="text-center align-middle row-no" style="width:25px;"></td>
+                            <td style="width:130px;">
+                                <input type="hidden" name="item_id[]" id="item_id_<?php echo h($i); ?>" value="<?php echo h($d["ITEM_ID"]); ?>">
+                                <input type="hidden" name="po_id[]" id="po_id_<?php echo h($i); ?>" value="<?php echo h($d["PO_ID"]); ?>">
+                                <input type="text" name="item_code[]" id="item_code_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_CODE"])?$d["ITEM_CODE"]:""); ?>" autocomplete="off" oninput="showPOItemAC(this, <?php echo h($i); ?>)" onkeydown="poItemKey(event, this, <?php echo h($i); ?>)">
+                            </td>
+                            <td><input type="text" name="item_name[]" id="item_name_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_NAME"])?$d["ITEM_NAME"]:""); ?>" readonly></td>
+                            
+                            <!-- PERHATIKAN: fieldEnterSave mengirim argumen `this` untuk menangkap elemen kursor -->
+                            <td style="width:70px;"><input type="text" class="text-right" name="rcvd_qty[]" id="rcvd_qty_<?php echo h($i); ?>" value="<?php echo h($qty==0?"":$qty); ?>" onkeydown="fieldEnterSave(event, this)"></td>
+                            
+                            <td style="width:80px;"><input type="text" class="text-right" name="pod_price[]" id="pod_price_<?php echo h($i); ?>" value="<?php echo h($price==0?"":$price); ?>" readonly></td>
+                            <td style="width:160px;"><input type="text" name="po_num[]" id="po_num_<?php echo h($i); ?>" value="<?php echo h(isset($d["PO_NUM"])?$d["PO_NUM"]:""); ?>" readonly></td>
+                            <td class="text-center" style="width:40px; background:#f0f8ff;">
+                                <?php if (!empty($d["ITEM_ID"]) && !empty($d["PO_ID"])) { ?>
+                                    <input type="checkbox" name="move_check[]" value="<?php echo h($d["ITEM_ID"].'|'.$d["PO_ID"]); ?>" onclick="event.stopPropagation();">
+                                <?php } ?>
+                            </td>
+                            <td class="text-center" style="width:40px;"><button type="button" class="btn-classic" style="padding:0 5px;" onclick="deleteRow(this); event.stopPropagation();" title="Delete">X</button></td>
+                        </tr>
+                    <?php } ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- FITUR PANEL PINDAH ICL -->
+        <?php if ($editId > 0) { ?>
+        <div style="background: #e0f7fa; padding: 6px 10px; border-top: 1px solid #b2ebf2; display: flex; align-items: center; gap: 8px;">
+            <strong style="font-size:11px; color:#006064;">Pindah Item Diconteng:</strong>
+            <button type="button" class="btn-classic" style="background:#b2dfdb;" onclick="triggerMoveToNew()">Pindah ke ICL Baru</button>
+            <span>atau</span>
+            <input type="hidden" name="target_rcv_id" id="target_rcv_id" value="">
+            <input type="text" class="input-classic" style="width: 180px;" name="target_rcv_no" id="target_rcv_no" placeholder="Ketik No ICL Tujuan..." autocomplete="off" oninput="showTargetRcvAC(this)" onkeydown="targetRcvKey(event, this)">
+            <button type="button" class="btn-classic" onclick="triggerMoveDetail()">Pindah ke ICL Ini</button>
+        </div>
         <?php } ?>
-    </select>
-</td>
-<td style="width:45%"><span class="label">Nomor BC</span><input type="text" name="nomor_bc" value="<?php echo h($header["NOMOR_BC"]); ?>"></td>
-<td style="width:30%"><span class="label">Tanggal BC</span><input type="date" name="bc_date" value="<?php echo h($header["BC_DATE"]); ?>"></td>
-</tr>
-</table>
 
-<div class="header-toolbar">
-    <button type="button" class="btn" onclick="cetakICL()">Cetak ICL</button>
-    <button type="button" class="btn" onclick="cetakICLOto()">ICL OTO</button>
-    <button type="button" class="btn" onclick="cetakSchedule()">Sch Material</button>
-    <button type="button" class="btn" onclick="setNextICL()">SET NEXT ICL</button>
-</div>
-
-<!-- ==============================================
-     BAGIAN TABEL DETAIL YANG ADA CHECKBOXNYA
-     ============================================== -->
-<table class="detail">
-<thead>
-<tr>
-<th style="width:30px;" class="center">No</th>
-<th style="width:110px;">Item Code</th>
-<th style="width:280px;">Item Name</th>
-<th style="width:80px;">Recv Qty</th>
-<th style="width:80px;">Price</th>
-<th style="width:140px;">PO #</th>
-<!-- Header Pindah -->
-<th style="width:50px; color:#0056b3;" class="center" title="Pindah ke ICL Lain">Pindah</th>
-<th style="width:30px;" class="center">X</th>
-</tr>
-</thead>
-<tbody id="detailBody">
-<?php for($i=0;$i<count($details);$i++){ ?>
-<?php
-$d=$details[$i];
-$qty=isset($d["RCVD_QTY"])?floatval($d["RCVD_QTY"]):0;
-$price=isset($d["POD_PRICE"])?floatval($d["POD_PRICE"]):0;
-?>
-<tr>
-<td class="center row-no"><?php echo h($i+1); ?></td>
-<td>
-<input type="hidden" name="item_id[]" id="item_id_<?php echo h($i); ?>" value="<?php echo h($d["ITEM_ID"]); ?>">
-<input type="hidden" name="po_id[]" id="po_id_<?php echo h($i); ?>" value="<?php echo h($d["PO_ID"]); ?>">
-<input type="text" name="item_code[]" id="item_code_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_CODE"])?$d["ITEM_CODE"]:""); ?>" autocomplete="off" oninput="showPOItemAC(this, <?php echo h($i); ?>)" onkeydown="poItemKey(event, this, <?php echo h($i); ?>)">
-</td>
-<td><input type="text" name="item_name[]" id="item_name_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_NAME"])?$d["ITEM_NAME"]:""); ?>" readonly style="background:#f9f9f9"></td>
-<td><input type="text" name="rcvd_qty[]" id="rcvd_qty_<?php echo h($i); ?>" class="num" value="<?php echo h($qty==0?"":$qty); ?>" onkeydown="fieldEnterSave(event, <?php echo h($i); ?>)"></td>
-<td><input type="text" name="pod_price[]" id="pod_price_<?php echo h($i); ?>" class="num" value="<?php echo h($price==0?"":$price); ?>" readonly style="background:#f9f9f9"></td>
-<td><input type="text" name="po_num[]" id="po_num_<?php echo h($i); ?>" value="<?php echo h(isset($d["PO_NUM"])?$d["PO_NUM"]:""); ?>" readonly style="background:#f9f9f9"></td>
-
-<!-- ==============================================
-     KOTAK CENTANG (CHECKBOX) PINDAH
-     ============================================== -->
-<td class="center" style="background:#f0f8ff;">
-    <?php if (!empty($d["ITEM_ID"]) && !empty($d["PO_ID"])) { ?>
-        <input type="checkbox" name="move_check[]" value="<?php echo h($d["ITEM_ID"].'|'.$d["PO_ID"]); ?>" onclick="event.stopPropagation();">
-    <?php } ?>
-</td>
-
-<td><div class="action-cell"><button type="button" class="btn btn-x" onclick="deleteRow(this); event.stopPropagation();">X</button></div></td>
-</tr>
-<?php } ?>
-</tbody>
-</table>
-
-<!-- ==============================================
-     FORM MENU PINDAH DETAIL 
-     ============================================== -->
-<?php if ($editId > 0) { ?>
-<div style="margin-top: 15px; padding: 12px; border: 1px solid #17a2b8; background: #e0f7fa; border-radius: 4px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-    <strong style="color: #006064; font-size:12px;">🛠 Centang kolom "Pindah", lalu pilih:</strong>
-    
-    <!-- TOMBOL BARU: Bikin ICL Baru Otomatis -->
-    <button type="button" class="btn btn-blue" onclick="triggerMoveToNew()">PINDAH KE ICL BARU</button>
-    
-    <span style="color:#555; font-weight:bold;">&nbsp;ATAU&nbsp;</span>
-    
-    <!-- TOMBOL EXISTING: Pindah ke ICL Lain yang sudah ada -->
-    <input type="hidden" name="target_rcv_id" id="target_rcv_id" value="">
-    <input type="text" name="target_rcv_no" id="target_rcv_no" placeholder="Ketik No ICL Tujuan Existing..." autocomplete="off" oninput="showRcvAC(this)" onkeydown="rcvKey(event, this)" style="width: 220px !important;">
-    <button type="button" class="btn btn-os" onclick="triggerMoveDetail()">PINDAH KE ICL INI</button>
-</div>
-<?php } ?>
-
-<div class="bottom-buttons">
-    <div>
-        <button type="button" class="btn" onclick="addRow()">+ Tambah Baris</button>
-    </div>
-    <div style="text-align: right;">
-        <div>
-            <button type="button" class="btn" style="background:#f2dede;color:#900;border-color:#900;" onclick="triggerAction('trigger_off')">OFF</button>
-            <button type="button" class="btn" style="background:#ffeb3b;color:#000;border-color:#b99d00;" onclick="triggerUpdatePrice()">UPDATE</button>
-            <button type="button" class="btn" style="background:#dff0d8;color:#006100;border-color:#006100;" onclick="triggerAction('trigger_on')">ON</button>
+        <!-- FOOTER BAR -->
+        <div class="footer-bar">
+            <div>
+                <button type="button" class="btn-classic" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+            </div>
+            <div style="text-align: right;">
+                <button type="button" class="btn-classic" onclick="triggerAction('trigger_off')">OFF</button>
+                <button type="button" class="btn-classic" onclick="triggerUpdatePrice()">UPDATE</button>
+                <button type="button" class="btn-classic" onclick="triggerAction('trigger_on')">ON</button>
+                <br>
+                <span style="font-weight: bold; font-size: 11px; color: #000; margin-top:2px; display:inline-block;">
+                    JANGAN LUPA KLIK TOMBOL ON LAGI SETELAH KLIK TOMBOL OFF
+                </span>
+            </div>
         </div>
-        <div style="margin-top: 6px; color: #cc0000; font-weight: bold; border: 2px solid #cc0000; padding: 4px 8px; display: inline-block; background: #ffffff; font-size: 11px;">
-            JANGAN LUPA KLIK TOMBOL ON LAGI SETELAH KLIK TOMBOL OFF
-        </div>
-    </div>
-</div>
-</form>
+    </form>
 
-<form id="deleteForm" method="post" action="receive.php">
-<input type="hidden" name="action" value="delete">
-<input type="hidden" name="rcv_id" id="delete_rcv_id" value="">
-</form>
+    <form id="deleteForm" method="post" action="receive.php" style="display:none;">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="rcv_id" id="delete_rcv_id" value="">
+    </form>
 
-<form id="execForm" method="post" action="receive.php">
-<input type="hidden" name="action" id="exec_action" value="">
-<input type="hidden" name="upd_rcv_id" id="upd_rcv_id" value="">
-<input type="hidden" name="upd_item_id" id="upd_item_id" value="">
-<input type="hidden" name="upd_po_id" id="upd_po_id" value="">
-<input type="hidden" name="edit" value="<?php echo h($editId); ?>">
-</form>
-
-<div class="grid-wrap">
-<table class="grid">
-<thead>
-<tr>
-<th style="width:22px;"></th>
-<th style="width:130px;">RCV NO</th>
-<th style="width:80px;">Date</th>
-<th style="width:110px;">DO #</th>
-<th style="width:80px;">PIC</th>
-<th style="width:70px;">Sup.Code</th>
-<th style="width:200px;">Supplier</th>
-<th style="width:50px;">Detail</th>
-</tr>
-</thead>
-<tbody id="rcvListBody">
-<?php while($r=sqlsrv_fetch_array($stmtList, SQLSRV_FETCH_ASSOC)){ ?>
-<?php $rcvIdLink=intval($r["RCV_ID"]); ?>
-<tr class="po-row" onclick="goEdit('<?php echo h($rcvIdLink); ?>')" style="cursor:pointer;">
-<td class="center go-btn" style="color:#000080;font-weight:bold;">▶</td>
-<td><?php echo h($r["RCV_NO"]); ?></td>
-<td><?php echo h(fmt_date_view($r["RCV_DATE"])); ?></td>
-<td><?php echo h($r["RCV_DONO"]); ?></td>
-<td><?php echo h($r["RCV_PIC"]); ?></td>
-<td><?php echo h($r["SUP_CODE"]); ?></td>
-<td><?php echo h($r["SUP_COMP"]); ?></td>
-<td class="num"><?php echo h(number_format(floatval($r["DETAIL_COUNT"]),0,".",",")); ?></td>
-</tr>
-<?php } ?>
-</tbody>
-</table>
+    <form id="execForm" method="post" action="receive.php" style="display:none;">
+        <input type="hidden" name="action" id="exec_action" value="">
+        <input type="hidden" name="upd_rcv_id" id="upd_rcv_id" value="">
+        <input type="hidden" name="upd_item_id" id="upd_item_id" value="">
+        <input type="hidden" name="upd_po_id" id="upd_po_id" value="">
+        <input type="hidden" name="edit" value="<?php echo h($editId); ?>">
+    </form>
 </div>
 
-</div>
 <div id="acBox" class="ac-box"></div>
+
 </body>
 </html>

@@ -101,6 +101,8 @@ function h($value) {
                             <li><a href="quotation.php" target="mainFrame" class="dropdown-item menu-link">Quotation</a></li>
                             <li><a href="po.php" target="mainFrame" class="dropdown-item menu-link">Purchase Order</a></li>
                             <li><a href="receive.php" target="mainFrame" class="dropdown-item menu-link">Receive</a></li>
+							<li><a href="schedule_receive.php" target="mainFrame" class="dropdown-item menu-link">SCHEDULE RECEIVE</a></li>
+							
 							
                         </ul>
                     </li>

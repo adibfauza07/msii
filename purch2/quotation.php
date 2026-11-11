@@ -152,7 +152,7 @@ if (getv("action", "") == "quo_history") {
     <head>
         <meta charset="utf-8">
         <title>Quotation History</title>
-        <!-- AdminLTE CSS -->
+        <!-- AdminLTE CSS for Popup -->
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
     </head>
     <body class="p-3 bg-light">
@@ -223,6 +223,11 @@ $error = "";
 
 $action = postv("action", "");
 $editId = intval(getv("edit", "0"));
+$q = getv("q", ""); // Ditambahkan untuk menangani Notice: Undefined variable q
+
+// ==== PENANDA AJAX UNTUK SAVE BY ENTER ====
+$isAjax = (isset($_GET['ajax']) && $_GET['ajax'] == '1') || (isset($_POST['is_ajax']) && $_POST['is_ajax'] == '1');
+// ==========================================
 
 /* ======================================================
    DELETE QUOTATION HEADER
@@ -334,6 +339,8 @@ if ($action == "save") {
                     $minQty = isset($minQtys[$i]) ? to_float($minQtys[$i]) : 0;
                     $unit   = isset($units[$i]) ? trim((string)$units[$i]) : "";
                     $term   = isset($terms[$i]) ? trim((string)$terms[$i]) : "";
+                    
+                    // Note: Checkbox logic in HTML passes value if checked, otherwise missing
                     $active = isset($actives[$i]) ? 1 : 0;
 
                     if ($itemId <= 0 || $price <= 0) continue;
@@ -348,14 +355,42 @@ if ($action == "save") {
 
             if ($ok) {
                 sqlsrv_commit($conn);
+                
+                // ==== JIKA DISIMPAN LEWAT ENTER (AJAX) ====
+                if ($isAjax) {
+                    ob_clean();
+                    header('Content-Type: application/json');
+                    echo json_encode(array("status" => "success", "quo_id" => $quoId));
+                    exit;
+                }
+                // ==========================================
+
                 header("Location: quotation.php?edit=" . $quoId . "&msg=saved");
                 exit;
             } else {
                 sqlsrv_rollback($conn);
                 $error = "Simpan gagal:\n" . sql_error_text();
+                
+                // ==== JIKA ERROR LEWAT ENTER (AJAX) ====
+                if ($isAjax) {
+                    ob_clean();
+                    header('Content-Type: application/json');
+                    echo json_encode(array("status" => "error", "message" => $error));
+                    exit;
+                }
+                // =======================================
             }
         }
     }
+    
+    // ==== TANGKAP ERROR VALIDASI FORM JIKA VIA AJAX ====
+    if ($error != "" && $isAjax) {
+        ob_clean();
+        header('Content-Type: application/json');
+        echo json_encode(array("status" => "error", "message" => $error));
+        exit;
+    }
+    // ===================================================
 }
 
 /* ======================================================
@@ -439,27 +474,9 @@ if ($stmtCurr !== false) {
     }
 }
 
-/* ======================================================
-   LIST QUOTATION
-====================================================== */
-$q = getv("q", "");
-$where = "";
-$paramsList = array();
-
-if ($q != "") {
-    $where = "WHERE Q.QUO_NO LIKE ? OR S.SUP_CODE LIKE ? OR S.SUP_COMP LIKE ?";
-    $paramsList[] = "%" . $q . "%";
-    $paramsList[] = "%" . $q . "%";
-    $paramsList[] = "%" . $q . "%";
-}
-
-$sqlList = "SELECT TOP 300 Q.QUO_ID, Q.QUO_NO, Q.QUO_DATE, Q.QUO_EFFDATE, Q.CURR_CODE, S.SUP_CODE, S.SUP_COMP, COUNT(D.ITEM_ID) AS DETAIL_COUNT FROM dbo.QUOTATION Q LEFT JOIN dbo.SUPPLIER S ON Q.SUP_ID = S.SUP_ID LEFT JOIN dbo.QUOT_DETAIL D ON Q.QUO_ID = D.QUO_ID $where GROUP BY Q.QUO_ID, Q.QUO_NO, Q.QUO_DATE, Q.QUO_EFFDATE, Q.CURR_CODE, S.SUP_CODE, S.SUP_COMP ORDER BY Q.QUO_DATE DESC, Q.QUO_NO DESC";
-$stmtList = sqlsrv_query($conn, $sqlList, $paramsList);
-if ($stmtList === false) die("<pre>Query list quotation error:\n" . sql_error_text() . "</pre>");
-
 if (count($details) == 0) {
     for ($i = 0; $i < 10; $i++) {
-        $details[] = array("ITEM_ID" => "", "ITEM_CODE" => "", "ITEM_NAME" => "", "ITEM_UNIT" => "", "QUOD_PRICE" => "", "QUOD_MINQTY" => "", "QUOD_UNIT" => "", "QUOD_TERM" => "", "QUOD_ACTIVE" => 0);
+        $details[] = array("ITEM_ID" => "", "ITEM_CODE" => "", "ITEM_NAME" => "", "ITEM_UNIT" => "", "QUOD_PRICE" => "", "QUOD_MINQTY" => "", "QUOD_UNIT" => "", "QUOD_TERM" => "", "QUOD_ACTIVE" => 1);
     }
 }
 ?>
@@ -468,73 +485,205 @@ if (count($details) == 0) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Quotation - Purchasing</title>
+    <title>Quotation</title>
 
-    <!-- Google Font: Source Sans Pro -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <!-- Theme style (AdminLTE 3) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
-
+    
     <style>
+        /* CSS KHUSUS TAMPILAN WINDOWS CLASSIC / DELPHI */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 12px;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .main-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #ece9d8;
+        }
+
+        .title-bar {
+            background-color: #cce3c6; /* Hijau pucat sesuai gambar */
+            text-align: center;
+            font-size: 24px;
+            font-family: Arial, sans-serif;
+            padding: 5px 0;
+            color: #000;
+            border-bottom: 1px solid #a0a0a0;
+        }
+
+        /* HEADER OLIVE */
+        .olive-header {
+            background-color: #808000; /* Warna Olive Sesuai Gambar */
+            padding: 10px;
+            color: #ffffff;
+        }
+
+        .lbl-yellow {
+            color: #ffff00;
+            font-size: 11px;
+            margin-bottom: 2px;
+            display: block;
+            font-weight: bold;
+        }
+        
+        .lbl-white {
+            color: #ffffff;
+            font-size: 11px;
+            margin-bottom: 2px;
+            display: block;
+            font-weight: bold;
+        }
+
+        .input-classic {
+            width: 100%;
+            height: 20px;
+            font-size: 12px;
+            padding: 0 4px;
+            border: 1px solid #7f9db9;
+            box-sizing: border-box;
+            background: #fff;
+            transition: background-color 0.3s;
+        }
+
+        .input-classic:read-only { background-color: #a9a9a9; color: #000; } /* Abu-abu gelap untuk input readonly sesuai gambar */
+        
+        select.input-classic { padding: 0; }
+
+        .btn-classic {
+            background: #f0f0f0;
+            border: 1px solid #888;
+            border-bottom-color: #444;
+            border-right-color: #444;
+            padding: 2px 10px;
+            font-size: 12px;
+            color: #000;
+            cursor: pointer;
+            box-shadow: inset 1px 1px 0px #fff;
+        }
+        .btn-classic:active {
+            box-shadow: inset 1px 1px 2px #888;
+            border: 1px solid #444;
+            border-bottom-color: #888;
+            border-right-color: #888;
+        }
+        .btn-action-wide { width: 75px; margin-right: 2px; }
+
+        .fieldset-control {
+            border: 1px solid #fff;
+            padding: 6px;
+            margin-top: 5px;
+            position: relative;
+            display: inline-block;
+        }
+
+        /* GRID TABLE CLASSIC */
+        .datagrid-wrapper {
+            flex-grow: 1;
+            overflow: auto;
+            background: #fff;
+            border-top: 2px solid #888;
+            border-bottom: 2px solid #fff;
+        }
+
+        table.datagrid {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: auto;
+        }
+
+        table.datagrid th {
+            background-color: #ece9d8;
+            border-right: 1px solid #c0c0c0;
+            border-bottom: 1px solid #c0c0c0;
+            font-weight: normal;
+            font-size: 11px;
+            padding: 2px 4px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        table.datagrid td {
+            border-right: 1px solid #e0e0e0;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 0;
+            font-size: 11px;
+        }
+
+        table.datagrid input[type="text"] {
+            width: 100%;
+            height: 18px;
+            border: none;
+            padding: 0 4px;
+            font-size: 11px;
+            background: transparent;
+            box-sizing: border-box;
+            transition: background-color 0.3s;
+        }
+        table.datagrid input[type="text"]:focus {
+            background: #e7f1ff;
+            outline: 1px solid #000;
+        }
+        table.datagrid tr.detail-selected td {
+            background-color: #d0d0d0;
+        }
+
+        .footer-bar {
+            background: #ece9d8;
+            padding: 5px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #c0c0c0;
+        }
+
+        /* AUTOCOMPLETE STYLING */
         .ac-box {
             position: absolute;
             z-index: 9999;
             background: #ffffff;
             color: #333;
             border: 1px solid #ccc;
-            border-radius: 4px;
-            max-height: 250px;
+            border-radius: 2px;
+            max-height: 200px;
             overflow-y: auto;
             min-width: 300px;
             display: none;
-            font-size: 14px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            font-size: 12px;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
         }
-        .ac-item {
-            padding: 8px 12px;
-            cursor: pointer;
-            border-bottom: 1px solid #f4f4f4;
-        }
-        .ac-item:last-child { border-bottom: none; }
-        .ac-item:hover, .ac-item.active { background: #007bff; color: #ffffff; }
-        
-        /* CUSTOM COMPACT TABLE ROW */
-        #detailTable th, #detailTable td {
-            padding: 2px 4px !important;
-            vertical-align: middle !important;
-        }
-        .table-input-transparent {
-            border: 1px solid transparent;
-            background: transparent;
-            height: 22px !important;
-            padding: 0px 4px !important;
-            font-size: 12px !important;
-            border-radius: 0;
-        }
-        .table-input-transparent:focus {
-            background: #fff;
-            border-color: #80bdff;
-            outline: 0;
-            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-        }
-        #detailTable .btn-xs {
-            padding: 1px 6px !important;
-            font-size: 11px !important;
-            height: 22px !important;
-            line-height: 1.5 !important;
-        }
-        tr.pointer:hover {
-            cursor: pointer;
-            background-color: #f4f6f9;
-        }
+        .ac-item { padding: 4px 8px; cursor: pointer; border-bottom: 1px solid #f4f4f4; }
+        .ac-item:hover, .ac-item.active { background: #808000; color: #ffffff; }
+
+        /* Bootstrap grid system utilitas (minimalis) */
+        .row { display: flex; flex-wrap: wrap; margin-right: -5px; margin-left: -5px; }
+        .col-1 { flex: 0 0 8.333%; max-width: 8.333%; padding: 0 5px; }
+        .col-2 { flex: 0 0 16.666%; max-width: 16.666%; padding: 0 5px; }
+        .col-3 { flex: 0 0 25%; max-width: 25%; padding: 0 5px; }
+        .col-4 { flex: 0 0 33.333%; max-width: 33.333%; padding: 0 5px; }
+        .col-5 { flex: 0 0 41.666%; max-width: 41.666%; padding: 0 5px; }
+        .col-6 { flex: 0 0 50%; max-width: 50%; padding: 0 5px; }
+        .col-8 { flex: 0 0 66.666%; max-width: 66.666%; padding: 0 5px; }
+        .col-9 { flex: 0 0 75%; max-width: 75%; padding: 0 5px; }
+        .col-12 { flex: 0 0 100%; max-width: 100%; padding: 0 5px; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
     </style>
 
     <script>
-        var supplierData = <?php echo json_encode($supplierAuto); ?>;
-        var itemData = <?php echo json_encode($itemAuto); ?>;
-        var quoData = <?php echo json_encode($quoAuto); ?>;
+        var supplierData = <?php echo json_encode($supplierAuto) ? json_encode($supplierAuto) : '[]'; ?>;
+        var itemData = <?php echo json_encode($itemAuto) ? json_encode($itemAuto) : '[]'; ?>;
+        var quoData = <?php echo json_encode($quoAuto) ? json_encode($quoAuto) : '[]'; ?>;
 
         var acBox = null;
         var acItems = [];
@@ -542,6 +691,7 @@ if (count($details) == 0) {
         var acMode = "";
         var acRow = -1;
         var rowSeq = <?php echo count($details); ?>;
+        var selectedDetailRow = null;
 
         function byId(id) { return document.getElementById(id); }
         function setValue(id, value) { var el = byId(id); if (el) el.value = value == null ? "" : value; }
@@ -556,8 +706,8 @@ if (count($details) == 0) {
         function positionAC(input) {
             initAC();
             var rect = input.getBoundingClientRect();
-            acBox.style.left = (rect.left + window.scrollX) + "px";
-            acBox.style.top = (rect.bottom + window.scrollY) + "px";
+            acBox.style.left = (rect.left + (window.scrollX || window.pageXOffset)) + "px";
+            acBox.style.top = (rect.bottom + (window.scrollY || window.pageYOffset)) + "px";
             acBox.style.width = rect.width < 300 ? "300px" : rect.width + "px";
         }
 
@@ -600,9 +750,113 @@ if (count($details) == 0) {
             var form = byId("quoForm");
             if (form) form.submit();
         }
+        
+        // ==== FUNGSI SIMPAN AJAX (MENGGUNAKAN XMLHTTPREQUEST) ====
+        function triggerAjaxSave(inputEl) {
+            var form = byId("quoForm");
+            
+            if(typeof FormData === "undefined" || typeof XMLHttpRequest === "undefined") {
+                submitSave(false); 
+                return;
+            }
+
+            var formData = new FormData(form);
+            formData.append("is_ajax", "1"); 
+            
+            var oldBg = inputEl.style.backgroundColor;
+            inputEl.style.backgroundColor = "#fff9c4"; 
+            
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "quotation.php?ajax=1", true);
+            
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        try {
+                            var data = JSON.parse(xhr.responseText);
+                            if (data.status === "success") {
+                                inputEl.style.backgroundColor = "#c8e6c9"; 
+                                setTimeout(function(){ inputEl.style.backgroundColor = oldBg; }, 1000);
+                                
+                                var currId = byId("quo_id").value;
+                                if (currId === "" || currId === "0") {
+                                    byId("quo_id").value = data.quo_id;
+                                    if (window.history && window.history.replaceState) {
+                                        window.history.replaceState(null, null, "?edit=" + data.quo_id);
+                                    }
+                                }
+                            } else {
+                                alert("Gagal Simpan:\n" + data.message);
+                                inputEl.style.backgroundColor = "#ffcdd2"; 
+                            }
+                        } catch (e) {
+                            alert("Gagal membaca respon server.");
+                            inputEl.style.backgroundColor = "#ffcdd2";
+                        }
+                    } else {
+                        alert("Error saat menghubungi server.");
+                        inputEl.style.backgroundColor = "#ffcdd2";
+                    }
+                }
+            };
+            xhr.send(formData);
+        }
+
+        // ==========================================================
+        // FUNGSI BANTUAN UNTUK MENCARI BARIS BARU / PINDAH FOKUS
+        // ==========================================================
+        function focusNextRow(input) {
+            var tbody = byId("detailBody");
+            if (!tbody) return;
+            var rows = tbody.getElementsByTagName("tr");
+            var currentRowIndex = -1;
+            
+            var el = input;
+            while(el && el.nodeName !== "TR") {
+                el = el.parentNode;
+            }
+            
+            if (el) {
+                for(var i = 0; i < rows.length; i++) {
+                    if(rows[i] === el) {
+                        currentRowIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (currentRowIndex === -1) return;
+
+            // Jika ini baris terakhir, buat baris baru
+            if (currentRowIndex === rows.length - 1) {
+                addRow();
+            } else {
+                // Jika bukan baris terakhir, pindah fokus ke baris bawahnya
+                var nextRow = rows[currentRowIndex + 1];
+                var inputs = nextRow.getElementsByTagName("input");
+                for(var j=0; j < inputs.length; j++){
+                    if(inputs[j].name === "item_code[]") {
+                        inputs[j].focus();
+                        inputs[j].select();
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Mencegah form tersubmit biasa, lalu simpan ajax dan pindah baris
+        function fieldEnterSave(e, inputEl) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                triggerAjaxSave(inputEl);
+                focusNextRow(inputEl);
+                return false; 
+            }
+        }
+        // ==========================================================
 
         function newData() { window.location.href = "quotation.php"; }
-        function goEdit(id) { window.location.href = "quotation.php?edit=" + encodeURIComponent(id); }
+        function goEdit(id) { if(!id) return; window.location.href = "quotation.php?edit=" + encodeURIComponent(id); }
         function confirmDelete() { return confirm("Yakin hapus quotation ini?"); }
 
         function deleteCurrent() {
@@ -611,6 +865,13 @@ if (count($details) == 0) {
             if (!confirmDelete()) return;
             byId("delete_quo_id").value = id;
             byId("deleteForm").submit();
+        }
+
+        function selectDetailRow(tr){
+            var rows = document.querySelectorAll("#detailBody tr");
+            for(var i = 0; i < rows.length; i++) rows[i].className = rows[i].className.replace(" detail-selected", "");
+            selectedDetailRow = tr;
+            if(tr) tr.className += " detail-selected";
         }
 
         function fillSupplier(s) {
@@ -722,10 +983,6 @@ if (count($details) == 0) {
             if (price) { price.focus(); price.select(); }
         }
 
-        function fieldEnterSave(e) {
-            if (e.key === "Enter") { e.preventDefault(); submitSave(false); return false; }
-        }
-
         function headerKey(e) {
             if (e.key === "Enter") {
                 if (acMode !== "" && acItems.length > 0) return true;
@@ -738,35 +995,36 @@ if (count($details) == 0) {
             var row = rowSeq;
             rowSeq++;
             var tr = document.createElement("tr");
+            tr.onclick = function(){ selectDetailRow(this); };
 
             tr.innerHTML =
-                '<td class="text-center align-middle row-no"></td>' +
-                '<td>' +
+                '<td class="text-center align-middle row-no" style="width:25px;"></td>' +
+                '<td style="width:120px;">' +
                     '<input type="hidden" name="item_id[]" id="item_id_' + row + '">' +
-                    '<input type="text" class="form-control form-control-sm table-input-transparent" name="item_code[]" id="item_code_' + row + '" autocomplete="off" oninput="showItemAC(this, ' + row + ')" onkeydown="itemKey(event, this, ' + row + ')">' +
+                    '<input type="text" name="item_code[]" id="item_code_' + row + '" autocomplete="off" oninput="showItemAC(this, ' + row + ')" onkeydown="itemKey(event, this, ' + row + ')">' +
                 '</td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent" name="item_name[]" id="item_name_' + row + '" autocomplete="off" oninput="showItemAC(this, ' + row + ')" onkeydown="itemKey(event, this, ' + row + ')"></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent" name="quod_unit[]" id="quod_unit_' + row + '"></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent text-right" name="quod_price[]" id="quod_price_' + row + '" onkeydown="fieldEnterSave(event)"></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent text-right" name="quod_minqty[]" onkeydown="fieldEnterSave(event)"></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent" name="quod_term[]" onkeydown="fieldEnterSave(event)"></td>' +
-                '<td class="text-center align-middle"><input type="checkbox" name="quod_active[' + row + ']" value="1"></td>' +
-                '<td class="text-center">' +
-                    '<div class="btn-group">' +
-                        '<button type="button" class="btn btn-info btn-xs" onclick="showHistory(this)" title="OS/PO History"><i class="fas fa-history"></i></button>' +
-                        '<button type="button" class="btn btn-danger btn-xs" onclick="deleteRow(this)" title="Delete"><i class="fas fa-times"></i></button>' +
-                    '</div>' +
+                '<td><input type="text" name="item_name[]" id="item_name_' + row + '" autocomplete="off" oninput="showItemAC(this, ' + row + ')" onkeydown="itemKey(event, this, ' + row + ')"></td>' +
+                '<td style="width:60px;"><input type="text" name="quod_unit[]" id="quod_unit_' + row + '"></td>' +
+                '<td style="width:90px;"><input type="text" class="text-right" name="quod_price[]" id="quod_price_' + row + '" onkeydown="fieldEnterSave(event, this)"></td>' +
+                '<td style="width:80px;"><input type="text" class="text-right" name="quod_minqty[]" onkeydown="fieldEnterSave(event, this)"></td>' +
+                '<td style="width:100px;"><input type="text" name="quod_term[]" onkeydown="fieldEnterSave(event, this)"></td>' +
+                '<td class="text-left align-middle" style="width:100px; padding-left:5px !important;">' +
+                    '<label style="font-size:11px; margin:0;"><input type="checkbox" name="quod_active[' + row + ']" value="1" checked style="width:auto; height:auto; margin-right:4px;"> Active</label>' +
+                '</td>' +
+                '<td class="text-center" style="width:40px;">' +
+                    '<button type="button" class="btn-classic" style="padding:0 5px;" onclick="deleteRow(this)" title="Delete">X</button>' +
                 '</td>';
 
             tbody.appendChild(tr);
             renumberRows();
+            selectDetailRow(tr);
             byId("item_code_" + row).focus();
         }
 
         function deleteRow(btn) {
-            var tr = btn.closest("tr");
+            var tr = btn.parentNode ? btn.parentNode.parentNode : null;
             if (!confirm("Hapus baris detail ini?")) return;
-            tr.parentNode.removeChild(tr);
+            if(tr) tr.parentNode.removeChild(tr);
             renumberRows();
             var quoId = byId("quo_id").value;
             if (quoId != "" && quoId != "0") submitSave(true);
@@ -776,15 +1034,31 @@ if (count($details) == 0) {
             var rows = byId("detailBody").getElementsByTagName("tr");
             for (var i = 0; i < rows.length; i++) {
                 var noCell = rows[i].getElementsByClassName("row-no")[0];
-                if (noCell) noCell.innerHTML = i + 1;
+                if (noCell) noCell.innerHTML = (i==0) ? "<i class='fas fa-caret-right'></i>" : "";
             }
         }
 
         function showHistory(btn) {
-            var tr = btn.closest("tr");
+            var tr = btn.parentNode ? btn.parentNode.parentNode : null;
+            var itemInput = tr ? tr.querySelector('input[name="item_id[]"]') : null;
+            var itemId = itemInput ? itemInput.value : "";
+            if (itemId == "" || itemId == "0") { alert("Pilih item dulu."); return; }
+            var url = "quotation.php?action=quo_history&item_id=" + encodeURIComponent(itemId);
+            window.open(url, "QUO_HISTORY", "width=980,height=450,scrollbars=yes,resizable=yes");
+        }
+
+        function openSelectedHistory() {
+            var tr = selectedDetailRow;
+            if(!tr){
+                var rows = byId("detailBody").getElementsByTagName("tr");
+                if(rows.length > 0) tr = rows[0];
+            }
+            if(!tr) { alert("Pilih baris item dulu."); return; }
+            
             var itemInput = tr.querySelector('input[name="item_id[]"]');
             var itemId = itemInput ? itemInput.value : "";
             if (itemId == "" || itemId == "0") { alert("Pilih item dulu."); return; }
+            
             var url = "quotation.php?action=quo_history&item_id=" + encodeURIComponent(itemId);
             window.open(url, "QUO_HISTORY", "width=980,height=450,scrollbars=yes,resizable=yes");
         }
@@ -805,7 +1079,7 @@ if (count($details) == 0) {
 
             positionAC(input);
             renderAC(function (q) {
-                return "<b>" + q.QUO_NO + "</b> - " + q.QUO_DATE + "<br><small class='text-muted'>" + q.SUP_CODE + " " + q.SUP_COMP + "</small>";
+                return "<b>" + q.QUO_NO + "</b> - " + q.QUO_DATE + "<br><small style='color:#666;'>" + q.SUP_CODE + " " + q.SUP_COMP + "</small>";
             }, pickQuo);
         }
 
@@ -813,13 +1087,13 @@ if (count($details) == 0) {
             if (e.key === "ArrowDown") {
                 e.preventDefault();
                 if (acMode !== "quo" || acItems.length == 0) showQuoAC(input);
-                acMove(1, function (q) { return "<b>" + q.QUO_NO + "</b> - " + q.QUO_DATE + "<br><small class='text-muted'>" + q.SUP_CODE + " " + q.SUP_COMP + "</small>"; }, pickQuo);
+                acMove(1, function (q) { return "<b>" + q.QUO_NO + "</b> - " + q.QUO_DATE + "<br><small style='color:#666;'>" + q.SUP_CODE + " " + q.SUP_COMP + "</small>"; }, pickQuo);
                 return false;
             }
             if (e.key === "ArrowUp") {
                 e.preventDefault();
                 if (acMode !== "quo" || acItems.length == 0) showQuoAC(input);
-                acMove(-1, function (q) { return "<b>" + q.QUO_NO + "</b> - " + q.QUO_DATE + "<br><small class='text-muted'>" + q.SUP_CODE + " " + q.SUP_COMP + "</small>"; }, pickQuo);
+                acMove(-1, function (q) { return "<b>" + q.QUO_NO + "</b> - " + q.QUO_DATE + "<br><small style='color:#666;'>" + q.SUP_CODE + " " + q.SUP_COMP + "</small>"; }, pickQuo);
                 return false;
             }
             if (e.key === "Enter") {
@@ -834,251 +1108,208 @@ if (count($details) == 0) {
             window.location.href = "quotation.php?edit=" + encodeURIComponent(q.QUO_ID);
         }
 
-        document.addEventListener("click", function (e) {
-            initAC();
-            if (acBox && !acBox.contains(e.target)) {
-                if (!e.target || !e.target.getAttribute || e.target.getAttribute("autocomplete") !== "off") hideAC();
+        // Cross-browser DOMContentLoaded alternative
+        function ready(fn) {
+            if (document.readyState != 'loading'){
+                fn();
+            } else if (document.addEventListener) {
+                document.addEventListener('DOMContentLoaded', fn);
+            } else {
+                document.attachEvent('onreadystatechange', function() {
+                    if (document.readyState != 'loading') fn();
+                });
             }
+        }
+
+        ready(function() {
+            var rows = document.getElementById("detailBody").getElementsByTagName("tr");
+            for(var i=0; i<rows.length; i++){
+                rows[i].onclick = function(){ selectDetailRow(this); };
+            }
+            renumberRows();
         });
+
+        if(document.addEventListener) {
+            document.addEventListener("click", function (e) {
+                initAC();
+                if (acBox && !acBox.contains(e.target)) {
+                    if (!e.target || !e.target.getAttribute || e.target.getAttribute("autocomplete") !== "off") hideAC();
+                }
+            });
+        } else {
+            document.attachEvent("onclick", function (e) {
+                var target = e.srcElement || e.target;
+                initAC();
+                if (acBox && !acBox.contains(target)) {
+                    if (!target || !target.getAttribute || target.getAttribute("autocomplete") !== "off") hideAC();
+                }
+            });
+        }
     </script>
 </head>
-<body class="hold-transition layout-top-nav">
-<div class="wrapper">
+<body>
 
-    <!-- Navbar -->
-    <nav class="main-header navbar navbar-expand-md navbar-light navbar-white">
-        <div class="container-fluid">
-            <a href="dashboard_purch.php" class="navbar-brand">
-                <span class="brand-text font-weight-light"><i class="fas fa-file-invoice-dollar text-success mr-2"></i> Purchasing System</span>
-            </a>
-            <ul class="navbar-nav ml-auto">
-                <li class="nav-item">
-                    <a href="dashboard_home.php" class="nav-link"><i class="fas fa-sign-out-alt"></i> Close</a>
-                </li>
-            </ul>
-        </div>
-    </nav>
-    <!-- /.navbar -->
-
-    <div class="content-wrapper">
-        <div class="content-header">
-            <div class="container-fluid">
-                <div class="row mb-2">
-                    <div class="col-sm-6">
-                        <h1 class="m-0">Quotation</h1>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="content">
-            <div class="container-fluid">
-
-                <?php if ($message != "") { ?>
-                    <div class="alert alert-success alert-dismissible">
-                        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                        <h5><i class="icon fas fa-check"></i> Success!</h5>
-                        <?php echo h($message); ?>
-                    </div>
-                <?php } ?>
-
-                <?php if ($error != "") { ?>
-                    <div class="alert alert-danger alert-dismissible">
-                        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                        <h5><i class="icon fas fa-ban"></i> Error!</h5>
-                        <?php echo h($error); ?>
-                    </div>
-                <?php } ?>
-
-                <div class="card card-success card-outline">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h3 class="card-title mb-0">
-                            <button type="button" class="btn btn-sm btn-default mr-1" onclick="newData()"><i class="fas fa-file"></i> New</button>
-                            <button type="submit" form="quoForm" class="btn btn-sm btn-success mr-1"><i class="fas fa-save"></i> Save Quotation</button>
-                            <button type="button" class="btn btn-sm btn-danger" onclick="deleteCurrent()"><i class="fas fa-trash"></i> Delete</button>
-                        </h3>
-                        
-                        <div class="card-tools">
-                            <form method="get" action="quotation.php" class="form-inline m-0" id="searchFormTop">
-                                <div class="input-group input-group-sm" style="width: 300px;">
-                                    <input type="text" name="q" id="quo_search" class="form-control float-right" value="<?php echo h($q); ?>" placeholder="Search Quo No / Supplier" autocomplete="off" oninput="showQuoAC(this)" onkeydown="quoSearchKey(event, this)">
-                                    <div class="input-group-append">
-                                        <button type="submit" class="btn btn-default"><i class="fas fa-search"></i></button>
-                                        <a href="quotation.php" class="btn btn-default" title="Reset"><i class="fas fa-sync"></i></a>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-
-                    <form id="quoForm" method="post" action="quotation.php">
-                        <input type="hidden" name="action" value="save">
-                        <input type="hidden" name="quo_id" id="quo_id" value="<?php echo h($header["QUO_ID"]); ?>">
-                        <input type="hidden" name="sup_id" id="sup_id" value="<?php echo h($header["SUP_ID"]); ?>">
-                        <input type="hidden" name="allow_empty_detail" id="allow_empty_detail" value="0">
-
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-3">
-                                    <div class="form-group">
-                                        <label>Supplier Code</label>
-                                        <input type="text" class="form-control form-control-sm" name="sup_code" id="sup_code" value="<?php echo h($header["SUP_CODE"]); ?>" autocomplete="off" oninput="showSupplierAC(this)" onkeydown="supplierKey(event, this)">
-                                    </div>
-                                </div>
-                                <div class="col-md-5">
-                                    <div class="form-group">
-                                        <label>Company</label>
-                                        <input type="text" class="form-control form-control-sm" name="sup_comp" id="sup_comp" value="<?php echo h($header["SUP_COMP"]); ?>" autocomplete="off" oninput="showSupplierAC(this)" onkeydown="supplierKey(event, this)">
-                                    </div>
-                                </div>
-                                <div class="col-md-2">
-                                    <div class="form-group">
-                                        <label>No.</label>
-                                        <input type="text" class="form-control form-control-sm" name="quo_no" id="quo_no" value="<?php echo h($header["QUO_NO"]); ?>" placeholder="Auto" onkeydown="headerKey(event)">
-                                    </div>
-                                </div>
-                                <div class="col-md-2">
-                                    <div class="form-group">
-                                        <label>Curr.</label>
-                                        <select class="form-control form-control-sm" name="curr_code" id="curr_code" onkeydown="headerKey(event)">
-                                            <?php foreach ($currList as $c) { ?>
-                                                <option value="<?php echo h($c); ?>" <?php echo trim((string)$header["CURR_CODE"]) == $c ? "selected" : ""; ?>><?php echo h($c); ?></option>
-                                            <?php } ?>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-3">
-                                    <div class="form-group">
-                                        <label>Effective Date</label>
-                                        <input type="date" class="form-control form-control-sm" name="quo_date" value="<?php echo h($header["QUO_DATE"]); ?>" onkeydown="headerKey(event)">
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="form-group">
-                                        <label>End Date</label>
-                                        <input type="date" class="form-control form-control-sm" name="quo_effdate" value="<?php echo h($header["QUO_EFFDATE"]); ?>" onkeydown="headerKey(event)">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="table-responsive p-0 mt-3 border">
-                                <table class="table table-bordered table-sm text-sm m-0" id="detailTable">
-                                    <thead class="bg-light">
-                                        <tr>
-                                            <th class="text-center" style="width:40px;">No</th>
-                                            <th style="width:130px;">Code</th>
-                                            <th>Item Name</th>
-                                            <th style="width:80px;">Unit</th>
-                                            <th style="width:100px;">Price</th>
-                                            <th style="width:90px;">Min.Qty</th>
-                                            <th style="width:120px;">Term</th>
-                                            <th class="text-center" style="width:60px;">Active</th>
-                                            <th class="text-center" style="width:80px;">ACT</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="detailBody">
-                                        <?php for ($i = 0; $i < count($details); $i++) { 
-                                            $d = $details[$i];
-                                            $price = isset($d["QUOD_PRICE"]) ? floatval($d["QUOD_PRICE"]) : 0;
-                                            $minqty = isset($d["QUOD_MINQTY"]) ? floatval($d["QUOD_MINQTY"]) : 0;
-                                            $active = isset($d["QUOD_ACTIVE"]) ? intval($d["QUOD_ACTIVE"]) : 0;
-                                        ?>
-                                            <tr>
-                                                <td class="text-center align-middle row-no"><?php echo h($i + 1); ?></td>
-                                                <td>
-                                                    <input type="hidden" name="item_id[]" id="item_id_<?php echo h($i); ?>" value="<?php echo h($d["ITEM_ID"]); ?>">
-                                                    <input type="text" class="form-control form-control-sm table-input-transparent" name="item_code[]" id="item_code_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_CODE"]) ? $d["ITEM_CODE"] : ""); ?>" autocomplete="off" oninput="showItemAC(this, <?php echo h($i); ?>)" onkeydown="itemKey(event, this, <?php echo h($i); ?>)">
-                                                </td>
-                                                <td>
-                                                    <input type="text" class="form-control form-control-sm table-input-transparent" name="item_name[]" id="item_name_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_NAME"]) ? $d["ITEM_NAME"] : ""); ?>" autocomplete="off" oninput="showItemAC(this, <?php echo h($i); ?>)" onkeydown="itemKey(event, this, <?php echo h($i); ?>)">
-                                                </td>
-                                                <td>
-                                                    <input type="text" class="form-control form-control-sm table-input-transparent" name="quod_unit[]" id="quod_unit_<?php echo h($i); ?>" value="<?php echo h(isset($d["QUOD_UNIT"]) ? $d["QUOD_UNIT"] : ""); ?>">
-                                                </td>
-                                                <td>
-                                                    <input type="text" class="form-control form-control-sm table-input-transparent text-right" name="quod_price[]" id="quod_price_<?php echo h($i); ?>" value="<?php echo h($price == 0 ? "" : $price); ?>" onkeydown="fieldEnterSave(event)">
-                                                </td>
-                                                <td>
-                                                    <input type="text" class="form-control form-control-sm table-input-transparent text-right" name="quod_minqty[]" value="<?php echo h($minqty == 0 ? "" : $minqty); ?>" onkeydown="fieldEnterSave(event)">
-                                                </td>
-                                                <td>
-                                                    <input type="text" class="form-control form-control-sm table-input-transparent" name="quod_term[]" value="<?php echo h(isset($d["QUOD_TERM"]) ? $d["QUOD_TERM"] : ""); ?>" onkeydown="fieldEnterSave(event)">
-                                                </td>
-                                                <td class="text-center align-middle">
-                                                    <input type="checkbox" name="quod_active[<?php echo h($i); ?>]" value="1" <?php echo $active == 1 ? "checked" : ""; ?>>
-                                                </td>
-                                                <td class="text-center">
-                                                    <div class="btn-group">
-                                                        <button type="button" class="btn btn-info btn-xs" onclick="showHistory(this)" title="OS/PO History"><i class="fas fa-history"></i></button>
-                                                        <button type="button" class="btn btn-danger btn-xs" onclick="deleteRow(this)" title="Delete"><i class="fas fa-times"></i></button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        <?php } ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <div class="card-footer bg-white">
-                            <button type="button" class="btn btn-primary btn-sm" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
-                            <button type="submit" class="btn btn-success btn-sm float-right"><i class="fas fa-check"></i> Simpan Data</button>
-                        </div>
-                    </form>
-                </div>
-
-                <form id="deleteForm" method="post" action="quotation.php">
-                    <input type="hidden" name="action" value="delete">
-                    <input type="hidden" name="quo_id" id="delete_quo_id" value="">
-                </form>
-
-                <div class="card">
-                    <div class="card-body p-0 table-responsive" style="max-height: 400px;">
-                        <table class="table table-striped table-hover table-head-fixed text-nowrap table-sm text-sm">
-                            <thead>
-                                <tr>
-                                    <th style="width:30px;"></th>
-                                    <th>QUO_NO</th>
-                                    <th>DATE</th>
-                                    <th>END DATE</th>
-                                    <th class="text-center">CURR</th>
-                                    <th>SUPPLIER</th>
-                                    <th>COMPANY</th>
-                                    <th class="text-right">DETAIL</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php while ($r = sqlsrv_fetch_array($stmtList, SQLSRV_FETCH_ASSOC)) { ?>
-                                    <tr class="pointer" onclick="goEdit('<?php echo h($r["QUO_ID"]); ?>')">
-                                        <td class="text-center text-success"><i class="fas fa-caret-right"></i></td>
-                                        <td><?php echo h($r["QUO_NO"]); ?></td>
-                                        <td><?php echo h(fmt_date_view($r["QUO_DATE"])); ?></td>
-                                        <td><?php echo h(fmt_date_view($r["QUO_EFFDATE"])); ?></td>
-                                        <td class="text-center"><?php echo h($r["CURR_CODE"]); ?></td>
-                                        <td><?php echo h($r["SUP_CODE"]); ?></td>
-                                        <td><?php echo h($r["SUP_COMP"]); ?></td>
-                                        <td class="text-right"><?php echo h(number_format(floatval($r["DETAIL_COUNT"]), 0, ".", ",")); ?></td>
-                                    </tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-            </div>
-        </div>
+<div class="main-container">
+    <!-- Title Bar -->
+    <div class="title-bar">
+        Quotation
     </div>
+
+    <?php if ($message != "") { echo "<div style='background:#d4edda; color:#155724; padding:5px; text-align:center; font-size:12px;'>$message</div>"; } ?>
+    <?php if ($error != "") { echo "<div style='background:#f8d7da; color:#721c24; padding:5px; text-align:center; font-size:12px;'>$error</div>"; } ?>
+
+    <form id="quoForm" method="post" action="quotation.php" style="display: flex; flex-direction: column; flex-grow: 1;">
+        <input type="hidden" name="action" value="save">
+        <input type="hidden" name="quo_id" id="quo_id" value="<?php echo h($header["QUO_ID"]); ?>">
+        <input type="hidden" name="allow_empty_detail" id="allow_empty_detail" value="0">
+
+        <!-- HEADER OLIVE AREA -->
+        <div class="olive-header">
+            <div class="row">
+                <div class="col-8">
+                    <!-- Baris Atas -->
+                    <div class="row">
+                        <div class="col-2">
+                            <label class="lbl-white">Supplier</label>
+                            <input type="hidden" name="sup_id" id="sup_id" value="<?php echo h($header["SUP_ID"]); ?>">
+                            <input type="text" class="input-classic" name="sup_code" id="sup_code" value="<?php echo h($header["SUP_CODE"]); ?>" autocomplete="off" oninput="showSupplierAC(this)" onkeydown="supplierKey(event, this)">
+                        </div>
+                        <div class="col-8">
+                            <label class="lbl-white">Company</label>
+                            <input type="text" class="input-classic" name="sup_comp" id="sup_comp" value="<?php echo h($header["SUP_COMP"]); ?>" readonly>
+                        </div>
+                    </div>
+                    
+                    <!-- Baris Bawah -->
+                    <div class="row mt-1">
+                        <div class="col-2">
+                            <label class="lbl-white">No.</label>
+                            <input type="text" class="input-classic" name="quo_no" id="quo_no" value="<?php echo h($header["QUO_NO"]); ?>" onkeydown="headerKey(event)">
+                        </div>
+                        <div class="col-2">
+                            <label class="lbl-white">Curr.</label>
+                            <select class="input-classic" name="curr_code" id="curr_code" onkeydown="headerKey(event)">
+                                <?php foreach ($currList as $c) { ?>
+                                    <option value="<?php echo h($c); ?>" <?php echo trim((string)$header["CURR_CODE"]) == $c ? "selected" : ""; ?>><?php echo h($c); ?></option>
+                                <?php } ?>
+                            </select>
+                        </div>
+                        <div class="col-3">
+                            <label class="lbl-white">Effective Date</label>
+                            <input type="date" class="input-classic" name="quo_date" value="<?php echo h($header["QUO_DATE"]); ?>" onkeydown="headerKey(event)">
+                        </div>
+                        <div class="col-3">
+                            <label class="lbl-white">End Date</label>
+                            <input type="date" class="input-classic" name="quo_effdate" value="<?php echo h($header["QUO_EFFDATE"]); ?>" onkeydown="headerKey(event)">
+                        </div>
+                    </div>
+
+                    <!-- Action buttons -->
+                    <div class="row mt-2">
+                        <div class="col-12 text-center">
+                            <fieldset class="fieldset-control">
+                                <button type="button" class="btn-classic btn-action-wide" onclick="newData()">Tambah</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="goEdit('<?php echo h($editId); ?>')">Rubah</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="deleteCurrent()">Hapus</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="submitSave(false)">Simpan</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="newData()">Batal</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="window.location.href='quotation.php'">Refresh</button>
+                            </fieldset>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Kanan: Search Data -->
+                <div class="col-4">
+                    <div style="display:flex; flex-direction:column; align-items:flex-end;">
+                        <div style="margin-bottom: 20px; width: 100%;">
+                            <label class="lbl-white text-right">SEARCH QUOTATION</label>
+                            <input type="text" name="q" class="input-classic" style="width:100%;" value="<?php echo h($q); ?>" placeholder="Search Quo No / Supplier" autocomplete="off" oninput="showQuoAC(this)" onkeydown="quoSearchKey(event, this)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GRID DATA AREA -->
+        <div class="datagrid-wrapper">
+            <table class="datagrid" id="detailTable">
+                <thead>
+                    <tr>
+                        <th style="width:25px;" class="text-center"></th>
+                        <th style="width:120px;">Code</th>
+                        <th>Item Name</th>
+                        <th style="width:60px;">Unit</th>
+                        <th style="width:90px;" class="text-right">Price</th>
+                        <th style="width:80px;" class="text-right">Min.Qty</th>
+                        <th style="width:100px;">Term</th>
+                        <th style="width:100px;">QUOD_ACTIVE</th>
+                        <th style="width:40px;" class="text-center">ACT</th>
+                    </tr>
+                </thead>
+                <tbody id="detailBody">
+                    <?php for ($i = 0; $i < count($details); $i++) { 
+                        $d = $details[$i];
+                        $price = isset($d["QUOD_PRICE"]) ? floatval($d["QUOD_PRICE"]) : 0;
+                        $minqty = isset($d["QUOD_MINQTY"]) ? floatval($d["QUOD_MINQTY"]) : 0;
+                        $active = isset($d["QUOD_ACTIVE"]) ? intval($d["QUOD_ACTIVE"]) : 0;
+                    ?>
+                        <tr>
+                            <td class="text-center align-middle row-no" style="width:25px;"></td>
+                            <td style="width:120px;">
+                                <input type="hidden" name="item_id[]" id="item_id_<?php echo h($i); ?>" value="<?php echo h($d["ITEM_ID"]); ?>">
+                                <input type="text" name="item_code[]" id="item_code_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_CODE"]) ? $d["ITEM_CODE"] : ""); ?>" autocomplete="off" oninput="showItemAC(this, <?php echo h($i); ?>)" onkeydown="itemKey(event, this, <?php echo h($i); ?>)">
+                            </td>
+                            <td>
+                                <input type="text" name="item_name[]" id="item_name_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_NAME"]) ? $d["ITEM_NAME"] : ""); ?>" autocomplete="off" oninput="showItemAC(this, <?php echo h($i); ?>)" onkeydown="itemKey(event, this, <?php echo h($i); ?>)">
+                            </td>
+                            <td style="width:60px;">
+                                <input type="text" name="quod_unit[]" id="quod_unit_<?php echo h($i); ?>" value="<?php echo h(isset($d["QUOD_UNIT"]) ? $d["QUOD_UNIT"] : ""); ?>">
+                            </td>
+                            
+                            <!-- Menerapkan fieldEnterSave (untuk ajax save dan next row) pada input ini -->
+                            <td style="width:90px;">
+                                <input type="text" class="text-right" name="quod_price[]" id="quod_price_<?php echo h($i); ?>" value="<?php echo h($price == 0 ? "" : $price); ?>" onkeydown="fieldEnterSave(event, this)">
+                            </td>
+                            <td style="width:80px;">
+                                <input type="text" class="text-right" name="quod_minqty[]" value="<?php echo h($minqty == 0 ? "" : $minqty); ?>" onkeydown="fieldEnterSave(event, this)">
+                            </td>
+                            <td style="width:100px;">
+                                <input type="text" name="quod_term[]" value="<?php echo h(isset($d["QUOD_TERM"]) ? $d["QUOD_TERM"] : ""); ?>" onkeydown="fieldEnterSave(event, this)">
+                            </td>
+                            
+                            <td class="text-left align-middle" style="width:100px; padding-left:5px !important;">
+                                <label style="font-size:11px; margin:0;">
+                                    <input type="checkbox" name="quod_active[<?php echo h($i); ?>]" value="1" <?php echo $active == 1 ? "checked" : ""; ?> style="width:auto; height:auto; margin-right:4px;"> Active
+                                </label>
+                            </td>
+                            <td class="text-center" style="width:40px;">
+                                <button type="button" class="btn-classic" style="padding:0 5px;" onclick="deleteRow(this)" title="Delete">X</button>
+                            </td>
+                        </tr>
+                    <?php } ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- FOOTER BAR -->
+        <div class="footer-bar">
+            <div>
+                <button type="button" class="btn-classic" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+            </div>
+            <div style="text-align: right;">
+                <button type="button" class="btn-classic" onclick="openSelectedHistory()" style="width: 80px; height:24px;">OS/PO</button>
+            </div>
+        </div>
+    </form>
+
+    <form id="deleteForm" method="post" action="quotation.php" style="display:none;">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="quo_id" id="delete_quo_id" value="">
+    </form>
 </div>
 
 <div id="acBox" class="ac-box"></div>
 
-<!-- jQuery -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-<!-- Bootstrap 4 -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
-<!-- AdminLTE App -->
-<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
 </body>
 </html>

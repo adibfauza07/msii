@@ -144,19 +144,17 @@ header("Expires: 0");
     <style>
         table {
             border-collapse: collapse;
-            font-family: Arial, sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
             font-size: 10pt;
         }
 
         th {
             background: #d9eaf7;
             font-weight: bold;
-            border: 1px solid #000000;
             text-align: center;
         }
 
         td {
-            border: 1px solid #000000;
             vertical-align: top;
         }
 

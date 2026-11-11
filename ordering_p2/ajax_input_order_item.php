@@ -56,7 +56,8 @@ $q         = post_value("q");
 $ordr_date = date_sql(post_value("ORDR_DATE"));
 $cust_id   = intval(post_value("CUST_ID"));
 
-if ($q == "") {
+// BUGFIX: Izinkan '%' sebagai wildcard pencarian
+if ($q == "" && $q !== "%") {
     echo json_encode(array(
         "success" => true,
         "message" => "OK",
@@ -83,7 +84,12 @@ if ($ordr_date == "") {
     exit();
 }
 
-$like = "%" . $q . "%";
+// BUGFIX: Cek apakah inputnya sudah berupa wildcard '%' dari klik panah
+if ($q === "%") {
+    $like = "%";
+} else {
+    $like = "%" . $q . "%";
+}
 
 /*
     Filter detail by customer:

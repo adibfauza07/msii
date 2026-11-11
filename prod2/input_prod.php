@@ -256,6 +256,24 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_ng') {
         /* Tambahan custom supaya mirip box AdminLTE2 */
         .card-primary.card-outline { border-top: 3px solid #3c8dbc; }
         .card-secondary.card-outline { border-top: 3px solid #d2d6de; }
+
+
+        /* ============================================================= */
+        /* CSS AUTOCOMPLETE SEARCHABLE DROPDOWN                          */
+        /* ============================================================= */
+        .ac-wrap { position: relative; display: block; }
+        .ac-list {
+            display: none; position: absolute; top: 100%; left: 0; width: 100%;
+            max-height: 250px; overflow-y: auto; background: #fff;
+            border: 1px solid #999; border-radius: 3px; z-index: 9999;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.18);
+        }
+        .ac-item { padding: 8px 10px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 11px; line-height: 1.4; }
+        .ac-item:hover, .ac-item.active { background: #3c8dbc; color: #fff; }
+        .ac-item .ac-code { font-weight: bold; color: #d73925; font-size: 12px; }
+        .ac-item:hover .ac-code, .ac-item.active .ac-code { color: #fff; }
+        .ac-item .ac-name { color: #555; }
+        .ac-item:hover .ac-name, .ac-item.active .ac-name { color: #eee; }
     </style>
 </head>
 <body class="hold-transition layout-top-nav">
@@ -297,7 +315,11 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_ng') {
                                 <div class="row">
                                     <div class="col-6 form-group">
                                         <label class="text-primary"><i class="fas fa-search"></i> Cari Part / WO:</label>
-                                        <input type="text" id="search_item" class="form-control font-weight-bold" placeholder="Ketik kode / WO..." autocomplete="off">
+                                        <div class="ac-wrap">
+                                            <input type="text" id="search_item" class="form-control font-weight-bold" placeholder="Ketik Part Code / Name..." autocomplete="off">
+                                            <!-- Container untuk List Dropdown Autocomplete -->
+                                            <div id="search_item_list" class="ac-list"></div>
+                                        </div>
                                     </div>
                                     <div class="col-6 form-group">
                                         <label>Part / Item Code:</label>
@@ -312,6 +334,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_ng') {
                                     </div>
                                 </div>
 
+                                <!-- Baris Sebelumnya: Process & Machine -->
                                 <div class="row">
                                     <div class="col-7 form-group">
                                         <label>Process:</label>
@@ -322,6 +345,22 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_ng') {
                                         <label>Machine (M/C):</label>
                                         <input type="text" id="mac_code" class="form-control font-weight-bold text-center" readonly style="background:#eee;">
                                         <input type="hidden" id="mac_code_hidden">
+                                    </div>
+                                </div>
+
+                                <!-- BARIS BARU: Standar Cavity, Cycle Time, & Tonase -->
+                                <div class="row">
+                                    <div class="col-4 form-group">
+                                        <label>Std. Cavity:</label>
+                                        <input type="text" id="std_cavity" class="form-control text-center font-weight-bold" readonly style="background:#eee; color:#0056b3;">
+                                    </div>
+                                    <div class="col-4 form-group">
+                                        <label>Std. Cyc.Tm:</label>
+                                        <input type="text" id="std_cyctm" class="form-control text-center font-weight-bold" readonly style="background:#eee; color:#0056b3;">
+                                    </div>
+                                    <div class="col-4 form-group">
+                                        <label>Std. St# (Tonase):</label>
+                                        <input type="text" id="std_st" class="form-control text-center font-weight-bold" readonly style="background:#eee; color:#0056b3;">
                                     </div>
                                 </div>
 
@@ -344,6 +383,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'delete_ng') {
                                             <tr>
                                                 <th>WO NUMBER</th>
                                                 <th>ITEM CODE</th>
+                                                <th>ITEM NAME</th>
                                                 <th class="text-right">QTY</th>
                                                 <th class="text-center">M/C</th>
                                                 <th class="text-right">CAP/DAY</th>
@@ -459,9 +499,58 @@ $(document).ready(function() {
 
     $('#input_date, input[name="group"], input[name="shift"]').on('change', function() { updateLotNumber(); });
 
-    $('#search_item').on('keyup', function() {
+    // =========================================================================
+    // AUTOCOMPLETE DROPDOWN & TABLE RENDER LOGIC
+    // =========================================================================
+    let currentWoData = [];
+    let acIndex = -1;
+
+    // Handle Navigasi Keyboard (Atas, Bawah, Enter) di Dropdown
+    $('#search_item').on('keydown', function(e) {
+        let $list = $('#search_item_list');
+        let $items = $list.find('.ac-item');
+        
+        if (!$list.is(':visible') || $items.length === 0) return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            acIndex++;
+            if (acIndex >= $items.length) acIndex = 0;
+            $items.removeClass('active');
+            $items.eq(acIndex).addClass('active');
+            // Auto-scroll kebawah
+            let itemTop = $items.eq(acIndex).position().top;
+            let listHeight = $list.height();
+            let itemHeight = $items.eq(acIndex).outerHeight();
+            if (itemTop + itemHeight > listHeight) $list.scrollTop($list.scrollTop() + itemTop + itemHeight - listHeight);
+            else if (itemTop < 0) $list.scrollTop($list.scrollTop() + itemTop);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            acIndex--;
+            if (acIndex < 0) acIndex = $items.length - 1;
+            $items.removeClass('active');
+            $items.eq(acIndex).addClass('active');
+            // Auto-scroll keatas
+            let itemTop = $items.eq(acIndex).position().top;
+            if (itemTop < 0) $list.scrollTop($list.scrollTop() + itemTop);
+            else if (itemTop + $items.eq(acIndex).outerHeight() > $list.height()) $list.scrollTop($list.scrollTop() + itemTop + $items.eq(acIndex).outerHeight() - $list.height());
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            if (acIndex >= 0 && acIndex < currentWoData.length) {
+                selectWO(currentWoData[acIndex]);
+            }
+        } else if (e.key === 'Escape') {
+            $list.hide();
+        }
+    });
+
+    // Handle Ketikan untuk Auto-search
+    $('#search_item').on('keyup', function(e) {
+        if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) return;
+
         clearTimeout(delayTimer);
         let query = $(this).val().trim();
+        let $list = $('#search_item_list');
 
         if (query.length >= 2) {
             delayTimer = setTimeout(function() {
@@ -471,64 +560,107 @@ $(document).ready(function() {
                     data: { item_code: query },
                     dataType: 'json',
                     success: function(response) {
-                        let html = '';
+                        currentWoData = response;
+                        acIndex = -1;
+                        let htmlTable = '';
+                        let htmlList = '';
+
                         if(response.length > 0) {
                             $.each(response, function(index, wo) {
-                                // Badge penanda status WO (Belum jalan vs Sudah ada data produksi)
                                 let statusBadge = (parseInt(wo.PROD_COUNT) === 0) 
                                     ? '<span class="badge badge-success ml-1" style="font-size:9px;">BARU</span>' 
                                     : '<span class="badge badge-secondary ml-1" style="font-size:9px;">' + wo.PROD_COUNT + ' Lot</span>';
-
                                 let rowStyle = (parseInt(wo.PROD_COUNT) === 0) ? 'style="font-weight: 600;"' : '';
 
-                                html += `<tr ${rowStyle}
-                                             data-woid="${wo.WO_ID}" 
-                                             data-wonumber="${wo.WO_NUMBER}" 
-                                             data-procid="${wo.PROC_ID}" 
-                                             data-procname="${wo.PROC_NAME}" 
-                                             data-itemcode="${wo.ITEM_CODE}" 
-                                             data-itemname="${wo.ITEM_NAME}" 
-                                             data-maccode="${wo.MAC_CODE}">
+                                // 1. Render Baris Tabel Sebelah Kanan
+                                htmlTable += `<tr ${rowStyle} class="wo-row" data-index="${index}" data-woid="${wo.WO_ID}">
                                             <td>${wo.WO_NUMBER} ${statusBadge}</td>
                                             <td>${wo.ITEM_CODE ? wo.ITEM_CODE : '-'}</td>
+                                            <td>${wo.ITEM_NAME ? wo.ITEM_NAME : '-'}</td>
                                             <td class="text-right">${wo.WO_QTY ? wo.WO_QTY : '-'}</td> 
                                             <td class="text-center">${wo.MAC_CODE}</td>
                                             <td class="text-right">${wo.WO_CAP ? wo.WO_CAP : '-'}</td>
                                             <td>${wo.WO_START}</td>
                                             <td>${wo.WO_END}</td>
                                          </tr>`;
+                                
+                                // 2. Render List Dropdown Sebelah Kiri
+                                htmlList += `<div class="ac-item" data-index="${index}">
+                                                <span class="ac-code">${wo.ITEM_CODE}</span> 
+                                                <span class="ac-name">${wo.ITEM_NAME ? ' - ' + wo.ITEM_NAME : ''}</span>
+                                                <div style="font-size:10px; color:#777; margin-top:3px;">
+                                                    WO: <span style="font-weight:bold; color:#d73925;">${wo.WO_NUMBER}</span> ${statusBadge} | M/C: <strong>${wo.MAC_CODE}</strong>
+                                                </div>
+                                             </div>`;
                             });
-                            $('#wo_table_body').html(html);
+                            $('#wo_table_body').html(htmlTable);
+                            $list.html(htmlList).show();
                         } else {
-                            $('#wo_table_body').html('<tr><td colspan="7" class="text-center font-italic text-muted">Tidak ada data ditemukan.</td></tr>');
+                            $('#wo_table_body').html('<tr><td colspan="8" class="text-center font-italic text-muted">Tidak ada data ditemukan.</td></tr>');
+                            $list.html('<div class="ac-item text-muted" style="pointer-events:none;">Data tidak ditemukan</div>').show();
                         }
                     }
                 });
             }, 300);
         } else if (query.length === 0) {
-            $('#wo_table_body').html('<tr><td colspan="7" class="text-center text-muted" style="padding: 20px;">Ketik kode / nama barang di sebelah kiri untuk menampilkan daftar WO...</td></tr>');
+            $('#wo_table_body').html('<tr><td colspan="8" class="text-center text-muted" style="padding: 20px;">Ketik kode / nama barang di sebelah kiri untuk menampilkan daftar WO...</td></tr>');
+            $list.hide().empty();
         }
     });
 
-    $(document).on('click', '.wo-table tbody tr, .table-wo tbody tr', function() {
-        let woid = $(this).data('woid');
-        if(!woid) return; 
-
-        $('.table-wo tbody tr').removeClass('selected text-white bg-primary');
-        $(this).addClass('selected text-white bg-primary');
-
-        $('#wo_id').val(woid);
-        $('#wo_number').val($(this).data('wonumber'));
-        $('#proc_id').val($(this).data('procid'));
-        $('#proc_name').val($(this).data('procname'));
-        $('#item_code').val($(this).data('itemcode'));
-        $('#item_name').val($(this).data('itemname'));
-        $('#mac_code').val($(this).data('maccode'));
-        $('#mac_code_hidden').val($(this).data('maccode'));
-
-        updateLotNumber();
-        loadHistoryGrid(woid);
+    // Menutup Dropdown saat klik di luar area pencarian
+    $(document).on('click', function(e) {
+        if (!$(e.target).closest('.ac-wrap').length) {
+            $('#search_item_list').hide();
+        }
     });
+
+    // Event Klik saat memilih dari Dropdown Kiri
+    $(document).on('click', '.ac-item', function() {
+        let idx = $(this).data('index');
+        if (idx !== undefined && currentWoData[idx]) {
+            selectWO(currentWoData[idx]);
+        }
+    });
+
+    // Event Klik saat memilih dari Baris Tabel Kanan
+    $(document).on('click', '.wo-row', function() {
+        let idx = $(this).data('index');
+        if (idx !== undefined && currentWoData[idx]) {
+            selectWO(currentWoData[idx]);
+        }
+    });
+
+    // Fungsi Utama Eksekusi Pemilihan WO
+    function selectWO(wo) {
+        $('#search_item_list').hide();
+        
+        // Highlight biru pada tabel yang dipilih
+        $('.table-wo tbody tr').removeClass('selected text-white bg-primary');
+        $('.table-wo tbody tr[data-woid="'+wo.WO_ID+'"]').addClass('selected text-white bg-primary');
+
+        // Mapping Data ke Form Kiri
+        $('#wo_id').val(wo.WO_ID);
+        $('#wo_number').val(wo.WO_NUMBER);
+        $('#proc_id').val(wo.PROC_ID);
+        $('#proc_name').val(wo.PROC_NAME);
+        $('#item_code').val(wo.ITEM_CODE);
+        $('#item_name').val(wo.ITEM_NAME);
+        $('#mac_code').val(wo.MAC_CODE);
+        $('#mac_code_hidden').val(wo.MAC_CODE);
+
+        // MAPPING KOLOM BARU (Cavity, Cyc.Tm, Tonase) dengan penanganan data kosong
+        $('#std_cavity').val(wo.STD_CAV !== undefined ? wo.STD_CAV : '0');
+        $('#std_cyctm').val(wo.STD_CYCTM !== undefined ? wo.STD_CYCTM : '0');
+        $('#std_st').val(wo.TONASE ? wo.TONASE : '-');
+        
+        // Timpa nilai input search dengan Item Code yang dipilih agar rapi
+        $('#search_item').val(wo.ITEM_CODE);
+
+        // Eksekusi generator No Lot dan Muat Data Produksi Bawah
+        updateLotNumber();
+        loadHistoryGrid(wo.WO_ID);
+    }
 
     function loadHistoryGrid(woid) {
         $('#history_table_body').html('<tr><td colspan="15" class="text-center text-primary py-4"><i class="fas fa-spinner fa-spin"></i> Memuat data produksi...</td></tr>');

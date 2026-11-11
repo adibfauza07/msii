@@ -191,8 +191,6 @@ ksort($supplierGroups);
 
 /* ======================================================
    EXPORT EXCEL
-   Kolom dibuat sama dengan tampilan layar:
-   TOTAL hanya 1 kolom, REC = RCVD_QTY
 ====================================================== */
 if ($export == "excel") {
     while (ob_get_level() > 0) {
@@ -357,14 +355,14 @@ if ($export == "excel") {
 
     <style>
         html, body {
-    margin: 0;
-    padding: 0;
-    background: #9c9c9c;
-    color: #000000;
-    font-family: Calibri, Arial, sans-serif;
-    font-size: 10px; /* Ukuran font di file MPS/MOR/MRP Anda */
-    zoom: 100%; /* <--- TAMBAHKAN BARIS INI UNTUK ZOOM 125% DI LAYAR */
-}
+            margin: 0;
+            padding: 0;
+            background: #9c9c9c;
+            color: #000000;
+            font-family: Calibri, Arial, sans-serif;
+            font-size: 10px;
+            zoom: 100%;
+        }
 
         .filter {
             width: calc(100% - 20px);
@@ -414,7 +412,6 @@ if ($export == "excel") {
             padding: 8px 12px;
             border: 2px solid #000000;
             box-sizing: border-box;
-            /* Perubahan: Overflow untuk mengakomodasi layar sempit */
             overflow-x: auto; 
         }
 
@@ -449,12 +446,10 @@ if ($export == "excel") {
 
         table.report {
             width: 100%;
-            /* Perubahan: Min Width agar tabel tidak menyusut paksa & merusak layout */
             min-width: 1200px;
             border-collapse: collapse;
-            /* Perubahan: Memaksa browser mengikuti lebar yang diinstruksikan */
             table-layout: fixed; 
-            font-size: 8.5px; /* Perubahan: Diperbesar dari 7px */
+            font-size: 8.5px; 
         }
 
         table.report th,
@@ -464,7 +459,6 @@ if ($export == "excel") {
             vertical-align: top;
             line-height: 11px;
             overflow: hidden;
-            /* Perubahan: Teks panjang akan dipotong otomatis */
             word-wrap: break-word; 
         }
 
@@ -483,7 +477,7 @@ if ($export == "excel") {
             border-top: 1px solid #000000;
             border-bottom: 1px solid #000000;
             background: #f3f3f3;
-            font-size: 9.5px; /* Perubahan: Diperbesar */
+            font-size: 9.5px; 
         }
 
         .total-row td {
@@ -525,7 +519,7 @@ if ($export == "excel") {
 
             .page {
                 width: 100%;
-                max-width: none; /* Perubahan: Menyesuaikan halaman cetak */
+                max-width: none; 
                 min-height: auto;
                 margin: 0;
                 border: none;
@@ -535,7 +529,7 @@ if ($export == "excel") {
 
             table.report th,
             table.report td {
-                font-size: 8px; /* Perubahan: Diperbesar untuk cetakan */
+                font-size: 8px; 
                 padding: 2px;
                 line-height: 10px;
             }
@@ -577,19 +571,22 @@ if ($export == "excel") {
 
     <?php if ($totalRows == 0) { ?>
         <div class="no-data">Data MOR tidak ditemukan.</div>
+    <?php } elseif ($totalRows > 1500) { ?>
+        <div class="no-data" style="color: #d9534f; font-weight:bold; font-size: 14px;">
+            ⚠️ Peringatan: Data terlalu besar (<?php echo n0($totalRows); ?> baris).<br>
+            Pembuatan tabel HTML diblokir untuk mencegah browser crash.<br><br>
+            Gunakan filter <b>Material</b> atau <b>Supplier</b>, atau klik <b>EXPORT EXCEL</b> untuk mengunduh.
+        </div>
     <?php } else { ?>
         <table class="report">
-            <!-- Perubahan: Mapping persentase lebar 26 kolom agar Genap 100% -->
             <colgroup>
-                <col style="width:2%;">     <!-- 1. NO -->
-                <col style="width:6.5%;">   <!-- 2. CODE -->
-                <col style="width:13%;">    <!-- 3. Material Name -->
-                <col style="width:3%;">     <!-- 4. Safety -->
-                <!-- TAG -->
-                <col style="width:3%;">     <!-- 5. IN -->
-                <col style="width:3%;">     <!-- 6. EXT -->
-                <col style="width:3%;">     <!-- 7. TOTAL -->
-                <!-- M1 (8 Kolom x 3.5%) -->
+                <col style="width:2%;">     
+                <col style="width:6.5%;">   
+                <col style="width:13%;">    
+                <col style="width:3%;">     
+                <col style="width:3%;">     
+                <col style="width:3%;">     
+                <col style="width:3%;">     
                 <col style="width:3.5%;">
                 <col style="width:3.5%;">
                 <col style="width:3.5%;">
@@ -598,14 +595,12 @@ if ($export == "excel") {
                 <col style="width:3.5%;">
                 <col style="width:3.5%;">
                 <col style="width:3.5%;">
-                <!-- M2 (6 Kolom x 3.5%) -->
                 <col style="width:3.5%;">
                 <col style="width:3.5%;">
                 <col style="width:3.5%;">
                 <col style="width:3.5%;">
                 <col style="width:3.5%;">
                 <col style="width:3.5%;">
-                <!-- M3 (5 Kolom x 3.5%) -->
                 <col style="width:3.5%;">
                 <col style="width:3.5%;">
                 <col style="width:3.5%;">
@@ -614,7 +609,6 @@ if ($export == "excel") {
             </colgroup>
             <thead>
                 <tr>
-                    <!-- Perubahan: Pemasangan inline style persentase pada <th> agar browser menurut (24.5%) -->
                     <th rowspan="3" style="width:2%;">NO</th>
                     <th rowspan="3" style="width:6.5%;">CODE</th>
                     <th rowspan="3" style="width:13%;">Material Name</th>
@@ -625,7 +619,6 @@ if ($export == "excel") {
                     <th colspan="5" style="width:17.5%;"><?php echo h($m3); ?></th>
                 </tr>
                 <tr>
-                    <!-- Perubahan: Pemasangan inline style persentase pada <th> lapis kedua (75.5%) -->
                     <th style="width:3%;">IN</th>
                     <th style="width:3%;">EXT</th>
                     <th style="width:3%;">TOTAL</th>

@@ -219,6 +219,11 @@ $message = "";
 $error = "";
 $action = postv("action","");
 $editId = intval(getv("edit","0"));
+$q = getv("q", ""); 
+
+// ==== PENANDA AJAX UNTUK SAVE BY ENTER ====
+$isAjax = (isset($_GET['ajax']) && $_GET['ajax'] == '1') || (isset($_POST['is_ajax']) && $_POST['is_ajax'] == '1');
+// ==========================================
 
 /* DELETE */
 if ($action == "delete") {
@@ -268,9 +273,15 @@ if ($action == "save") {
         $autoNoUsed = true;
     }
 
-    if ($supId <= 0) $error = "Supplier wajib dipilih.";
-    elseif ($poTo <= 0) $error = "Invoice To wajib dipilih.";
-    elseif ($poCur == "") $error = "Currency wajib diisi.";
+    if ($supId <= 0) {
+        $error = "Supplier wajib dipilih.";
+    } elseif ($poCur == "") {
+        $error = "Currency wajib diisi.";
+    }
+    // BY PASS VALIDASI INVOICE TO
+    // elseif ($poTo <= 0) {
+    //     $error = "Invoice To wajib dipilih.";
+    // }
 
     if ($error == "") {
         $reqIds = isset($_POST["req_id"]) ? $_POST["req_id"] : array();
@@ -346,14 +357,42 @@ if ($action == "save") {
             if ($ok) {
                 sqlsrv_commit($conn);
                 if ($autoNoUsed) inc_next_po($conn);
+                
+                // ==== JIKA DISIMPAN LEWAT ENTER (AJAX) ====
+                if ($isAjax) {
+                    ob_clean();
+                    header('Content-Type: application/json');
+                    echo json_encode(array("status" => "success", "po_id" => $poId));
+                    exit;
+                }
+                // ==========================================
+
                 header("Location: po.php?edit=".$poId."&msg=saved");
                 exit;
             } else {
                 sqlsrv_rollback($conn);
                 if ($error == "") $error = "Simpan PO gagal:\n".sql_error_text();
+
+                // ==== JIKA ERROR LEWAT ENTER (AJAX) ====
+                if ($isAjax) {
+                    ob_clean();
+                    header('Content-Type: application/json');
+                    echo json_encode(array("status" => "error", "message" => $error));
+                    exit;
+                }
+                // =======================================
             }
         }
     }
+    
+    // ==== TANGKAP ERROR VALIDASI FORM JIKA VIA AJAX ====
+    if ($error != "" && $isAjax) {
+        ob_clean();
+        header('Content-Type: application/json');
+        echo json_encode(array("status" => "error", "message" => $error));
+        exit;
+    }
+    // ===================================================
 }
 
 /* LOAD HEADER */
@@ -400,7 +439,7 @@ if ($stmtSup !== false) {
     }
 }
 
-/* PO AUTO COMPLETE DATA (Untuk Pencarian di Header) */
+/* PO AUTO COMPLETE DATA */
 $poAuto = array();
 $sqlPoAuto = "
     SELECT TOP 1000 P.PO_ID, P.PO_NUM, P.PO_DATE, S.SUP_CODE, S.SUP_COMP
@@ -456,25 +495,8 @@ if ($stmtCurr !== false) {
     }
 }
 
-/* LIST PO */
-$q = getv("q","");
-$where = "";
-$paramsList = array();
-if ($q != "") {
-    $where = "WHERE P.PO_NUM LIKE ? OR S.SUP_CODE LIKE ? OR S.SUP_COMP LIKE ?";
-    $paramsList = array("%".$q."%","%".$q."%","%".$q."%");
-}
-
-$sqlList = "
-    SELECT TOP 300 P.PO_ID, P.PO_NUM, P.PO_DATE, P.PO_DATEDO, P.PO_CUR, P.PO_CLOSE, S.SUP_CODE, S.SUP_COMP, COUNT(D.ITEM_ID) AS DETAIL_COUNT, ISNULL(SUM(ISNULL(D.POD_QTY,0) * ISNULL(D.POD_PRICE,0)),0) AS TOTAL_AMOUNT
-    FROM dbo.PO P LEFT JOIN dbo.SUPPLIER S ON P.SUP_ID = S.SUP_ID LEFT JOIN dbo.PO_DETAIL D ON P.PO_ID = D.PO_ID $where
-    GROUP BY P.PO_ID, P.PO_NUM, P.PO_DATE, P.PO_DATEDO, P.PO_CUR, P.PO_CLOSE, S.SUP_CODE, S.SUP_COMP ORDER BY P.PO_DATE DESC, P.PO_NUM DESC
-";
-$stmtList = sqlsrv_query($conn,$sqlList,$paramsList);
-if ($stmtList === false) die("<pre>Query list PO error:\n".sql_error_text()."</pre>");
-
 if (count($details) == 0) {
-    for ($i=0; $i<4; $i++) {
+    for ($i=0; $i<10; $i++) {
         $details[] = array("REQ_ID"=>"", "ITEM_ID"=>"", "ITEM_CODE"=>"", "ITEM_NAME"=>"", "REQ_NO"=>"", "POD_DUE"=>date("Y-m-d"), "POD_QTY"=>"", "POD_PRICE"=>"", "POD_UNIT"=>"", "POD_AMOUNT"=>"");
     }
 }
@@ -484,142 +506,379 @@ if (count($details) == 0) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Purchase Order - Purchasing</title>
+    <title>Purchase Order</title>
 
-    <!-- Google Font: Source Sans Pro -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <!-- Theme style (AdminLTE 3) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
-
+    
     <style>
+        /* CSS KHUSUS TAMPILAN WINDOWS CLASSIC / DELPHI */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 12px;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .main-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #ece9d8;
+        }
+
+        .title-bar {
+            background-color: #ffffff;
+            text-align: center;
+            font-size: 24px;
+            font-family: Arial, sans-serif;
+            padding: 5px 0;
+            color: #000;
+        }
+
+        /* HEADER LIGHT BLUE */
+        .lightblue-header {
+            background-color: #a0c4e4; /* Light Blue Sesuai Gambar */
+            padding: 10px;
+            color: #000000;
+        }
+
+        .lbl-black {
+            color: #000000;
+            font-size: 11px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        .input-classic {
+            width: 100%;
+            height: 20px;
+            font-size: 12px;
+            padding: 0 4px;
+            border: 1px solid #7f9db9;
+            box-sizing: border-box;
+            background: #fff;
+            transition: background-color 0.3s;
+        }
+
+        .input-classic:read-only { background-color: #e0e0e0; color: #000; }
+        
+        select.input-classic { padding: 0; }
+        input[type="checkbox"].classic-cb { margin: 2px 0 0 0; }
+        textarea.input-classic { height: 40px; padding: 4px; resize: none; }
+
+        .btn-classic {
+            background: #f0f0f0;
+            border: 1px solid #888;
+            border-bottom-color: #444;
+            border-right-color: #444;
+            padding: 2px 10px;
+            font-size: 12px;
+            color: #000;
+            cursor: pointer;
+            box-shadow: inset 1px 1px 0px #fff;
+        }
+        .btn-classic:active {
+            box-shadow: inset 1px 1px 2px #888;
+            border: 1px solid #444;
+            border-bottom-color: #888;
+            border-right-color: #888;
+        }
+        .btn-action-wide { width: 75px; margin-right: 2px; }
+
+        .fieldset-control {
+            border: 1px solid #fff;
+            padding: 6px;
+            margin-top: 5px;
+            display: inline-block;
+        }
+
+        /* GRID TABLE CLASSIC */
+        .datagrid-wrapper {
+            flex-grow: 1;
+            overflow: auto;
+            background: #fff;
+            border-top: 2px solid #888;
+            border-bottom: 2px solid #fff;
+        }
+
+        table.datagrid {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: auto;
+        }
+
+        table.datagrid th {
+            background-color: #ece9d8;
+            border-right: 1px solid #c0c0c0;
+            border-bottom: 1px solid #c0c0c0;
+            font-weight: normal;
+            font-size: 11px;
+            padding: 2px 4px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        table.datagrid td {
+            border-right: 1px solid #e0e0e0;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 0;
+            font-size: 11px;
+        }
+
+        table.datagrid input[type="text"], table.datagrid input[type="date"] {
+            width: 100%;
+            height: 18px;
+            border: none;
+            padding: 0 4px;
+            font-size: 11px;
+            background: transparent;
+            box-sizing: border-box;
+            transition: background-color 0.3s;
+        }
+        table.datagrid input[type="text"]:focus, table.datagrid input[type="date"]:focus {
+            background: #e7f1ff;
+            outline: 1px solid #000;
+        }
+        table.datagrid tr.detail-selected td {
+            background-color: #d0d0d0;
+        }
+
+        .footer-bar {
+            background: #ece9d8;
+            padding: 5px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #c0c0c0;
+        }
+
+        /* AUTOCOMPLETE STYLING */
         .ac-box {
             position: absolute;
             z-index: 9999;
             background: #ffffff;
             color: #333;
             border: 1px solid #ccc;
-            border-radius: 4px;
-            max-height: 250px;
+            border-radius: 2px;
+            max-height: 200px;
             overflow-y: auto;
-            min-width: 360px;
+            min-width: 300px;
             display: none;
-            font-size: 14px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            font-size: 12px;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
         }
-        .ac-item {
-            padding: 8px 12px;
-            cursor: pointer;
-            border-bottom: 1px solid #f4f4f4;
-        }
-        .ac-item:last-child { border-bottom: none; }
-        .ac-item:hover, .ac-item.active { background: #007bff; color: #ffffff; }
+        .ac-item { padding: 4px 8px; cursor: pointer; border-bottom: 1px solid #f4f4f4; }
+        .ac-item:hover, .ac-item.active { background: #a0c4e4; color: #000; }
 
-        /* CUSTOM COMPACT TABLE ROW */
-        #detailTable th, #detailTable td {
-            padding: 2px 4px !important;
-            vertical-align: middle !important;
-        }
-        .table-input-transparent {
-            border: 1px solid transparent;
-            background: transparent;
-            height: 22px !important;
-            padding: 0px 4px !important;
-            font-size: 12px !important;
-            border-radius: 0;
-        }
-        .table-input-transparent:focus {
-            background: #fff;
-            border-color: #80bdff;
-            outline: 0;
-            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-        }
-        #detailTable .btn-xs {
-            padding: 1px 6px !important;
-            font-size: 11px !important;
-            height: 22px !important;
-            line-height: 1.5 !important;
-        }
-        tr.pointer:hover, tr.detail-selected td {
-            cursor: pointer;
-            background-color: #e7f1ff !important;
-        }
+        /* Bootstrap grid system utilitas (minimalis) */
+        .row { display: flex; flex-wrap: wrap; margin-right: -5px; margin-left: -5px; }
+        .col-1 { flex: 0 0 8.333%; max-width: 8.333%; padding: 0 5px; }
+        .col-1-5 { flex: 0 0 12.5%; max-width: 12.5%; padding: 0 5px; }
+        .col-2 { flex: 0 0 16.666%; max-width: 16.666%; padding: 0 5px; }
+        .col-3 { flex: 0 0 25%; max-width: 25%; padding: 0 5px; }
+        .col-3-5 { flex: 0 0 29.166%; max-width: 29.166%; padding: 0 5px; }
+        .col-4 { flex: 0 0 33.333%; max-width: 33.333%; padding: 0 5px; }
+        .col-5 { flex: 0 0 41.666%; max-width: 41.666%; padding: 0 5px; }
+        .col-6 { flex: 0 0 50%; max-width: 50%; padding: 0 5px; }
+        .col-8 { flex: 0 0 66.666%; max-width: 66.666%; padding: 0 5px; }
+        .col-12 { flex: 0 0 100%; max-width: 100%; padding: 0 5px; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
     </style>
 
     <script>
-        var supplierData = <?php echo json_encode($supplierAuto); ?>;
-        var osReqData = <?php echo json_encode($osReqAuto); ?>;
-        var poData = <?php echo json_encode($poAuto); ?>; // Data pencarian PO
+        var supplierData = <?php echo json_encode($supplierAuto) ? json_encode($supplierAuto) : '[]'; ?>;
+        var osReqData = <?php echo json_encode($osReqAuto) ? json_encode($osReqAuto) : '[]'; ?>;
+        var poData = <?php echo json_encode($poAuto) ? json_encode($poAuto) : '[]'; ?>;
         
-        var acBox=null, acItems=[], acIndex=-1, acMode="", acRow=-1, supplierTarget="sup";
-        var rowSeq=<?php echo count($details); ?>;
-        var selectedDetailRow=null;
+        var acBox = null, acItems = [], acIndex = -1, acMode = "", acRow = -1, supplierTarget = "sup";
+        var rowSeq = <?php echo count($details); ?>;
+        var selectedDetailRow = null;
 
-        function byId(id){return document.getElementById(id);}
-        function setValue(id,value){var el=byId(id); if(el) el.value=(value==null?"":value);}
+        function byId(id) { return document.getElementById(id); }
+        function setValue(id, value) { var el = byId(id); if (el) el.value = value == null ? "" : value; }
 
-        function initAC(){acBox=byId("acBox");}
-        function hideAC(){
-            if(acBox){acBox.style.display="none";acBox.innerHTML="";}
-            acItems=[];acIndex=-1;acMode="";acRow=-1;
+        function initAC() { acBox = document.getElementById("acBox"); }
+        function hideAC() {
+            if (acBox) { acBox.style.display = "none"; acBox.innerHTML = ""; }
+            acItems = []; acIndex = -1; acMode = ""; acRow = -1;
         }
-        function positionAC(input){
-            initAC();var r=input.getBoundingClientRect();
-            acBox.style.left=(r.left+window.scrollX)+"px";
-            acBox.style.top=(r.bottom+window.scrollY)+"px";
-            acBox.style.width=(r.width<360?360:r.width)+"px";
+
+        function positionAC(input) {
+            initAC();
+            var rect = input.getBoundingClientRect();
+            acBox.style.left = (rect.left + (window.scrollX || window.pageXOffset)) + "px";
+            acBox.style.top = (rect.bottom + (window.scrollY || window.pageYOffset)) + "px";
+            acBox.style.width = rect.width < 300 ? "300px" : rect.width + "px";
         }
-        function renderAC(renderText,pickFunc){
-            initAC();acBox.innerHTML="";
-            for(var i=0;i<acItems.length;i++){
-                var d=document.createElement("div");
-                d.className="ac-item"+(i==acIndex?" active":"");
-                d.innerHTML=renderText(acItems[i]);
-                d.setAttribute("data-index",i);
-                d.onmousedown=function(){pickFunc(acItems[parseInt(this.getAttribute("data-index"),10)]);};
-                acBox.appendChild(d);
+
+        function renderAC(renderText, pickFunc) {
+            initAC();
+            acBox.innerHTML = "";
+            for (var i = 0; i < acItems.length; i++) {
+                var div = document.createElement("div");
+                div.className = "ac-item" + (i == acIndex ? " active" : "");
+                div.innerHTML = renderText(acItems[i]);
+                div.setAttribute("data-index", i);
+                div.onmousedown = function () {
+                    var idx = parseInt(this.getAttribute("data-index"), 10);
+                    pickFunc(acItems[idx]);
+                };
+                acBox.appendChild(div);
             }
-            acBox.style.display=acItems.length>0?"block":"none";
+            acBox.style.display = acItems.length > 0 ? "block" : "none";
         }
-        function acMove(step,renderText,pickFunc){
-            if(acItems.length<=0)return;
-            acIndex+=step;
-            if(acIndex<0)acIndex=acItems.length-1;
-            if(acIndex>=acItems.length)acIndex=0;
-            renderAC(renderText,pickFunc);
+
+        function acMove(step, renderText, pickFunc) {
+            if (acItems.length <= 0) return;
+            acIndex += step;
+            if (acIndex < 0) acIndex = acItems.length - 1;
+            if (acIndex >= acItems.length) acIndex = 0;
+            renderAC(renderText, pickFunc);
         }
-        function acEnter(pickFunc){
-            if(acItems.length<=0)return false;
-            if(acIndex<0)acIndex=0;
+
+        function acEnter(pickFunc) {
+            if (acItems.length <= 0) return false;
+            if (acIndex < 0) acIndex = 0;
             pickFunc(acItems[acIndex]);
             return true;
         }
 
-        function submitSave(allowEmpty){
-            if(byId("allow_empty_detail")) byId("allow_empty_detail").value=allowEmpty?"1":"0";
-            var f=byId("poForm");if(f) f.submit();
-        }
-        function newData(){window.location.href="po.php";}
-        function goEdit(id){if(!id)return;window.location.href="po.php?edit="+encodeURIComponent(id);}
-        function deleteCurrent(){
-            var id=byId("po_id").value;
-            if(id==""||id=="0"){alert("Pilih PO dulu.");return;}
-            if(!confirm("Yakin hapus PO ini?"))return;
-            byId("delete_po_id").value=id;byId("deleteForm").submit();
-        }
-        function headerKey(e){
-            if(e.key==="Enter"){
-                if(acMode!==""&&acItems.length>0)return true;
-                e.preventDefault();submitSave(false);return false;
+        function submitSave(allowEmpty) {
+            if (byId("allow_empty_detail")) {
+                byId("allow_empty_detail").value = allowEmpty ? "1" : "0";
             }
+            var form = byId("poForm");
+            if (form) form.submit();
+        }
+
+        // ==== FUNGSI SIMPAN AJAX (MENGGUNAKAN XMLHTTPREQUEST) ====
+        function triggerAjaxSave(inputEl) {
+            var form = byId("poForm");
+            
+            if(typeof FormData === "undefined" || typeof XMLHttpRequest === "undefined") {
+                submitSave(false); 
+                return;
+            }
+
+            var formData = new FormData(form);
+            formData.append("is_ajax", "1"); 
+            
+            var oldBg = inputEl.style.backgroundColor;
+            inputEl.style.backgroundColor = "#fff9c4"; 
+            
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "po.php?ajax=1", true);
+            
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        try {
+                            var data = JSON.parse(xhr.responseText);
+                            if (data.status === "success") {
+                                inputEl.style.backgroundColor = "#c8e6c9"; 
+                                setTimeout(function(){ inputEl.style.backgroundColor = oldBg; }, 1000);
+                                
+                                var currId = byId("po_id").value;
+                                if (currId === "" || currId === "0") {
+                                    byId("po_id").value = data.po_id;
+                                    if (window.history && window.history.replaceState) {
+                                        window.history.replaceState(null, null, "?edit=" + data.po_id);
+                                    }
+                                }
+                            } else {
+                                alert("Gagal Simpan:\n" + data.message);
+                                inputEl.style.backgroundColor = "#ffcdd2"; 
+                            }
+                        } catch (e) {
+                            alert("Gagal membaca respon server.");
+                            inputEl.style.backgroundColor = "#ffcdd2";
+                        }
+                    } else {
+                        alert("Error saat menghubungi server.");
+                        inputEl.style.backgroundColor = "#ffcdd2";
+                    }
+                }
+            };
+            xhr.send(formData);
+        }
+
+        // ==========================================================
+        // FUNGSI BANTUAN UNTUK MENCARI BARIS BARU / PINDAH FOKUS
+        // ==========================================================
+        function focusNextRow(input) {
+            var tbody = byId("detailBody");
+            if (!tbody) return;
+            var rows = tbody.getElementsByTagName("tr");
+            var currentRowIndex = -1;
+            
+            var el = input;
+            while(el && el.nodeName !== "TR") {
+                el = el.parentNode;
+            }
+            
+            if (el) {
+                for(var i = 0; i < rows.length; i++) {
+                    if(rows[i] === el) {
+                        currentRowIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (currentRowIndex === -1) return;
+
+            // Jika ini baris terakhir, buat baris baru
+            if (currentRowIndex === rows.length - 1) {
+                addRow();
+            } else {
+                // Jika bukan baris terakhir, pindah fokus ke baris bawahnya
+                var nextRow = rows[currentRowIndex + 1];
+                var inputs = nextRow.getElementsByTagName("input");
+                for(var j=0; j < inputs.length; j++){
+                    if(inputs[j].name === "item_code[]") {
+                        inputs[j].focus();
+                        inputs[j].select();
+                        break;
+                    }
+                }
+            }
+        }
+        
+        function fieldEnterSave(e, row, inputEl){
+            if(e.key === "Enter"){
+                e.preventDefault();
+                triggerAjaxSave(inputEl);
+                focusNextRow(inputEl);
+                return false;
+            }
+            if(row !== undefined) setTimeout(function(){calcAmount(row);}, 10);
+        }
+
+        function newData() { window.location.href = "po.php"; }
+        function goEdit(id) { if(!id) return; window.location.href = "po.php?edit=" + encodeURIComponent(id); }
+        function confirmDelete() { return confirm("Yakin hapus PO ini?"); }
+
+        function deleteCurrent() {
+            var id = byId("po_id").value;
+            if (id == "" || id == "0") { alert("Pilih PO dulu."); return; }
+            if (!confirmDelete()) return;
+            byId("delete_po_id").value = id;
+            byId("deleteForm").submit();
         }
 
         function selectDetailRow(tr){
-            var rows=document.querySelectorAll("#detailBody tr");
-            for(var i=0;i<rows.length;i++) rows[i].classList.remove("detail-selected");
-            selectedDetailRow=tr;
-            if(tr)tr.classList.add("detail-selected");
+            var rows = document.querySelectorAll("#detailBody tr");
+            for(var i = 0; i < rows.length; i++) rows[i].className = rows[i].className.replace(" detail-selected", "");
+            selectedDetailRow = tr;
+            if(tr) tr.className += " detail-selected";
         }
 
         // PO Search AutoComplete (Header)
@@ -637,17 +896,17 @@ if (count($details) == 0) {
             }
             positionAC(input);
             renderAC(function(p){
-                return "<b>" + p.PO_NUM + "</b> - Date: " + p.PO_DATE + "<br><small class='text-muted'>" + p.SUP_CODE + " - " + p.SUP_COMP + "</small>";
+                return "<b>" + p.PO_NUM + "</b> - Date: " + p.PO_DATE + "<br><small style='color:#555;'>" + p.SUP_CODE + " - " + p.SUP_COMP + "</small>";
             }, pickPoSearch);
         }
         function poSearchKey(e,input){
             if(e.key==="ArrowDown"){
                 e.preventDefault(); if(acMode!=="posearch"||acItems.length==0) showPoSearchAC(input);
-                acMove(1, function(p){ return "<b>" + p.PO_NUM + "</b> - Date: " + p.PO_DATE + "<br><small class='text-muted'>" + p.SUP_CODE + " - " + p.SUP_COMP + "</small>"; }, pickPoSearch); return false;
+                acMove(1, function(p){ return "<b>" + p.PO_NUM + "</b> - Date: " + p.PO_DATE + "<br><small style='color:#555;'>" + p.SUP_CODE + " - " + p.SUP_COMP + "</small>"; }, pickPoSearch); return false;
             }
             if(e.key==="ArrowUp"){
                 e.preventDefault(); if(acMode!=="posearch"||acItems.length==0) showPoSearchAC(input);
-                acMove(-1, function(p){ return "<b>" + p.PO_NUM + "</b> - Date: " + p.PO_DATE + "<br><small class='text-muted'>" + p.SUP_CODE + " - " + p.SUP_COMP + "</small>"; }, pickPoSearch); return false;
+                acMove(-1, function(p){ return "<b>" + p.PO_NUM + "</b> - Date: " + p.PO_DATE + "<br><small style='color:#555;'>" + p.SUP_CODE + " - " + p.SUP_COMP + "</small>"; }, pickPoSearch); return false;
             }
             if(e.key==="Enter"){
                 if(acMode==="posearch"&&acItems.length>0){e.preventDefault(); acEnter(pickPoSearch); return false;}
@@ -757,362 +1016,326 @@ if (count($details) == 0) {
             if(isNaN(qty))qty=0;if(isNaN(price))price=0;
             setValue("pod_amount_"+row,(qty*price).toFixed(2));
         }
-        function fieldEnterSave(e,row){
-            if(e.key==="Enter"){e.preventDefault();submitSave(false);return false;}
-            if(row!==undefined)setTimeout(function(){calcAmount(row);},10);
+
+        function headerKey(e) {
+            if (e.key === "Enter") {
+                if (acMode !== "" && acItems.length > 0) return true;
+                e.preventDefault(); submitSave(false); return false;
+            }
         }
 
         function addRow(){
-            var tbody=byId("detailBody");var row=rowSeq;rowSeq++;
-            var tr=document.createElement("tr");
-            tr.onclick=function(){selectDetailRow(this);};
-            tr.innerHTML=
-                '<td class="text-center align-middle row-no"></td>' +
-                '<td>' +
+            var tbody = byId("detailBody");
+            var row = rowSeq;
+            rowSeq++;
+            var tr = document.createElement("tr");
+            tr.onclick = function(){ selectDetailRow(this); };
+
+            tr.innerHTML =
+                '<td class="text-center align-middle row-no" style="width:25px;"></td>' +
+                '<td style="width:100px;">' +
                     '<input type="hidden" name="req_id[]" id="req_id_'+row+'">' +
                     '<input type="hidden" name="item_id[]" id="item_id_'+row+'">' +
-                    '<input type="text" class="form-control form-control-sm table-input-transparent" name="item_code[]" id="item_code_'+row+'" autocomplete="off" oninput="showOSAC(this, '+row+')" onkeydown="osKey(event, this, '+row+')">' +
+                    '<input type="text" name="item_code[]" id="item_code_'+row+'" autocomplete="off" oninput="showOSAC(this, '+row+')" onkeydown="osKey(event, this, '+row+')">' +
                 '</td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent" name="item_name[]" id="item_name_'+row+'" autocomplete="off" oninput="showOSAC(this, '+row+')" onkeydown="osKey(event, this, '+row+')"></td>' +
-                '<td><input type="date" class="form-control form-control-sm table-input-transparent" name="pod_due[]" id="pod_due_'+row+'" value="<?php echo date("Y-m-d"); ?>" onkeydown="fieldEnterSave(event, '+row+')"></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent text-right" name="pod_qty[]" id="pod_qty_'+row+'" onkeyup="calcAmount('+row+')" onkeydown="fieldEnterSave(event, '+row+')"></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent text-right" name="pod_price[]" id="pod_price_'+row+'" onkeyup="calcAmount('+row+')" onkeydown="fieldEnterSave(event, '+row+')"></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent" name="pod_unit[]" id="pod_unit_'+row+'" onkeydown="fieldEnterSave(event, '+row+')"></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent" name="req_no[]" id="req_no_'+row+'" readonly></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent text-right" id="pod_amount_'+row+'" readonly></td>' +
-                '<td class="text-center"><button type="button" class="btn btn-danger btn-xs" onclick="deleteRow(this); event.stopPropagation();" title="Delete"><i class="fas fa-times"></i></button></td>';
+                '<td><input type="text" name="item_name[]" id="item_name_'+row+'" autocomplete="off" oninput="showOSAC(this, '+row+')" onkeydown="osKey(event, this, '+row+')"></td>' +
+                '<td style="width:90px;"><input type="date" name="pod_due[]" id="pod_due_'+row+'" value="<?php echo date("Y-m-d"); ?>" onkeydown="fieldEnterSave(event, '+row+', this)"></td>' +
+                '<td style="width:70px;"><input type="text" class="text-right" name="pod_qty[]" id="pod_qty_'+row+'" onkeyup="calcAmount('+row+')" onkeydown="fieldEnterSave(event, '+row+', this)"></td>' +
+                '<td style="width:80px;"><input type="text" class="text-right" name="pod_price[]" id="pod_price_'+row+'" onkeyup="calcAmount('+row+')" onkeydown="fieldEnterSave(event, '+row+', this)"></td>' +
+                '<td style="width:60px;"><input type="text" name="pod_unit[]" id="pod_unit_'+row+'" onkeydown="fieldEnterSave(event, '+row+', this)"></td>' +
+                '<td style="width:100px;"><input type="text" name="req_no[]" id="req_no_'+row+'" readonly></td>' +
+                '<td style="width:100px;"><input type="text" class="text-right" id="pod_amount_'+row+'" readonly></td>' +
+                '<td class="text-center" style="width:40px;"><button type="button" class="btn-classic" style="padding:0 5px;" onclick="deleteRow(this); event.stopPropagation();" title="Delete">X</button></td>';
 
             tbody.appendChild(tr);
-            renumberRows();selectDetailRow(tr);byId("item_code_"+row).focus();
+            renumberRows();
+            selectDetailRow(tr);
+            byId("item_code_"+row).focus();
         }
 
         function deleteRow(btn){
-            var tr=btn.closest("tr");
+            var tr = btn.parentNode ? btn.parentNode.parentNode : null;
             if(!confirm("Hapus baris detail ini?"))return;
-            tr.parentNode.removeChild(tr);renumberRows();
-            var id=byId("po_id").value;if(id!=""&&id!="0")submitSave(true);
+            if(tr) tr.parentNode.removeChild(tr);
+            renumberRows();
+            var id = byId("po_id").value;
+            if(id != "" && id != "0") submitSave(true);
         }
+        
         function renumberRows(){
-            var rows=byId("detailBody").getElementsByTagName("tr");
-            for(var i=0;i<rows.length;i++){
-                var c=rows[i].getElementsByClassName("row-no")[0];
-                if(c)c.innerHTML=i+1;
+            var rows = byId("detailBody").getElementsByTagName("tr");
+            for(var i=0; i<rows.length; i++){
+                var c = rows[i].getElementsByClassName("row-no")[0];
+                if(c) c.innerHTML = (i==0) ? "<i class='fas fa-caret-right'></i>" : "";
             }
         }
 
         function showReceive(){
-            var poNum=byId("po_num").value;
+            var poNum = byId("po_num").value;
             if(!poNum){alert("Pilih / simpan PO dulu.");return;}
-            var tr=selectedDetailRow;
-            if(!tr){var rows=byId("detailBody").getElementsByTagName("tr");if(rows.length>0)tr=rows[0];}
+            var tr = selectedDetailRow;
+            if(!tr){
+                var rows = byId("detailBody").getElementsByTagName("tr");
+                if(rows.length > 0) tr = rows[0];
+            }
             if(!tr){alert("Pilih detail item dulu.");return;}
-            var itemInput=tr.querySelector('input[name="item_id[]"]');
-            var itemId=itemInput?itemInput.value:"";
-            if(!itemId||itemId=="0"){alert("Pilih detail item dulu.");return;}
+            var itemInput = tr.querySelector('input[name="item_id[]"]');
+            var itemId = itemInput ? itemInput.value : "";
+            if(!itemId || itemId=="0"){alert("Pilih detail item dulu.");return;}
             window.open("po.php?action=receive_view&po_num="+encodeURIComponent(poNum)+"&item_id="+encodeURIComponent(itemId),"RECEIVE_LIST","width=800,height=500,scrollbars=yes,resizable=yes");
         }
+        
         function printPO(){
-            var poId=byId("po_id").value;
-            if(!poId||poId=="0"){alert("Pilih / simpan PO dulu.");return;}
+            var poId = byId("po_id").value;
+            if(!poId || poId=="0"){alert("Pilih / simpan PO dulu.");return;}
             window.open("print_po.php?po_id="+encodeURIComponent(poId),"PRINT_PO","width=900,height=700,scrollbars=yes,resizable=yes");
         }
+        
+        function setNextPO() {
+            window.location.href='next_po.php';
+        }
 
-        document.addEventListener("DOMContentLoaded",function(){
-            var rows=document.querySelectorAll("#detailBody tr");
-            for(var i=0;i<rows.length;i++){rows[i].onclick=function(){selectDetailRow(this);};}
+        // Cross-browser DOMContentLoaded alternative
+        function ready(fn) {
+            if (document.readyState != 'loading'){
+                fn();
+            } else if (document.addEventListener) {
+                document.addEventListener('DOMContentLoaded', fn);
+            } else {
+                document.attachEvent('onreadystatechange', function() {
+                    if (document.readyState != 'loading') fn();
+                });
+            }
+        }
+
+        ready(function(){
+            var rows = document.getElementById("detailBody").getElementsByTagName("tr");
+            for(var i=0; i<rows.length; i++){
+                rows[i].onclick = function(){ selectDetailRow(this); };
+            }
+            renumberRows();
         });
-        document.addEventListener("click",function(e){
-            initAC();if(acBox&&!acBox.contains(e.target)){if(!e.target||!e.target.getAttribute||e.target.getAttribute("autocomplete")!=="off")hideAC();}
-        });
+        
+        if(document.addEventListener) {
+            document.addEventListener("click", function(e){
+                initAC();if(acBox && !acBox.contains(e.target)){if(!e.target || !e.target.getAttribute || e.target.getAttribute("autocomplete") !== "off") hideAC();}
+            });
+        } else { // IE8 Fallback
+            document.attachEvent("onclick", function (e) {
+                var target = e.srcElement || e.target;
+                initAC();
+                if (acBox && !acBox.contains(target)) {
+                    if (!target || !target.getAttribute || target.getAttribute("autocomplete") !== "off") hideAC();
+                }
+            });
+        }
     </script>
 </head>
-<body class="hold-transition layout-top-nav">
-<div class="wrapper">
+<body>
 
-    <!-- Navbar -->
-    <nav class="main-header navbar navbar-expand-md navbar-light navbar-white">
-        <div class="container-fluid">
-            <a href="dashboard_purch.php" class="navbar-brand">
-                <span class="brand-text font-weight-light"><i class="fas fa-shopping-cart text-info mr-2"></i> Purchasing System</span>
-            </a>
-            <ul class="navbar-nav ml-auto">
-                <li class="nav-item">
-                    <a href="dashboard_home.php" class="nav-link"><i class="fas fa-sign-out-alt"></i> Close</a>
-                </li>
-            </ul>
-        </div>
-    </nav>
-
-    <div class="content-wrapper">
-        <div class="content-header">
-            <div class="container-fluid">
-                <div class="row mb-2">
-                    <div class="col-sm-6">
-                        <h1 class="m-0">Purchase Order</h1>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="content">
-            <div class="container-fluid">
-
-                <?php if ($message != "") { ?>
-                    <div class="alert alert-success alert-dismissible">
-                        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                        <h5><i class="icon fas fa-check"></i> Success!</h5>
-                        <?php echo h($message); ?>
-                    </div>
-                <?php } ?>
-
-                <?php if ($error != "") { ?>
-                    <div class="alert alert-danger alert-dismissible">
-                        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                        <h5><i class="icon fas fa-ban"></i> Error!</h5>
-                        <?php echo h($error); ?>
-                    </div>
-                <?php } ?>
-
-                <div class="card card-info card-outline">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h3 class="card-title mb-0">
-                            <button type="button" class="btn btn-sm btn-default mr-1" onclick="newData()"><i class="fas fa-file"></i> New</button>
-                            <button type="button" class="btn btn-sm btn-info mr-1" onclick="submitSave(false)"><i class="fas fa-save"></i> Save PO</button>
-                            <button type="button" class="btn btn-sm btn-danger mr-3" onclick="deleteCurrent()"><i class="fas fa-trash"></i> Delete</button>
-                            
-                            <a href="next_po.php" class="btn btn-sm btn-outline-secondary mr-1"><i class="fas fa-cogs"></i> Set Next PO #</a>
-                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="printPO()"><i class="fas fa-print"></i> Print</button>
-                        </h3>
-                        
-                        <!-- Search Box di Header -->
-                        <div class="card-tools">
-                            <form method="get" action="po.php" class="form-inline m-0" id="searchFormTop">
-                                <div class="input-group input-group-sm" style="width: 300px;">
-                                    <input type="text" name="q" class="form-control float-right" value="<?php echo h($q); ?>" placeholder="Search PO No / Supplier" autocomplete="off" oninput="showPoSearchAC(this)" onkeydown="poSearchKey(event, this)">
-                                    <div class="input-group-append">
-                                        <button type="submit" class="btn btn-default"><i class="fas fa-search"></i></button>
-                                        <a href="po.php" class="btn btn-default" title="Reset"><i class="fas fa-sync"></i></a>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-
-                    <form id="poForm" method="post" action="po.php">
-                        <input type="hidden" name="action" value="save">
-                        <input type="hidden" name="po_id" id="po_id" value="<?php echo h($header["PO_ID"]); ?>">
-                        <input type="hidden" name="sup_id" id="sup_id" value="<?php echo h($header["SUP_ID"]); ?>">
-                        <input type="hidden" name="po_to" id="po_to" value="<?php echo h($header["PO_TO"]); ?>">
-                        <input type="hidden" name="allow_empty_detail" id="allow_empty_detail" value="0">
-
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-3">
-                                    <div class="form-group">
-                                        <label>PO No.</label>
-                                        <input type="text" class="form-control form-control-sm" name="po_num" id="po_num" value="<?php echo h($header["PO_NUM"]); ?>" placeholder="Auto" onkeydown="headerKey(event)">
-                                    </div>
-                                </div>
-                                <div class="col-md-2">
-                                    <div class="form-group">
-                                        <label>Date</label>
-                                        <input type="date" class="form-control form-control-sm" name="po_date" value="<?php echo h($header["PO_DATE"]); ?>" onkeydown="headerKey(event)">
-                                    </div>
-                                </div>
-                                <div class="col-md-2">
-                                    <div class="form-group">
-                                        <label>Date DO</label>
-                                        <input type="date" class="form-control form-control-sm" name="po_datedo" value="<?php echo h($header["PO_DATEDO"]); ?>" onkeydown="headerKey(event)">
-                                    </div>
-                                </div>
-                                <div class="col-md-1">
-                                    <div class="form-group">
-                                        <label>Close</label>
-                                        <div class="custom-control custom-checkbox mt-1">
-                                            <input class="custom-control-input" type="checkbox" id="po_close" name="po_close" value="1" <?php echo intval($header["PO_CLOSE"]) == 1 ? "checked" : ""; ?>>
-                                            <label for="po_close" class="custom-control-label"></label>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>Supplier</label>
-                                        <div class="input-group input-group-sm">
-                                            <input type="text" class="form-control" style="max-width:80px;" name="sup_code" id="sup_code" value="<?php echo h($header["SUP_CODE"]); ?>" autocomplete="off" oninput="showSupplierAC(this, 'sup')" onkeydown="supplierKey(event, this, 'sup')">
-                                            <input type="text" class="form-control" name="sup_comp" id="sup_comp" value="<?php echo h($header["SUP_COMP"]); ?>" autocomplete="off" oninput="showSupplierAC(this, 'sup')" onkeydown="supplierKey(event, this, 'sup')">
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-md-3">
-                                    <div class="form-group">
-                                        <label>Terms of Pmt</label>
-                                        <input type="text" class="form-control form-control-sm" name="po_term" id="po_term" value="<?php echo h($header["PO_TERM"]); ?>" onkeydown="headerKey(event)">
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>Term of Delv</label>
-                                        <input type="text" class="form-control form-control-sm" name="po_termdel" id="po_termdel" value="<?php echo h($header["PO_TERMDEL"]); ?>" onkeydown="headerKey(event)">
-                                    </div>
-                                </div>
-                                <div class="col-md-1">
-                                    <div class="form-group">
-                                        <label>Cur.</label>
-                                        <select class="form-control form-control-sm" name="po_cur" id="po_cur" onkeydown="headerKey(event)">
-                                            <?php foreach($currList as $c){ ?>
-                                                <option value="<?php echo h($c); ?>" <?php echo trim((string)$header["PO_CUR"])==$c ? "selected" : ""; ?>><?php echo h($c); ?></option>
-                                            <?php } ?>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-group">
-                                        <label>Invoice To</label>
-                                        <div class="input-group input-group-sm">
-                                            <input type="text" class="form-control" style="max-width:80px;" name="to_sup_code" id="to_sup_code" value="<?php echo h($header["TO_SUP_CODE"]); ?>" autocomplete="off" oninput="showSupplierAC(this, 'to')" onkeydown="supplierKey(event, this, 'to')">
-                                            <input type="text" class="form-control" name="to_sup_comp" id="to_sup_comp" value="<?php echo h($header["TO_SUP_COMP"]); ?>" autocomplete="off" oninput="showSupplierAC(this, 'to')" onkeydown="supplierKey(event, this, 'to')">
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-md-7">
-                                    <div class="form-group">
-                                        <label>Remark</label>
-                                        <textarea class="form-control form-control-sm" name="po_rem" rows="2" style="resize:none;" onkeydown="headerKey(event)"><?php echo h($header["PO_REM"]); ?></textarea>
-                                    </div>
-                                </div>
-                                <div class="col-md-5">
-                                    <div class="form-group">
-                                        <label>&nbsp;</label>
-                                        <div class="icheck-primary mt-1">
-                                            <div class="custom-control custom-checkbox d-inline mr-3">
-                                                <input class="custom-control-input" type="checkbox" id="po_todef" name="po_todef" value="1" <?php echo intval($header["PO_TODEF"]) == 1 ? "checked" : ""; ?>>
-                                                <label for="po_todef" class="custom-control-label">PT. IMC TEKNO</label>
-                                            </div>
-                                            <div class="custom-control custom-checkbox d-inline">
-                                                <input class="custom-control-input" type="checkbox" id="po_termdelsch" name="po_termdelsch" value="1" <?php echo intval($header["PO_TERMDELSCH"]) == 1 ? "checked" : ""; ?>>
-                                                <label for="po_termdelsch" class="custom-control-label">Delivery Schedule</label>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="table-responsive p-0 mt-2 border">
-                                <table class="table table-bordered table-sm text-sm m-0" id="detailTable">
-                                    <thead class="bg-light">
-                                        <tr>
-                                            <th class="text-center" style="width:35px;">No</th>
-                                            <th style="width:120px;">Code</th>
-                                            <th>Item Name</th>
-                                            <th style="width:110px;">Due On</th>
-                                            <th style="width:80px;">Qty.</th>
-                                            <th style="width:100px;">Rate</th>
-                                            <th style="width:80px;">Unit</th>
-                                            <th style="width:100px;">Req.#</th>
-                                            <th style="width:120px;">Amount</th>
-                                            <th class="text-center" style="width:40px;">ACT</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="detailBody">
-                                        <?php for($i=0;$i<count($details);$i++){ 
-                                            $d=$details[$i];
-                                            $qty=isset($d["POD_QTY"])?floatval($d["POD_QTY"]):0;
-                                            $price=isset($d["POD_PRICE"])?floatval($d["POD_PRICE"]):0;
-                                            $amount=isset($d["POD_AMOUNT"])?floatval($d["POD_AMOUNT"]):($qty*$price);
-                                        ?>
-                                            <tr>
-                                                <td class="text-center align-middle row-no"><?php echo h($i+1); ?></td>
-                                                <td>
-                                                    <input type="hidden" name="req_id[]" id="req_id_<?php echo h($i); ?>" value="<?php echo h($d["REQ_ID"]); ?>">
-                                                    <input type="hidden" name="item_id[]" id="item_id_<?php echo h($i); ?>" value="<?php echo h($d["ITEM_ID"]); ?>">
-                                                    <input type="text" class="form-control form-control-sm table-input-transparent" name="item_code[]" id="item_code_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_CODE"])?$d["ITEM_CODE"]:""); ?>" autocomplete="off" oninput="showOSAC(this, <?php echo h($i); ?>)" onkeydown="osKey(event, this, <?php echo h($i); ?>)">
-                                                </td>
-                                                <td><input type="text" class="form-control form-control-sm table-input-transparent" name="item_name[]" id="item_name_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_NAME"])?$d["ITEM_NAME"]:""); ?>" autocomplete="off" oninput="showOSAC(this, <?php echo h($i); ?>)" onkeydown="osKey(event, this, <?php echo h($i); ?>)"></td>
-                                                <td><input type="date" class="form-control form-control-sm table-input-transparent" name="pod_due[]" id="pod_due_<?php echo h($i); ?>" value="<?php echo h(isset($d["POD_DUE"])?fmt_date($d["POD_DUE"]):date("Y-m-d")); ?>" onkeydown="fieldEnterSave(event, <?php echo h($i); ?>)"></td>
-                                                <td><input type="text" class="form-control form-control-sm table-input-transparent text-right" name="pod_qty[]" id="pod_qty_<?php echo h($i); ?>" value="<?php echo h($qty==0?"":$qty); ?>" onkeyup="calcAmount(<?php echo h($i); ?>)" onkeydown="fieldEnterSave(event, <?php echo h($i); ?>)"></td>
-                                                <td><input type="text" class="form-control form-control-sm table-input-transparent text-right" name="pod_price[]" id="pod_price_<?php echo h($i); ?>" value="<?php echo h($price==0?"":$price); ?>" onkeyup="calcAmount(<?php echo h($i); ?>)" onkeydown="fieldEnterSave(event, <?php echo h($i); ?>)"></td>
-                                                <td><input type="text" class="form-control form-control-sm table-input-transparent" name="pod_unit[]" id="pod_unit_<?php echo h($i); ?>" value="<?php echo h(isset($d["POD_UNIT"])?$d["POD_UNIT"]:""); ?>" onkeydown="fieldEnterSave(event, <?php echo h($i); ?>)"></td>
-                                                <td><input type="text" class="form-control form-control-sm table-input-transparent" name="req_no[]" id="req_no_<?php echo h($i); ?>" value="<?php echo h(isset($d["REQ_NO"])?$d["REQ_NO"]:""); ?>" readonly></td>
-                                                <td><input type="text" class="form-control form-control-sm table-input-transparent text-right" id="pod_amount_<?php echo h($i); ?>" value="<?php echo h($amount==0?"":number_format($amount,2,".","")); ?>" readonly></td>
-                                                <td class="text-center"><button type="button" class="btn btn-danger btn-xs" onclick="deleteRow(this); event.stopPropagation();" title="Delete"><i class="fas fa-times"></i></button></td>
-                                            </tr>
-                                        <?php } ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <div class="card-footer bg-white d-flex justify-content-between">
-                            <div>
-                                <button type="button" class="btn btn-primary btn-sm" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
-                                <button type="submit" class="btn btn-success btn-sm"><i class="fas fa-check"></i> Simpan Data</button>
-                            </div>
-                            <button type="button" class="btn btn-warning btn-sm" onclick="showReceive()"><i class="fas fa-box-open"></i> Show Recv.</button>
-                        </div>
-                    </form>
-                </div>
-
-                <form id="deleteForm" method="post" action="po.php">
-                    <input type="hidden" name="action" value="delete">
-                    <input type="hidden" name="po_id" id="delete_po_id" value="">
-                </form>
-
-                <div class="card">
-                    <div class="card-body p-0 table-responsive" style="max-height: 400px;">
-                        <table class="table table-striped table-hover table-head-fixed text-nowrap table-sm text-sm">
-                            <thead>
-                                <tr>
-                                    <th style="width:30px;"></th>
-                                    <th>PO No</th>
-                                    <th>Date</th>
-                                    <th>Date DO</th>
-                                    <th class="text-center">Cur</th>
-                                    <th>Sup.Code</th>
-                                    <th>Supplier</th>
-                                    <th class="text-center">Close</th>
-                                    <th class="text-right">Detail</th>
-                                    <th class="text-right">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody id="poListBody">
-                                <?php while($r=sqlsrv_fetch_array($stmtList, SQLSRV_FETCH_ASSOC)){ ?>
-                                    <?php $poIdLink=intval($r["PO_ID"]); $editUrl="po.php?edit=".$poIdLink; ?>
-                                    <tr class="pointer po-row" data-poid="<?php echo h($poIdLink); ?>" onclick="goEdit('<?php echo h($poIdLink); ?>')">
-                                        <td class="text-center text-info"><a href="<?php echo h($editUrl); ?>" onclick="event.stopPropagation();" class="text-info"><i class="fas fa-caret-right"></i></a></td>
-                                        <td><a href="<?php echo h($editUrl); ?>" onclick="event.stopPropagation();" class="text-dark font-weight-bold"><?php echo h($r["PO_NUM"]); ?></a></td>
-                                        <td><?php echo h(fmt_date_view($r["PO_DATE"])); ?></td>
-                                        <td><?php echo h(fmt_date_view($r["PO_DATEDO"])); ?></td>
-                                        <td class="text-center"><?php echo h($r["PO_CUR"]); ?></td>
-                                        <td><?php echo h($r["SUP_CODE"]); ?></td>
-                                        <td><?php echo h($r["SUP_COMP"]); ?></td>
-                                        <td class="text-center"><?php if(intval($r["PO_CLOSE"])==1) { echo '<span class="badge badge-secondary">YES</span>'; } ?></td>
-                                        <td class="text-right"><?php echo h(number_format(floatval($r["DETAIL_COUNT"]),0,".",",")); ?></td>
-                                        <td class="text-right"><?php echo h(number_format(floatval($r["TOTAL_AMOUNT"]),2,".",",")); ?></td>
-                                    </tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-            </div>
-        </div>
+<div class="main-container">
+    <!-- Title Bar -->
+    <div class="title-bar">
+        Purchase Order
     </div>
+
+    <?php if ($message != "") { echo "<div style='background:#d4edda; color:#155724; padding:5px; text-align:center; font-size:12px;'>$message</div>"; } ?>
+    <?php if ($error != "") { echo "<div style='background:#f8d7da; color:#721c24; padding:5px; text-align:center; font-size:12px;'>$error</div>"; } ?>
+
+    <form id="poForm" method="post" action="po.php" style="display: flex; flex-direction: column; flex-grow: 1;">
+        <input type="hidden" name="action" value="save">
+        <input type="hidden" name="po_id" id="po_id" value="<?php echo h($header["PO_ID"]); ?>">
+        <input type="hidden" name="sup_id" id="sup_id" value="<?php echo h($header["SUP_ID"]); ?>">
+        <input type="hidden" name="po_to" id="po_to" value="<?php echo h($header["PO_TO"]); ?>">
+        <input type="hidden" name="allow_empty_detail" id="allow_empty_detail" value="0">
+
+        <!-- HEADER LIGHT BLUE AREA -->
+        <div class="lightblue-header">
+            <div class="row">
+                <div class="col-8">
+                    <!-- Baris Atas -->
+                    <div class="row">
+                        <div class="col-2">
+                            <label class="lbl-black">PO No.</label>
+                            <input type="text" class="input-classic" name="po_num" id="po_num" value="<?php echo h($header["PO_NUM"]); ?>" placeholder="Auto" onkeydown="headerKey(event)">
+                        </div>
+                        <div class="col-2">
+                            <label class="lbl-black">Date</label>
+                            <input type="date" class="input-classic" name="po_date" value="<?php echo h($header["PO_DATE"]); ?>" onkeydown="headerKey(event)">
+                        </div>
+                        <div class="col-2">
+                            <label class="lbl-black">Date DO</label>
+                            <input type="date" class="input-classic" name="po_datedo" value="<?php echo h($header["PO_DATEDO"]); ?>" onkeydown="headerKey(event)">
+                        </div>
+                        <div class="col-1 text-center">
+                            <label class="lbl-black">Close</label>
+                            <input type="checkbox" class="classic-cb" id="po_close" name="po_close" value="1" <?php echo intval($header["PO_CLOSE"]) == 1 ? "checked" : ""; ?>>
+                        </div>
+                        <div class="col-1-5">
+                            <label class="lbl-black">Supplier</label>
+                            <input type="text" class="input-classic" name="sup_code" id="sup_code" value="<?php echo h($header["SUP_CODE"]); ?>" autocomplete="off" oninput="showSupplierAC(this, 'sup')" onkeydown="supplierKey(event, this, 'sup')">
+                        </div>
+                        <div class="col-3-5">
+                            <label class="lbl-black">&nbsp;</label>
+                            <input type="text" class="input-classic" name="sup_comp" id="sup_comp" value="<?php echo h($header["SUP_COMP"]); ?>" autocomplete="off" oninput="showSupplierAC(this, 'sup')" onkeydown="supplierKey(event, this, 'sup')">
+                        </div>
+                    </div>
+                    
+                    <!-- Baris Tengah -->
+                    <div class="row mt-1">
+                        <div class="col-2">
+                            <label class="lbl-black">Terms.of Pmt</label>
+                            <input type="text" class="input-classic" name="po_term" id="po_term" value="<?php echo h($header["PO_TERM"]); ?>" onkeydown="headerKey(event)">
+                        </div>
+                        <div class="col-4">
+                            <label class="lbl-black">Term.of Delv</label>
+                            <input type="text" class="input-classic" name="po_termdel" id="po_termdel" value="<?php echo h($header["PO_TERMDEL"]); ?>" onkeydown="headerKey(event)">
+                        </div>
+                        <div class="col-1">
+                            <label class="lbl-black">Cur.</label>
+                            <select class="input-classic" name="po_cur" id="po_cur" onkeydown="headerKey(event)">
+                                <?php foreach($currList as $c){ ?>
+                                    <option value="<?php echo h($c); ?>" <?php echo trim((string)$header["PO_CUR"])==$c ? "selected" : ""; ?>><?php echo h($c); ?></option>
+                                <?php } ?>
+                            </select>
+                        </div>
+                        <div class="col-1-5">
+                            <label class="lbl-black">Invoice To</label>
+                            <input type="text" class="input-classic" name="to_sup_code" id="to_sup_code" value="<?php echo h($header["TO_SUP_CODE"]); ?>" autocomplete="off" oninput="showSupplierAC(this, 'to')" onkeydown="supplierKey(event, this, 'to')">
+                        </div>
+                        <div class="col-3-5">
+                            <label class="lbl-black">&nbsp;</label>
+                            <input type="text" class="input-classic" name="to_sup_comp" id="to_sup_comp" value="<?php echo h($header["TO_SUP_COMP"]); ?>" autocomplete="off" oninput="showSupplierAC(this, 'to')" onkeydown="supplierKey(event, this, 'to')">
+                        </div>
+                    </div>
+
+                    <!-- Baris Bawah -->
+                    <div class="row mt-1">
+                        <div class="col-6">
+                            <label class="lbl-black">Remark</label>
+                            <textarea class="input-classic" name="po_rem" onkeydown="headerKey(event)"><?php echo h($header["PO_REM"]); ?></textarea>
+                        </div>
+                        <div class="col-6" style="padding-top: 15px;">
+                            <label style="font-size:11px; margin-right:15px; color:#000;">
+                                <input type="checkbox" class="classic-cb" id="po_todef" name="po_todef" value="1" <?php echo intval($header["PO_TODEF"]) == 1 ? "checked" : ""; ?>> PT. IMC TEKNO
+                            </label>
+                            <label style="font-size:11px; color:#000;">
+                                <input type="checkbox" class="classic-cb" id="po_termdelsch" name="po_termdelsch" value="1" <?php echo intval($header["PO_TERMDELSCH"]) == 1 ? "checked" : ""; ?>> Delivery Schedule
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Action buttons -->
+                    <div class="row mt-2">
+                        <div class="col-12 text-center">
+                            <fieldset class="fieldset-control" style="border:none; padding: 4px 10px;">
+                                <button type="button" class="btn-classic btn-action-wide" onclick="newData()">Tambah</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="goEdit('<?php echo h($editId); ?>')">Rubah</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="deleteCurrent()">Hapus</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="submitSave(false)">Simpan</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="newData()">Batal</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="window.location.href='po.php'">Refresh</button>
+                                &nbsp;
+                                <button type="button" class="btn-classic" onclick="setNextPO()" style="width:100px;">Set Next PO #</button>
+                                <button type="button" class="btn-classic" onclick="printPO()"><i class="fas fa-print"></i></button>
+                            </fieldset>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Kanan: Search Data -->
+                <div class="col-4">
+                    <div style="display:flex; flex-direction:column; align-items:flex-end;">
+                        <div style="margin-bottom: 20px; width: 100%;">
+                            <label class="lbl-black text-right" style="font-weight:bold;">SEARCH PO</label>
+                            <input type="text" name="q" class="input-classic" style="width:100%;" value="<?php echo h($q); ?>" placeholder="Search PO No / Supplier" autocomplete="off" oninput="showPoSearchAC(this)" onkeydown="poSearchKey(event, this)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GRID DATA AREA -->
+        <div class="datagrid-wrapper">
+            <table class="datagrid" id="detailTable">
+                <thead>
+                    <tr>
+                        <th style="width:25px;" class="text-center"></th>
+                        <th style="width:100px;">Code</th>
+                        <th>Item Name</th>
+                        <th style="width:90px;">Due On</th>
+                        <th style="width:70px;" class="text-right">Qty.</th>
+                        <th style="width:80px;" class="text-right">Rate</th>
+                        <th style="width:60px;">Unit</th>
+                        <th style="width:100px;">Req.#</th>
+                        <th style="width:100px;" class="text-right">Amount</th>
+                        <th style="width:40px;" class="text-center">ACT</th>
+                    </tr>
+                </thead>
+                <tbody id="detailBody">
+                    <?php for ($i = 0; $i < count($details); $i++) { 
+                        $d = $details[$i];
+                        $qty = isset($d["POD_QTY"]) ? floatval($d["POD_QTY"]) : 0;
+                        $price = isset($d["POD_PRICE"]) ? floatval($d["POD_PRICE"]) : 0;
+                        $amount = isset($d["POD_AMOUNT"]) ? floatval($d["POD_AMOUNT"]) : ($qty * $price);
+                    ?>
+                        <tr>
+                            <td class="text-center align-middle row-no" style="width:25px;"></td>
+                            <td style="width:100px;">
+                                <input type="hidden" name="req_id[]" id="req_id_<?php echo h($i); ?>" value="<?php echo h($d["REQ_ID"]); ?>">
+                                <input type="hidden" name="item_id[]" id="item_id_<?php echo h($i); ?>" value="<?php echo h($d["ITEM_ID"]); ?>">
+                                <input type="text" name="item_code[]" id="item_code_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_CODE"]) ? $d["ITEM_CODE"] : ""); ?>" autocomplete="off" oninput="showOSAC(this, <?php echo h($i); ?>)" onkeydown="osKey(event, this, <?php echo h($i); ?>)">
+                            </td>
+                            <td>
+                                <input type="text" name="item_name[]" id="item_name_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_NAME"]) ? $d["ITEM_NAME"] : ""); ?>" autocomplete="off" oninput="showOSAC(this, <?php echo h($i); ?>)" onkeydown="osKey(event, this, <?php echo h($i); ?>)">
+                            </td>
+                            <td style="width:90px;">
+                                <input type="date" name="pod_due[]" id="pod_due_<?php echo h($i); ?>" value="<?php echo h(isset($d["POD_DUE"]) ? fmt_date($d["POD_DUE"]) : date("Y-m-d")); ?>" onkeydown="fieldEnterSave(event, <?php echo h($i); ?>, this)">
+                            </td>
+                            
+                            <!-- Tambah this parameter untuk fitur Auto-save dan Next row otomatis -->
+                            <td style="width:70px;">
+                                <input type="text" class="text-right" name="pod_qty[]" id="pod_qty_<?php echo h($i); ?>" value="<?php echo h($qty == 0 ? "" : $qty); ?>" onkeyup="calcAmount(<?php echo h($i); ?>)" onkeydown="fieldEnterSave(event, <?php echo h($i); ?>, this)">
+                            </td>
+                            <td style="width:80px;">
+                                <input type="text" class="text-right" name="pod_price[]" id="pod_price_<?php echo h($i); ?>" value="<?php echo h($price == 0 ? "" : $price); ?>" onkeyup="calcAmount(<?php echo h($i); ?>)" onkeydown="fieldEnterSave(event, <?php echo h($i); ?>, this)">
+                            </td>
+                            <td style="width:60px;">
+                                <input type="text" name="pod_unit[]" id="pod_unit_<?php echo h($i); ?>" value="<?php echo h(isset($d["POD_UNIT"]) ? $d["POD_UNIT"] : ""); ?>" onkeydown="fieldEnterSave(event, <?php echo h($i); ?>, this)">
+                            </td>
+                            <td style="width:100px;">
+                                <input type="text" name="req_no[]" id="req_no_<?php echo h($i); ?>" value="<?php echo h(isset($d["REQ_NO"]) ? $d["REQ_NO"] : ""); ?>" readonly>
+                            </td>
+                            <td style="width:100px;">
+                                <input type="text" class="text-right" id="pod_amount_<?php echo h($i); ?>" value="<?php echo h($amount == 0 ? "" : number_format($amount, 2, ".", "")); ?>" readonly>
+                            </td>
+                            <td class="text-center" style="width:40px;">
+                                <button type="button" class="btn-classic" style="padding:0 5px;" onclick="deleteRow(this)" title="Delete">X</button>
+                            </td>
+                        </tr>
+                    <?php } ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- FOOTER BAR -->
+        <div class="footer-bar">
+            <div>
+                <button type="button" class="btn-classic" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+            </div>
+            <div style="text-align: right;">
+                <button type="button" class="btn-classic" onclick="showReceive()" style="width: 80px; height:24px;">Show Recv.</button>
+            </div>
+        </div>
+    </form>
+
+    <form id="deleteForm" method="post" action="po.php" style="display:none;">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="po_id" id="delete_po_id" value="">
+    </form>
 </div>
 
 <div id="acBox" class="ac-box"></div>
 
-<!-- jQuery -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-<!-- Bootstrap 4 -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
-<!-- AdminLTE App -->
-<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
 </body>
 </html>

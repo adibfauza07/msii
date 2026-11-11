@@ -149,7 +149,7 @@ if (getv("action", "") == "po_view") {
     <head>
         <meta charset="utf-8">
         <title>PO List</title>
-        <!-- AdminLTE CSS -->
+        <!-- AdminLTE CSS for Popup -->
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
     </head>
     <body class="p-3 bg-light">
@@ -166,7 +166,7 @@ if (getv("action", "") == "po_view") {
                             <th style="width:120px;">PO #</th>
                             <th class="text-right" style="width:90px;">Qty</th>
                             <th style="width:90px;">Sup.Code</th>
-                            <th>Supplier</th>
+                            <th class="text-left">Supplier</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -206,6 +206,11 @@ $error = "";
 
 $action = postv("action", "");
 $editId = intval(getv("edit", "0"));
+$q = getv("q", "");
+
+// ==== PENANDA AJAX UNTUK SAVE BY ENTER ====
+$isAjax = (isset($_GET['ajax']) && $_GET['ajax'] == '1') || (isset($_POST['is_ajax']) && $_POST['is_ajax'] == '1');
+// ==========================================
 
 /* ======================================================
    DELETE REQUISITION
@@ -255,7 +260,7 @@ if ($action == "save") {
     $reqIsamr = isset($_POST["req_isamr"]) ? 1 : 0;
     $reqClose = isset($_POST["req_close"]) ? 1 : 0;
     $allowEmptyDetail = intval(postv("allow_empty_detail", "0"));
-	
+    
     if ($reqDate == "") $reqDate = date("Y-m-d");
     if ($reqDue == "")  $reqDue  = $reqDate;
 
@@ -366,14 +371,42 @@ if ($action == "save") {
 
             if ($ok) {
                 sqlsrv_commit($conn);
+                
+                // ==== JIKA DISIMPAN LEWAT ENTER (AJAX) ====
+                if ($isAjax) {
+                    ob_clean();
+                    header('Content-Type: application/json');
+                    echo json_encode(array("status" => "success", "req_id" => $reqId));
+                    exit;
+                }
+                // ==========================================
+
                 header("Location: requisition.php?edit=" . $reqId . "&msg=saved");
                 exit;
             } else {
                 sqlsrv_rollback($conn);
                 $error = "Simpan gagal:\n" . sql_error_text();
+                
+                // ==== JIKA ERROR LEWAT ENTER (AJAX) ====
+                if ($isAjax) {
+                    ob_clean();
+                    header('Content-Type: application/json');
+                    echo json_encode(array("status" => "error", "message" => $error));
+                    exit;
+                }
+                // =======================================
             }
         }
     }
+    
+    // ==== TANGKAP ERROR VALIDASI FORM JIKA VIA AJAX ====
+    if ($error != "" && $isAjax) {
+        ob_clean();
+        header('Content-Type: application/json');
+        echo json_encode(array("status" => "error", "message" => $error));
+        exit;
+    }
+    // ===================================================
 }
 
 /* ======================================================
@@ -497,42 +530,8 @@ if ($stmtReqAuto !== false) {
     }
 }
 
-/* ======================================================
-   LIST REQUISITION
-====================================================== */
-$q = getv("q", "");
-$where = "";
-$paramsList = array();
-
-if ($q != "") {
-    $where = "
-        WHERE R.REQ_NO LIKE ? OR R.REQ_REM LIKE ? OR DPT.DEP_NAME LIKE ? OR DPT.DEP_CODE LIKE ?
-    ";
-    $paramsList[] = "%" . $q . "%";
-    $paramsList[] = "%" . $q . "%";
-    $paramsList[] = "%" . $q . "%";
-    $paramsList[] = "%" . $q . "%";
-}
-
-$sqlList = "
-    SELECT TOP 300
-        R.REQ_ID, R.REQ_NO, R.REQ_DATE, R.REQ_DUE, R.REQ_REM, R.REQ_ISAMR, R.REQ_CLOSE, R.DEP_ID,
-        DPT.DEP_CODE, DPT.DEP_NAME,
-        COUNT(D.ITEM_ID) AS DETAIL_COUNT,
-        ISNULL(SUM(D.REQD_QTY), 0) AS TOTAL_QTY
-    FROM dbo.REQUISITION R
-    LEFT JOIN dbo.DEPT DPT ON R.DEP_ID = DPT.DEP_ID
-    LEFT JOIN dbo.REQ_DETAIL D ON R.REQ_ID = D.REQ_ID
-    $where
-    GROUP BY R.REQ_ID, R.REQ_NO, R.REQ_DATE, R.REQ_DUE, R.REQ_REM, R.REQ_ISAMR, R.REQ_CLOSE, R.DEP_ID, DPT.DEP_CODE, DPT.DEP_NAME
-    ORDER BY R.REQ_DATE DESC, R.REQ_NO DESC
-";
-
-$stmtList = sqlsrv_query($conn, $sqlList, $paramsList);
-if ($stmtList === false) die("<pre>Query list requisition error:\n" . sql_error_text() . "</pre>");
-
 if (count($details) == 0) {
-    for ($i = 0; $i < 5; $i++) {
+    for ($i = 0; $i < 10; $i++) {
         $details[] = array("ITEM_ID" => "", "ITEM_CODE" => "", "ITEM_NAME" => "", "ITEM_UNIT" => "", "REQD_QTY" => "", "REQD_REM" => "");
     }
 }
@@ -542,77 +541,213 @@ if (count($details) == 0) {
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Requisition - Purchasing</title>
+    <title>Purchase Requisition</title>
 
-    <!-- Google Font: Source Sans Pro -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Source+Sans+Pro:300,400,400i,700&display=fallback">
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <!-- Theme style (AdminLTE 3) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
-
+    
     <style>
+        /* CSS KHUSUS TAMPILAN WINDOWS CLASSIC / DELPHI */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 12px;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .main-container {
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            background-color: #ece9d8;
+        }
+
+        .title-bar {
+            background-color: #ffffff;
+            text-align: center;
+            font-size: 24px;
+            font-family: Arial, sans-serif;
+            padding: 5px 0;
+            color: #000;
+        }
+
+        /* HEADER OLIVE */
+        .olive-header {
+            background-color: #808000; /* Warna Olive Sesuai Gambar */
+            padding: 10px;
+            color: #000000;
+        }
+
+        .lbl-black {
+            color: #000000;
+            font-size: 11px;
+            margin-bottom: 2px;
+            display: block;
+        }
+
+        .lbl-white {
+            color: #ffffff;
+            font-size: 11px;
+            margin-bottom: 2px;
+            display: block;
+            font-weight: bold;
+        }
+
+        .input-classic {
+            width: 100%;
+            height: 20px;
+            font-size: 12px;
+            padding: 0 4px;
+            border: 1px solid #7f9db9;
+            box-sizing: border-box;
+            background: #fff;
+            transition: background-color 0.3s; /* Transisi untuk warna AJAX */
+        }
+
+        .input-classic:read-only { background-color: #d4d0c8; color: #888; }
+        
+        select.input-classic { padding: 0; }
+        input[type="checkbox"].classic-cb { margin: 2px 0 0 0; }
+
+        .btn-classic {
+            background: #f0f0f0;
+            border: 1px solid #888;
+            border-bottom-color: #444;
+            border-right-color: #444;
+            padding: 2px 10px;
+            font-size: 12px;
+            color: #000;
+            cursor: pointer;
+            box-shadow: inset 1px 1px 0px #fff;
+        }
+        .btn-classic:active {
+            box-shadow: inset 1px 1px 2px #888;
+            border: 1px solid #444;
+            border-bottom-color: #888;
+            border-right-color: #888;
+        }
+        .btn-action-wide { width: 75px; margin-right: 2px; }
+
+        .fieldset-control {
+            border: 1px solid #fff;
+            padding: 6px;
+            margin-top: 5px;
+            position: relative;
+        }
+        
+        .fieldset-control legend {
+            color: #fff;
+            font-size: 11px;
+            background: #808000; /* menyesuaikan dgn backgroud header */
+            padding: 0 4px;
+            position: absolute;
+            top: -8px;
+            left: 5px;
+        }
+
+        /* GRID TABLE CLASSIC */
+        .datagrid-wrapper {
+            flex-grow: 1;
+            overflow: auto;
+            background: #fff;
+            border-top: 2px solid #888;
+            border-bottom: 2px solid #fff;
+        }
+
+        table.datagrid {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: auto;
+        }
+
+        table.datagrid th {
+            background-color: #ece9d8;
+            border-right: 1px solid #c0c0c0;
+            border-bottom: 1px solid #c0c0c0;
+            font-weight: normal;
+            font-size: 11px;
+            padding: 2px 4px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+
+        table.datagrid td {
+            border-right: 1px solid #e0e0e0;
+            border-bottom: 1px solid #e0e0e0;
+            padding: 0;
+            font-size: 11px;
+        }
+
+        table.datagrid input {
+            width: 100%;
+            height: 18px;
+            border: none;
+            padding: 0 4px;
+            font-size: 11px;
+            background: transparent;
+            box-sizing: border-box;
+            transition: background-color 0.3s; /* Transisi untuk warna AJAX */
+        }
+        table.datagrid input:focus {
+            background: #e7f1ff;
+            outline: 1px solid #000;
+        }
+        table.datagrid tr.detail-selected td {
+            background-color: #d0d0d0;
+        }
+
+        .footer-bar {
+            background: #ece9d8;
+            padding: 5px 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid #c0c0c0;
+        }
+
+        /* AUTOCOMPLETE STYLING */
         .ac-box {
             position: absolute;
             z-index: 9999;
             background: #ffffff;
             color: #333;
             border: 1px solid #ccc;
-            border-radius: 4px;
-            max-height: 250px;
+            border-radius: 2px;
+            max-height: 200px;
             overflow-y: auto;
             min-width: 300px;
             display: none;
-            font-size: 14px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            font-size: 12px;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
         }
-        .ac-item {
-            padding: 8px 12px;
-            cursor: pointer;
-            border-bottom: 1px solid #f4f4f4;
-        }
-        .ac-item:last-child {
-            border-bottom: none;
-        }
-        .ac-item:hover, .ac-item.active {
-            background: #007bff;
-            color: #ffffff;
-        }
-        
-        /* CUSTOM COMPACT TABLE ROW */
-        #detailTable th, #detailTable td {
-            padding: 2px 4px !important;
-            vertical-align: middle !important;
-        }
-        .table-input-transparent {
-            border: 1px solid transparent;
-            background: transparent;
-            height: 22px !important;
-            padding: 0px 4px !important;
-            font-size: 12px !important;
-            border-radius: 0;
-        }
-        .table-input-transparent:focus {
-            background: #fff;
-            border-color: #80bdff;
-            outline: 0;
-            box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
-        }
-        #detailTable .btn-xs {
-            padding: 1px 6px !important;
-            font-size: 11px !important;
-            height: 22px !important;
-            line-height: 1.5 !important;
-        }
-        tr.pointer:hover {
-            cursor: pointer;
-            background-color: #f4f6f9;
-        }
+        .ac-item { padding: 4px 8px; cursor: pointer; border-bottom: 1px solid #f4f4f4; }
+        .ac-item:hover, .ac-item.active { background: #808000; color: #ffffff; }
+
+        /* Bootstrap grid system utilitas (minimalis) */
+        .row { display: flex; flex-wrap: wrap; margin-right: -5px; margin-left: -5px; }
+        .col-1 { flex: 0 0 8.333%; max-width: 8.333%; padding: 0 5px; }
+        .col-2 { flex: 0 0 16.666%; max-width: 16.666%; padding: 0 5px; }
+        .col-3 { flex: 0 0 25%; max-width: 25%; padding: 0 5px; }
+        .col-4 { flex: 0 0 33.333%; max-width: 33.333%; padding: 0 5px; }
+        .col-5 { flex: 0 0 41.666%; max-width: 41.666%; padding: 0 5px; }
+        .col-6 { flex: 0 0 50%; max-width: 50%; padding: 0 5px; }
+        .col-8 { flex: 0 0 66.666%; max-width: 66.666%; padding: 0 5px; }
+        .col-9 { flex: 0 0 75%; max-width: 75%; padding: 0 5px; }
+        .col-12 { flex: 0 0 100%; max-width: 100%; padding: 0 5px; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
     </style>
 
     <script>
-        var itemData = <?php echo json_encode($itemAuto); ?>;
-        var reqData = <?php echo json_encode($reqAuto); ?>;
+        var itemData = <?php echo json_encode($itemAuto) ? json_encode($itemAuto) : '[]'; ?>;
+        var reqData = <?php echo json_encode($reqAuto) ? json_encode($reqAuto) : '[]'; ?>;
+        var jsDeptList = <?php echo json_encode($deptList) ? json_encode($deptList) : '[]'; ?>;
 
         var acBox = null;
         var acItems = [];
@@ -620,6 +755,7 @@ if (count($details) == 0) {
         var acMode = "";
         var acRow = -1;
         var rowSeq = <?php echo count($details); ?>;
+        var selectedDetailRow = null;
 
         function byId(id) { return document.getElementById(id); }
 
@@ -628,26 +764,35 @@ if (count($details) == 0) {
             if (el) el.value = value == null ? "" : value;
         }
 
-        function initAC() {
-            acBox = document.getElementById("acBox");
+        // Sinkronisasi Dept Name berdasarkan dropdown
+        function updateDeptName() {
+            var sel = byId("dep_id");
+            var nameField = byId("dep_name_view");
+            var val = sel.value;
+            nameField.value = "";
+            for(var i=0; i<jsDeptList.length; i++){
+                if(jsDeptList[i].DEP_ID == val) {
+                    nameField.value = jsDeptList[i].DEP_NAME;
+                    break;
+                }
+            }
         }
 
+        function initAC() { acBox = document.getElementById("acBox"); }
+        
         function hideAC() {
             if (acBox) {
                 acBox.style.display = "none";
                 acBox.innerHTML = "";
             }
-            acItems = [];
-            acIndex = -1;
-            acMode = "";
-            acRow = -1;
+            acItems = []; acIndex = -1; acMode = ""; acRow = -1;
         }
 
         function positionAC(input) {
             initAC();
             var rect = input.getBoundingClientRect();
-            acBox.style.left = (rect.left + window.scrollX) + "px";
-            acBox.style.top = (rect.bottom + window.scrollY) + "px";
+            acBox.style.left = (rect.left + (window.scrollX || window.pageXOffset)) + "px";
+            acBox.style.top = (rect.bottom + (window.scrollY || window.pageYOffset)) + "px";
             acBox.style.width = rect.width < 300 ? "300px" : rect.width + "px";
         }
 
@@ -691,10 +836,160 @@ if (count($details) == 0) {
             if (form) form.submit();
         }
 
+        // ==== FUNGSI SIMPAN AJAX (MENGGUNAKAN XMLHTTPREQUEST) ====
+        function triggerAjaxSave(inputEl) {
+            var form = byId("reqForm");
+            
+            if(typeof FormData === "undefined" || typeof XMLHttpRequest === "undefined") {
+                submitSave(false); 
+                return;
+            }
+
+            var formData = new FormData(form);
+            formData.append("is_ajax", "1"); 
+            
+            var oldBg = inputEl.style.backgroundColor;
+            inputEl.style.backgroundColor = "#fff9c4"; 
+            
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "requisition.php?ajax=1", true);
+            
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState === 4) {
+                    if (xhr.status === 200) {
+                        try {
+                            var data = JSON.parse(xhr.responseText);
+                            if (data.status === "success") {
+                                inputEl.style.backgroundColor = "#c8e6c9"; 
+                                setTimeout(function(){ inputEl.style.backgroundColor = oldBg; }, 1000);
+                                
+                                var currId = byId("req_id").value;
+                                if (currId === "" || currId === "0") {
+                                    byId("req_id").value = data.req_id;
+                                    if (window.history && window.history.replaceState) {
+                                        window.history.replaceState(null, null, "?edit=" + data.req_id);
+                                    }
+                                }
+                            } else {
+                                alert("Gagal Simpan:\n" + data.message);
+                                inputEl.style.backgroundColor = "#ffcdd2"; 
+                            }
+                        } catch (e) {
+                            alert("Gagal membaca respon server.");
+                            inputEl.style.backgroundColor = "#ffcdd2";
+                        }
+                    } else {
+                        alert("Error saat menghubungi server.");
+                        inputEl.style.backgroundColor = "#ffcdd2";
+                    }
+                }
+            };
+            xhr.send(formData);
+        }
+        // =============================================
+
+        function headerKey(e, inputEl) {
+            if (e.key === "Enter") {
+                if (acMode !== "" && acItems.length > 0) return true;
+                e.preventDefault(); 
+                
+                if(inputEl) {
+                    triggerAjaxSave(inputEl);
+                } else {
+                    submitSave(false); 
+                }
+                return false;
+            }
+        }
+
+        // ==========================================================
+        // FUNGSI BANTUAN UNTUK MENCARI BARIS BARU / PINDAH FOKUS
+        // (Menghindari error querySelector is not a function)
+        // ==========================================================
+        function focusNextRow(input) {
+            var tbody = byId("detailBody");
+            if (!tbody) return;
+            var rows = tbody.getElementsByTagName("tr");
+            var currentRowIndex = -1;
+            
+            // Cari elemen TR yang mengelilingi input ini
+            var el = input;
+            while(el && el.nodeName !== "TR") {
+                el = el.parentNode;
+            }
+            
+            // Cari indeks baris saat ini
+            if (el) {
+                for(var i = 0; i < rows.length; i++) {
+                    if(rows[i] === el) {
+                        currentRowIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (currentRowIndex === -1) return; // Baris tidak ditemukan
+
+            // Jika ini baris terakhir, buat baris baru
+            if (currentRowIndex === rows.length - 1) {
+                addRow();
+            } else {
+                // Jika bukan baris terakhir, pindah fokus ke baris bawahnya
+                var nextRow = rows[currentRowIndex + 1];
+                var inputs = nextRow.getElementsByTagName("input");
+                for(var j=0; j < inputs.length; j++){
+                    if(inputs[j].name === "item_code[]") {
+                        inputs[j].focus();
+                        inputs[j].select();
+                        break;
+                    }
+                }
+            }
+        }
+
+        // ==== ENTER DI QTY & REMARK ====
+        function qtyKey(e, input) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                if (input && input.value != "") {
+                    triggerAjaxSave(input);
+                }
+                focusNextRow(input); // Pindah fokus / tambah baris
+                return false;
+            }
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                var qtys = document.getElementsByClassName("qty-input");
+                for (var i = 0; i < qtys.length; i++) {
+                    if (qtys[i] === input && qtys[i + 1]) {
+                        qtys[i + 1].focus(); qtys[i + 1].select(); break;
+                    }
+                }
+            }
+            if (e.key === "ArrowUp") {
+                e.preventDefault();
+                var qtys2 = document.getElementsByClassName("qty-input");
+                for (var j = 0; j < qtys2.length; j++) {
+                    if (qtys2[j] === input && qtys2[j - 1]) {
+                        qtys2[j - 1].focus(); qtys2[j - 1].select(); break;
+                    }
+                }
+            }
+        }
+
+        function remarkKey(e, input) {
+            if (e.key === "Enter") {
+                e.preventDefault();
+                triggerAjaxSave(input);
+                focusNextRow(input); // Pindah fokus / tambah baris
+                return false;
+            }
+        }
+        // ==========================================================
+
         function newData() { window.location.href = "requisition.php"; }
-
-        function goEdit(id) { window.location.href = "requisition.php?edit=" + encodeURIComponent(id); }
-
+        function goEdit(id) { if(!id) return; window.location.href = "requisition.php?edit=" + encodeURIComponent(id); }
+        
         function confirmDelete() { return confirm("Yakin hapus requisition ini?"); }
 
         function deleteCurrent() {
@@ -706,6 +1001,13 @@ if (count($details) == 0) {
             if (!confirmDelete()) return;
             byId("delete_req_id").value = id;
             byId("deleteForm").submit();
+        }
+
+        function selectDetailRow(tr){
+            var rows=document.querySelectorAll("#detailBody tr");
+            for(var i=0;i<rows.length;i++) rows[i].className = rows[i].className.replace(" detail-selected", "");
+            selectedDetailRow = tr;
+            if(tr) tr.className += " detail-selected";
         }
 
         function findItemByCode(code) {
@@ -734,15 +1036,9 @@ if (count($details) == 0) {
         function showItemAC(input, row) {
             initAC();
             var key = (input.value || "").toUpperCase();
-            acMode = "item";
-            acRow = row;
-            acItems = [];
-            acIndex = -1;
+            acMode = "item"; acRow = row; acItems = []; acIndex = -1;
 
-            if (key.length < 1) {
-                hideAC();
-                return;
-            }
+            if (key.length < 1) { hideAC(); return; }
 
             for (var i = 0; i < itemData.length; i++) {
                 var item = itemData[i];
@@ -773,9 +1069,7 @@ if (count($details) == 0) {
             }
             if (e.key === "Enter") {
                 if (acMode === "item" && acItems.length > 0) {
-                    e.preventDefault();
-                    acEnter(pickItem);
-                    return false;
+                    e.preventDefault(); acEnter(pickItem); return false;
                 }
                 e.preventDefault();
                 var item = input.id.indexOf("item_code_") === 0 ? findItemByCode(input.value) : findItemByName(input.value);
@@ -797,43 +1091,12 @@ if (count($details) == 0) {
             if (qty) { qty.focus(); qty.select(); }
         }
 
-        function qtyKey(e, input) {
-            if (e.key === "Enter") {
-                e.preventDefault();
-                if (input && input.value != "") submitSave(false);
-                return false;
-            }
-            if (e.key === "ArrowDown") {
-                e.preventDefault();
-                var qtys = document.getElementsByClassName("qty-input");
-                for (var i = 0; i < qtys.length; i++) {
-                    if (qtys[i] === input && qtys[i + 1]) {
-                        qtys[i + 1].focus(); qtys[i + 1].select(); break;
-                    }
-                }
-            }
-            if (e.key === "ArrowUp") {
-                e.preventDefault();
-                var qtys2 = document.getElementsByClassName("qty-input");
-                for (var j = 0; j < qtys2.length; j++) {
-                    if (qtys2[j] === input && qtys2[j - 1]) {
-                        qtys2[j - 1].focus(); qtys2[j - 1].select(); break;
-                    }
-                }
-            }
-        }
-
         function showReqAC(input) {
             initAC();
             var key = (input.value || "").toUpperCase();
-            acMode = "req";
-            acItems = [];
-            acIndex = -1;
+            acMode = "req"; acItems = []; acIndex = -1;
 
-            if (key.length < 1) {
-                hideAC();
-                return;
-            }
+            if (key.length < 1) { hideAC(); return; }
 
             for (var i = 0; i < reqData.length; i++) {
                 var r = reqData[i];
@@ -846,6 +1109,14 @@ if (count($details) == 0) {
             renderAC(function (r) {
                 return "<b>" + r.REQ_NO + "</b> - " + r.REQ_DATE + " - " + r.DEP_CODE + " " + r.DEP_NAME + " - " + r.REQ_REM;
             }, pickReq);
+        }
+
+        // ===============================================
+        // FUNGSI pickReq UNTUK MENCEGAH ERROR UNDEFINED
+        // ===============================================
+        function pickReq(r) {
+            hideAC();
+            window.location.href = "requisition.php?edit=" + encodeURIComponent(r.REQ_ID);
         }
 
         function reqSearchKey(e, input) {
@@ -870,53 +1141,41 @@ if (count($details) == 0) {
             if (e.key === "Escape") hideAC();
         }
 
-        function pickReq(r) {
-            hideAC();
-            window.location.href = "requisition.php?edit=" + encodeURIComponent(r.REQ_ID);
-        }
-
-        function headerKey(e) {
-            if (e.key === "Enter") {
-                if (acMode !== "" && acItems.length > 0) return true;
-                e.preventDefault(); submitSave(false); return false;
-            }
-        }
-
         function addRow() {
             var tbody = byId("detailBody");
             var row = rowSeq;
             rowSeq++;
 
             var tr = document.createElement("tr");
+            tr.onclick = function(){ selectDetailRow(this); };
             tr.innerHTML =
-                '<td class="text-center align-middle row-no"></td>' +
-                '<td>' +
+                '<td class="text-center align-middle row-no" style="width:25px;"></td>' +
+                '<td style="width:120px;">' +
                     '<input type="hidden" name="item_id[]" id="item_id_' + row + '">' +
-                    '<input type="text" class="form-control form-control-sm table-input-transparent" name="item_code[]" id="item_code_' + row + '" autocomplete="off" oninput="showItemAC(this, ' + row + ')" onkeydown="itemKey(event, this, ' + row + ')">' +
+                    '<input type="text" name="item_code[]" id="item_code_' + row + '" autocomplete="off" oninput="showItemAC(this, ' + row + ')" onkeydown="itemKey(event, this, ' + row + ')">' +
                 '</td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent" name="item_name[]" id="item_name_' + row + '" autocomplete="off" oninput="showItemAC(this, ' + row + ')" onkeydown="itemKey(event, this, ' + row + ')"></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent bg-light" name="item_unit[]" id="item_unit_' + row + '" readonly></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent text-right qty-input" name="reqd_qty[]" id="reqd_qty_' + row + '" onkeydown="qtyKey(event, this)"></td>' +
-                '<td><input type="text" class="form-control form-control-sm table-input-transparent" name="reqd_rem[]" onkeydown="headerKey(event)"></td>' +
-                '<td class="text-center">' +
-                    '<div class="btn-group">' +
-                        '<button type="button" class="btn btn-info btn-xs" onclick="showPO(this)" title="PO"><i class="fas fa-shopping-cart"></i></button>' +
-                        '<button type="button" class="btn btn-danger btn-xs" onclick="deleteRow(this)" title="Delete"><i class="fas fa-times"></i></button>' +
-                    '</div>' +
+                '<td><input type="text" name="item_name[]" id="item_name_' + row + '" autocomplete="off" oninput="showItemAC(this, ' + row + ')" onkeydown="itemKey(event, this, ' + row + ')"></td>' +
+                '<td style="width:80px;"><input type="text" class="text-right qty-input" name="reqd_qty[]" id="reqd_qty_' + row + '" onkeydown="qtyKey(event, this)"></td>' +
+                '<td style="width:80px;"><input type="text" readonly id="item_unit_' + row + '"></td>' +
+                '<td style="width:200px;"><input type="text" name="reqd_rem[]" onkeydown="remarkKey(event, this)"></td>' + 
+                '<td class="text-center" style="width:60px;">' +
+                    '<button type="button" class="btn-classic" style="padding:0 5px; margin-right:2px;" onclick="showPO(this)" title="PO"><i class="fas fa-shopping-cart"></i></button>' +
+                    '<button type="button" class="btn-classic" style="padding:0 5px;" onclick="deleteRow(this)" title="Delete">X</button>' +
                 '</td>';
 
             tbody.appendChild(tr);
             renumberRows();
+            selectDetailRow(tr);
             byId("item_code_" + row).focus();
         }
 
         function deleteRow(btn) {
-            var tr = btn.closest("tr");
+            var tr = btn.parentNode ? btn.parentNode.parentNode : null;
             var reqId = byId("req_id").value;
 
             if (!confirm("Hapus baris detail ini?")) return;
-
-            tr.parentNode.removeChild(tr);
+            if (tr) tr.parentNode.removeChild(tr);
+            
             renumberRows();
 
             if (reqId != "" && reqId != "0") submitSave(true);
@@ -926,14 +1185,14 @@ if (count($details) == 0) {
             var rows = byId("detailBody").getElementsByTagName("tr");
             for (var i = 0; i < rows.length; i++) {
                 var noCell = rows[i].getElementsByClassName("row-no")[0];
-                if (noCell) noCell.innerHTML = i + 1;
+                if (noCell) noCell.innerHTML = (i==0) ? "<i class='fas fa-caret-right'></i>" : "";
             }
         }
 
         function showPO(btn) {
-            var tr = btn.closest("tr");
+            var tr = btn.parentNode ? btn.parentNode.parentNode : null;
             var reqId = byId("req_id").value;
-            var itemInput = tr.querySelector('input[name="item_id[]"]');
+            var itemInput = tr ? tr.querySelector('input[name="item_id[]"]') : null;
             var itemId = itemInput ? itemInput.value : "";
 
             if (reqId == "" || reqId == "0") { alert("Simpan / pilih requisition dulu."); return; }
@@ -943,261 +1202,217 @@ if (count($details) == 0) {
             window.open(url, "PO_LIST", "width=800,height=500,scrollbars=yes,resizable=yes");
         }
 
-        document.addEventListener("click", function (e) {
-            initAC();
-            if (acBox && !acBox.contains(e.target)) {
-                if (!e.target || !e.target.getAttribute || e.target.getAttribute("autocomplete") !== "off") hideAC();
+        function openSelectedPO() {
+            var tr = selectedDetailRow;
+            if(!tr){
+                var rows = byId("detailBody").getElementsByTagName("tr");
+                if(rows.length > 0) tr = rows[0];
             }
+            if(!tr) { alert("Pilih baris item dulu."); return; }
+            
+            var btn = tr.querySelector('button[title="PO"]');
+            if(btn) showPO(btn);
+        }
+
+        // Cross-browser DOMContentLoaded alternative
+        function ready(fn) {
+            if (document.readyState != 'loading'){
+                fn();
+            } else if (document.addEventListener) {
+                document.addEventListener('DOMContentLoaded', fn);
+            } else {
+                document.attachEvent('onreadystatechange', function() {
+                    if (document.readyState != 'loading') fn();
+                });
+            }
+        }
+
+        ready(function() {
+            var rows = document.getElementById("detailBody").getElementsByTagName("tr");
+            for(var i=0; i<rows.length; i++){
+                rows[i].onclick = function(){ selectDetailRow(this); };
+            }
+            renumberRows();
+            updateDeptName(); // Initialize Dept Name on load
         });
+
+        if(document.addEventListener) {
+            document.addEventListener("click", function (e) {
+                initAC();
+                if (acBox && !acBox.contains(e.target)) {
+                    if (!e.target || !e.target.getAttribute || e.target.getAttribute("autocomplete") !== "off") hideAC();
+                }
+            });
+        } else { // IE8/Classic Fallback
+            document.attachEvent("onclick", function (e) {
+                var target = e.srcElement || e.target;
+                initAC();
+                if (acBox && !acBox.contains(target)) {
+                    if (!target || !target.getAttribute || target.getAttribute("autocomplete") !== "off") hideAC();
+                }
+            });
+        }
     </script>
 </head>
-<body class="hold-transition layout-top-nav">
-<div class="wrapper">
+<body>
 
-    <!-- Navbar -->
-    <nav class="main-header navbar navbar-expand-md navbar-light navbar-white">
-        <div class="container-fluid">
-            <a href="dashboard_home.php" class="navbar-brand">
-                <span class="brand-text font-weight-light"><i class="fas fa-boxes text-primary mr-2"></i> Purchasing System</span>
-            </a>
-            <ul class="navbar-nav ml-auto">
-                <li class="nav-item">
-                    <a href="dashboard_home.php" class="nav-link"><i class="fas fa-sign-out-alt"></i> Close</a>
-                </li>
-            </ul>
-        </div>
-    </nav>
-    <!-- /.navbar -->
-
-    <div class="content-wrapper">
-        <div class="content-header">
-            <div class="container-fluid">
-                <div class="row mb-2">
-                    <div class="col-sm-6">
-                        <h1 class="m-0">Requisition</h1>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="content">
-            <div class="container-fluid">
-
-                <?php if ($message != "") { ?>
-                    <div class="alert alert-success alert-dismissible">
-                        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                        <h5><i class="icon fas fa-check"></i> Success!</h5>
-                        <?php echo h($message); ?>
-                    </div>
-                <?php } ?>
-
-                <?php if ($error != "") { ?>
-                    <div class="alert alert-danger alert-dismissible">
-                        <button type="button" class="close" data-dismiss="alert" aria-hidden="true">&times;</button>
-                        <h5><i class="icon fas fa-ban"></i> Error!</h5>
-                        <?php echo h($error); ?>
-                    </div>
-                <?php } ?>
-
-                <div class="card card-primary card-outline">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h3 class="card-title mb-0">
-                            <button type="button" class="btn btn-sm btn-default mr-1" onclick="newData()"><i class="fas fa-file"></i> New</button>
-                            <button type="button" class="btn btn-sm btn-success mr-1" onclick="submitSave(false)"><i class="fas fa-save"></i> Save Requisition</button>
-                            <button type="button" class="btn btn-sm btn-danger" onclick="deleteCurrent()"><i class="fas fa-trash"></i> Delete</button>
-                        </h3>
-                        
-                        <!-- PENCARIAN HEADER -->
-                        <div class="card-tools">
-                            <form method="get" action="requisition.php" class="form-inline m-0" id="searchFormTop">
-                                <div class="input-group input-group-sm" style="width: 300px;">
-                                    <input type="text" name="q" class="form-control float-right" value="<?php echo h($q); ?>" placeholder="Search REQ No / Dept / Remark" autocomplete="off" oninput="showReqAC(this)" onkeydown="reqSearchKey(event, this)">
-                                    <div class="input-group-append">
-                                        <button type="submit" class="btn btn-default"><i class="fas fa-search"></i></button>
-                                        <a href="requisition.php" class="btn btn-default" title="Reset"><i class="fas fa-sync"></i></a>
-                                    </div>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-
-                    <form id="reqForm" method="post" action="requisition.php">
-                        <input type="hidden" name="action" value="save">
-                        <input type="hidden" name="req_id" id="req_id" value="<?php echo h($header["REQ_ID"]); ?>">
-                        <input type="hidden" name="allow_empty_detail" id="allow_empty_detail" value="0">
-
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-3">
-                                    <div class="form-group">
-                                        <label>REQ NO</label>
-                                        <input type="text" class="form-control form-control-sm" name="req_no" value="<?php echo h($header["REQ_NO"]); ?>" placeholder="Auto" onkeydown="headerKey(event)">
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="form-group">
-                                        <label>REQ DATE</label>
-                                        <input type="date" class="form-control form-control-sm" name="req_date" value="<?php echo h($header["REQ_DATE"]); ?>" onkeydown="headerKey(event)">
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="form-group">
-                                        <label>REQ DUE</label>
-                                        <input type="date" class="form-control form-control-sm" name="req_due" value="<?php echo h($header["REQ_DUE"]); ?>" onkeydown="headerKey(event)">
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="form-group">
-                                        <label>DEPT</label>
-                                        <select class="form-control form-control-sm" name="dep_id" onkeydown="headerKey(event)">
-                                            <option value="">-- Pilih Dept --</option>
-                                            <?php foreach ($deptList as $d) { ?>
-                                                <option value="<?php echo h($d["DEP_ID"]); ?>" <?php echo intval($header["DEP_ID"]) == intval($d["DEP_ID"]) ? "selected" : ""; ?>>
-                                                    <?php echo h($d["DEP_CODE"] . " - " . $d["DEP_NAME"]); ?>
-                                                </option>
-                                            <?php } ?>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="row">
-                                <div class="col-md-9">
-                                    <div class="form-group">
-                                        <label>REQ REMARK</label>
-                                        <input type="text" class="form-control form-control-sm" name="req_rem" value="<?php echo h($header["REQ_REM"]); ?>" onkeydown="headerKey(event)">
-                                    </div>
-                                </div>
-                                <div class="col-md-3">
-                                    <div class="form-group">
-                                        <label>&nbsp;</label>
-                                        <div class="icheck-primary mt-1">
-                                            <div class="custom-control custom-checkbox d-inline mr-3">
-                                                <input class="custom-control-input" type="checkbox" id="req_isamr" name="req_isamr" value="1" <?php echo intval($header["REQ_ISAMR"]) == 1 ? "checked" : ""; ?>>
-                                                <label for="req_isamr" class="custom-control-label">Is AMR</label>
-                                            </div>
-                                            <div class="custom-control custom-checkbox d-inline">
-                                                <input class="custom-control-input" type="checkbox" id="req_close" name="req_close" value="1" <?php echo intval($header["REQ_CLOSE"]) == 1 ? "checked" : ""; ?>>
-                                                <label for="req_close" class="custom-control-label">Close</label>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="table-responsive p-0 mt-3 border">
-                                <table class="table table-bordered table-sm text-sm m-0" id="detailTable">
-                                    <thead class="bg-light">
-                                        <tr>
-                                            <th class="text-center" style="width:40px;">No</th>
-                                            <th style="width:150px;">ITEM CODE</th>
-                                            <th>ITEM NAME</th>
-                                            <th style="width:100px;">UNIT</th>
-                                            <th style="width:100px;">QTY</th>
-                                            <th style="width:250px;">REMARK</th>
-                                            <th class="text-center" style="width:80px;">ACT</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="detailBody">
-                                        <?php for ($i = 0; $i < count($details); $i++) { 
-                                            $d = $details[$i];
-                                            $qty = isset($d["REQD_QTY"]) ? floatval($d["REQD_QTY"]) : 0;
-                                        ?>
-                                            <tr>
-                                                <td class="text-center align-middle row-no"><?php echo h($i + 1); ?></td>
-                                                <td>
-                                                    <input type="hidden" name="item_id[]" id="item_id_<?php echo h($i); ?>" value="<?php echo h($d["ITEM_ID"]); ?>">
-                                                    <input type="text" class="form-control form-control-sm table-input-transparent" name="item_code[]" id="item_code_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_CODE"]) ? $d["ITEM_CODE"] : ""); ?>" autocomplete="off" oninput="showItemAC(this, <?php echo h($i); ?>)" onkeydown="itemKey(event, this, <?php echo h($i); ?>)">
-                                                </td>
-                                                <td>
-                                                    <input type="text" class="form-control form-control-sm table-input-transparent" name="item_name[]" id="item_name_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_NAME"]) ? $d["ITEM_NAME"] : ""); ?>" autocomplete="off" oninput="showItemAC(this, <?php echo h($i); ?>)" onkeydown="itemKey(event, this, <?php echo h($i); ?>)">
-                                                </td>
-                                                <td>
-                                                    <input type="text" class="form-control form-control-sm table-input-transparent bg-light" name="item_unit[]" id="item_unit_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_UNIT"]) ? $d["ITEM_UNIT"] : ""); ?>" readonly>
-                                                </td>
-                                                <td>
-                                                    <input type="text" class="form-control form-control-sm table-input-transparent text-right qty-input" name="reqd_qty[]" id="reqd_qty_<?php echo h($i); ?>" value="<?php echo h($qty == 0 ? "" : $qty); ?>" onkeydown="qtyKey(event, this)">
-                                                </td>
-                                                <td>
-                                                    <input type="text" class="form-control form-control-sm table-input-transparent" name="reqd_rem[]" value="<?php echo h(isset($d["REQD_REM"]) ? $d["REQD_REM"] : ""); ?>" onkeydown="headerKey(event)">
-                                                </td>
-                                                <td class="text-center">
-                                                    <div class="btn-group">
-                                                        <button type="button" class="btn btn-info btn-xs" onclick="showPO(this)" title="PO"><i class="fas fa-shopping-cart"></i></button>
-                                                        <button type="button" class="btn btn-danger btn-xs" onclick="deleteRow(this)" title="Delete"><i class="fas fa-times"></i></button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        <?php } ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <div class="card-footer bg-white">
-                            <button type="button" class="btn btn-primary btn-sm" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
-                            <button type="submit" class="btn btn-success btn-sm float-right"><i class="fas fa-check"></i> Simpan Data</button>
-                        </div>
-                    </form>
-                </div>
-
-                <form id="deleteForm" method="post" action="requisition.php">
-                    <input type="hidden" name="action" value="delete">
-                    <input type="hidden" name="req_id" id="delete_req_id" value="">
-                </form>
-
-                <div class="card">
-                    <div class="card-body p-0 table-responsive" style="max-height: 400px;">
-                        <table class="table table-striped table-hover table-head-fixed text-nowrap table-sm text-sm">
-                            <thead>
-                                <tr>
-                                    <th style="width:30px;"></th>
-                                    <th>REQ_NO</th>
-                                    <th>REQ_DATE</th>
-                                    <th>REQ_DUE</th>
-                                    <th>DEPT</th>
-                                    <th>REQ_REM</th>
-                                    <th class="text-center">AMR</th>
-                                    <th class="text-center">CLOSE</th>
-                                    <th class="text-right">DETAIL</th>
-                                    <th class="text-right">QTY</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php while ($r = sqlsrv_fetch_array($stmtList, SQLSRV_FETCH_ASSOC)) { ?>
-                                    <tr class="pointer" onclick="goEdit('<?php echo h($r["REQ_ID"]); ?>')">
-                                        <td class="text-center text-primary"><i class="fas fa-caret-right"></i></td>
-                                        <td><?php echo h($r["REQ_NO"]); ?></td>
-                                        <td><?php echo h(fmt_date_view($r["REQ_DATE"])); ?></td>
-                                        <td><?php echo h(fmt_date_view($r["REQ_DUE"])); ?></td>
-                                        <td><?php echo h(trim((string)$r["DEP_CODE"]) . " " . trim((string)$r["DEP_NAME"])); ?></td>
-                                        <td><?php echo h($r["REQ_REM"]); ?></td>
-                                        <td class="text-center">
-                                            <?php if(intval($r["REQ_ISAMR"]) == 1) { echo '<span class="badge badge-success">YES</span>'; } ?>
-                                        </td>
-                                        <td class="text-center">
-                                            <?php if(intval($r["REQ_CLOSE"]) == 1) { echo '<span class="badge badge-secondary">YES</span>'; } ?>
-                                        </td>
-                                        <td class="text-right"><?php echo h(number_format(floatval($r["DETAIL_COUNT"]), 0, ".", ",")); ?></td>
-                                        <td class="text-right"><?php echo h(number_format(floatval($r["TOTAL_QTY"]), 2, ".", ",")); ?></td>
-                                    </tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-            </div>
-        </div>
+<div class="main-container">
+    <!-- Title Bar -->
+    <div class="title-bar">
+        Purchase Requisition
     </div>
+
+    <?php if ($message != "") { echo "<div style='background:#d4edda; color:#155724; padding:5px; text-align:center; font-size:12px;'>$message</div>"; } ?>
+    <?php if ($error != "") { echo "<div style='background:#f8d7da; color:#721c24; padding:5px; text-align:center; font-size:12px;'>$error</div>"; } ?>
+
+    <form id="reqForm" method="post" action="requisition.php" style="display: flex; flex-direction: column; flex-grow: 1;">
+        <input type="hidden" name="action" value="save">
+        <input type="hidden" name="req_id" id="req_id" value="<?php echo h($header["REQ_ID"]); ?>">
+        <input type="hidden" name="allow_empty_detail" id="allow_empty_detail" value="0">
+
+        <!-- HEADER OLIVE AREA -->
+        <div class="olive-header">
+            <div class="row">
+                <div class="col-8">
+                    <!-- Baris Atas -->
+                    <div class="row">
+                        <div class="col-3">
+                            <label class="lbl-black">No. PR</label>
+                            <input type="text" class="input-classic" name="req_no" value="<?php echo h($header["REQ_NO"]); ?>" onkeydown="headerKey(event, this)">
+                        </div>
+                        <div class="col-3">
+                            <label class="lbl-black">Dept.</label>
+                            <select class="input-classic" name="dep_id" id="dep_id" onchange="updateDeptName()" onkeydown="headerKey(event, this)">
+                                <option value="">-- Pilih --</option>
+                                <?php foreach ($deptList as $d) { ?>
+                                    <option value="<?php echo h($d["DEP_ID"]); ?>" <?php echo intval($header["DEP_ID"]) == intval($d["DEP_ID"]) ? "selected" : ""; ?>>
+                                        <?php echo h($d["DEP_CODE"]); ?>
+                                    </option>
+                                <?php } ?>
+                            </select>
+                        </div>
+                        <div class="col-5">
+                            <label class="lbl-black">Dept.Name</label>
+                            <input type="text" class="input-classic" id="dep_name_view" readonly>
+                        </div>
+                        <div class="col-1 text-center">
+                            <label class="lbl-black">AMR</label>
+                            <input type="checkbox" class="classic-cb" id="req_isamr" name="req_isamr" value="1" <?php echo intval($header["REQ_ISAMR"]) == 1 ? "checked" : ""; ?>>
+                        </div>
+                    </div>
+                    
+                    <!-- Baris Bawah -->
+                    <div class="row mt-1">
+                        <div class="col-3">
+                            <label class="lbl-black">Date</label>
+                            <input type="date" class="input-classic" name="req_date" value="<?php echo h($header["REQ_DATE"]); ?>" onkeydown="headerKey(event, this)">
+                        </div>
+                        <div class="col-3">
+                            <label class="lbl-black">Due</label>
+                            <input type="date" class="input-classic" name="req_due" value="<?php echo h($header["REQ_DUE"]); ?>" onkeydown="headerKey(event, this)">
+                        </div>
+                        <div class="col-5">
+                            <label class="lbl-black">Remark</label>
+                            <input type="text" class="input-classic" name="req_rem" value="<?php echo h($header["REQ_REM"]); ?>" onkeydown="headerKey(event, this)">
+                        </div>
+                        <div class="col-1 text-center">
+                            <label class="lbl-black">Closed</label>
+                            <input type="checkbox" class="classic-cb" id="req_close" name="req_close" value="1" <?php echo intval($header["REQ_CLOSE"]) == 1 ? "checked" : ""; ?>>
+                        </div>
+                    </div>
+
+                    <!-- Action buttons -->
+                    <div class="row mt-2">
+                        <div class="col-12 text-center">
+                            <fieldset class="fieldset-control" style="display: inline-block; padding: 4px 10px;">
+                                <button type="button" class="btn-classic btn-action-wide" onclick="newData()">Tambah</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="goEdit('<?php echo h($editId); ?>')">Rubah</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="deleteCurrent()">Hapus</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="submitSave(false)">Simpan</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="newData()">Batal</button>
+                                <button type="button" class="btn-classic btn-action-wide" onclick="window.location.href='requisition.php'">Refresh</button>
+                            </fieldset>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Kanan: Search Data -->
+                <div class="col-4">
+                    <div style="display:flex; flex-direction:column; align-items:flex-end;">
+                        <div style="margin-bottom: 20px; width: 100%;">
+                            <label class="lbl-white text-right">SEARCH REQ</label>
+                            <input type="text" name="q" class="input-classic" style="width:100%;" value="<?php echo h($q); ?>" placeholder="Search REQ No / Dept / Remark" autocomplete="off" oninput="showReqAC(this)" onkeydown="reqSearchKey(event, this)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- GRID DATA AREA -->
+        <div class="datagrid-wrapper">
+            <table class="datagrid" id="detailTable">
+                <thead>
+                    <tr>
+                        <th style="width:25px;" class="text-center"></th>
+                        <th style="width:120px;">Code</th>
+                        <th>Item</th>
+                        <th style="width:80px;" class="text-right">Qty</th>
+                        <th style="width:80px;">Unit</th>
+                        <th style="width:200px;">Remark</th>
+                        <th style="width:60px;" class="text-center">ACT</th>
+                    </tr>
+                </thead>
+                <tbody id="detailBody">
+                    <?php for ($i = 0; $i < count($details); $i++) { 
+                        $d = $details[$i];
+                        $qty = isset($d["REQD_QTY"]) ? floatval($d["REQD_QTY"]) : 0;
+                    ?>
+                        <tr>
+                            <td class="text-center align-middle row-no" style="width:25px;"></td>
+                            <td style="width:120px;">
+                                <input type="hidden" name="item_id[]" id="item_id_<?php echo h($i); ?>" value="<?php echo h($d["ITEM_ID"]); ?>">
+                                <input type="text" name="item_code[]" id="item_code_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_CODE"]) ? $d["ITEM_CODE"] : ""); ?>" autocomplete="off" oninput="showItemAC(this, <?php echo h($i); ?>)" onkeydown="itemKey(event, this, <?php echo h($i); ?>)">
+                            </td>
+                            <td>
+                                <input type="text" name="item_name[]" id="item_name_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_NAME"]) ? $d["ITEM_NAME"] : ""); ?>" autocomplete="off" oninput="showItemAC(this, <?php echo h($i); ?>)" onkeydown="itemKey(event, this, <?php echo h($i); ?>)">
+                            </td>
+                            <td style="width:80px;">
+                                <input type="text" class="text-right qty-input" name="reqd_qty[]" id="reqd_qty_<?php echo h($i); ?>" value="<?php echo h($qty == 0 ? "" : $qty); ?>" onkeydown="qtyKey(event, this)">
+                            </td>
+                            <td style="width:80px;">
+                                <input type="text" readonly id="item_unit_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_UNIT"]) ? $d["ITEM_UNIT"] : ""); ?>">
+                            </td>
+                            <td style="width:200px;">
+                                <input type="text" name="reqd_rem[]" value="<?php echo h(isset($d["REQD_REM"]) ? $d["REQD_REM"] : ""); ?>" onkeydown="remarkKey(event, this)">
+                            </td>
+                            <td class="text-center" style="width:60px;">
+                                <button type="button" class="btn-classic" style="padding:0 5px; margin-right:2px;" onclick="showPO(this)" title="PO"><i class="fas fa-shopping-cart"></i></button>
+                                <button type="button" class="btn-classic" style="padding:0 5px;" onclick="deleteRow(this)" title="Delete">X</button>
+                            </td>
+                        </tr>
+                    <?php } ?>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- FOOTER BAR -->
+        <div class="footer-bar">
+            <div>
+                <button type="button" class="btn-classic" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+            </div>
+            <div style="text-align: right;">
+                <button type="button" class="btn-classic" onclick="openSelectedPO()" style="width: 80px; height:24px;">PO'S</button>
+            </div>
+        </div>
+    </form>
+
+    <form id="deleteForm" method="post" action="requisition.php" style="display:none;">
+        <input type="hidden" name="action" value="delete">
+        <input type="hidden" name="req_id" id="delete_req_id" value="">
+    </form>
 </div>
 
 <div id="acBox" class="ac-box"></div>
 
-<!-- jQuery -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-<!-- Bootstrap 4 -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.2/dist/js/bootstrap.bundle.min.js"></script>
-<!-- AdminLTE App -->
-<script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
 </body>
 </html>

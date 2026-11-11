@@ -404,17 +404,16 @@ if ($export == "excel") {
 
     <style>
        html, body {
-    margin: 0;
-    padding: 0;
-    background: #9c9c9c;
-    color: #000000;
-    font-family: Calibri, Arial, sans-serif;
-    font-size: 10px; /* Ukuran font di file MPS/MOR/MRP Anda */
-    zoom: 100%; /* <--- TAMBAHKAN BARIS INI UNTUK ZOOM 125% DI LAYAR */
-}
+            margin: 0;
+            padding: 0;
+            background: #9c9c9c;
+            color: #000000;
+            font-family: Calibri, Arial, sans-serif;
+            font-size: 10px; 
+            zoom: 100%; 
+        }
 
         .filter {
-            /* Hapus Max-Width untuk layar penuh */
             width: calc(100% - 20px);
             margin: 8px auto;
             background: #d4d0c8;
@@ -450,14 +449,12 @@ if ($export == "excel") {
         }
 
         .toolbar {
-            /* Hapus Max-Width */
             width: calc(100% - 20px);
             margin: 0 auto 6px auto;
             text-align: right;
         }
 
         .page {
-            /* Hapus Max-Width dan tetapkan auto scroll */
             width: calc(100% - 20px);
             min-height: 780px;
             margin: 0 auto 20px auto;
@@ -512,9 +509,9 @@ if ($export == "excel") {
 
         table.report {
             width: 100%;
-            min-width: 1150px; /* Batas tidak menyusut untuk menjaga Grid */
+            min-width: 1150px; 
             border-collapse: collapse;
-            table-layout: fixed; /* Memaksa browser mengikuti lebar */
+            table-layout: fixed; 
             font-size: 8.5px;
             margin-top: 6px;
         }
@@ -526,7 +523,7 @@ if ($export == "excel") {
             vertical-align: top;
             line-height: 12px;
             overflow: hidden;
-            word-wrap: break-word; /* Mencegah kolom melebar */
+            word-wrap: break-word; 
         }
 
         table.report th {
@@ -600,7 +597,7 @@ if ($export == "excel") {
             }
 
             table.report {
-                font-size: 8px; /* Lebih besar untuk cetakan */
+                font-size: 8px; 
             }
 
             table.report th,
@@ -610,7 +607,6 @@ if ($export == "excel") {
             }
         }
 
-        /* --- Tambahan CSS untuk Kotak Tanda Tangan --- */
         .sign-wrapper {
             margin-top: 30px;
             width: 100%;
@@ -684,29 +680,33 @@ if ($export == "excel") {
 
     <?php if ($totalRows == 0) { ?>
         <div class="no-data">Data MRP tidak ditemukan.</div>
+    <?php } elseif ($totalRows > 1500) { ?>
+        <div class="no-data" style="color: #d9534f; font-weight:bold; font-size: 14px;">
+            ⚠️ Peringatan: Data terlalu besar (<?php echo n0($totalRows); ?> baris).<br>
+            Pembuatan tabel HTML diblokir untuk mencegah browser crash.<br><br>
+            Gunakan filter <b>ITTY</b> atau <b>Material</b>, atau klik <b>EXPORT EXCEL</b> untuk mengunduh seluruh data.
+        </div>
     <?php } else { ?>
         <table class="report">
-            <!-- Porsi 15 Kolom Total 100% Untuk Mengunci Presisi Tabel -->
             <colgroup>
-                <col style="width:8%;">   <!-- 1. CODE -->
-                <col style="width:26%;">  <!-- 2. PART NAME -->
-                <col style="width:4%;">   <!-- 3. Cavity -->
-                <col style="width:4%;">   <!-- 4. Weight Part -->
-                <col style="width:4%;">   <!-- 5. Weight Runner -->
-                <col style="width:4%;">   <!-- 6. Weight Total -->
-                <col style="width:3%;">   <!-- 7. Rcly (%) -->
-                <col style="width:5%;">   <!-- 8. Std.Used -->
-                <col style="width:3%;">   <!-- 9. Unit -->
-                <col style="width:6.5%;"> <!-- 10. M1 P.Plan -->
-                <col style="width:6.5%;"> <!-- 11. M1 M.Used -->
-                <col style="width:6.5%;"> <!-- 12. M2 P.Plan -->
-                <col style="width:6.5%;"> <!-- 13. M2 M.Used -->
-                <col style="width:6.5%;"> <!-- 14. M3 P.Plan -->
-                <col style="width:6.5%;"> <!-- 15. M3 M.Used -->
+                <col style="width:8%;">   
+                <col style="width:26%;">  
+                <col style="width:4%;">   
+                <col style="width:4%;">   
+                <col style="width:4%;">   
+                <col style="width:4%;">   
+                <col style="width:3%;">   
+                <col style="width:5%;">   
+                <col style="width:3%;">   
+                <col style="width:6.5%;"> 
+                <col style="width:6.5%;"> 
+                <col style="width:6.5%;"> 
+                <col style="width:6.5%;"> 
+                <col style="width:6.5%;"> 
+                <col style="width:6.5%;"> 
             </colgroup>
             <thead>
                 <tr>
-                    <!-- Atribut style="width: %" diterapkan pada sel Header -->
                     <th rowspan="2" style="width:8%;">CODE</th>
                     <th rowspan="2" style="width:26%;">PART NAME</th>
                     <th style="width:4%;">Cavity</th>
@@ -736,7 +736,6 @@ if ($export == "excel") {
             <tbody>
                 <?php foreach ($groups as $g) { ?>
                     <tr class="group1">
-                        <!-- Colspan disesuaikan dengan jumlah kolom HTML yang tersedia (15) -->
                         <td colspan="15"><?php echo h($g["ITTY_CODE"]); ?></td>
                     </tr>
 
@@ -768,7 +767,6 @@ if ($export == "excel") {
                         <?php } ?>
 
                         <tr class="total-row">
-                            <!-- Sisa dari 15 kolom = 9 Kosong + 6 Data -->
                             <td colspan="9"></td>
                             <td class="num"><?php echo h(n0($mat["SUM_PP1"])); ?></td>
                             <td class="num"><?php echo h(n2($mat["SUM_USE1"])); ?></td>
@@ -784,8 +782,6 @@ if ($export == "excel") {
         </table>
     <?php } ?>
 
-
-    <!-- Mulai: Kotak Tanda Tangan -->
     <div class="sign-wrapper">
         <table class="sign-box">
             <tr>
@@ -800,9 +796,8 @@ if ($export == "excel") {
             </tr>
         </table>
     </div>
-    <!-- Selesai: Kotak Tanda Tangan -->
 
-</div> <!-- Penutup <div class="page"> -->
+</div> 
 
 </body>
 </html>

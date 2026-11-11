@@ -152,8 +152,11 @@ if (isset($_POST['action']) && $_POST['action'] === 'load_sms_data') {
         
         $details = array();
         while ($dtl = sqlsrv_fetch_array($stmt_dtl, SQLSRV_FETCH_ASSOC)) {
+            $details = array();
+        while ($dtl = sqlsrv_fetch_array($stmt_dtl, SQLSRV_FETCH_ASSOC)) {
             $details[] = array(
                 'pd_id' => $dtl['PD_ID'],
+                'pd_lot' => trim(isset($dtl['PD_LOT']) ? $dtl['PD_LOT'] : ''), // PERBAIKAN: Memasukkan Lot Number
                 'item_id' => $dtl['ITEM_ID'],
                 'item_code' => trim(isset($dtl['ITEM_CODE']) ? $dtl['ITEM_CODE'] : ''),
                 'item_name' => trim(isset($dtl['ITEM_NAME']) ? $dtl['ITEM_NAME'] : ''),
@@ -162,6 +165,7 @@ if (isset($_POST['action']) && $_POST['action'] === 'load_sms_data') {
                 'supplied' => trim(isset($dtl['SMSD_SUPPLIED']) ? $dtl['SMSD_SUPPLIED'] : ''),
                 'time' => (float)$dtl['SMSD_TIME']
             );
+        }
         }
         sendJSON(array('status' => 'success', 'header' => $hdr, 'details' => $details));
     } else {
@@ -304,15 +308,194 @@ if (isset($_POST['action']) && $_POST['action'] === 'save_sms') {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.6.1/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/js/adminlte.min.js"></script>
-<script>
-// Include the rest of the javascript logic matching your original SMS script
-// ... [Original JS logic follows seamlessly here]
 
-$(document).on('focus', '.grid-input', function() {
-    $('.row-indicator').html('');
-    $(this).closest('tr').find('.row-indicator').html('<i class="fas fa-caret-right text-primary"></i>');
-    $('.dtl-row').removeClass('bg-lightblue');
-    $(this).closest('tr').addClass('bg-lightblue');
+<script>
+$(document).ready(function() {
+    let masterMaterials = [];
+
+    // ==========================================
+    // 1. INIT DATALIST (AUTOCOMPLETE) SAAT LOAD
+    // ==========================================
+    $.post(window.location.href, { action: 'get_all_wo' }, function(res) {
+        if(res.status === 'success') {
+            let html = '<datalist id="wo-datalist">';
+            res.data.forEach(w => html += `<option value="${w.number}">`);
+            html += '</datalist>';
+            $('body').append(html);
+        }
+    });
+
+    $.post(window.location.href, { action: 'get_recent_sms' }, function(res) {
+        if(res.status === 'success') {
+            let html = '<datalist id="sms-datalist">';
+            res.data.forEach(s => html += `<option value="${s}">`);
+            html += '</datalist>';
+            $('body').append(html);
+        }
+    });
+
+    $.post(window.location.href, { action: 'get_materials' }, function(res) {
+        if(res.status === 'success') {
+            masterMaterials = res.data;
+            let html = '<datalist id="mat-datalist">';
+            res.data.forEach(m => html += `<option value="${m.code}">${m.code} - ${m.name}</option>`);
+            html += '</datalist>';
+            $('body').append(html);
+        }
+    });
+
+    // ==========================================
+    // 2. TRIGGER PENCARIAN & NAVIGASI
+    // ==========================================
+    // Cari saat tekan ENTER di input SMS NO
+    $('#sms_no').on('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            loadSmsData('search', $(this).val().trim());
+        }
+    });
+
+    // Tombol Navigasi
+    $('#btn_first').click(() => loadSmsData('first'));
+    $('#btn_last').click(() => loadSmsData('last'));
+    $('#btn_prev').click(() => loadSmsData('prev'));
+    $('#btn_next').click(() => loadSmsData('next'));
+    $('#btn_fastrev').click(() => loadSmsData('first'));
+    $('#btn_fastfwd').click(() => loadSmsData('last'));
+
+    // ==========================================
+    // 3. FUNGSI UTAMA LOAD DATA
+    // ==========================================
+    function loadSmsData(nav, smsNo = '') {
+        let currentId = $('#sms_id').val();
+        $('#status_text').text('Mencari data...');
+        
+        $.post(window.location.href, { action: 'load_sms_data', nav: nav, sms_no: smsNo, current_id: currentId }, function(res) {
+            if (res.status === 'success') {
+                let h = res.header;
+                $('#sms_id').val(h.SMS_ID);
+                $('#sms_no').val(h.SMS_NO);
+                $('#wo_id').val(h.WO_ID);
+                $('#wo_number').val(h.WO_NUMBER);
+                $('#sms_date').val(h.SMS_DATE);
+                $('#item_code').val(h.ITEM_CODE);
+                $('#item_name').val(h.ITEM_NAME);
+                $('#mac_code').val(h.MAC_CODE);
+
+                // Muat ulang daftar LOT sesuai WO saat ini
+                loadLotDatalist(h.WO_ID);
+
+                // Render Grid Details
+                $('#detail_body').empty();
+                res.details.forEach(d => {
+                    let tr = `
+                        <tr class="dtl-row">
+                            <td class="row-indicator"></td>
+                            <td><input type="text" class="grid-input in-lot" list="lot-datalist" value="${d.pd_lot}"></td>
+                            <td><input type="text" class="grid-input in-matcode" list="mat-datalist" value="${d.item_code}"></td>
+                            <td><input type="text" class="grid-input in-matname" value="${d.item_name}" readonly tabindex="-1"></td>
+                            <td><input type="number" class="grid-input in-qty text-right" step="any" value="${d.qty}"></td>
+                            <td><input type="text" class="grid-input in-matlot" value="${d.matlot}"></td>
+                            <td><input type="text" class="grid-input in-supplied" value="${d.supplied}"></td>
+                            <td><input type="number" class="grid-input in-time text-right" step="any" value="${d.time}"></td>
+                        </tr>
+                    `;
+                    $('#detail_body').append(tr);
+                });
+                $('#status_text').text('Data berhasil dimuat.');
+            } else {
+                $('#status_text').text('Data tidak ditemukan.');
+                if (nav === 'search') {
+                    $('#sms_id').val('0');
+                    $('#wo_id').val('0');
+                    $('#wo_number, #item_code, #item_name, #mac_code').val('');
+                    $('#detail_body').empty();
+                }
+            }
+        });
+    }
+
+    // ==========================================
+    // 4. AUTO-FILL SAAT PILIH WO NO BARU
+    // ==========================================
+    $('#wo_number').on('change', function() {
+        let wo = $(this).val().trim();
+        if(!wo) return;
+        
+        $.post(window.location.href, { action: 'get_wo_info', wo_number: wo }, function(res) {
+            if (res.status === 'success') {
+                $('#wo_id').val(res.data.WO_ID);
+                $('#item_code').val(res.data.ITEM_CODE);
+                $('#item_name').val(res.data.ITEM_NAME);
+                $('#mac_code').val(res.data.MAC_CODE);
+                loadLotDatalist(res.data.WO_ID);
+            }
+        });
+    });
+
+    function loadLotDatalist(wo_id) {
+        if(!wo_id) return;
+        $.post(window.location.href, { action: 'get_lots', wo_id: wo_id }, function(res) {
+            if (res.status === 'success') {
+                $('#lot-datalist').remove();
+                let html = '<datalist id="lot-datalist">';
+                res.data.forEach(l => html += `<option value="${l.PD_LOT}">`);
+                html += '</datalist>';
+                $('body').append(html);
+            }
+        });
+    }
+
+    // ==========================================
+    // 5. MANAJEMEN GRID & TOMBOL AKSI
+    // ==========================================
+    $('#btn_add').click(function() {
+        $('#sms_id').val('0');
+        $('#sms_no, #wo_number, #item_code, #item_name, #mac_code').val('');
+        $('#wo_id').val('0');
+        $('#detail_body').empty();
+        $('#sms_no').focus();
+        $('#status_text').text('Ready');
+    });
+
+    $('#btn_add_row').click(function() {
+        let tr = `
+            <tr class="dtl-row">
+                <td class="row-indicator"></td>
+                <td><input type="text" class="grid-input in-lot" list="lot-datalist" placeholder="Ketik/Pilih Lot..."></td>
+                <td><input type="text" class="grid-input in-matcode" list="mat-datalist" placeholder="Ketik/Pilih..."></td>
+                <td><input type="text" class="grid-input in-matname" readonly tabindex="-1"></td>
+                <td><input type="number" class="grid-input in-qty text-right" step="any" value="0"></td>
+                <td><input type="text" class="grid-input in-matlot"></td>
+                <td><input type="text" class="grid-input in-supplied"></td>
+                <td><input type="number" class="grid-input in-time text-right" step="any" value="0"></td>
+            </tr>
+        `;
+        $('#detail_body').append(tr);
+    });
+
+    $('#btn_delete_row').click(function() {
+        $('#detail_body tr.bg-lightblue').remove();
+    });
+
+    // Auto-fill Material Name saat Mat Code dipilih
+    $(document).on('change', '.in-matcode', function() {
+        let code = $(this).val().trim();
+        let mat = masterMaterials.find(m => m.code === code);
+        if(mat) {
+            $(this).closest('tr').find('.in-matname').val(mat.name);
+        } else {
+            $(this).closest('tr').find('.in-matname').val('');
+        }
+    });
+    
+    // UI Helper untuk menandai baris aktif
+    $(document).on('focus', '.grid-input', function() {
+        $('.row-indicator').html('');
+        $(this).closest('tr').find('.row-indicator').html('<i class="fas fa-caret-right text-primary"></i>');
+        $('.dtl-row').removeClass('bg-lightblue');
+        $(this).closest('tr').addClass('bg-lightblue');
+    });
 });
 </script>
 </body>

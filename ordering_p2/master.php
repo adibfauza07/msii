@@ -274,25 +274,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "save_customer") {
                 WHERE CUST_ID = ?
             ";
             $params = array(
-                $custCode,
-                get_param("CUST_ABBR"),
-                $custComp,
-                get_param("CURR_CODE"),
-                get_param("CUST_ADDR1"),
-                get_param("CUST_ADDR2"),
-                get_param("CUST_CITY"),
-                get_param("CUST_PHONE"),
-                get_param("CUST_FAX"),
-                get_param("CUST_EMAIL"),
-                get_param("CUST_CONTA"),
-                get_param("CUST_TERM"),
-                get_param("CUST_NPWP"),
-                get_param("CUST_ALIAS"),
-                safe_int(get_param("KPBC_ID"), 0),
-                checked_value("CUST_INACTIVE"),
-                get_param("CUST_HSNO"),
-                get_param("CUST_TPB"),
-                $custId
+                $custCode, get_param("CUST_ABBR"), $custComp, get_param("CURR_CODE"),
+                get_param("CUST_ADDR1"), get_param("CUST_ADDR2"), get_param("CUST_CITY"), get_param("CUST_PHONE"),
+                get_param("CUST_FAX"), get_param("CUST_EMAIL"), get_param("CUST_CONTA"), get_param("CUST_TERM"),
+                get_param("CUST_NPWP"), get_param("CUST_ALIAS"), safe_int(get_param("KPBC_ID"), 0), checked_value("CUST_INACTIVE"),
+                get_param("CUST_HSNO"), get_param("CUST_TPB"), $custId
             );
             $stmt = sqlsrv_query($conn, $sql, $params);
             if ($stmt === false) {
@@ -315,24 +301,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "save_customer") {
                 SELECT CONVERT(INT, SCOPE_IDENTITY()) AS NEW_ID;
             ";
             $params = array(
-                $custCode,
-                get_param("CUST_ABBR"),
-                $custComp,
-                get_param("CURR_CODE"),
-                get_param("CUST_ADDR1"),
-                get_param("CUST_ADDR2"),
-                get_param("CUST_CITY"),
-                get_param("CUST_PHONE"),
-                get_param("CUST_FAX"),
-                get_param("CUST_EMAIL"),
-                get_param("CUST_CONTA"),
-                get_param("CUST_TERM"),
-                get_param("CUST_NPWP"),
-                get_param("CUST_ALIAS"),
-                safe_int(get_param("KPBC_ID"), 0),
-                checked_value("CUST_INACTIVE"),
-                get_param("CUST_HSNO"),
-                get_param("CUST_TPB")
+                $custCode, get_param("CUST_ABBR"), $custComp, get_param("CURR_CODE"), get_param("CUST_ADDR1"), get_param("CUST_ADDR2"),
+                get_param("CUST_CITY"), get_param("CUST_PHONE"), get_param("CUST_FAX"), get_param("CUST_EMAIL"), get_param("CUST_CONTA"), get_param("CUST_TERM"),
+                get_param("CUST_NPWP"), get_param("CUST_ALIAS"), safe_int(get_param("KPBC_ID"), 0), checked_value("CUST_INACTIVE"), get_param("CUST_HSNO"), get_param("CUST_TPB")
             );
             $newId = insert_and_get_id($conn, $sql, $params, "NEW_ID");
             if ($newId === false || $newId <= 0) {
@@ -365,7 +336,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "delete_customer") {
 // ==========================================================
 if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "save_price_header") {
     $tab = "price";
-
     $priceId = safe_int(get_param("PRICE_ID"), 0);
     $itemId = safe_int(get_param("ITEM_ID"), 0);
     $custId = safe_int(get_param("PRICE_CUST_ID"), 0);
@@ -376,28 +346,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "save_price_header") {
         $err = "Customer price belum dipilih.";
     } else {
         if ($priceId > 0) {
-            $sql = "
-                UPDATE dbo.PRICE
-                SET
-                    PRICE_CODE = ?,
-                    PART_ID = ?,
-                    CUST_ID = ?,
-                    CURR_CODE = ?,
-                    PRICE_INACTIVE = ?,
-                    PACK_ID = ?,
-                    PRICE_PACK_QTY = ?
-                WHERE PRICE_ID = ?
-            ";
-            $params = array(
-                get_param("PRICE_CODE"),
-                $itemId,
-                $custId,
-                get_param("PRICE_CURR_CODE"),
-                checked_value("PRICE_INACTIVE"),
-                safe_int(get_param("PACK_ID"), 0),
-                safe_int(get_param("PRICE_PACK_QTY"), 1),
-                $priceId
-            );
+            $sql = "UPDATE dbo.PRICE SET PRICE_CODE=?, PART_ID=?, CUST_ID=?, CURR_CODE=?, PRICE_INACTIVE=?, PACK_ID=?, PRICE_PACK_QTY=? WHERE PRICE_ID=?";
+            $params = array(get_param("PRICE_CODE"), $itemId, $custId, get_param("PRICE_CURR_CODE"), checked_value("PRICE_INACTIVE"), safe_int(get_param("PACK_ID"), 0), safe_int(get_param("PRICE_PACK_QTY"), 1), $priceId);
             $stmt = sqlsrv_query($conn, $sql, $params);
             if ($stmt === false) {
                 $err = "Gagal update PRICE: " . sql_error_text();
@@ -409,29 +359,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "save_price_header") {
         } else {
             $sql = "
                 SET NOCOUNT ON;
-                INSERT INTO dbo.PRICE
-                (
-                    PRICE_CODE,
-                    PART_ID,
-                    CUST_ID,
-                    CURR_CODE,
-                    PRICE_INACTIVE,
-                    PACK_ID,
-                    PRICE_PACK_QTY
-                )
-                VALUES
-                (?, ?, ?, ?, ?, ?, ?);
+                INSERT INTO dbo.PRICE (PRICE_CODE, PART_ID, CUST_ID, CURR_CODE, PRICE_INACTIVE, PACK_ID, PRICE_PACK_QTY) VALUES (?, ?, ?, ?, ?, ?, ?);
                 SELECT CONVERT(INT, SCOPE_IDENTITY()) AS NEW_ID;
             ";
-            $params = array(
-                get_param("PRICE_CODE"),
-                $itemId,
-                $custId,
-                get_param("PRICE_CURR_CODE"),
-                checked_value("PRICE_INACTIVE"),
-                safe_int(get_param("PACK_ID"), 0),
-                safe_int(get_param("PRICE_PACK_QTY"), 1)
-            );
+            $params = array(get_param("PRICE_CODE"), $itemId, $custId, get_param("PRICE_CURR_CODE"), checked_value("PRICE_INACTIVE"), safe_int(get_param("PACK_ID"), 0), safe_int(get_param("PRICE_PACK_QTY"), 1));
             $newId = insert_and_get_id($conn, $sql, $params, "NEW_ID");
             if ($newId === false || $newId <= 0) {
                 $err = "Gagal insert PRICE: " . sql_error_text();
@@ -457,13 +388,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "delete_price_header") {
         } else {
             try {
                 $stmt1 = sqlsrv_query($conn, "DELETE FROM dbo.PRICE_DETAIL WHERE PRICE_ID = ?", array($priceId));
-                if ($stmt1 === false) {
-                    throw new Exception("Gagal hapus PRICE_DETAIL: " . sql_error_text());
-                }
+                if ($stmt1 === false) throw new Exception("Gagal hapus PRICE_DETAIL: " . sql_error_text());
                 $stmt2 = sqlsrv_query($conn, "DELETE FROM dbo.PRICE WHERE PRICE_ID = ?", array($priceId));
-                if ($stmt2 === false) {
-                    throw new Exception("Gagal hapus PRICE: " . sql_error_text());
-                }
+                if ($stmt2 === false) throw new Exception("Gagal hapus PRICE: " . sql_error_text());
                 sqlsrv_commit($conn);
                 $msg = "PRICE dan detail berhasil dihapus.";
                 $forceItemId = $itemId;
@@ -477,7 +404,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "delete_price_header") {
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "save_price_detail") {
     $tab = "price";
-
     $priceId = safe_int(get_param("DETAIL_PRICE_ID"), 0);
     $itemId = safe_int(get_param("ITEM_ID"), 0);
     $oldStart = get_param("PRDT_START_OLD");
@@ -491,60 +417,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "save_price_detail") {
     } else {
         $exists = null;
         if ($oldStart != "") {
-            $exists = query_one(
-                $conn,
-                "SELECT TOP 1 PRICE_ID FROM dbo.PRICE_DETAIL WHERE PRICE_ID = ? AND CONVERT(VARCHAR(10), PRDT_START, 120) = ?",
-                array($priceId, $oldStart)
-            );
+            $exists = query_one($conn, "SELECT TOP 1 PRICE_ID FROM dbo.PRICE_DETAIL WHERE PRICE_ID = ? AND CONVERT(VARCHAR(10), PRDT_START, 120) = ?", array($priceId, $oldStart));
         }
 
         if ($exists) {
-            $sql = "
-                UPDATE dbo.PRICE_DETAIL
-                SET
-                    PRDT_START = ?,
-                    PRDT_END = ?,
-                    PRDT_PRICE = ?,
-                    PRDT_QNO = ?,
-                    PRDT_POSTED = ?,
-                    CURR_CODE = ?
-                WHERE PRICE_ID = ?
-                  AND CONVERT(VARCHAR(10), PRDT_START, 120) = ?
-            ";
-            $params = array(
-                $start,
-                $end,
-                safe_float(get_param("PRDT_PRICE"), 0),
-                get_param("PRDT_QNO"),
-                checked_value("PRDT_POSTED"),
-                get_param("DETAIL_CURR_CODE"),
-                $priceId,
-                $oldStart
-            );
+            $sql = "UPDATE dbo.PRICE_DETAIL SET PRDT_START=?, PRDT_END=?, PRDT_PRICE=?, PRDT_QNO=?, PRDT_POSTED=?, CURR_CODE=? WHERE PRICE_ID=? AND CONVERT(VARCHAR(10), PRDT_START, 120)=?";
+            $params = array($start, $end, safe_float(get_param("PRDT_PRICE"), 0), get_param("PRDT_QNO"), checked_value("PRDT_POSTED"), get_param("DETAIL_CURR_CODE"), $priceId, $oldStart);
         } else {
-            $sql = "
-                INSERT INTO dbo.PRICE_DETAIL
-                (
-                    PRICE_ID,
-                    PRDT_START,
-                    PRDT_END,
-                    PRDT_PRICE,
-                    PRDT_QNO,
-                    PRDT_POSTED,
-                    CURR_CODE
-                )
-                VALUES
-                (?, ?, ?, ?, ?, ?, ?)
-            ";
-            $params = array(
-                $priceId,
-                $start,
-                $end,
-                safe_float(get_param("PRDT_PRICE"), 0),
-                get_param("PRDT_QNO"),
-                checked_value("PRDT_POSTED"),
-                get_param("DETAIL_CURR_CODE")
-            );
+            $sql = "INSERT INTO dbo.PRICE_DETAIL (PRICE_ID, PRDT_START, PRDT_END, PRDT_PRICE, PRDT_QNO, PRDT_POSTED, CURR_CODE) VALUES (?, ?, ?, ?, ?, ?, ?)";
+            $params = array($priceId, $start, $end, safe_float(get_param("PRDT_PRICE"), 0), get_param("PRDT_QNO"), checked_value("PRDT_POSTED"), get_param("DETAIL_CURR_CODE"));
         }
 
         $stmt = sqlsrv_query($conn, $sql, $params);
@@ -561,7 +442,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "save_price_detail") {
 
 if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "delete_price_detail") {
     $tab = "price";
-
     $priceId = safe_int(get_param("DETAIL_PRICE_ID"), 0);
     $itemId = safe_int(get_param("ITEM_ID"), 0);
     $oldStart = get_param("PRDT_START_OLD");
@@ -569,17 +449,97 @@ if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "delete_price_detail") {
     if ($priceId <= 0 || $oldStart == "") {
         $err = "Pilih PRICE_DETAIL dulu.";
     } else {
-        $stmt = sqlsrv_query(
-            $conn,
-            "DELETE FROM dbo.PRICE_DETAIL WHERE PRICE_ID = ? AND CONVERT(VARCHAR(10), PRDT_START, 120) = ?",
-            array($priceId, $oldStart)
-        );
+        $stmt = sqlsrv_query($conn, "DELETE FROM dbo.PRICE_DETAIL WHERE PRICE_ID = ? AND CONVERT(VARCHAR(10), PRDT_START, 120) = ?", array($priceId, $oldStart));
         if ($stmt === false) {
             $err = "Gagal delete PRICE_DETAIL: " . sql_error_text();
         } else {
             $msg = "PRICE_DETAIL berhasil dihapus.";
             $forceItemId = $itemId;
             $forcePriceId = $priceId;
+        }
+    }
+}
+
+// ==========================================================
+// CURRENCY & RATE SAVE / DELETE
+// ==========================================================
+if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "save_currency") {
+    $tab = "currency";
+    $currCode = safe_trim(get_param("CURR_CODE"));
+
+    if ($currCode == "") {
+        $err = "CURR_CODE belum diisi.";
+    } else {
+        $exists = query_one($conn, "SELECT TOP 1 CURR_CODE FROM dbo.CURR WHERE CURR_CODE = ?", array($currCode));
+
+        if ($exists) {
+            $sql = "UPDATE dbo.CURR SET CURR_DESC = ?, CURR_SYMBOL = ?, CURR_DEC = ? WHERE CURR_CODE = ?";
+            $params = array(get_param("CURR_DESC"), get_param("CURR_SYMBOL"), safe_int(get_param("CURR_DEC"), 0), $currCode);
+        } else {
+            $sql = "INSERT INTO dbo.CURR (CURR_CODE, CURR_DESC, CURR_SYMBOL, CURR_DEC) VALUES (?, ?, ?, ?)";
+            $params = array($currCode, get_param("CURR_DESC"), get_param("CURR_SYMBOL"), safe_int(get_param("CURR_DEC"), 0));
+        }
+
+        $stmt = sqlsrv_query($conn, $sql, $params);
+        if ($stmt === false) {
+            $err = "Gagal simpan currency: " . sql_error_text();
+        } else {
+            $msg = "Currency berhasil disimpan.";
+            $forceCurrCode = $currCode;
+        }
+    }
+}
+
+if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "save_rate") {
+    $tab = "currency";
+    $currCode = safe_trim(get_param("RATE_CURR_CODE"));
+    $oldSDate = get_param("RATE_SDATE_OLD");
+    $sDate = get_param("CURR_SDATE");
+    $eDate = get_param("CURR_EDATE");
+
+    if ($currCode == "") {
+        $err = "Pilih Currency terlebih dahulu.";
+    } elseif ($sDate == "") {
+        $err = "Start Date (S DATE) belum diisi.";
+    } else {
+        $exists = null;
+        if ($oldSDate != "") {
+            $exists = query_one($conn, "SELECT TOP 1 CURR_CODE FROM dbo.CURR_RAT WHERE CURR_CODE = ? AND CONVERT(VARCHAR(10), CURR_SDATE, 120) = ?", array($currCode, $oldSDate));
+        }
+
+        if ($exists) {
+            $sql = "UPDATE dbo.CURR_RAT SET CURR_SDATE = ?, CURR_EDATE = ?, CURR_CRATE = ?, CURR_VRATE = ?, CURR_MM = ?, CURR_YY = ? WHERE CURR_CODE = ? AND CONVERT(VARCHAR(10), CURR_SDATE, 120) = ?";
+            $params = array($sDate, $eDate, safe_float(get_param("CURR_CRATE"), 0), safe_float(get_param("CURR_VRATE"), 0), safe_trim(get_param("CURR_MM")), safe_trim(get_param("CURR_YY")), $currCode, $oldSDate);
+        } else {
+            $sql = "INSERT INTO dbo.CURR_RAT (CURR_CODE, CURR_SDATE, CURR_EDATE, CURR_CRATE, CURR_VRATE, CURR_MM, CURR_YY) VALUES (?, ?, ?, ?, ?, ?, ?)";
+            $params = array($currCode, $sDate, $eDate, safe_float(get_param("CURR_CRATE"), 0), safe_float(get_param("CURR_VRATE"), 0), safe_trim(get_param("CURR_MM")), safe_trim(get_param("CURR_YY")));
+        }
+
+        $stmt = sqlsrv_query($conn, $sql, $params);
+        if ($stmt === false) {
+            $err = "Gagal simpan rate: " . sql_error_text();
+        } else {
+            $msg = "Currency Rate berhasil disimpan.";
+            $forceCurrCode = $currCode;
+            $forceRateStart = $sDate;
+        }
+    }
+}
+
+if ($_SERVER["REQUEST_METHOD"] == "POST" && $action == "delete_rate") {
+    $tab = "currency";
+    $currCode = safe_trim(get_param("RATE_CURR_CODE"));
+    $oldSDate = get_param("RATE_SDATE_OLD");
+
+    if ($currCode == "" || $oldSDate == "") {
+        $err = "Pilih Currency Rate yang akan dihapus.";
+    } else {
+        $stmt = sqlsrv_query($conn, "DELETE FROM dbo.CURR_RAT WHERE CURR_CODE = ? AND CONVERT(VARCHAR(10), CURR_SDATE, 120) = ?", array($currCode, $oldSDate));
+        if ($stmt === false) {
+            $err = "Gagal delete rate: " . sql_error_text();
+        } else {
+            $msg = "Currency Rate berhasil dihapus.";
+            $forceCurrCode = $currCode;
         }
     }
 }
@@ -620,7 +580,7 @@ $customerList = query_all(
 // LOAD PRICE TAB MASTER DETAIL
 // ==========================================================
 $isNewPrice = get_param("new_price", "") == "1";
-$isNewDetail = get_param("new_detail", "") == "1"; // Ditambahkan untuk New Detail logic
+$isNewDetail = get_param("new_detail", "") == "1";
 
 $selectedItemId = $forceItemId > 0 ? $forceItemId : safe_int(get_param("item_id"), 0);
 $selectedPriceId = $forcePriceId > 0 ? $forcePriceId : safe_int(get_param("price_id"), 0);
@@ -668,23 +628,12 @@ if ($selectedItemId > 0) {
         $conn,
         "
         SELECT
-            P.PRICE_ID,
-            P.PRICE_CODE,
-            P.PART_ID,
-            P.CUST_ID,
-            P.CURR_CODE,
-            ISNULL(P.PRICE_INACTIVE, 0) AS PRICE_INACTIVE,
-            P.PACK_ID,
-            P.PRICE_PACK_QTY,
-            C.CUST_CODE,
-            C.CUST_COMP,
-            ISNULL(PK.PACK_CODE, '') AS PACKING,
-            ISNULL(PK.PACK_DESC, '') AS PACK_DESC
+            P.PRICE_ID, P.PRICE_CODE, P.PART_ID, P.CUST_ID, P.CURR_CODE, ISNULL(P.PRICE_INACTIVE, 0) AS PRICE_INACTIVE,
+            P.PACK_ID, P.PRICE_PACK_QTY, C.CUST_CODE, C.CUST_COMP,
+            ISNULL(PK.PACK_CODE, '') AS PACKING, ISNULL(PK.PACK_DESC, '') AS PACK_DESC
         FROM dbo.PRICE AS P
-        INNER JOIN dbo.CUST AS C
-            ON P.CUST_ID = C.CUST_ID
-        LEFT JOIN dbo.PACK AS PK
-            ON P.PACK_ID = PK.PACK_ID
+        INNER JOIN dbo.CUST AS C ON P.CUST_ID = C.CUST_ID
+        LEFT JOIN dbo.PACK AS PK ON P.PACK_ID = PK.PACK_ID
         WHERE P.PART_ID = ?
         ORDER BY C.CUST_CODE, P.PRICE_ID
         ",
@@ -703,25 +652,7 @@ $priceData = array(
 );
 
 if ($selectedPriceId > 0) {
-    $row = query_one(
-        $conn,
-        "
-        SELECT TOP 1
-            P.PRICE_ID, P.PRICE_CODE, P.PART_ID, P.CUST_ID, P.CURR_CODE,
-            ISNULL(P.PRICE_INACTIVE, 0) AS PRICE_INACTIVE,
-            P.PACK_ID, P.PRICE_PACK_QTY,
-            C.CUST_CODE, C.CUST_COMP,
-            ISNULL(PK.PACK_CODE, '') AS PACKING,
-            ISNULL(PK.PACK_DESC, '') AS PACK_DESC
-        FROM dbo.PRICE AS P
-        INNER JOIN dbo.CUST AS C
-            ON P.CUST_ID = C.CUST_ID
-        LEFT JOIN dbo.PACK AS PK
-            ON P.PACK_ID = PK.PACK_ID
-        WHERE P.PRICE_ID = ?
-        ",
-        array($selectedPriceId)
-    );
+    $row = query_one($conn, "SELECT TOP 1 P.PRICE_ID, P.PRICE_CODE, P.PART_ID, P.CUST_ID, P.CURR_CODE, ISNULL(P.PRICE_INACTIVE, 0) AS PRICE_INACTIVE, P.PACK_ID, P.PRICE_PACK_QTY, C.CUST_CODE, C.CUST_COMP, ISNULL(PK.PACK_CODE, '') AS PACKING, ISNULL(PK.PACK_DESC, '') AS PACK_DESC FROM dbo.PRICE AS P INNER JOIN dbo.CUST AS C ON P.CUST_ID = C.CUST_ID LEFT JOIN dbo.PACK AS PK ON P.PACK_ID = PK.PACK_ID WHERE P.PRICE_ID = ?", array($selectedPriceId));
     if ($row) {
         $priceData = array_merge($priceData, $row);
     }
@@ -730,54 +661,20 @@ if ($selectedPriceId > 0) {
 $priceDetailRows = array();
 
 if ($selectedPriceId > 0) {
-    $priceDetailRows = query_all(
-        $conn,
-        "
-        SELECT
-            PRICE_ID,
-            PRDT_START,
-            PRDT_END,
-            PRDT_PRICE,
-            PRDT_QNO,
-            ISNULL(PRDT_POSTED, 0) AS PRDT_POSTED,
-            ISNULL(CURR_CODE, '') AS CURR_CODE
-        FROM dbo.PRICE_DETAIL
-        WHERE PRICE_ID = ?
-        ORDER BY PRDT_START DESC
-        ",
-        array($selectedPriceId)
-    );
+    $priceDetailRows = query_all($conn, "SELECT PRICE_ID, PRDT_START, PRDT_END, PRDT_PRICE, PRDT_QNO, ISNULL(PRDT_POSTED, 0) AS PRDT_POSTED, ISNULL(CURR_CODE, '') AS CURR_CODE FROM dbo.PRICE_DETAIL WHERE PRICE_ID = ? ORDER BY PRDT_START DESC", array($selectedPriceId));
 
-    // Default row hanya dipasang jika bukan dalam mode NEW DETAIL
     if ($selectedPrdtStart == "" && count($priceDetailRows) > 0 && !$isNewDetail) {
         $selectedPrdtStart = date_out($priceDetailRows[0]["PRDT_START"]);
     }
 }
 
 $detailData = array(
-    "PRICE_ID" => $selectedPriceId,
-    "PRDT_START" => "",
-    "PRDT_END" => "",
-    "PRDT_PRICE" => "",
-    "PRDT_QNO" => "",
-    "PRDT_POSTED" => 0,
-    "CURR_CODE" => safe_trim($priceData["CURR_CODE"])
+    "PRICE_ID" => $selectedPriceId, "PRDT_START" => "", "PRDT_END" => "", "PRDT_PRICE" => "",
+    "PRDT_QNO" => "", "PRDT_POSTED" => 0, "CURR_CODE" => safe_trim($priceData["CURR_CODE"])
 );
 
 if ($selectedPriceId > 0 && $selectedPrdtStart != "") {
-    $row = query_one(
-        $conn,
-        "
-        SELECT TOP 1
-            PRICE_ID, PRDT_START, PRDT_END, PRDT_PRICE, PRDT_QNO,
-            ISNULL(PRDT_POSTED, 0) AS PRDT_POSTED,
-            ISNULL(CURR_CODE, '') AS CURR_CODE
-        FROM dbo.PRICE_DETAIL
-        WHERE PRICE_ID = ?
-          AND CONVERT(VARCHAR(10), PRDT_START, 120) = ?
-        ",
-        array($selectedPriceId, $selectedPrdtStart)
-    );
+    $row = query_one($conn, "SELECT TOP 1 PRICE_ID, PRDT_START, PRDT_END, PRDT_PRICE, PRDT_QNO, ISNULL(PRDT_POSTED, 0) AS PRDT_POSTED, ISNULL(CURR_CODE, '') AS CURR_CODE FROM dbo.PRICE_DETAIL WHERE PRICE_ID = ? AND CONVERT(VARCHAR(10), PRDT_START, 120) = ?", array($selectedPriceId, $selectedPrdtStart));
     if ($row) {
         $detailData = array_merge($detailData, $row);
     }
@@ -786,8 +683,14 @@ if ($selectedPriceId > 0 && $selectedPrdtStart != "") {
 // ==========================================================
 // LOAD CURRENCY TAB
 // ==========================================================
+$isNewRate = get_param("new_rate", "") == "1";
+
 $selectedCurrCode = $forceCurrCode != "" ? $forceCurrCode : get_param("curr_code", "");
 $selectedRateSDate = $forceRateStart != "" ? $forceRateStart : get_param("rate_sdate", "");
+
+if ($isNewRate) {
+    $selectedRateSDate = "";
+}
 
 $currency = array("CURR_CODE" => "", "CURR_DESC" => "", "CURR_SYMBOL" => "", "CURR_DEC" => "");
 if ($selectedCurrCode != "") {
@@ -809,7 +712,7 @@ if ($selectedCurrCode != "") {
         array($selectedCurrCode)
     );
 
-    if ($selectedRateSDate == "" && count($rateList) > 0) {
+    if ($selectedRateSDate == "" && count($rateList) > 0 && !$isNewRate) {
         $selectedRateSDate = date_out($rateList[0]["CURR_SDATE"]);
     }
 
@@ -839,207 +742,41 @@ if ($selectedCurrCode != "") {
             font-size: 12px;
             color: #000000;
         }
-        .topbar {
-            background: #000080;
-            color: #ffffff;
-            padding: 8px 12px;
-            font-weight: bold;
-            text-align: center;
-            letter-spacing: 1px;
-        }
-        .wrap {
-            width: 1180px;
-            margin: 12px auto;
-            border: 1px solid #666666;
-            background: #a7c9e9;
-            padding: 10px;
-            box-sizing: border-box;
-        }
-        .tabs {
-            border-bottom: 1px solid #666666;
-            margin-bottom: 10px;
-        }
-        .tabs a {
-            display: inline-block;
-            padding: 6px 14px;
-            border: 1px solid #666666;
-            border-bottom: none;
-            background: #d4d0c8;
-            color: #000000;
-            text-decoration: none;
-            margin-right: 2px;
-        }
-        .tabs a.active {
-            background: #ffffff;
-            font-weight: bold;
-        }
-        .title {
-            font-size: 22px;
-            font-weight: bold;
-            margin: 6px 0 10px 0;
-            letter-spacing: 1px;
-        }
-        .msg {
-            padding: 8px;
-            background: #e9ffe9;
-            border: 1px solid #008000;
-            margin-bottom: 8px;
-            color: #004000;
-        }
-        .err {
-            padding: 8px;
-            background: #ffe9e9;
-            border: 1px solid #800000;
-            margin-bottom: 8px;
-            color: #800000;
-            white-space: pre-wrap;
-        }
-        .panel {
-            border: 1px solid #666666;
-            background: #b6d3ef;
-            padding: 10px;
-            box-sizing: border-box;
-            margin-bottom: 10px;
-        }
-        .row {
-            margin-bottom: 6px;
-            white-space: nowrap;
-        }
-        label {
-            display: inline-block;
-            width: 88px;
-            vertical-align: middle;
-        }
-        input[type="text"], input[type="date"], input[type="number"], select {
-            height: 23px;
-            border: 1px solid #777777;
-            background: #ffffff;
-            font-size: 12px;
-            box-sizing: border-box;
-            padding: 2px 4px;
-        }
-        input[readonly] {
-            background: #eeeeee;
-        }
-        .w50 { width: 50px; }
-        .w70 { width: 70px; }
-        .w80 { width: 80px; }
-        .w100 { width: 100px; }
-        .w120 { width: 120px; }
-        .w150 { width: 150px; }
-        .w180 { width: 180px; }
-        .w220 { width: 220px; }
-        .w300 { width: 300px; }
-        .w360 { width: 360px; }
-        .w500 { width: 500px; }
-        .w620 { width: 620px; }
-        .w760 { width: 760px; }
-        .btn {
-            display: inline-block;
-            border: 2px outset #ffffff;
-            background: #d4d0c8;
-            color: #000000;
-            padding: 5px 12px;
-            font-size: 12px;
-            cursor: pointer;
-            text-decoration: none;
-            margin-right: 4px;
-        }
-        .btn:active {
-            border: 2px inset #ffffff;
-        }
-        .split-price {
-            display: grid;
-            grid-template-columns: 640px 1fr;
-            gap: 10px;
-        }
-        .split-two {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-        .grid-wrap {
-            height: 250px;
-            overflow: auto;
-            border: 1px solid #666666;
-            background: #ffffff;
-        }
-        table.grid {
-            width: 100%;
-            border-collapse: collapse;
-            background: #ffffff;
-            font-size: 12px;
-        }
-        table.grid th, table.grid td {
-            border: 1px solid #999999;
-            padding: 4px 5px;
-            white-space: nowrap;
-        }
-        table.grid th {
-            background: #d4d0c8;
-            font-weight: bold;
-            text-align: left;
-            position: sticky;
-            top: 0;
-            z-index: 2;
-        }
-        table.grid tr:hover td {
-            background: #cfe5ff;
-        }
-        table.grid tr.selected td {
-            background: #2f70c9;
-            color: #ffffff;
-        }
-        .right { text-align: right; }
-        .center { text-align: center; }
-        .small-note {
-            color: #000080;
-            font-weight: bold;
-            margin: 4px 0 6px 0;
-        }
-        .section-title {
-            font-weight: bold;
-            margin: 0 0 6px 0;
-            color: #000000;
-        }
-        .autocomplete-box {
-            position: relative;
-            display: inline-block;
-            vertical-align: middle;
-        }
-        .autocomplete-list {
-            position: absolute;
-            left: 0;
-            top: 24px;
-            width: 540px;
-            max-height: 240px;
-            overflow-y: auto;
-            background: #ffffff;
-            border: 1px solid #333333;
-            z-index: 9999;
-            display: none;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.25);
-        }
-        .autocomplete-item {
-            padding: 5px 7px;
-            border-bottom: 1px solid #dddddd;
-            cursor: pointer;
-            line-height: 16px;
-            background: #ffffff;
-        }
-        .autocomplete-item:hover,
-        .autocomplete-item.active {
-            background: #2f70c9;
-            color: #ffffff;
-        }
-        .autocomplete-sub {
-            font-size: 11px;
-            color: #555555;
-        }
-        .autocomplete-item:hover .autocomplete-sub,
-        .autocomplete-item.active .autocomplete-sub {
-            color: #ffffff;
-        }
+        .topbar { background: #000080; color: #ffffff; padding: 8px 12px; font-weight: bold; text-align: center; letter-spacing: 1px; }
+        .wrap { width: 1180px; margin: 12px auto; border: 1px solid #666666; background: #a7c9e9; padding: 10px; box-sizing: border-box; }
+        .tabs { border-bottom: 1px solid #666666; margin-bottom: 10px; }
+        .tabs a { display: inline-block; padding: 6px 14px; border: 1px solid #666666; border-bottom: none; background: #d4d0c8; color: #000000; text-decoration: none; margin-right: 2px; }
+        .tabs a.active { background: #ffffff; font-weight: bold; }
+        .title { font-size: 22px; font-weight: bold; margin: 6px 0 10px 0; letter-spacing: 1px; }
+        .msg { padding: 8px; background: #e9ffe9; border: 1px solid #008000; margin-bottom: 8px; color: #004000; }
+        .err { padding: 8px; background: #ffe9e9; border: 1px solid #800000; margin-bottom: 8px; color: #800000; white-space: pre-wrap; }
+        .panel { border: 1px solid #666666; background: #b6d3ef; padding: 10px; box-sizing: border-box; margin-bottom: 10px; }
+        .row { margin-bottom: 6px; white-space: nowrap; }
+        label { display: inline-block; width: 88px; vertical-align: middle; }
+        input[type="text"], input[type="date"], input[type="number"], select { height: 23px; border: 1px solid #777777; background: #ffffff; font-size: 12px; box-sizing: border-box; padding: 2px 4px; }
+        input[readonly] { background: #eeeeee; }
+        .w50 { width: 50px; } .w70 { width: 70px; } .w80 { width: 80px; } .w100 { width: 100px; } .w120 { width: 120px; }
+        .w150 { width: 150px; } .w180 { width: 180px; } .w220 { width: 220px; } .w300 { width: 300px; } .w360 { width: 360px; }
+        .w500 { width: 500px; } .w620 { width: 620px; } .w760 { width: 760px; }
+        .btn { display: inline-block; border: 2px outset #ffffff; background: #d4d0c8; color: #000000; padding: 5px 12px; font-size: 12px; cursor: pointer; text-decoration: none; margin-right: 4px; }
+        .btn:active { border: 2px inset #ffffff; }
+        .split-price { display: grid; grid-template-columns: 640px 1fr; gap: 10px; }
+        .split-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .grid-wrap { height: 250px; overflow: auto; border: 1px solid #666666; background: #ffffff; }
+        table.grid { width: 100%; border-collapse: collapse; background: #ffffff; font-size: 12px; }
+        table.grid th, table.grid td { border: 1px solid #999999; padding: 4px 5px; white-space: nowrap; }
+        table.grid th { background: #d4d0c8; font-weight: bold; text-align: left; position: sticky; top: 0; z-index: 2; }
+        table.grid tr:hover td { background: #cfe5ff; }
+        table.grid tr.selected td { background: #2f70c9; color: #ffffff; }
+        .right { text-align: right; } .center { text-align: center; }
+        .small-note { color: #000080; font-weight: bold; margin: 4px 0 6px 0; }
+        .section-title { font-weight: bold; margin: 0 0 6px 0; color: #000000; }
+        .autocomplete-box { position: relative; display: inline-block; vertical-align: middle; }
+        .autocomplete-list { position: absolute; left: 0; top: 24px; width: 540px; max-height: 240px; overflow-y: auto; background: #ffffff; border: 1px solid #333333; z-index: 9999; display: none; box-shadow: 2px 2px 5px rgba(0,0,0,0.25); }
+        .autocomplete-item { padding: 5px 7px; border-bottom: 1px solid #dddddd; cursor: pointer; line-height: 16px; background: #ffffff; }
+        .autocomplete-item:hover, .autocomplete-item.active { background: #2f70c9; color: #ffffff; }
+        .autocomplete-sub { font-size: 11px; color: #555555; }
+        .autocomplete-item:hover .autocomplete-sub, .autocomplete-item.active .autocomplete-sub { color: #ffffff; }
     </style>
 </head>
 <body>
@@ -1286,7 +1023,6 @@ if ($selectedCurrCode != "") {
                         </div>
                         <div class="row">
                             <label>PRDT_PRICE</label>
-                            <!-- Password protection handler ditambahkan di baris ini -->
                             <input type="text" name="PRDT_PRICE" class="w120" value="<?php echo h($detailData["PRDT_PRICE"]); ?>" readonly onclick="checkPricePassword(this)" title="Klik untuk edit" style="cursor:pointer;" placeholder="Click to Unlock">
                             <label style="width:80px;">#Quotation</label>
                             <input type="text" name="PRDT_QNO" class="w180" value="<?php echo h($detailData["PRDT_QNO"]); ?>">
@@ -1298,7 +1034,6 @@ if ($selectedCurrCode != "") {
                         <div class="row">
                             <button type="submit" name="action" value="save_price_detail" class="btn">SIMPAN DETAIL</button>
                             <button type="submit" name="action" value="delete_price_detail" class="btn" onclick="return confirm('Delete price detail ini?');">DELETE DETAIL</button>
-                            <!-- Mengirimkan flag new_detail=1 -->
                             <a class="btn" href="master.php?tab=price&item_id=<?php echo intval($selectedItemId); ?>&price_id=<?php echo intval($selectedPriceId); ?>&new_detail=1">NEW DETAIL</a>
                         </div>
                     </form>
@@ -1317,7 +1052,6 @@ if ($selectedCurrCode != "") {
                             </tr>
                         </thead>
                         <tbody>
-                            <!-- Baris Kosong Khusus Input Data Baru -->
                             <?php if ($isNewDetail) { ?>
                                 <tr style="background:#ffffcc;">
                                     <td style="padding: 2px;"><input type="date" id="in_PRDT_START" onkeydown="checkInlineEnter(event)" style="width:100px; padding:2px; font-size:11px;"></td>
@@ -1334,7 +1068,6 @@ if ($selectedCurrCode != "") {
                                     <td style="padding: 2px;"><input type="text" id="in_PRDT_QNO" onkeydown="checkInlineEnter(event)" style="width:120px; padding:2px; font-size:11px;" placeholder="Press Enter to Save"></td>
                                 </tr>
                             <?php } ?>
-                            <!-- Loop Data Detail Eksisting -->
                             <?php for ($i = 0; $i < count($priceDetailRows); $i++) { $r = $priceDetailRows[$i]; $s = date_out($r["PRDT_START"]); ?>
                                 <tr class="<?php echo $s == date_out($detailData["PRDT_START"]) && !$isNewDetail ? "selected" : ""; ?>" onclick="location.href='master.php?tab=price&item_id=<?php echo intval($selectedItemId); ?>&price_id=<?php echo intval($selectedPriceId); ?>&prdt_start=<?php echo urlencode($s); ?>'">
                                     <td><?php echo h($s); ?></td>
@@ -1417,6 +1150,8 @@ if ($selectedCurrCode != "") {
                         <div class="row">
                             <button type="submit" name="action" value="save_rate" class="btn">SIMPAN RATE</button>
                             <button type="submit" name="action" value="delete_rate" class="btn" onclick="return confirm('Delete rate ini?');">DELETE RATE</button>
+                            <!-- TOMBOL NEW RATE (TAMBAH BULAN) DITAMBAHKAN DI SINI -->
+                            <a class="btn" href="master.php?tab=currency&curr_code=<?php echo urlencode($currency["CURR_CODE"]); ?>&new_rate=1">NEW RATE</a>
                         </div>
                     </form>
                 </div>
@@ -1427,7 +1162,7 @@ if ($selectedCurrCode != "") {
                         <thead><tr><th>S DATE</th><th>E DATE</th><th>C RATE</th><th>V RATE</th><th>MM</th><th>YY</th></tr></thead>
                         <tbody>
                             <?php for ($i = 0; $i < count($rateList); $i++) { $r = $rateList[$i]; $s = date_out($r["CURR_SDATE"]); ?>
-                                <tr class="<?php echo $s == date_out($rateData["CURR_SDATE"]) ? "selected" : ""; ?>" onclick="location.href='master.php?tab=currency&curr_code=<?php echo urlencode($r["CURR_CODE"]); ?>&rate_sdate=<?php echo urlencode($s); ?>'">
+                                <tr class="<?php echo $s == date_out($rateData["CURR_SDATE"]) && !$isNewRate ? "selected" : ""; ?>" onclick="location.href='master.php?tab=currency&curr_code=<?php echo urlencode($r["CURR_CODE"]); ?>&rate_sdate=<?php echo urlencode($s); ?>'">
                                     <td><?php echo h($s); ?></td><td><?php echo h(date_out($r["CURR_EDATE"])); ?></td>
 <td class="right"><?php echo h((float)$r["CURR_CRATE"]); ?></td><td class="right"><?php echo h((float)$r["CURR_VRATE"]); ?></td><td><?php echo h($r["CURR_MM"]); ?></td><td><?php echo h($r["CURR_YY"]); ?></td>
                                 </tr>
@@ -1441,7 +1176,6 @@ if ($selectedCurrCode != "") {
 </div>
 
 <script>
-// (Bagian script Autocomplete tidak berubah, dilewati atau dicantumkan persis sama seperti sebelumnya)
 function acEnc(value) { return encodeURIComponent(value == null ? "" : value); }
 function acHtml(value) {
     return String(value == null ? "" : value)
@@ -1572,17 +1306,13 @@ setupAutocomplete("searchCurrency", "searchCurrencyList", "currency",
     function(r) { location.href = "master.php?tab=currency&curr_code=" + acEnc(r.CURR_CODE); }
 );
 
-// ==========================================================
-// CUSTOM SCRIPT UNTUK PASSWORD HARGA DAN INLINE ENTER SAVE
-// ==========================================================
-
 function checkPricePassword(el) {
     if (el.hasAttribute('readonly')) {
         var pwd = prompt("Masukkan password untuk edit harga:");
         if (pwd === 'q9tj9') {
             el.removeAttribute('readonly');
             el.focus();
-            el.placeholder = ""; // Kosongkan placeholder jika sudah unlock
+            el.placeholder = ""; 
         } else {
             if (pwd !== null) {
                 alert("Password salah!");
@@ -1595,7 +1325,6 @@ function checkInlineEnter(e) {
     if (e.keyCode === 13 || e.key === 'Enter') {
         e.preventDefault();
         
-        // Pindahkan value dari inline input (baris tabel baru) ke form yang ada di atas
         var fStart = document.querySelector('input[name="PRDT_START"]');
         var fEnd   = document.querySelector('input[name="PRDT_END"]');
         var fPrice = document.querySelector('input[name="PRDT_PRICE"]');
@@ -1609,10 +1338,8 @@ function checkInlineEnter(e) {
         if(fCurr)  fCurr.value  = document.getElementById('in_CURR_CODE').value;
         if(fQno)   fQno.value   = document.getElementById('in_PRDT_QNO').value;
         
-        // Bersihkan data start yang lama agar statusnya menjadi form Insert Baru, bukan Update.
         if(fOld)   fOld.value   = "";
 
-        // Trigger klik pada tombol Simpan Detail (Submit trigger otomatis)
         var btn = document.querySelector('button[value="save_price_detail"]');
         if(btn) btn.click();
     }

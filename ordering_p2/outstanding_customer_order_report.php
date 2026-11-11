@@ -283,19 +283,19 @@ for ($i = 0; $i < count($rows); $i++) {
     );
 
     $itemOrderQty += $r["ORDP_QTY"];
-    $itemOrderAmount += $r["AMOUNT_USD"];
-    $itemDelvQty += $r["ORDP_DQTY"];
-    $itemDelvAmount += $r["DAMOUNT_USD"];
-    $itemBalQty += $r["ORDP_BQTY"];
-    $itemBalAmount += $r["BAMOUNT_USD"];
+    $itemOrderAmount +=$r["AMOUNT_USD"];
+    $itemDelvQty +=$r["ORDP_DQTY"];
+    $itemDelvAmount +=$r["DAMOUNT_USD"];
+    $itemBalQty +=$r["ORDP_BQTY"];
+    $itemBalAmount +=$r["BAMOUNT_USD"];
 
-    $custOrderAmount += $r["AMOUNT_USD"];
-    $custDelvAmount  += $r["DAMOUNT_USD"];
-    $custBalAmount   += $r["BAMOUNT_USD"];
+    $custOrderAmount +=$r["AMOUNT_USD"];
+    $custDelvAmount  +=$r["DAMOUNT_USD"];
+    $custBalAmount   +=$r["BAMOUNT_USD"];
 
-    $grandOrderAmount += $r["AMOUNT_USD"];
-    $grandDelvAmount  += $r["DAMOUNT_USD"];
-    $grandBalAmount   += $r["BAMOUNT_USD"];
+    $grandOrderAmount +=$r["AMOUNT_USD"];
+    $grandDelvAmount  +=$r["DAMOUNT_USD"];
+    $grandBalAmount   +=$r["BAMOUNT_USD"];
 }
 
 if ($lastItem != "") {
@@ -323,8 +323,7 @@ if ($lastCust != "") {
     );
 }
 
-if (count($rows) > 0) {
-    $printRows[] = array(
+if (count($rows) > 0) {$printRows[] = array(
         "ROW_TYPE"     => "GRAND_TOTAL",
         "ORDER_AMOUNT" => $grandOrderAmount,
         "DELIV_AMOUNT" => $grandDelvAmount,
@@ -332,18 +331,16 @@ if (count($rows) > 0) {
     );
 }
 
-if (count($printRows) == 0) {
-    $printRows[] = array(
+if (count($printRows) == 0) {$printRows[] = array(
         "ROW_TYPE" => "EMPTY",
         "MESSAGE"  => "Data outstanding customer order tidak ditemukan."
     );
 }
 
-    $pages = array_chunk($printRows, $rowsPerPage);
+    $pages = array_chunk($printRows,$rowsPerPage);
     $totalPages = count($pages);
 
-    if ($totalPages <= 0) {
-        $totalPages = 1;
+    if ($totalPages <= 0) {$totalPages = 1;
     }
 }
 
@@ -364,7 +361,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
         body {
             margin: 0;
             background: #9a9a9a;
-            font-family: "Courier New", monospace;
+            font-family: Arial, Helvetica, sans-serif;
             font-size: 10px;
             color: #000000;
         }
@@ -373,10 +370,9 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
             width: 285mm;
             margin: 8px auto;
             background: #d4d0c8;
-            border: 1px solid #666666;
             padding: 6px;
             box-sizing: border-box;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
             font-size: 12px;
         }
 
@@ -423,7 +419,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
             border-bottom: 1px solid #dddddd;
             cursor: pointer;
             line-height: 16px;
-            font-family: Tahoma, Arial, sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
             font-size: 12px;
         }
 
@@ -443,7 +439,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
             padding: 6px 14px;
             font-size: 11px;
             cursor: pointer;
-            font-family: Arial, sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
         }
 
         .page {
@@ -451,7 +447,6 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
             min-height: 198mm;
             margin: 10px auto;
             background: #ffffff;
-            border: 2px solid #000000;
             padding: 7mm;
             box-sizing: border-box;
             page-break-after: always;
@@ -475,7 +470,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
 
         .company {
             width: 30%;
-            font-family: Arial, sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
             font-size: 11px;
             line-height: 14px;
         }
@@ -488,7 +483,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
         .title-area {
             width: 40%;
             text-align: center;
-            font-family: Arial, sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
         }
 
         .report-title {
@@ -500,14 +495,14 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
         .right-info {
             width: 30%;
             text-align: right;
-            font-family: Arial, sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
             font-size: 11px;
             line-height: 17px;
         }
 
         .print-date {
             text-align: right;
-            font-family: Arial, sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
             font-size: 11px;
             margin-bottom: 4px;
         }
@@ -532,8 +527,6 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
         }
 
         .order-table thead th {
-            border-top: 1px solid #000000;
-            border-bottom: 1px solid #000000;
             font-weight: bold;
             text-align: center;
         }
@@ -548,20 +541,17 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
             font-size: 11px;
             padding-top: 4px;
         }
-.item-total-row td {
-    font-weight: bold;
-    border-top: 1px solid #000000;
-}
+
+        .item-total-row td {
+            font-weight: bold;
+        }
+
         .total-row td {
             font-weight: bold;
-            border-top: 1px solid #000000;
-            border-bottom: 1px solid #000000;
         }
 
         .grand-row td {
             font-weight: bold;
-            border-top: 2px solid #000000;
-            border-bottom: 2px solid #000000;
             background: #eeeeee;
         }
 
@@ -602,7 +592,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
         }
 
         .no-data {
-            font-family: Arial, sans-serif;
+            font-family: Arial, Helvetica, sans-serif;
             font-size: 14px;
             text-align: center;
             margin-top: 70px;
@@ -690,10 +680,10 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
     </div>
 <?php } ?>
 
-<?php for ($p = 0; $p < count($pages); $p++) { ?>
+<?php for ($p = 0; $p < count($pages);$p++) { ?>
     <?php
         $pageRows = $pages[$p];
-        $pageNo = $p + 1;
+        $pageNo =$p + 1;
     ?>
 
     <div class="page">
@@ -737,7 +727,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
             </thead>
 
             <tbody>
-                <?php for ($i = 0; $i < count($pageRows); $i++) { ?>
+                <?php for ($i = 0; $i < count($pageRows);$i++) { ?>
                     <?php $r = $pageRows[$i]; ?>
 
                     <?php if ($r["ROW_TYPE"] == "CUSTOMER") { ?>
@@ -771,7 +761,7 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
                             <td class="col-amt num"><?php echo h(fmt_amount($r["BAMOUNT_USD"])); ?></td>
                         </tr>
                     
-					<?php } elseif ($r["ROW_TYPE"] == "ITEM_TOTAL") { ?>
+                    <?php } elseif ($r["ROW_TYPE"] == "ITEM_TOTAL") { ?>
     <tr class="item-total-row">
         <td colspan="5" class="num">
             TOTAL ITEM
@@ -789,8 +779,8 @@ $selfFile = basename($_SERVER["PHP_SELF"]);
         <td class="col-qty num"><?php echo h(fmt_num($r["BAL_QTY"], 0)); ?></td>
         <td class="col-amt num"><?php echo h(fmt_amount($r["BAL_AMOUNT"])); ?></td>
     </tr>
-					
-					<?php } elseif ($r["ROW_TYPE"] == "CUSTOMER_TOTAL") { ?>
+                    
+                    <?php } elseif ($r["ROW_TYPE"] == "CUSTOMER_TOTAL") { ?>
                         <tr class="total-row">
                             <td colspan="6" class="num">
                                 Total <?php echo h($r["CUST_CODE"]); ?> - <?php echo h($r["CUST_COMP"]); ?>

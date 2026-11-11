@@ -114,11 +114,6 @@ while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
         $station = "*NONE*";
     }
 
-    /*
-        Crystal Report memakai group berdasarkan ST:
-        Sum(MCD1, ST), Sum(MCD2, ST), Sum(MCD3, ST)
-        Jadi key group harus ST saja, bukan PROCESS + ST.
-    */
     $groupKey = $station;
 
     if (!isset($groups[$groupKey])) {
@@ -380,14 +375,14 @@ if ($export == "excel") {
 
     <style>
        html, body {
-    margin: 0;
-    padding: 0;
-    background: #9c9c9c;
-    color: #000000;
-    font-family: Calibri, Arial, sans-serif;
-    font-size: 10px; /* Ukuran font di file MPS/MOR/MRP Anda */
-    zoom: 100%; /* <--- TAMBAHKAN BARIS INI UNTUK ZOOM 125% DI LAYAR */
-}
+            margin: 0;
+            padding: 0;
+            background: #9c9c9c;
+            color: #000000;
+            font-family: Calibri, Arial, sans-serif;
+            font-size: 10px; 
+            zoom: 100%;
+        }
 
         .filter {
             width: calc(100% - 24px);
@@ -436,7 +431,7 @@ if ($export == "excel") {
             padding: 14px;
             border: 1px solid #000000;
             box-sizing: border-box;
-            overflow-x: auto; /* Mengizinkan scroll horizontal jika melebih layar */
+            overflow-x: auto; 
         }
 
         .header {
@@ -496,9 +491,9 @@ if ($export == "excel") {
 
         table.mps {
             width: 100%;
-            min-width: 1050px; /* Menjaga agar tidak menyusut paksa */
+            min-width: 1050px; 
             border-collapse: collapse;
-            table-layout: fixed; /* Memaksa browser mengikuti instruksi kolom */
+            table-layout: fixed; 
             margin-top: 3px;
             page-break-inside: auto;
         }
@@ -511,7 +506,7 @@ if ($export == "excel") {
             font-size: 8.5px; 
             line-height: 11px;
             overflow: hidden;
-            word-wrap: break-word; /* Mencegah kolom melebar karena teks panjang */
+            word-wrap: break-word; 
         }
 
         table.mps th {
@@ -642,6 +637,12 @@ if ($export == "excel") {
 
     <?php if ($totalRow == 0) { ?>
         <div class="no-data">Data MPS tidak ditemukan.</div>
+    <?php } elseif ($totalRow > 1500) { ?>
+        <div class="no-data" style="color: #d9534f; font-weight:bold; font-size: 14px;">
+            ⚠️ Peringatan: Data terlalu besar (<?php echo n0($totalRow); ?> baris).<br>
+            Pembuatan tabel HTML diblokir untuk mencegah browser crash.<br><br>
+            Silakan klik tombol <b>EXPORT EXCEL</b> untuk melihat seluruh data.
+        </div>
     <?php } else { ?>
 
         <?php foreach ($groups as $groupKey => $g) { ?>
@@ -650,38 +651,32 @@ if ($export == "excel") {
             </div>
 
             <table class="mps">
-                <!-- Konfigurasi Paksa Lebar 100% -->
                 <colgroup>
-                    <col style="width:5%;">    <!-- PART -->
-                    <col style="width:20%;">   <!-- PART NAME -->
-                    <col style="width:4%;">    <!-- CUST -->
-                    <col style="width:3%;">    <!-- CAVT -->
-                    <col style="width:3%;">    <!-- CYTM -->
-                    <col style="width:3%;">    <!-- CAP -->
-                    <col style="width:3%;">    <!-- SAFE -->
-                    <col style="width:4%;">    <!-- B.STOCK -->
-                    <!-- M1 -->
+                    <col style="width:5%;">    
+                    <col style="width:20%;">   
+                    <col style="width:4%;">    
+                    <col style="width:3%;">    
+                    <col style="width:3%;">    
+                    <col style="width:3%;">    
+                    <col style="width:3%;">    
+                    <col style="width:4%;">    
                     <col style="width:4%;">
                     <col style="width:4%;">
                     <col style="width:4%;">
                     <col style="width:4%;">
-                    <!-- M2 -->
                     <col style="width:4%;">
                     <col style="width:4%;">
                     <col style="width:4%;">
                     <col style="width:4%;">
-                    <!-- M3 -->
                     <col style="width:4%;">
                     <col style="width:4%;">
                     <col style="width:4%;">
                     <col style="width:4%;">
-                    <!-- REMARKS -->
                     <col style="width:7%;">
                 </colgroup>
 
                 <thead>
                     <tr>
-                        <!-- Penegasan width pada <th> -->
                         <th rowspan="2" style="width:5%;">PART</th>
                         <th rowspan="2" style="width:20%;">PART NAME</th>
                         <th rowspan="2" style="width:4%;">CUST</th>

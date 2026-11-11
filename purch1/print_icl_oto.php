@@ -181,13 +181,13 @@ $totalPages = count($pages);
         
         <div class="header-container">
             <div class="header-left">
-                <div class="company-name">PT. IMC TEKNO INDONESIA PLANT 2</div>
+                <div class="company-name">PT. IMC TEKNO INDONESIA PLANT 1</div>
                 <div class="doc-title">INCOMING CHECK LIST</div>
                 <div class="company-addr">
-                    Kawasan Industri Kota Bukit Indah<br>
-                    Blok A-III No.15E Dangdeur Bungursari<br>
-                    Kab. Purwakarta, Jawa Barat 41181<br>
-                    Phone : (0264)351440
+                    Kawasan Berikat Kota Bukit Indah<br>
+                    ST-4D Block A-II No.29, Purwakarta,<br>
+                    Jawa Barat 41181, Indonesia.<br>
+                    
                 </div>
             </div>
             <div class="header-right">

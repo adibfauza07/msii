@@ -1,7 +1,7 @@
 <?php
 /**
- * API untuk mengambil list WO + Process + MAC + ITEMS
- * Urutan berdasarkan WO_START terbaru (DESC), lalu WO_ID DESC
+ * API untuk mengambil list WO + Process + MAC + ITEMS 
+ * + STANDARDS (Cavity, CycTm, Tonase dari tabel ITEM_PROD)
  * File: get_wo_list.php
  */
 ob_start();
@@ -44,7 +44,8 @@ function ac_utf8($value) {
 
 $like = '%' . $item_code . '%';
 
-// PERBAIKAN: Diurutkan langsung berdasarkan WO.WO_START DESC (tanggal terbaru paling atas)
+// QUERY BARU: Menarik ITEM_CAVT dan ITEM_CYTM dari ITEM_PROD, 
+// serta MAG_STATION (Tonase Standar) dari MAG
 $sql = "
     SELECT TOP 50 
         WO.WO_ID, 
@@ -60,14 +61,17 @@ $sql = "
         ITEMS.ITEM_NO, 
         MAC.MAC_CODE, 
         MAC.MAC_SERIAL, 
-        MAG.MAG_STATION,
         PROCESS.PROC_NAME,
+        ISNULL(IP.ITEM_CAVT, 0) AS STD_CAV,
+        ISNULL(IP.ITEM_CYTM, 0) AS STD_CYCTM,
+        ISNULL(STD_MAG.MAG_STATION, '') AS STD_TONASE,
         ISNULL(P.PROD_COUNT, 0) AS PROD_COUNT
     FROM dbo.WO 
     INNER JOIN dbo.PROCESS ON WO.PROC_ID = PROCESS.PROC_ID 
     INNER JOIN dbo.MAC ON WO.MAC_ID = MAC.MAC_ID
-    INNER JOIN dbo.MAG ON MAC.MAG_ID = MAG.MAG_ID
     INNER JOIN dbo.ITEMS ON WO.ITEM_ID = ITEMS.ITEM_ID
+    LEFT JOIN dbo.ITEM_PROD IP ON ITEMS.ITEM_ID = IP.ITEM_ID
+    LEFT JOIN dbo.MAG STD_MAG ON IP.MAG_ID = STD_MAG.MAG_ID
     LEFT JOIN (
         SELECT WO_ID, COUNT(PD_ID) AS PROD_COUNT
         FROM dbo.PRODUCTION
@@ -116,6 +120,9 @@ if ($stmt !== false) {
             'ITEM_NO'     => ac_utf8($row['ITEM_NO']),
             'ITEM_NAME'   => ac_utf8($row['ITEM_NAME']),
             'MAC_CODE'    => ac_utf8($row['MAC_CODE']),
+            'STD_CAV'     => (float)$row['STD_CAV'],      // Pastikan angka terkirim dengan benar
+            'STD_CYCTM'   => (float)$row['STD_CYCTM'],    // Pastikan angka terkirim dengan benar
+            'TONASE'      => ac_utf8($row['STD_TONASE']),
             'PROD_COUNT'  => (int)$row['PROD_COUNT']
         );
     }

@@ -193,6 +193,7 @@ function h($value) {
                             <li><a href="master.php" class="dropdown-item iframe-link"><i class="fas fa-table text-warning mr-2"></i> Master Cust, Price, Curr</a></li>
                             <li><a href="sync_part_price_customer.php" class="dropdown-item iframe-link"><i class="fas fa-sync-alt text-info mr-2"></i> Price Synchronization</a></li>
                             <li><a href="form_di.php" class="dropdown-item iframe-link"><i class="fas fa-box text-secondary mr-2"></i> Update Packing STD</a></li>
+							<li><a href="pack.php" class="dropdown-item iframe-link"><i class="fas fa-box text-secondary mr-2"></i> MASTER PACKING</a></li>
                         </ul>
                     </li>
 
