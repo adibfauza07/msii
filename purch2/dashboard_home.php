@@ -111,6 +111,18 @@ function h($value) {
                         </div>
                     </div>
 
+                    <!-- Report Item 1B: Purchase By ICL -->
+                    <div class="col-lg-3 col-6">
+                        <div class="small-box bg-maroon" style="background-color: #d81b60 !important; color: #fff;">
+                            <div class="inner">
+                                <h6>PURCHASE BY ICL</h6>
+                                <p>Filter by Receive No</p>
+                            </div>
+                            <div class="icon"><i class="fas fa-search-dollar"></i></div>
+                            <a href="purchase_by_icl.php" target="_blank" class="small-box-footer" style="color: rgba(255,255,255,0.8);">Open Report <i class="fas fa-arrow-circle-right"></i></a>
+                        </div>
+                    </div>
+
                     <!-- Report Item 2 -->
                     <div class="col-lg-3 col-6">
                         <div class="small-box bg-success">
