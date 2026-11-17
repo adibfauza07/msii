@@ -462,7 +462,7 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
                     <th style="width:150px;">LOCATION</th>
                     <th style="width:90px;">PRICE ID</th>
                     <th style="width:80px;">PACK ID</th>
-                    <th style="width:50px; display:none;">DEL</th>
+                    <th style="width:50px; text-align:center;">DEL</th>
                 </tr>
             </thead>
 
@@ -485,20 +485,18 @@ $dbUser = isset($_SESSION['db_user']) ? $_SESSION['db_user'] : '';
                             <div class="packSuggest autocomplete-list"></div>
                         </div>
                     </td>
-                    <!-- DIPERBAIKI: Nama input dikembalikan ke LOCATION[] -->
                     <td><input type="text" name="LOCATION[]"></td>
                     <td><input type="text" name="PRICE_ID[]"></td>
                     <td><input type="text" name="PACK_ID[]"></td>
-                    <td style="display:none;"><button type="button" onclick="deleteRow(event, this)">X</button></td>
+                    <td style="text-align:center;"><button type="button" onclick="deleteRow(event, this)">X</button></td>
                 </tr>
                 <?php } ?>
             </tbody>
         </table>
 
         <div class="button-row">
-            <button type="button" id="btnPostFifo">POST FIFO</button>
+            <button type="button" id="btnPostFifo">SAVE DAN AMBIL PO</button>
             <button type="button" id="btnAddRow">TAMBAH BARIS</button>
-            <button type="button" id="btnDeleteLine">HAPUS PER BARIS</button>
             <button type="button" id="btnDeleteAll">BATAL SEMUA DETAIL</button>
             <button type="button" id="btnSaveDetail" style="display:none;">SAVE DETAIL</button>
         </div>
@@ -718,7 +716,6 @@ document.getElementById("CUST_SEARCH").onblur = function () {
     }, 250);
 };
 
-
 function renderDISuggest(items) {
     var box = document.getElementById("diSuggest");
     box.innerHTML = "";
@@ -851,10 +848,10 @@ function addRow() {
                 '<div class="packSuggest autocomplete-list"></div>' +
             '</div>' +
         '</td>' +
-        '<td><input type="text" name="LOCATION[]"></td>' + // DIPERBAIKI: LOCATION[]
+        '<td><input type="text" name="LOCATION[]"></td>' +
         '<td><input type="text" name="PRICE_ID[]"></td>' +
         '<td><input type="text" name="PACK_ID[]"></td>' +
-        '<td style="display:none;"><button type="button" onclick="deleteRow(event, this)">X</button></td>';
+        '<td style="text-align:center;"><button type="button" onclick="deleteRow(event, this)">X</button></td>';
 }
 
 function addPartRowFromData(r) {
@@ -880,10 +877,10 @@ function addPartRowFromData(r) {
                 '<div class="packSuggest autocomplete-list"></div>' +
             '</div>' +
         '</td>' +
-        '<td><input type="text" name="LOCATION[]" value="' + htmlEncode(r.LOCATION !== undefined ? r.LOCATION : '') + '"></td>' + // DIPERBAIKI: LOCATION[] dan r.LOCATION
+        '<td><input type="text" name="LOCATION[]" value="' + htmlEncode(r.LOCATION !== undefined ? r.LOCATION : '') + '"></td>' + 
         '<td><input type="text" name="PRICE_ID[]" value="' + htmlEncode(r.PRICE_ID) + '"></td>' +
         '<td><input type="text" name="PACK_ID[]" value="' + htmlEncode(r.PACK_ID) + '"></td>' +
-        '<td style="display:none;"><button type="button" onclick="deleteRow(event, this)">X</button></td>';
+        '<td style="text-align:center;"><button type="button" onclick="deleteRow(event, this)">X</button></td>';
 }
 
 function deleteRow(e, btn) {
@@ -901,7 +898,6 @@ function deleteRow(e, btn) {
     selectPartRow(row);
     deleteSelectedDetailRow(row);
 }
-
 
 function renumberRows() {
     var tbody = document.getElementById("partBody");
@@ -935,16 +931,11 @@ function resetSmallGrids() {
 
 function getHeaderPostData() {
     var data = [];
-
     data.push("DI_ID=" + enc(document.getElementById("DI_ID").value));
     data.push("DI_NO=" + enc(document.getElementById("DI_NO").value));
     data.push("DI_START_DATE=" + enc(document.getElementById("DI_START_DATE").value));
     data.push("DI_DATE=" + enc(document.getElementById("DI_DATE").value));
     data.push("CUST_CODE=" + enc(document.getElementById("CUST_CODE").value));
-
-    /*
-        Manual edit header
-    */
     data.push("DI_DSNO=" + enc(document.getElementById("DI_DSNO").value));
     data.push("DI_INVNO=" + enc(document.getElementById("DI_INVNO").value));
     data.push("DI_ORDERNO=" + enc(document.getElementById("DI_ORDERNO").value));
@@ -954,7 +945,6 @@ function getHeaderPostData() {
 
 function getLoadOtherPostData() {
     var data = [];
-
     data.push("DI_ID=" + enc(document.getElementById("DI_ID").value));
     data.push("CUST_CODE=" + enc(document.getElementById("CUST_CODE").value));
     data.push("START_DATE=" + enc(document.getElementById("DI_START_DATE").value));
@@ -965,7 +955,6 @@ function getLoadOtherPostData() {
 
 function fillHeaderFromSearch(h) {
     var custCode = "";
-
     if (h.CUST_CODE) {
         custCode = h.CUST_CODE;
     }
@@ -977,10 +966,8 @@ function fillHeaderFromSearch(h) {
     document.getElementById("DI_DSNO").value = h.DI_DSNO || "";
     document.getElementById("DI_INVNO").value = h.DI_INVNO || "";
     document.getElementById("DI_ORDERNO").value = h.DI_ORDERNO || "";
-
     document.getElementById("CUST_CODE").value = custCode;
     document.getElementById("CUST_SEARCH").value = custCode;
-
     document.getElementById("CUST_ID").value = h.CUST_ID || "";
     document.getElementById("CUST_COMP").value = h.CUST_COMP || "";
     document.getElementById("CUST_ABBR").value = h.CUST_ABBR || "";
@@ -988,7 +975,6 @@ function fillHeaderFromSearch(h) {
 
 function fillDetailFromSearch(details) {
     clearPartGrid();
-
     if (!details || details.length == 0) {
         fillDefaultEmptyRows(10);
         return;
@@ -1010,13 +996,11 @@ document.getElementById("btnNew").onclick = function () {
     document.getElementById("DI_DSNO").value = "";
     document.getElementById("DI_INVNO").value = "";
     document.getElementById("DI_ORDERNO").value = "";
-
     document.getElementById("CUST_CODE").value = "";
     document.getElementById("CUST_SEARCH").value = "";
     document.getElementById("CUST_ID").value = "";
     document.getElementById("CUST_COMP").value = "";
     document.getElementById("CUST_ABBR").value = "";
-
     document.getElementById("SEARCH_KEYWORD").value = "";
     document.getElementById("SearchStatus").innerHTML = "";
     document.getElementById("diSuggest").style.display = "none";
@@ -1065,7 +1049,6 @@ document.getElementById("btnSaveHeader").onclick = function () {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -1086,9 +1069,7 @@ document.getElementById("btnSaveHeader").onclick = function () {
         document.getElementById("CUST_ID").value = result.CUST_ID;
         document.getElementById("CUST_COMP").value = result.CUST_COMP;
         document.getElementById("CUST_ABBR").value = result.CUST_ABBR;
-
-        document.getElementById("LabelStatus").innerHTML =
-            "Header berhasil disimpan. DI_ID: " + result.DI_ID;
+        document.getElementById("LabelStatus").innerHTML = "Header berhasil disimpan. DI_ID: " + result.DI_ID;
 
         alert(result.message);
     });
@@ -1157,7 +1138,6 @@ document.getElementById("btnLoadOther").onclick = function () {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -1179,7 +1159,6 @@ document.getElementById("btnLoadOther").onclick = function () {
         }
 
         resetSmallGrids();
-
         var rows = document.getElementById("partBody").getElementsByTagName("tr");
 
         if (rows.length > 0) {
@@ -1188,10 +1167,7 @@ document.getElementById("btnLoadOther").onclick = function () {
 
         document.getElementById("LabelStatus").innerHTML = result.message;
 
-        alert(
-            "LOAD DI OTHER selesai.\n\n" +
-            "Total data dimuat: " + result.rows.length + " item."
-        );
+        alert("LOAD DI OTHER selesai.\n\nTotal data dimuat: " + result.rows.length + " item.");
     });
 };
 
@@ -1222,7 +1198,6 @@ document.getElementById("btnSearchDI").onclick = function () {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -1247,7 +1222,6 @@ document.getElementById("btnSearchDI").onclick = function () {
 
 function getDeleteLineData(row) {
     var data = [];
-
     data.push("DI_ID=" + enc(document.getElementById("DI_ID").value));
     data.push("DIPA_LINO=" + enc(getInputByNameFromRow(row, "DIPA_LINO[]").value));
     data.push("PRICE_ID=" + enc(getInputByNameFromRow(row, "PRICE_ID[]").value));
@@ -1290,8 +1264,7 @@ function deleteSelectedDetailRow(row) {
         return;
     }
 
-    document.getElementById("LabelStatus").innerHTML =
-        "Menghapus line " + lineInput.value + "...";
+    document.getElementById("LabelStatus").innerHTML = "Menghapus line " + lineInput.value + "...";
 
     ajaxPost("ajax_delete_detail_line.php", getDeleteLineData(row), function (status, responseText) {
         if (status != 200) {
@@ -1301,7 +1274,6 @@ function deleteSelectedDetailRow(row) {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -1325,15 +1297,9 @@ function deleteSelectedDetailRow(row) {
     });
 }
 
-document.getElementById("btnDeleteLine").onclick = function () {
-    deleteSelectedDetailRow(selectedPartRow);
-};
-
 function getCancelAllDetailData() {
     var data = [];
-
     data.push("DI_ID=" + enc(document.getElementById("DI_ID").value));
-
     return data.join("&");
 }
 
@@ -1366,7 +1332,6 @@ document.getElementById("btnDeleteAll").onclick = function () {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -1507,7 +1472,6 @@ document.getElementById("btnPostFifo").onclick = function () {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -1530,10 +1494,7 @@ document.getElementById("btnPostFifo").onclick = function () {
 };
 
 function getSelectedPOParamsFromRow(row) {
-    if (!row) {
-        return null;
-    }
-
+    if (!row) return null;
     return {
         ORDR_ID: row.getAttribute("data-ordr-id"),
         ORDP_LINO: row.getAttribute("data-ordp-lino"),
@@ -1542,10 +1503,7 @@ function getSelectedPOParamsFromRow(row) {
 }
 
 function getSelectedPartForPO() {
-    if (!selectedPartRow) {
-        return null;
-    }
-
+    if (!selectedPartRow) return null;
     return getSelectedPartParams(selectedPartRow);
 }
 
@@ -1590,7 +1548,6 @@ document.getElementById("btnAllocatePO").onclick = function () {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -1659,7 +1616,6 @@ document.getElementById("btnRollbackPO").onclick = function () {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -1689,18 +1645,12 @@ document.getElementById("btnRollbackPO").onclick = function () {
 
 function hideReportMenu() {
     var menu = document.getElementById("reportMenuPopup");
-
-    if (menu) {
-        menu.style.display = "none";
-    }
+    if (menu) menu.style.display = "none";
 }
 
 function showReportMenu() {
     var menu = document.getElementById("reportMenuPopup");
-
-    if (!menu) {
-        return;
-    }
+    if (!menu) return;
 
     if (menu.style.display == "block") {
         menu.style.display = "none";
@@ -1711,13 +1661,11 @@ function showReportMenu() {
 
 document.getElementById("btnReport").onclick = function (e) {
     e = e || window.event;
-
     if (e.stopPropagation) {
         e.stopPropagation();
     } else {
         e.cancelBubble = true;
     }
-
     showReportMenu();
 };
 
@@ -1752,62 +1700,42 @@ function openReportMenuItem(reportType) {
     }
 
     if (reportType == "DELIVERY_SHEET") {
-       window.open(
-        "report_delivery_sheet.php?DI_ID=" + enc(diId),"_blank" );
+       window.open("report_delivery_sheet.php?DI_ID=" + enc(diId),"_blank" );
         return;
     }
 
     if (reportType == "DELIVERY_SHEET_PO") {
-       window.open(
-        "report_delivery_sheet_po.php?DI_ID=" + enc(diId),"_blank");
+       window.open("report_delivery_sheet_po.php?DI_ID=" + enc(diId),"_blank");
         return;
     }
 
-
- if (reportType == "DELIVERY_SHEET_MAPI") {
-       window.open(
-        "report_delivery_sheet_mapi.php?DI_ID=" + enc(diId),"_blank");
+    if (reportType == "DELIVERY_SHEET_MAPI") {
+       window.open("report_delivery_sheet_mapi.php?DI_ID=" + enc(diId),"_blank");
         return;
     }
-
 
     if (reportType == "DELIVERY_SHEET_CABININDO") {
-        window.open(
-        "report_delivery_sheet_cabinindo.php?DI_ID=" + enc(diId),
-        "_blank"
-    );
+        window.open("report_delivery_sheet_cabinindo.php?DI_ID=" + enc(diId), "_blank");
         return;
     }
 
     if (reportType == "DS_TOYODENSO") {
-        window.open(
-        "report_ds_toyodenso.php?DI_ID=" + enc(diId),
-        "_blank"
-    );
+        window.open("report_ds_toyodenso.php?DI_ID=" + enc(diId), "_blank");
         return;
     }
 
     if (reportType == "INVOICE_RATE_HIROSE") {
-        window.open(
-        "report_invoice_rate.php?DI_ID=" + enc(diId),
-        "_blank"
-    );
+        window.open("report_invoice_rate.php?DI_ID=" + enc(diId), "_blank");
         return;
     }
 
     if (reportType == "INVOICE_HILEX") {
-        window.open(
-        "report_surat_jalan.php?DI_ID=" + enc(diId),
-        "_blank"
-    );
+        window.open("report_surat_jalan.php?DI_ID=" + enc(diId), "_blank");
         return;
     }
 
     if (reportType == "PACKING_LIST") {
-         window.open(
-        "report_packing_list.php?DI_ID=" + enc(diId),
-        "_blank"
-    );
+         window.open("report_packing_list.php?DI_ID=" + enc(diId), "_blank");
         return;
     }
 
@@ -1819,13 +1747,11 @@ var reportItems = document.getElementsByClassName("report-menu-item");
 for (var i = 0; i < reportItems.length; i++) {
     reportItems[i].onclick = function (e) {
         e = e || window.event;
-
         if (e.stopPropagation) {
             e.stopPropagation();
         } else {
             e.cancelBubble = true;
         }
-
         openReportMenuItem(this.getAttribute("data-report"));
     };
 }
@@ -1927,7 +1853,6 @@ function loadPOAvailable(row) {
             }
 
             var result;
-
             try {
                 result = JSON.parse(responseText);
             } catch (e) {
@@ -1972,7 +1897,6 @@ function loadPOAllocated(row) {
             }
 
             var result;
-
             try {
                 result = JSON.parse(responseText);
             } catch (e) {
@@ -2002,22 +1926,18 @@ function loadBottomPOGrids(row) {
 
 function selectOrderRow(row) {
     var rows = document.getElementById("orderBody").getElementsByTagName("tr");
-
     for (var i = 0; i < rows.length; i++) {
         rows[i].className = "";
     }
-
     row.className = "selected";
     selectedOrderRow = row;
 }
 
 function selectPORow(row) {
     var rows = document.getElementById("poBody").getElementsByTagName("tr");
-
     for (var i = 0; i < rows.length; i++) {
         rows[i].className = "";
     }
-
     row.className = "selected";
     selectedPORow = row;
 }
@@ -2047,14 +1967,10 @@ function renderPackSuggest(input, items) {
     var wrap = input.parentNode;
     var box = wrap.getElementsByClassName("packSuggest")[0];
 
-    if (!box) {
-        return;
-    }
-
+    if (!box) return;
     box.innerHTML = "";
 
     var filtered = [];
-
     if (items) {
         for (var i = 0; i < items.length; i++) {
             if (items[i].PACK_CODE && items[i].PACK_CODE != "") {
@@ -2075,7 +1991,6 @@ function renderPackSuggest(input, items) {
         div.className = "autocomplete-item";
         div.setAttribute("data-index", j);
 
-        // --- MENGATUR TAMPILAN PACK_NAME DAN PACK_DESC ---
         var pCode = filtered[j].PACK_CODE ? filtered[j].PACK_CODE : "";
         var pName = filtered[j].PACK_NAME ? filtered[j].PACK_NAME : "";
         var pDesc = filtered[j].PACK_DESC ? filtered[j].PACK_DESC : "";
@@ -2089,16 +2004,10 @@ function renderPackSuggest(input, items) {
         }
 
         div.innerHTML = displayText;
-        // --------------------------------------------------
 
         div.onmousedown = function (e) {
-            if (!e) {
-                e = window.event;
-            }
-
-            if (e.preventDefault) {
-                e.preventDefault();
-            }
+            if (!e) e = window.event;
+            if (e.preventDefault) e.preventDefault();
 
             var idx = parseInt(this.getAttribute("data-index"), 10);
             selectPackItem(input, packItems[idx]);
@@ -2112,18 +2021,12 @@ function renderPackSuggest(input, items) {
 
 document.getElementById("tblPart").addEventListener("keyup", function (e) {
     e = e || window.event;
-
     var target = e.target || e.srcElement;
 
-    if (!target || target.name != "PACK_DESC[]") {
-        return;
-    }
+    if (!target || target.name != "PACK_DESC[]") return;
 
     var key = e.keyCode || e.which;
-
-    if (key == 13 || key == 38 || key == 40) {
-        return;
-    }
+    if (key == 13 || key == 38 || key == 40) return;
 
     var q = target.value;
     var row = getRowFromElement(target);
@@ -2135,43 +2038,31 @@ document.getElementById("tblPart").addEventListener("keyup", function (e) {
 
     if (q.length < 1) {
         var boxEmpty = target.parentNode.getElementsByClassName("packSuggest")[0];
-        if (boxEmpty) {
-            boxEmpty.style.display = "none";
-        }
+        if (boxEmpty) boxEmpty.style.display = "none";
         return;
     }
 
     ajaxPost("ajax_pack_autocomplete.php", "q=" + enc(q), function (status, responseText) {
-        if (status != 200) {
-            return;
-        }
-
+        if (status != 200) return;
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
             return;
         }
-
         renderPackSuggest(target, result);
     });
 });
 
 document.getElementById("tblPart").addEventListener("blur", function (e) {
     e = e || window.event;
-
     var target = e.target || e.srcElement;
 
-    if (!target || target.name != "PACK_DESC[]") {
-        return;
-    }
+    if (!target || target.name != "PACK_DESC[]") return;
 
     setTimeout(function () {
         var box = target.parentNode.getElementsByClassName("packSuggest")[0];
-        if (box) {
-            box.style.display = "none";
-        }
+        if (box) box.style.display = "none";
     }, 250);
 
 }, true);
@@ -2185,10 +2076,7 @@ function getRowSaveData(row) {
     data.push("DIPA_QTY=" + enc(getInputByNameFromRow(row, "DIPA_QTY[]").value));
     data.push("DIPA_PQTY=" + enc(getInputByNameFromRow(row, "DIPA_PQTY[]").value));
     data.push("PACK_DESC=" + enc(getInputByNameFromRow(row, "PACK_DESC[]").value));
-    
-    // DIPERBAIKI: Harus menarik data dari name="LOCATION[]", dan memparsingnya menjadi var POST "LOCATION=..."
     data.push("LOCATION=" + enc(getInputByNameFromRow(row, "LOCATION[]").value));
-    
     data.push("PRICE_ID=" + enc(getInputByNameFromRow(row, "PRICE_ID[]").value));
     data.push("PACK_ID=" + enc(getInputByNameFromRow(row, "PACK_ID[]").value));
 
@@ -2221,7 +2109,6 @@ function applyCodeFromLookupByPrice(row, done) {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -2230,7 +2117,6 @@ function applyCodeFromLookupByPrice(row, done) {
         }
 
         var lookupRows = [];
-
         if (result && result.rows) {
             lookupRows = result.rows;
         } else if (result && result.length) {
@@ -2253,29 +2139,12 @@ function applyCodeFromLookupByPrice(row, done) {
         }
 
         if (item) {
-            if (codeInput && item.CODE) {
-                codeInput.value = item.CODE;
-            }
-
-            if (nameInput && item.NAME && nameInput.value == "") {
-                nameInput.value = item.NAME;
-            }
-
-            if (qtyInput && item.DAILY_SCH && qtyInput.value == "") {
-                qtyInput.value = item.DAILY_SCH;
-            }
-
-            if (packQtyInput && item.DIPA_PQTY && packQtyInput.value == "") {
-                packQtyInput.value = item.DIPA_PQTY;
-            }
-
-            if (packDescInput && item.PACK_DESC && packDescInput.value == "") {
-                packDescInput.value = item.PACK_DESC;
-            }
-
-            if (packIdInput && item.PACK_ID && packIdInput.value == "") {
-                packIdInput.value = item.PACK_ID;
-            }
+            if (codeInput && item.CODE) codeInput.value = item.CODE;
+            if (nameInput && item.NAME && nameInput.value == "") nameInput.value = item.NAME;
+            if (qtyInput && item.DAILY_SCH && qtyInput.value == "") qtyInput.value = item.DAILY_SCH;
+            if (packQtyInput && item.DIPA_PQTY && packQtyInput.value == "") packQtyInput.value = item.DIPA_PQTY;
+            if (packDescInput && item.PACK_DESC && packDescInput.value == "") packDescInput.value = item.PACK_DESC;
+            if (packIdInput && item.PACK_ID && packIdInput.value == "") packIdInput.value = item.PACK_ID;
         }
 
         done();
@@ -2284,9 +2153,7 @@ function applyCodeFromLookupByPrice(row, done) {
 
 function saveDetailRow(row, callback) {
     if (!row) {
-        if (callback) {
-            callback(false);
-        }
+        if (callback) callback(false);
         return;
     }
 
@@ -2294,9 +2161,7 @@ function saveDetailRow(row, callback) {
 
     if (diId == "") {
         alert("Save Header dulu sebelum simpan detail.");
-        if (callback) {
-            callback(false);
-        }
+        if (callback) callback(false);
         return;
     }
 
@@ -2306,32 +2171,22 @@ function saveDetailRow(row, callback) {
 
     if (!lineInput || lineInput.value == "") {
         alert("Line number kosong.");
-        if (callback) {
-            callback(false);
-        }
+        if (callback) callback(false);
         return;
     }
 
     if (!codeInput) {
         alert("Input CODE tidak ditemukan pada line " + lineInput.value);
-        if (callback) {
-            callback(false);
-        }
+        if (callback) callback(false);
         return;
     }
 
     if (!priceInput || priceInput.value == "" || parseInt(priceInput.value, 10) <= 0) {
         alert("PRICE_ID kosong pada line " + lineInput.value);
-        if (callback) {
-            callback(false);
-        }
+        if (callback) callback(false);
         return;
     }
 
-    /*
-        Lengkapi CODE / NAME dari lookup PRICE_ID dulu.
-        Setelah itu baru cek duplicate dan save.
-    */
     applyCodeFromLookupByPrice(row, function () {
         var codeInputAfterLookup = getInputByNameFromRow(row, "CODE[]");
         var priceInputAfterLookup = getInputByNameFromRow(row, "PRICE_ID[]");
@@ -2339,11 +2194,6 @@ function saveDetailRow(row, callback) {
         var codeValue = codeInputAfterLookup ? codeInputAfterLookup.value : "";
         var priceValue = priceInputAfterLookup ? priceInputAfterLookup.value : "";
 
-        /*
-            Pengaman duplicate item dalam grid.
-            Cek berdasarkan PRICE_ID dan CODE.
-            Baris dirinya sendiri tidak dihitung duplicate.
-        */
         if (typeof isDuplicateItemInGrid == "function") {
             if (isDuplicateItemInGrid(priceValue, codeValue, row)) {
                 alert(
@@ -2353,107 +2203,60 @@ function saveDetailRow(row, callback) {
                     "PRICE ID : " + priceValue
                 );
 
-                document.getElementById("LabelStatus").innerHTML =
-                    "Save line gagal. Item duplicate.";
-
-                if (codeInputAfterLookup) {
-                    codeInputAfterLookup.focus();
-                }
-
-                if (callback) {
-                    callback(false);
-                }
-
+                document.getElementById("LabelStatus").innerHTML = "Save line gagal. Item duplicate.";
+                if (codeInputAfterLookup) codeInputAfterLookup.focus();
+                if (callback) callback(false);
                 return;
             }
         }
 
-        document.getElementById("LabelStatus").innerHTML =
-            "Menyimpan line " + lineInput.value + "...";
+        document.getElementById("LabelStatus").innerHTML = "Menyimpan line " + lineInput.value + "...";
 
         ajaxPost("ajax_save_detail_line.php", getRowSaveData(row), function (status, responseText) {
             if (status != 200) {
                 alert("HTTP Error: " + status);
                 document.getElementById("LabelStatus").innerHTML = "Save line gagal.";
-
-                if (callback) {
-                    callback(false);
-                }
-
+                if (callback) callback(false);
                 return;
             }
 
             var result;
-
             try {
                 result = JSON.parse(responseText);
             } catch (e) {
                 alert("Response bukan JSON:\n\n" + responseText);
                 document.getElementById("LabelStatus").innerHTML = "Save line gagal.";
-
-                if (callback) {
-                    callback(false);
-                }
-
+                if (callback) callback(false);
                 return;
             }
 
             if (!result.success) {
                 alert(result.message);
                 document.getElementById("LabelStatus").innerHTML = "Save line gagal.";
-
-                if (callback) {
-                    callback(false);
-                }
-
+                if (callback) callback(false);
                 return;
             }
 
             var codeInputAfterSave = getInputByNameFromRow(row, "CODE[]");
             var serverCode = result.PART_CODE || result.CODE || result.ITEM_CODE || "";
-
-            if (codeInputAfterSave && serverCode != "") {
-                codeInputAfterSave.value = serverCode;
-            }
+            if (codeInputAfterSave && serverCode != "") codeInputAfterSave.value = serverCode;
 
             var nameInputAfterSave = getInputByNameFromRow(row, "NAME[]");
             var serverName = result.ITEM_NAME || result.NAME || "";
-
-            if (nameInputAfterSave && serverName != "") {
-                nameInputAfterSave.value = serverName;
-            }
+            if (nameInputAfterSave && serverName != "") nameInputAfterSave.value = serverName;
 
             var packIdInput = getInputByNameFromRow(row, "PACK_ID[]");
+            if (packIdInput && result.PACK_ID) packIdInput.value = result.PACK_ID;
 
-            if (packIdInput && result.PACK_ID) {
-                packIdInput.value = result.PACK_ID;
-            }
-
-            /*
-                Support dua kemungkinan nama input:
-                PACK_DESC[] atau DIPA_PACK[]
-            */
             var packDescInputAfterSave = getInputByNameFromRow(row, "PACK_DESC[]");
-
-            if (!packDescInputAfterSave) {
-                packDescInputAfterSave = getInputByNameFromRow(row, "DIPA_PACK[]");
-            }
-
-            if (packDescInputAfterSave && result.PACK_DESC) {
-                packDescInputAfterSave.value = result.PACK_DESC;
-            }
+            if (!packDescInputAfterSave) packDescInputAfterSave = getInputByNameFromRow(row, "DIPA_PACK[]");
+            if (packDescInputAfterSave && result.PACK_DESC) packDescInputAfterSave.value = result.PACK_DESC;
 
             var packQtyInputAfterSave = getInputByNameFromRow(row, "DIPA_PQTY[]");
-
-            if (packQtyInputAfterSave && result.DIPA_PQTY) {
-                packQtyInputAfterSave.value = result.DIPA_PQTY;
-            }
+            if (packQtyInputAfterSave && result.DIPA_PQTY) packQtyInputAfterSave.value = result.DIPA_PQTY;
 
             var qtyInputAfterSave = getInputByNameFromRow(row, "DIPA_QTY[]");
-
-            if (qtyInputAfterSave && result.DIPA_QTY) {
-                qtyInputAfterSave.value = result.DIPA_QTY;
-            }
+            if (qtyInputAfterSave && result.DIPA_QTY) qtyInputAfterSave.value = result.DIPA_QTY;
 
             document.getElementById("LabelStatus").innerHTML = result.message;
 
@@ -2463,9 +2266,7 @@ function saveDetailRow(row, callback) {
                 refreshDIQtyValidationStatus();
             }
 
-            if (callback) {
-                callback(true);
-            }
+            if (callback) callback(true);
         });
     });
 }
@@ -2476,16 +2277,11 @@ function isDuplicateItemInGrid(priceId, code, currentRow) {
     priceId = String(priceId || "").replace(/^\s+|\s+$/g, "");
     code = String(code || "").replace(/^\s+|\s+$/g, "").toUpperCase();
 
-    if (priceId == "" && code == "") {
-        return false;
-    }
+    if (priceId == "" && code == "") return false;
 
     for (var i = 0; i < rows.length; i++) {
         var row = rows[i];
-
-        if (currentRow && row === currentRow) {
-            continue;
-        }
+        if (currentRow && row === currentRow) continue;
 
         var priceInput = getInputByNameFromRow(row, "PRICE_ID[]");
         var codeInput = getInputByNameFromRow(row, "CODE[]");
@@ -2493,24 +2289,16 @@ function isDuplicateItemInGrid(priceId, code, currentRow) {
         var rowPriceId = priceInput ? String(priceInput.value || "").replace(/^\s+|\s+$/g, "") : "";
         var rowCode = codeInput ? String(codeInput.value || "").replace(/^\s+|\s+$/g, "").toUpperCase() : "";
 
-        if (priceId != "" && rowPriceId != "" && priceId == rowPriceId) {
-            return true;
-        }
-
-        if (code != "" && rowCode != "" && code == rowCode) {
-            return true;
-        }
+        if (priceId != "" && rowPriceId != "" && priceId == rowPriceId) return true;
+        if (code != "" && rowCode != "" && code == rowCode) return true;
     }
-
     return false;
 }
 
-function moveToNextRowSameColumn(currentInput) {
+/* FUNGSI NAVIGASI KEYBOARD UTAMA (EXCEL-LIKE) & TRIGGER AUTO-SAVE SAAT PINDAH SEL/KOLOM */
+function movePartGridSelection(currentInput, dx, dy) {
     var cell = getCellFromElement(currentInput);
-
-    if (!cell) {
-        return;
-    }
+    if (!cell) return;
 
     var row = cell.parentNode;
     var tbody = document.getElementById("partBody");
@@ -2526,31 +2314,67 @@ function moveToNextRowSameColumn(currentInput) {
         }
     }
 
-    if (rowIndex < 0) {
-        return;
-    }
+    if (rowIndex < 0) return;
 
-    var nextRowIndex = rowIndex + 1;
-
+    var nextRowIndex = rowIndex + dy;
+    
+    if (nextRowIndex < 0) nextRowIndex = 0;
+    
     if (nextRowIndex >= rows.length) {
-        return;
+        if (dy > 0) {
+            addRow();
+            rows = tbody.getElementsByTagName("tr");
+            nextRowIndex = rows.length - 1;
+        } else {
+            nextRowIndex = rows.length - 1;
+        }
     }
 
-    var nextCell = rows[nextRowIndex].cells[cellIndex];
-
-    if (!nextCell) {
-        return;
+    var nextRow = rows[nextRowIndex];
+    var nextCellIndex = cellIndex;
+    
+    // Hitung posisi Kolom Baru
+    if (dx !== 0) {
+        var cells = nextRow.cells;
+        var targetCellIndex = cellIndex;
+        while(true) {
+            targetCellIndex += dx;
+            // Jangan keluar dari batas indeks kolom 
+            if (targetCellIndex < 0 || targetCellIndex >= cells.length) {
+                targetCellIndex -= dx; // Rollback
+                break;
+            }
+            var inputs = cells[targetCellIndex].getElementsByTagName("input");
+            
+            // Cek apakah target sel ini memiliki input text yang dapat diketik (bukan readonly)
+            if (inputs.length > 0 && inputs[0].type === "text" && !inputs[0].readOnly) {
+                break;
+            }
+        }
+        if (targetCellIndex >= 0 && targetCellIndex < cells.length) {
+            nextCellIndex = targetCellIndex;
+        }
     }
+
+    var nextCell = nextRow.cells[nextCellIndex];
+    if (!nextCell) return;
 
     var nextInput = nextCell.getElementsByTagName("input")[0];
-
-    if (nextInput) {
-        selectPartRow(rows[nextRowIndex]);
-        nextInput.focus();
-
-        if (nextInput.select) {
-            nextInput.select();
+    
+    // Jika input yang akan difokuskan berbeda dari saat ini
+    if (nextInput && nextInput !== currentInput) {
+        
+        // AUTO SAVE: Pindah baris atau kolom = Simpan ke Database secara asinkron
+        if (isDetailRowHasData(row)) {
+             saveDetailRow(row, null); 
         }
+        
+        selectPartRow(nextRow);
+        nextInput.focus();
+        
+        setTimeout(function() {
+            if (nextInput.select) nextInput.select();
+        }, 10);
     }
 }
 
@@ -2560,51 +2384,33 @@ var partActiveInput = null;
 var partActiveIndex = -1;
 
 function getPartSuggestBox(input) {
-    if (!input || !input.parentNode) {
-        return null;
-    }
-
+    if (!input || !input.parentNode) return null;
     var boxes = input.parentNode.getElementsByClassName("partSuggest");
-
-    if (!boxes || boxes.length == 0) {
-        return null;
-    }
-
+    if (!boxes || boxes.length == 0) return null;
     return boxes[0];
 }
 
 function isPartSuggestOpen(input) {
     var box = getPartSuggestBox(input);
-
-    if (!box) {
-        return false;
-    }
-
+    if (!box) return false;
     return box.style.display != "none" && partItems && partItems.length > 0;
 }
 
 function setActivePartSuggest(input, index) {
     var box = getPartSuggestBox(input);
-
     if (!box) {
         partActiveIndex = -1;
         return;
     }
 
     var items = box.getElementsByClassName("autocomplete-item");
-
     if (!items || items.length == 0) {
         partActiveIndex = -1;
         return;
     }
 
-    if (index < 0) {
-        index = items.length - 1;
-    }
-
-    if (index >= items.length) {
-        index = 0;
-    }
+    if (index < 0) index = items.length - 1;
+    if (index >= items.length) index = 0;
 
     for (var i = 0; i < items.length; i++) {
         items[i].className = "autocomplete-item";
@@ -2622,11 +2428,8 @@ function setActivePartSuggest(input, index) {
 
 function hidePartSuggest(input) {
     var box = getPartSuggestBox(input);
-
-    if (box) {
-        box.style.display = "none";
-    }
-
+    if (box) box.style.display = "none";
+    
     if (partActiveInput === input) {
         partActiveInput = null;
         partActiveIndex = -1;
@@ -2634,13 +2437,9 @@ function hidePartSuggest(input) {
 }
 
 function choosePartSuggest(input, index, autoSave) {
-    if (!partItems || partItems.length == 0) {
-        return;
-    }
+    if (!partItems || partItems.length == 0) return;
 
-    if (index < 0 || index >= partItems.length) {
-        index = 0;
-    }
+    if (index < 0 || index >= partItems.length) index = 0;
 
     var row = getRowFromElement(input);
     var item = partItems[index];
@@ -2648,236 +2447,128 @@ function choosePartSuggest(input, index, autoSave) {
     setRowPartFromLookup(input, item);
     hidePartSuggest(input);
 
-    /*
-        Pilih pakai ENTER = langsung SAVE line.
-    */
     if (autoSave && row) {
         saveDetailRow(row, function (ok) {
             if (ok) {
-                moveToNextRowSameColumn(input);
+                movePartGridSelection(input, 0, 1);
             }
         });
     }
 }
 
-function focusInputSameColumn(row, cellIndex) {
-    if (!row || !row.cells || !row.cells[cellIndex]) {
-        return;
-    }
 
-    var nextInput = row.cells[cellIndex].getElementsByTagName("input")[0];
-
-    if (nextInput) {
-        selectPartRow(row);
-        nextInput.focus();
-
-        if (nextInput.select) {
-            nextInput.select();
-        }
-    }
-}
-
-function movePartGridSelection(currentInput, direction) {
-    var cell = getCellFromElement(currentInput);
-
-    if (!cell) {
-        return;
-    }
-
-    var row = cell.parentNode;
-    var tbody = document.getElementById("partBody");
-    var rows = tbody.getElementsByTagName("tr");
-
-    var rowIndex = -1;
-    var cellIndex = cell.cellIndex;
-
-    for (var i = 0; i < rows.length; i++) {
-        if (rows[i] == row) {
-            rowIndex = i;
-            break;
-        }
-    }
-
-    if (rowIndex < 0) {
-        return;
-    }
-
-    var nextRowIndex = rowIndex + direction;
-
-    if (nextRowIndex < 0) {
-        nextRowIndex = 0;
-    }
-
-    /*
-        Kalau panah bawah di baris terakhir,
-        otomatis tambah baris baru.
-    */
-    if (nextRowIndex >= rows.length) {
-        addRow();
-        rows = tbody.getElementsByTagName("tr");
-        nextRowIndex = rows.length - 1;
-    }
-
-    focusInputSameColumn(rows[nextRowIndex], cellIndex);
-}
-
+/* KONTROL KEYBOARD EVENT PADA GRID */
 document.getElementById("tblPart").addEventListener("keydown", function (e) {
     e = e || window.event;
-
     var target = e.target || e.srcElement;
 
+    // Pastikan event hanya dieksekusi saat elemen aktif adalah tag input
     if (!target || target.tagName != "INPUT") {
         return true;
     }
 
     var key = e.keyCode || e.which;
 
-    /*
-        Kalau sedang di kolom CODE dan dropdown part terbuka:
-        - Panah bawah = turun pilihan dropdown
-        - Panah atas   = naik pilihan dropdown
-        - Enter        = pilih item aktif + SAVE line
-    */
+    // Menghandle pergerakan dropdown jika partSuggest sedang terbuka
     if (target.name == "CODE[]" && isPartSuggestOpen(target)) {
-        if (key == 40) {
-            if (e.preventDefault) {
-                e.preventDefault();
-            } else {
-                e.returnValue = false;
-            }
-
-            setActivePartSuggest(target, partActiveIndex + 1);
-            return false;
-        }
-
-        if (key == 38) {
-            if (e.preventDefault) {
-                e.preventDefault();
-            } else {
-                e.returnValue = false;
-            }
-
-            setActivePartSuggest(target, partActiveIndex - 1);
-            return false;
-        }
-
-        if (key == 13) {
-            if (e.preventDefault) {
-                e.preventDefault();
-            } else {
-                e.returnValue = false;
-            }
-
-            if (e.stopImmediatePropagation) {
-                e.stopImmediatePropagation();
-            }
-
-            if (partActiveIndex < 0) {
-                partActiveIndex = 0;
-            }
-
-            choosePartSuggest(target, partActiveIndex, true);
-            return false;
+        if (key == 40) { e.preventDefault(); setActivePartSuggest(target, partActiveIndex + 1); return false; }
+        if (key == 38) { e.preventDefault(); setActivePartSuggest(target, partActiveIndex - 1); return false; }
+        if (key == 13) { 
+            e.preventDefault(); 
+            e.stopImmediatePropagation();
+            if (partActiveIndex < 0) partActiveIndex = 0; 
+            choosePartSuggest(target, partActiveIndex, true); 
+            return false; 
         }
     }
 
-    /*
-        Kalau dropdown tidak terbuka:
-        panah atas / bawah pindah baris grid.
-    */
-    if (key == 38) {
-        if (e.preventDefault) {
-            e.preventDefault();
-        } else {
-            e.returnValue = false;
+    // Mendeteksi apakah caret/text cursor sedang berada di ujung input (untuk memutuskan bisa pindah cell atau tidak)
+    var canMoveLeft = true;
+    var canMoveRight = true;
+    try {
+        if (typeof target.selectionStart !== 'undefined' && target.type === 'text') {
+            canMoveLeft = (target.selectionStart === 0 && target.selectionEnd === 0);
+            canMoveRight = (target.selectionStart === target.value.length && target.selectionEnd === target.value.length);
         }
+    } catch(err) {}
 
-        movePartGridSelection(target, -1);
+    // KIRI
+    if (key == 37 && canMoveLeft) { 
+        e.preventDefault();
+        movePartGridSelection(target, -1, 0);
+        return false;
+    }
+    
+    // KANAN
+    if (key == 39 && canMoveRight) { 
+        e.preventDefault();
+        movePartGridSelection(target, 1, 0);
         return false;
     }
 
-    if (key == 40) {
-        if (e.preventDefault) {
-            e.preventDefault();
-        } else {
-            e.returnValue = false;
-        }
-
-        movePartGridSelection(target, 1);
+    // ATAS
+    if (key == 38) { 
+        e.preventDefault();
+        movePartGridSelection(target, 0, -1);
         return false;
     }
 
-    // Jika yang ditekan BUKAN tombol ENTER (Key 13)
+    // BAWAH
+    if (key == 40) { 
+        e.preventDefault();
+        movePartGridSelection(target, 0, 1);
+        return false;
+    }
+
+    // Jika yang ditekan bukan ENTER (13), biarkan browser mengetik huruf secara normal
     if (key != 13) {
         return true;
     }
 
-    // --- MULAI AREA KETIKA USER MENEKAN ENTER ---
-    
-    if (e.preventDefault) {
-        e.preventDefault();
-    } else {
-        e.returnValue = false;
-    }
+    // ============================================
+    // ENTER DIPENCET: Simpan lalu pindah ke baris bawah
+    // ============================================
+    e.preventDefault();
+    e.stopImmediatePropagation();
 
-    if (e.stopImmediatePropagation) {
-        e.stopImmediatePropagation();
-    }
-
-    /*
-        ENTER di kolom CODE:
-        kalau dropdown belum muncul, load lookup dulu.
-        kalau dropdown muncul, pilih item aktif + save.
-    */
     if (target.name == "CODE[]") {
         if (isPartSuggestOpen(target)) {
-            if (partActiveIndex < 0) {
-                partActiveIndex = 0;
-            }
-
+            if (partActiveIndex < 0) partActiveIndex = 0;
             choosePartSuggest(target, partActiveIndex, true);
         } else {
             loadPartLookup(target);
         }
-
         return false;
     }
 
     var rowSave = getRowFromElement(target);
-
-    if (!rowSave) {
-        return false;
-    }
+    if (!rowSave) return false;
 
     if (target.name == "PACK_DESC[]") {
         var box = target.parentNode.getElementsByClassName("packSuggest")[0];
-
         if (box && box.style.display != "none" && packItems.length > 0) {
             selectPackItem(target, packItems[0]);
         }
     }
 
-    // Otomatis men-trigger ajax_save_detail_line.php. Parameter LOCATION dikirim dengan benar di getRowSaveData()
+    // ENTER memanggil penyimpanan baris dan secara otomatis memindahkan kursor (panah bawah/kolom pertama input)
     saveDetailRow(rowSave, function (ok) {
         if (ok) {
-            moveToNextRowSameColumn(target); // Memindahkan kursor ke baris berikutnya
+            movePartGridSelection(target, 0, 1);
         }
     });
 
     return false;
 });
 
+
 document.getElementById("tblPart").onfocusin = function (e) {
     e = e || window.event;
-
     var target = e.target || e.srcElement;
 
-    if (!target) {
-        return;
-    }
+    if (!target) return;
 
     var row = getRowFromElement(target);
-
     if (row && row.parentNode && row.parentNode.id == "partBody") {
         selectPartRow(row);
     }
@@ -2885,16 +2576,11 @@ document.getElementById("tblPart").onfocusin = function (e) {
 
 function buildDIQtyWarning(result) {
     var msg = "";
-
-    if (!result) {
-        return "Validasi gagal.";
-    }
-
+    if (!result) return "Validasi gagal.";
     msg += result.message || "QTY DI_PART dan PO Allocated belum sama.";
 
     if (result.mismatch && result.mismatch.length > 0) {
         msg += "\n\nDetail selisih:";
-
         for (var i = 0; i < result.mismatch.length; i++) {
             msg +=
                 "\n\nLine      : " + result.mismatch[i].DIPA_LINO +
@@ -2905,7 +2591,6 @@ function buildDIQtyWarning(result) {
                 "\nSelisih   : " + result.mismatch[i].SELISIH_QTY;
         }
     }
-
     return msg;
 }
 
@@ -2934,7 +2619,6 @@ function validateDIQtyAsync(callback) {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -2953,7 +2637,6 @@ function validateDIQtyAsync(callback) {
 
 function validateDIQtySync() {
     var diId = document.getElementById("DI_ID").value;
-
     if (diId == "") {
         return {
             success: true,
@@ -2964,7 +2647,6 @@ function validateDIQtySync() {
     }
 
     var xhr = new XMLHttpRequest();
-
     try {
         xhr.open("POST", "ajax_validate_di_qty.php", false);
         xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -2994,13 +2676,10 @@ function validateDIQtySync() {
 function refreshDIQtyValidationStatus() {
     validateDIQtyAsync(function (result) {
         lastDIQtyValid = !!result.valid;
-
         if (result.valid) {
-            document.getElementById("LabelStatus").innerHTML =
-                "Validasi OK. QTY DI_PART = PO Allocated.";
+            document.getElementById("LabelStatus").innerHTML = "Validasi OK. QTY DI_PART = PO Allocated.";
         } else {
-            document.getElementById("LabelStatus").innerHTML =
-                "WARNING: QTY DI_PART belum sama dengan PO Allocated.";
+            document.getElementById("LabelStatus").innerHTML = "WARNING: QTY DI_PART belum sama dengan PO Allocated.";
         }
     });
 }
@@ -3010,32 +2689,21 @@ function guardBeforePrintOrClose(actionName, callback) {
         lastDIQtyValid = !!result.valid;
 
         if (!result.valid) {
-            alert(
-                "Tidak bisa " + actionName + ".\n\n" +
-                buildDIQtyWarning(result)
-            );
-
-            document.getElementById("LabelStatus").innerHTML =
-                "WARNING: QTY DI_PART belum sama dengan PO Allocated.";
-
+            alert("Tidak bisa " + actionName + ".\n\n" + buildDIQtyWarning(result));
+            document.getElementById("LabelStatus").innerHTML = "WARNING: QTY DI_PART belum sama dengan PO Allocated.";
             return;
         }
-
         callback();
     });
 }
 
 function protectTopbarLinks() {
     var links = document.querySelectorAll(".topbar a");
-
     for (var i = 0; i < links.length; i++) {
         links[i].onclick = function (e) {
-            if (document.getElementById("DI_ID").value == "") {
-                return true;
-            }
+            if (document.getElementById("DI_ID").value == "") return true;
 
             var check = validateDIQtySync();
-
             if (!check.valid) {
                 if (e.preventDefault) {
                     e.preventDefault();
@@ -3043,14 +2711,9 @@ function protectTopbarLinks() {
                     e.returnValue = false;
                 }
 
-                alert(
-                    "Tidak bisa keluar dari form.\n\n" +
-                    buildDIQtyWarning(check)
-                );
-
+                alert("Tidak bisa keluar dari form.\n\n" + buildDIQtyWarning(check));
                 return false;
             }
-
             return true;
         };
     }
@@ -3059,26 +2722,18 @@ function protectTopbarLinks() {
 protectTopbarLinks();
 
 window.onbeforeunload = function (e) {
-    if (document.getElementById("DI_ID").value == "") {
-        return;
-    }
-
+    if (document.getElementById("DI_ID").value == "") return;
     var check = validateDIQtySync();
 
     if (!check.valid) {
         var message = "QTY DI_PART belum sama dengan PO Allocated. Tidak boleh keluar sebelum sama.";
-
-        if (e) {
-            e.returnValue = message;
-        }
-
+        if (e) e.returnValue = message;
         return message;
     }
 };
 
 document.getElementById("btnAddRow").onclick = function () {
     addRow();
-
     var rows = document.getElementById("partBody").getElementsByTagName("tr");
 
     if (rows.length > 0) {
@@ -3086,7 +2741,6 @@ document.getElementById("btnAddRow").onclick = function () {
         selectPartRow(lastRow);
 
         var codeInput = getInputByNameFromRow(lastRow, "CODE[]");
-
         if (codeInput) {
             codeInput.focus();
             codeInput.select();
@@ -3096,12 +2750,10 @@ document.getElementById("btnAddRow").onclick = function () {
 
 function getPartLookupData(q) {
     var data = [];
-
     data.push("CUST_CODE=" + enc(document.getElementById("CUST_CODE").value));
     data.push("START_DATE=" + enc(document.getElementById("DI_START_DATE").value));
     data.push("END_DATE=" + enc(document.getElementById("DI_DATE").value));
     data.push("q=" + enc(q));
-
     return data.join("&");
 }
 
@@ -3121,24 +2773,20 @@ function loadPartLookup(input) {
     }
 
     var q = input.value;
-
     document.getElementById("LabelStatus").innerHTML = "Loading lookup part...";
 
     ajaxPost("ajax_part_lookup.php", getPartLookupData(q), function (status, responseText) {
         if (status != 200) {
-            document.getElementById("LabelStatus").innerHTML =
-                "Lookup part gagal. HTTP Error: " + status;
+            document.getElementById("LabelStatus").innerHTML = "Lookup part gagal. HTTP Error: " + status;
             renderPartSuggest(input, []);
             return;
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
-            document.getElementById("LabelStatus").innerHTML =
-                "Lookup part gagal. Response bukan JSON.";
+            document.getElementById("LabelStatus").innerHTML = "Lookup part gagal. Response bukan JSON.";
             renderPartSuggest(input, []);
             return;
         }
@@ -3150,26 +2798,19 @@ function loadPartLookup(input) {
         }
 
         if (result.rows && result.rows.length > 0) {
-            document.getElementById("LabelStatus").innerHTML =
-                "Lookup part ditemukan: " + result.rows.length + " item.";
-
+            document.getElementById("LabelStatus").innerHTML = "Lookup part ditemukan: " + result.rows.length + " item.";
             renderPartSuggest(input, result.rows);
             return;
         }
 
-        document.getElementById("LabelStatus").innerHTML =
-            "Lookup part kosong untuk customer/tanggal ini.";
-
+        document.getElementById("LabelStatus").innerHTML = "Lookup part kosong untuk customer/tanggal ini.";
         renderPartSuggest(input, []);
     });
 }
 
 function setRowPartFromLookup(input, item) {
     var row = getRowFromElement(input);
-
-    if (!row) {
-        return;
-    }
+    if (!row) return;
 
     var codeInput     = getInputByNameFromRow(row, "CODE[]");
     var nameInput     = getInputByNameFromRow(row, "NAME[]");
@@ -3179,39 +2820,16 @@ function setRowPartFromLookup(input, item) {
     var priceInput    = getInputByNameFromRow(row, "PRICE_ID[]");
     var packIdInput   = getInputByNameFromRow(row, "PACK_ID[]");
 
-    if (codeInput) {
-        codeInput.value = item.CODE;
-    }
-
-    if (nameInput) {
-        nameInput.value = item.NAME;
-    }
-
-    if (qtyInput) {
-        qtyInput.value = item.DAILY_SCH;
-    }
-
-    if (packQtyInput) {
-        packQtyInput.value = item.DIPA_PQTY;
-    }
-
-    if (packDescInput) {
-        packDescInput.value = item.PACK_DESC;
-    }
-
-    if (priceInput) {
-        priceInput.value = item.PRICE_ID;
-    }
-
-    if (packIdInput) {
-        packIdInput.value = item.PACK_ID;
-    }
+    if (codeInput) codeInput.value = item.CODE;
+    if (nameInput) nameInput.value = item.NAME;
+    if (qtyInput) qtyInput.value = item.DAILY_SCH;
+    if (packQtyInput) packQtyInput.value = item.DIPA_PQTY;
+    if (packDescInput) packDescInput.value = item.PACK_DESC;
+    if (priceInput) priceInput.value = item.PRICE_ID;
+    if (packIdInput) packIdInput.value = item.PACK_ID;
 
     var box = input.parentNode.getElementsByClassName("partSuggest")[0];
-
-    if (box) {
-        box.style.display = "none";
-    }
+    if (box) box.style.display = "none";
 
     selectPartRow(row);
 
@@ -3223,10 +2841,7 @@ function setRowPartFromLookup(input, item) {
 
 function renderPartSuggest(input, items) {
     var box = input.parentNode.getElementsByClassName("partSuggest")[0];
-
-    if (!box) {
-        return;
-    }
+    if (!box) return;
 
     box.innerHTML = "";
     partItems = items || [];
@@ -3245,31 +2860,17 @@ function renderPartSuggest(input, items) {
             div.setAttribute("data-index", idx);
 
             div.innerHTML =
-                htmlEncode(items[idx].CODE) +
-                " - " +
-                htmlEncode(items[idx].NAME) +
-                "<br>Sch: " +
-                htmlEncode(items[idx].DAILY_SCH) +
-                " | Price ID: " +
-                htmlEncode(items[idx].PRICE_ID);
+                htmlEncode(items[idx].CODE) + " - " + htmlEncode(items[idx].NAME) +
+                "<br>Sch: " + htmlEncode(items[idx].DAILY_SCH) +
+                " | Price ID: " + htmlEncode(items[idx].PRICE_ID);
 
             div.onmouseover = function () {
                 setActivePartSuggest(input, idx);
             };
 
             div.onmousedown = function (e) {
-                if (!e) {
-                    e = window.event;
-                }
-
-                if (e.preventDefault) {
-                    e.preventDefault();
-                }
-
-                /*
-                    Klik mouse hanya pilih item, belum auto save.
-                    Kalau mau klik juga langsung save, ubah false jadi true.
-                */
+                if (!e) e = window.event;
+                if (e.preventDefault) e.preventDefault();
                 choosePartSuggest(input, idx, false);
             };
 
@@ -3284,58 +2885,35 @@ function renderPartSuggest(input, items) {
 
 document.getElementById("tblPart").addEventListener("focusin", function (e) {
     e = e || window.event;
-
     var target = e.target || e.srcElement;
-
-    if (!target || target.name != "CODE[]") {
-        return;
-    }
-
+    if (!target || target.name != "CODE[]") return;
     loadPartLookup(target);
 });
 
 document.getElementById("tblPart").addEventListener("keyup", function (e) {
     e = e || window.event;
-
     var target = e.target || e.srcElement;
-
-    if (!target || target.name != "CODE[]") {
-        return;
-    }
+    if (!target || target.name != "CODE[]") return;
 
     var key = e.keyCode || e.which;
-
-    if (key == 13 || key == 38 || key == 40) {
-        return;
-    }
-
+    if (key == 13 || key == 38 || key == 40 || key == 37 || key == 39) return;
     loadPartLookup(target);
 });
 
 document.getElementById("tblPart").addEventListener("blur", function (e) {
     e = e || window.event;
-
     var target = e.target || e.srcElement;
-
-    if (!target || target.name != "CODE[]") {
-        return;
-    }
+    if (!target || target.name != "CODE[]") return;
 
     setTimeout(function () {
         var box = target.parentNode.getElementsByClassName("partSuggest")[0];
-
-        if (box) {
-            box.style.display = "none";
-        }
+        if (box) box.style.display = "none";
     }, 250);
-
 }, true);
 
 function getDeleteHeaderData() {
     var data = [];
-
     data.push("DI_ID=" + enc(document.getElementById("DI_ID").value));
-
     return data.join("&");
 }
 
@@ -3344,28 +2922,17 @@ function clearHeaderAfterDelete() {
     document.getElementById("DI_NO").value = "";
     document.getElementById("DI_START_DATE").value = "";
     document.getElementById("DI_DATE").value = "";
-
     document.getElementById("CUST_CODE").value = "";
     document.getElementById("CUST_COMP").value = "";
     document.getElementById("CUST_ABBR").value = "";
     document.getElementById("CUST_ID").value = "";
-
     document.getElementById("DI_DSNO").value = "";
     document.getElementById("DI_INVNO").value = "";
     document.getElementById("DI_ORDERNO").value = "";
 
-    if (typeof clearPartGrid == "function") {
-        clearPartGrid();
-    }
-
-    if (typeof resetSmallGrids == "function") {
-        resetSmallGrids();
-    }
-
-    if (typeof clearPOGrids == "function") {
-        clearPOGrids();
-    }
-
+    if (typeof clearPartGrid == "function") clearPartGrid();
+    if (typeof resetSmallGrids == "function") resetSmallGrids();
+    if (typeof clearPOGrids == "function") clearPOGrids();
     selectedPartRow = null;
 }
 
@@ -3407,7 +2974,6 @@ document.getElementById("btnDeleteHeader").onclick = function () {
         }
 
         var result;
-
         try {
             result = JSON.parse(responseText);
         } catch (e) {
@@ -3423,14 +2989,11 @@ document.getElementById("btnDeleteHeader").onclick = function () {
         }
 
         alert(result.message);
-
         clearHeaderAfterDelete();
-
         document.getElementById("LabelStatus").innerHTML = "Header berhasil dihapus.";
     });
 };
 
 </script>
-
 </body>
 </html>

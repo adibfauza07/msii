@@ -13,17 +13,13 @@ function fmt_date_id($value) {
     if ($value instanceof DateTime) {
         return $value->format("d-F-Y");
     }
-
     if ($value == "" || $value === null) {
         return "";
     }
-
     $ts = strtotime($value);
-
     if ($ts === false) {
         return "";
     }
-
     return date("d-F-Y", $ts);
 }
 
@@ -113,7 +109,6 @@ $totalAmount = 0;
 
 for ($i = 0; $i < count($rows); $i++) {
     $qty = isset($rows[$i]["QTY"]) ? (float)$rows[$i]["QTY"] : 0;
-
     $price = 0;
 
     if (isset($rows[$i]["PART_PRICE"]) && $rows[$i]["PART_PRICE"] !== null) {
@@ -144,8 +139,9 @@ $grandTotal = $totalAmount + $vatAmount;
         body {
             margin: 0;
             background: #9a9a9a;
-            font-family: "Courier New", monospace;
-            font-size: 12px;
+            /* DIUBAH: Font disamakan dengan Delivery Sheet */
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 13px;
             color: #000000;
         }
 
@@ -181,29 +177,28 @@ $grandTotal = $totalAmount + $vatAmount;
         }
 
         .company {
-            font-family: Arial, sans-serif;
-            font-size: 11px;
-            line-height: 14px;
+            font-size: 14px;
+            line-height: 1.4;
         }
 
         .company-name {
             font-weight: bold;
-            font-size: 15px;
-            letter-spacing: 1px;
-            margin-bottom: 3px;
+            font-size: 16px;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
         }
 
         .title {
             text-align: center;
-            font-family: "Times New Roman", serif;
-            font-size: 30px;
-            font-weight: normal;
-            padding-top: 34px;
+            font-size: 20px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            padding-top: 25px;
         }
 
         .right-head {
-            font-size: 11px;
-            line-height: 16px;
+            font-size: 12px;
+            line-height: 1.4;
         }
 
         .right-topline {
@@ -215,11 +210,14 @@ $grandTotal = $totalAmount + $vatAmount;
         .info-line {
             display: grid;
             grid-template-columns: 90px 1fr;
+            font-size: 14px;
+            line-height: 1.4;
         }
 
         .info-line .label {
             text-align: right;
             padding-right: 5px;
+            font-weight: bold;
         }
 
         .info-line .value {
@@ -228,7 +226,7 @@ $grandTotal = $totalAmount + $vatAmount;
 
         .separator {
             border-top: 1px solid #000000;
-            margin: 15px 0 7px 0;
+            margin: 15px 0 10px 0;
         }
 
         .customer-area {
@@ -240,24 +238,23 @@ $grandTotal = $totalAmount + $vatAmount;
         }
 
         .messrs {
-            font-size: 12px;
-            line-height: 16px;
+            font-size: 14px;
+            line-height: 1.4;
         }
 
         .messrs-title {
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
 
         .cust-name {
             font-weight: bold;
-            font-size: 15px;
-            font-family: Arial, sans-serif;
+            font-size: 16px;
         }
 
         .payment {
             text-align: left;
             padding-left: 18px;
-            font-size: 12px;
+            font-size: 14px;
         }
 
         .currency {
@@ -272,77 +269,41 @@ $grandTotal = $totalAmount + $vatAmount;
             border-collapse: collapse;
             border-top: 1px solid #000000;
             border-bottom: 1px solid #000000;
-            margin-top: 6px;
+            margin-top: 10px;
             table-layout: fixed;
             box-sizing: border-box;
         }
 
         .detail th {
-            font-size: 11px;
+            font-size: 14px;
             font-weight: bold;
             text-align: center;
-            padding: 3px 1px;
+            padding: 5px 2px;
             border-bottom: 1px solid #000000;
-            vertical-align: bottom;
-            line-height: 13px;
+            vertical-align: middle;
             box-sizing: border-box;
         }
 
         .detail td {
-            font-size: 11px;
-            padding: 2px 1px;
+            font-size: 14px;
+            padding: 4px 2px;
             vertical-align: top;
-            line-height: 13px;
+            line-height: 1.3;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: clip;
             box-sizing: border-box;
         }
 
-        .detail .no {
-            width: 4%;
-            text-align: left;
-        }
-
-        .detail .partno {
-            width: 14%;
-            text-align: left;
-        }
-
-        .detail .partname {
-            width: 34%;
-            text-align: left;
-        }
-
-        .detail .qty {
-            width: 6%;
-            text-align: right;
-        }
-
-        .detail .unit {
-            width: 5%;
-            text-align: center;
-        }
-
-        .detail .price {
-            width: 10%;
-            text-align: right;
-        }
-
-        .detail .amount {
-            width: 12%;
-            text-align: right;
-        }
-
-        .detail .po {
-            width: 10%;
-            text-align: center;
-        }
-
-        .detail .remark {
-            width: 5%;
-            text-align: left;
-        }
+        .detail .no { width: 4%; text-align: left; }
+        .detail .partno { width: 14%; text-align: left; }
+        .detail .partname { width: 34%; text-align: left; }
+        .detail .qty { width: 6%; text-align: right; }
+        .detail .unit { width: 5%; text-align: center; }
+        .detail .price { width: 10%; text-align: right; }
+        .detail .amount { width: 12%; text-align: right; }
+        .detail .po { width: 10%; text-align: center; }
+        .detail .remark { width: 5%; text-align: left; }
 
         .totals-wrapper {
             border-bottom: 1px solid #000000;
@@ -376,7 +337,7 @@ $grandTotal = $totalAmount + $vatAmount;
             display: grid;
             grid-template-columns: 62% 38%;
             margin-top: 8px;
-            font-size: 11px;
+            font-size: 13px;
             width: 100%;
             box-sizing: border-box;
         }
@@ -395,7 +356,7 @@ $grandTotal = $totalAmount + $vatAmount;
 
         .received {
             margin-top: 58px;
-            font-size: 11px;
+            font-size: 13px;
             font-style: italic;
             text-decoration: underline;
         }
@@ -403,12 +364,12 @@ $grandTotal = $totalAmount + $vatAmount;
         @media print {
             body {
                 background: #ffffff;
+                font-size: 12px;
+                -webkit-print-color-adjust: exact;
             }
-
             .print-bar {
                 display: none;
             }
-
             .paper {
                 width: 196mm;
                 min-height: 281mm;
@@ -417,39 +378,28 @@ $grandTotal = $totalAmount + $vatAmount;
                 padding: 0;
                 overflow: hidden;
             }
-
-            .detail th,
-            .detail td {
-                font-size: 10.5px;
-                line-height: 12px;
+            .detail th, .detail td {
+                font-size: 13px;
+                line-height: 1.2;
+                padding: 3px 2px;
             }
-
-            .company,
-            .messrs,
-            .payment,
-            .right-head,
-            .note-row,
-            .received {
-                font-size: 10.5px;
-            }
-
-            .company-name {
+            .company, .messrs, .payment, .right-head, .note-row, .received {
                 font-size: 13px;
             }
-
-            .cust-name {
+            .info-line {
                 font-size: 13px;
             }
-
+            .company-name, .cust-name {
+                font-size: 15px;
+            }
             .title {
-                font-size: 28px;
+                font-size: 20px;
             }
         }
     </style>
 </head>
 
 <body>
-
 <div class="print-bar">
     <button onclick="window.print()">PRINT</button>
     <button onclick="window.location.href='export_invoice_po_excel.php?DI_ID=<?php echo h($di_id); ?>'">EXPORT EXCEL</button>
@@ -457,7 +407,6 @@ $grandTotal = $totalAmount + $vatAmount;
 </div>
 
 <div class="paper">
-
     <div class="top">
         <div class="company">
             <div class="company-name">P.T. IMC TEKNO INDONESIA</div>
@@ -477,17 +426,14 @@ $grandTotal = $totalAmount + $vatAmount;
                     Page 1 of 1
                 </div>
             </div>
-
             <div class="info-line">
                 <div class="label">Date :</div>
                 <div class="value"><?php echo h(fmt_date_id($diDate)); ?></div>
             </div>
-
             <div class="info-line">
                 <div class="label">Invoice No :</div>
                 <div class="value"><?php echo h($invNo); ?></div>
             </div>
-
             <div class="info-line">
                 <div class="label">DS.No. :</div>
                 <div class="value"><?php echo h($dsNo); ?></div>
@@ -501,20 +447,10 @@ $grandTotal = $totalAmount + $vatAmount;
         <div class="messrs">
             <div class="messrs-title">[MESSRS]</div>
             <div class="cust-name"><?php echo h($custComp); ?></div>
-
-            <?php if (trim($custAddr1) != "") { ?>
-                <?php echo h($custAddr1); ?><br>
-            <?php } ?>
-
-            <?php if (trim($custAddr2) != "") { ?>
-                <?php echo h($custAddr2); ?><br>
-            <?php } ?>
-
-            <?php if (trim($custCity) != "") { ?>
-                <?php echo h($custCity); ?>
-            <?php } ?>
+            <?php if (trim($custAddr1) != "") { echo h($custAddr1) . "<br>"; } ?>
+            <?php if (trim($custAddr2) != "") { echo h($custAddr2) . "<br>"; } ?>
+            <?php if (trim($custCity) != "") { echo h($custCity); } ?>
         </div>
-
         <div class="payment">
             Payment Term : 1 month
             <div class="currency">Currency : <?php echo h($currency); ?></div>
@@ -535,22 +471,16 @@ $grandTotal = $totalAmount + $vatAmount;
                 <th class="remark">Remark</th>
             </tr>
         </thead>
-
         <tbody>
-            <?php for ($i = 0; $i < count($rows); $i++) { ?>
-                <?php
+            <?php for ($i = 0; $i < count($rows); $i++) { 
                 $r = $rows[$i];
-
                 $qty = isset($r["QTY"]) ? (float)$r["QTY"] : 0;
-
                 $price = 0;
-
                 if (isset($r["PART_PRICE"]) && $r["PART_PRICE"] !== null) {
                     $price = (float)$r["PART_PRICE"];
                 } elseif (isset($r["ORDP_PRICE"]) && $r["ORDP_PRICE"] !== null) {
                     $price = (float)$r["ORDP_PRICE"];
                 }
-
                 $amount = $qty * $price;
 
                 $partCode = isset($r["PART_CODE"]) ? trim($r["PART_CODE"]) : "";
@@ -559,7 +489,6 @@ $grandTotal = $totalAmount + $vatAmount;
                 $unit     = isset($r["PART_UNIT"]) ? trim($r["PART_UNIT"]) : "";
 
                 $poNo = "";
-
                 if (isset($r["PRICE_CODE"]) && trim($r["PRICE_CODE"]) != "") {
                     $poNo = trim($r["PRICE_CODE"]);
                 } elseif (isset($r["ORDR_PO"])) {
@@ -567,15 +496,9 @@ $grandTotal = $totalAmount + $vatAmount;
                 }
 
                 $remark = isset($r["ORDP_REM"]) ? trim($r["ORDP_REM"]) : "";
-
-                $partNoDisplay = $partNo;
-
-                if ($partNoDisplay == "") {
-                    $partNoDisplay = $partCode;
-                }
-
+                $partNoDisplay = $partNo == "" ? $partCode : $partNo;
                 $partNameDisplay = $partName;
-                ?>
+            ?>
                 <tr>
                     <td class="no"><?php echo h($i + 1); ?>.</td>
                     <td class="partno"><?php echo h($partNoDisplay); ?></td>
@@ -612,8 +535,6 @@ $grandTotal = $totalAmount + $vatAmount;
     </div>
 
     <div class="received">Received By :</div>
-
 </div>
-
 </body>
 </html>

@@ -280,7 +280,7 @@ if ($action == "save") {
     }
     // BY PASS VALIDASI INVOICE TO
     // elseif ($poTo <= 0) {
-    //     $error = "Invoice To wajib dipilih.";
+    //      $error = "Invoice To wajib dipilih.";
     // }
 
     if ($error == "") {
@@ -300,6 +300,9 @@ if ($action == "save") {
             $qty = isset($podQtys[$i]) ? to_float($podQtys[$i]) : 0;
             if ($itemId > 0 && $qty > 0) { $hasDetail = true; break; }
         }
+
+        // TAMBAHKAN BARIS INI UNTUK BYPASS CEK DETAIL
+        $hasDetail = true; 
 
         if (!$hasDetail && !($allowEmpty == 1 && $poId > 0)) {
             $error = "Detail PO minimal 1 baris dan qty harus lebih dari 0.";
@@ -1321,7 +1324,7 @@ if (count($details) == 0) {
         <!-- FOOTER BAR -->
         <div class="footer-bar">
             <div>
-                <button type="button" class="btn-classic" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+                
             </div>
             <div style="text-align: right;">
                 <button type="button" class="btn-classic" onclick="showReceive()" style="width: 80px; height:24px;">Show Recv.</button>

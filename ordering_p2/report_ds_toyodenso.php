@@ -39,13 +39,6 @@ function clean_text($value) {
     return trim((string)$value);
 }
 
-/*
-    PACK_NAME dipendekkan.
-    Contoh:
-    - Impraboard Box -> Box
-    - Plastic Box    -> Box
-    - Bucket         -> Bucket
-*/
 function short_pack_name($value) {
     $value = trim((string)$value);
 
@@ -130,11 +123,6 @@ for ($i = 0; $i < count($rows); $i++) {
 
 $poHeader = implode(", ", $poList);
 
-/*
-    Jumlah baris detail dibuat tetap supaya garis tabel selalu full.
-    Kalau data cuma sedikit, sisanya otomatis baris kosong.
-    Ubah ke 28 kalau mau garis lebih panjang.
-*/
 $minDetailRows = 25;
 $totalDetailRows = count($rows);
 
@@ -157,8 +145,9 @@ if ($totalDetailRows < $minDetailRows) {
         body {
             margin: 0;
             background: #9a9a9a;
-            font-family: "Courier New", monospace;
-            font-size: 11px;
+            /* DIUBAH: Menyeragamkan font ke Arial, Helvetica, sans-serif */
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 13px;
             color: #000000;
         }
 
@@ -187,8 +176,7 @@ if ($totalDetailRows < $minDetailRows) {
 
         .title {
             text-align: center;
-            font-family: Arial, sans-serif;
-            font-size: 23px;
+            font-size: 22px;
             font-weight: bold;
             letter-spacing: 2px;
             margin-bottom: 6px;
@@ -202,21 +190,20 @@ if ($totalDetailRows < $minDetailRows) {
         }
 
         .company {
-            font-family: Arial, sans-serif;
-            font-size: 9px;
-            line-height: 12px;
+            font-size: 12px;
+            line-height: 1.4;
         }
 
         .company-name {
             font-weight: bold;
-            font-size: 11px;
+            font-size: 15px;
         }
 
         .vendor-box,
         .to-box {
             border: 1px solid #000000;
-            font-size: 11px;
-            line-height: 14px;
+            font-size: 13px;
+            line-height: 1.4;
         }
 
         .vendor-row {
@@ -234,7 +221,7 @@ if ($totalDetailRows < $minDetailRows) {
         .vendor-label {
             font-weight: bold;
             text-decoration: underline;
-            font-size: 10px;
+            font-size: 12px;
         }
 
         .vendor-value {
@@ -255,7 +242,7 @@ if ($totalDetailRows < $minDetailRows) {
 
         .to-content {
             padding: 4px;
-            line-height: 14px;
+            line-height: 1.4;
         }
 
         .doc-grid {
@@ -263,14 +250,14 @@ if ($totalDetailRows < $minDetailRows) {
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
-            font-size: 11px;
+            font-size: 13px;
         }
 
         .doc-grid th,
         .doc-grid td {
             border: 1px solid #000000;
             padding: 3px 4px;
-            height: 18px;
+            height: 20px;
             white-space: nowrap;
             overflow: hidden;
         }
@@ -285,15 +272,15 @@ if ($totalDetailRows < $minDetailRows) {
             border-collapse: collapse;
             table-layout: fixed;
             margin-top: 8px;
-            font-size: 10px;
+            font-size: 12px;
         }
 
         .detail th,
         .detail td {
             border: 1px solid #000000;
-            padding: 2px 3px;
-            height: 16px;
-            line-height: 12px;
+            padding: 3px 4px;
+            height: 18px;
+            line-height: 1.3;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: clip;
@@ -306,8 +293,8 @@ if ($totalDetailRows < $minDetailRows) {
         }
 
         .detail .blank-row td {
-            height: 17px;
-            line-height: 17px;
+            height: 18px;
+            line-height: 18px;
         }
 
         .no {
@@ -351,7 +338,7 @@ if ($totalDetailRows < $minDetailRows) {
             border-collapse: collapse;
             table-layout: fixed;
             margin-top: 14px;
-            font-size: 10px;
+            font-size: 12px;
         }
 
         .sign-table td {
@@ -363,19 +350,21 @@ if ($totalDetailRows < $minDetailRows) {
         }
 
         .sign-table .small {
-            height: 18px;
-            font-size: 9px;
+            height: 20px;
+            font-size: 11px;
         }
 
         .note {
             margin-top: 10px;
-            font-size: 10px;
-            line-height: 13px;
+            font-size: 11px;
+            line-height: 1.4;
         }
 
         @media print {
             body {
                 background: #ffffff;
+                font-size: 12px;
+                -webkit-print-color-adjust: exact;
             }
 
             .print-bar {
@@ -391,24 +380,27 @@ if ($totalDetailRows < $minDetailRows) {
             }
 
             .title {
-                font-size: 22px;
+                font-size: 20px;
             }
 
             .detail th,
             .detail td {
-                font-size: 9.5px;
-                line-height: 11px;
+                font-size: 12px;
+                line-height: 1.2;
             }
 
             .detail .blank-row td {
-                height: 17px;
-                line-height: 17px;
+                height: 18px;
+                line-height: 18px;
             }
 
             .doc-grid,
             .vendor-box,
-            .to-box {
-                font-size: 10px;
+            .to-box,
+            .company,
+            .sign-table,
+            .note {
+                font-size: 12px;
             }
         }
     </style>

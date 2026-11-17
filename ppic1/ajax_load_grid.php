@@ -524,8 +524,9 @@ foreach ($headerRows as $headerData) {
     $item_code = trim($headerData['ITEM_CODE']);
     $itemData = isset($detailsByItem[$id_no]) ? $detailsByItem[$id_no] : array();
     
-    $idxDelPlan = -1; $idxDelActual = -1; $idxDelBal = -1;
-    $idxProdPlan = -1; $idxProdOk = -1; $idxProdBal = -1;
+   
+   $idxDelPlan = -1; $idxDelActual = -1; $idxDelBal = -1;
+    $idxProdPlan = -1; $idxProdOk = -1; $idxProdHold = -1; $idxProdBal = -1;
     
     foreach ($itemData as $k => $row) {
         if ($row['DESC_PROD'] === 'Del Plan') $idxDelPlan = $k;
@@ -533,6 +534,7 @@ foreach ($headerRows as $headerData) {
         if ($row['DESC_PROD'] === 'Del Balance') $idxDelBal = $k;
         if ($row['DESC_PROD'] === 'Prod Plan R0') $idxProdPlan = $k;
         if ($row['DESC_PROD'] === 'Prod OK') $idxProdOk = $k;
+        if ($row['DESC_PROD'] === 'Prod HOLD') $idxProdHold = $k; // Menangkap index Prod HOLD
         if ($row['DESC_PROD'] === 'Prod Balance') $idxProdBal = $k;
     }
     
@@ -554,23 +556,30 @@ foreach ($headerRows as $headerData) {
         $itemData[$idxDelBal]['G_TOTAL']    = 0; 
     }
     
+    // REVISI: Perhitungan Prod Balance melibatkan Prod OK dan Prod HOLD
     if ($idxProdPlan !== -1 && $idxProdOk !== -1 && $idxProdBal !== -1) {
-        $prevBal = 0; $gTotalPlan = 0; $gTotalOk = 0;
+        $prevBal = 0; $gTotalPlan = 0; $gTotalOk = 0; $gTotalHold = 0;
         for ($i = 1; $i <= 31; $i++) {
             $col = 'D' . $i;
             $plan = (float)$itemData[$idxProdPlan][$col];
             $ok   = (float)$itemData[$idxProdOk][$col];
+            $hold = ($idxProdHold !== -1) ? (float)$itemData[$idxProdHold][$col] : 0;
             
-            $currentBal = $prevBal + $ok - $plan;
+            // Rumus balance: saldo awal + (OK + HOLD) - Plan produksi
+            $currentBal = $prevBal + $ok + $hold - $plan;
             $itemData[$idxProdBal][$col] = $currentBal;
             $prevBal = $currentBal;
             
-            $gTotalPlan += $plan; $gTotalOk += $ok;
+            $gTotalPlan += $plan; $gTotalOk += $ok; $gTotalHold += $hold;
         }
         $itemData[$idxProdPlan]['G_TOTAL'] = $gTotalPlan;
         $itemData[$idxProdOk]['G_TOTAL']   = $gTotalOk;
+        if ($idxProdHold !== -1) {
+            $itemData[$idxProdHold]['G_TOTAL'] = $gTotalHold;
+        }
         $itemData[$idxProdBal]['G_TOTAL']  = 0; 
     }
+   
     
     $bomList = isset($bomDataMap[$item_code]) ? $bomDataMap[$item_code] : array();
     

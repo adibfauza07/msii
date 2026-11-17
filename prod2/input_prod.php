@@ -51,6 +51,8 @@ if (isset($_POST['action']) && $_POST['action'] === 'insert_new') {
     else { echo json_encode(['status' => 'error', 'errors' => sqlsrv_errors()]); }
     exit;
 }
+
+
 // =================================================================
 // 2. HANDLER AJAX: UPDATE DETAIL GRID UTAMA
 // =================================================================
@@ -64,12 +66,25 @@ if (isset($_POST['action']) && $_POST['action'] === 'update_detail') {
     $pd_ng = (int)$_POST['pd_ng'];
     $pd_dt = (float)$_POST['pd_dt'];
     $pd_purging = (float)$_POST['pd_purging'];
-    $pd_rem = trim($_POST['pd_rem']);
-    $pd_opr = trim($_POST['pd_opr']);
-    $pd_pic = trim($_POST['pd_pic']);
     
-    $sql_update = "UPDATE dbo.PRODUCTION SET PD_OK=?, PD_HO=?, PD_NG=?, PD_LOSTHOUR=?, PD_SC=?, PD_REM=?, PD_OPR=?, PD_PIC_LINE=? WHERE PD_ID=?";
-    $stmt_upd = sqlsrv_query($db, $sql_update, array($pd_ok, $pd_ho, $pd_ng, $pd_dt, $pd_purging, $pd_rem, $pd_opr, $pd_pic, $pd_id));
+    // Escape string aman & batasi panjang string untuk mencegah truncation error pada kolom selain REM
+    $pd_rem = str_replace("'", "''", trim($_POST['pd_rem'])); 
+    $pd_opr = str_replace("'", "''", substr(trim($_POST['pd_opr']), 0, 25)); // Batas char(25)
+    $pd_pic = str_replace("'", "''", substr(trim($_POST['pd_pic']), 0, 30)); // Batas varchar(30)
+    
+    // Eksekusi update langsung ke query string
+    $sql_update = "UPDATE dbo.PRODUCTION SET PD_OK=?, PD_HO=?, PD_NG=?, PD_LOSTHOUR=?, PD_SC=?, PD_REM='$pd_rem', PD_OPR='$pd_opr', PD_PIC_LINE='$pd_pic' WHERE PD_ID=?";
+    
+    $params = array(
+        $pd_ok,
+        $pd_ho,
+        $pd_ng,
+        $pd_dt,
+        $pd_purging,
+        $pd_id
+    );
+
+    $stmt_upd = sqlsrv_query($db, $sql_update, $params);
     
     if ($stmt_upd) { echo json_encode(['status' => 'success']); } 
     else { echo json_encode(['status' => 'error', 'errors' => sqlsrv_errors()]); }

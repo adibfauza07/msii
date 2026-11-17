@@ -75,7 +75,6 @@ $invNo  = isset($head["DI_INVNO"]) ? clean_text($head["DI_INVNO"]) : "";
 $diNo   = isset($head["DI_NO"]) ? clean_text($head["DI_NO"]) : "";
 
 $poList = array();
-
 $totalQty = 0;
 
 for ($i = 0; $i < count($rows); $i++) {
@@ -89,17 +88,6 @@ for ($i = 0; $i < count($rows); $i++) {
 }
 
 $poHeader = implode(", ", $poList);
-
-/*
-    Area detail dibuat full.
-    Data sedikit = sisanya ruang kosong tetap bergaris.
-*/
-$minDetailRows = 18;
-$totalDetailRows = count($rows);
-
-if ($totalDetailRows < $minDetailRows) {
-    $totalDetailRows = $minDetailRows;
-}
 ?>
 <!DOCTYPE html>
 <html>
@@ -116,8 +104,9 @@ if ($totalDetailRows < $minDetailRows) {
         body {
             margin: 0;
             background: #9a9a9a;
-            font-family: "Courier New", monospace;
-            font-size: 11px;
+            /* DIUBAH: Menyeragamkan font ke Arial, Helvetica, sans-serif */
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 13px;
             color: #000000;
         }
 
@@ -151,19 +140,18 @@ if ($totalDetailRows < $minDetailRows) {
         }
 
         .company {
-            font-family: Arial, sans-serif;
-            font-size: 10px;
-            line-height: 13px;
+            font-size: 12px;
+            line-height: 1.4;
         }
 
         .company-name {
             font-weight: bold;
-            font-size: 12px;
+            font-size: 15px;
         }
 
         .customer-to {
-            font-size: 10px;
-            line-height: 13px;
+            font-size: 12px;
+            line-height: 1.4;
             padding-left: 25px;
         }
 
@@ -173,14 +161,12 @@ if ($totalDetailRows < $minDetailRows) {
 
         .cust-name {
             font-weight: bold;
-            font-size: 12px;
-            font-family: Arial, sans-serif;
+            font-size: 15px;
         }
 
         .title {
             text-align: center;
-            font-family: Arial, sans-serif;
-            font-size: 24px;
+            font-size: 22px;
             font-weight: bold;
             letter-spacing: 1px;
             margin: 10px 0 8px 0;
@@ -189,8 +175,8 @@ if ($totalDetailRows < $minDetailRows) {
         .header-info {
             width: 55%;
             margin-top: 6px;
-            font-size: 11px;
-            line-height: 16px;
+            font-size: 13px;
+            line-height: 1.4;
         }
 
         .header-row {
@@ -203,39 +189,34 @@ if ($totalDetailRows < $minDetailRows) {
             border-collapse: collapse;
             table-layout: fixed;
             margin-top: 6px;
-            font-size: 10px;
+            font-size: 12px;
         }
 
-       .detail th {
-    border: 1px solid #000000;
-    padding: 3px 3px;
-    height: 28px;
-    line-height: 14px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: clip;
-    box-sizing: border-box;
-    text-align: center;
-    font-weight: bold;
-}
-
-.detail td {
-    border-left: 1px solid #000000;
-    border-right: 1px solid #000000;
-    border-top: none;
-    border-bottom: none;
-    padding: 3px 3px;
-    height: 28px;
-    line-height: 14px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: clip;
-    box-sizing: border-box;
-}
-
         .detail th {
+            border: 1px solid #000000;
+            padding: 3px 3px;
+            height: 28px;
+            line-height: 1.3;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: clip;
+            box-sizing: border-box;
             text-align: center;
             font-weight: bold;
+        }
+
+        .detail td {
+            border-left: 1px solid #000000;
+            border-right: 1px solid #000000;
+            border-top: none;
+            border-bottom: none;
+            padding: 3px 3px;
+            height: 28px;
+            line-height: 1.3;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: clip;
+            box-sizing: border-box;
         }
 
         .detail .no {
@@ -284,16 +265,16 @@ if ($totalDetailRows < $minDetailRows) {
         }
 
         .total-row td {
-    font-weight: bold;
-    height: 22px;
-    border-top: 1px solid #000000;
-    border-bottom: 1px solid #000000;
-}
+            font-weight: bold;
+            height: 22px;
+            border-top: 1px solid #000000;
+            border-bottom: 1px solid #000000;
+        }
 
         .footer-code {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            font-size: 9px;
+            font-size: 11px;
             margin-top: 3px;
         }
 
@@ -305,7 +286,7 @@ if ($totalDetailRows < $minDetailRows) {
             display: grid;
             grid-template-columns: 1fr 1fr;
             margin-top: 45px;
-            font-size: 11px;
+            font-size: 13px;
         }
 
         .sign-box {
@@ -326,6 +307,8 @@ if ($totalDetailRows < $minDetailRows) {
         @media print {
             body {
                 background: #ffffff;
+                font-size: 12px;
+                -webkit-print-color-adjust: exact;
             }
 
             .print-bar {
@@ -342,8 +325,8 @@ if ($totalDetailRows < $minDetailRows) {
 
             .detail th,
             .detail td {
-                font-size: 9.5px;
-                line-height: 11px;
+                font-size: 12px;
+                line-height: 1.2;
             }
 
             .blank-big td {
@@ -352,7 +335,15 @@ if ($totalDetailRows < $minDetailRows) {
             }
 
             .title {
-                font-size: 23px;
+                font-size: 20px;
+            }
+
+            .company,
+            .customer-to,
+            .header-info,
+            .footer-code,
+            .sign-area {
+                font-size: 12px;
             }
         }
     </style>

@@ -465,7 +465,7 @@ if ($connCombo) {
             var rfc2 = parseFloat(table.find('.cell-rfc2.day-' + d).text()) || 0;
 
             runDelBal  = runDelBal + (da - dp); 
-            runProdBal = runProdBal + (po - pp); 
+           runProdBal = runProdBal + (po + ph - pp);
             
             var stockAdjustment = rfc + rfc2 - lo - rtc - rtc2 - ng;
 

@@ -1,5 +1,5 @@
 <?php
-// 1. Panggil file koneksi database SQL Server (biasanya file koneksi sudah mengaktifkan session_start())
+// 1. Panggil file koneksi database SQL Server
 require_once __DIR__ . '/../config/database_p1.php';
 
 // Pastikan session aktif untuk membaca data user yang sedang login
@@ -12,8 +12,6 @@ $message = '';
 $status = '';
 
 // --- DETEKSI PLANT BERDASARKAN USER / SESSION ---
-// Kita cek apakah user yang aktif saat ini adalah 'plan1'
-// (Menyesuaikan dengan kotak hijau 'plan1' di menu samping aplikasimu)
 $currentUsername = isset($_SESSION['username']) ? strtolower($_SESSION['username']) : '';
 $activePlant = isset($_SESSION['active_plant']) ? strtolower($_SESSION['active_plant']) : '';
 
@@ -36,16 +34,32 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['posting_date'])) {
             $selectedDate = new DateTime($inputDateStr);
             $spDateParam = $selectedDate->format('Y-m-d');
             
-            $sqlPosting = "EXEC sp_posting_new ?";
+            // Mencegah PHP Timeout karena proses Cursor di SP bisa memakan waktu lama
+            set_time_limit(0); 
+            
+            // Eksekusi Stored Procedure
+            $sqlPosting = "EXEC [dbo].[sp_posting_new] ?";
             $stmtPosting = sqlsrv_query($conn, $sqlPosting, array($spDateParam));
             
             if ($stmtPosting) {
                 $status = 'success';
                 $bulanTahun = $selectedDate->format('F Y'); 
                 $message = "Berhasil melakukan Posting Bulanan untuk periode <b>$bulanTahun</b>! Stok akhir telah di-balance.";
+                
+                // Bebaskan statement dari memory setelah sukses
+                sqlsrv_free_stmt($stmtPosting);
             } else {
                 $status = 'error';
-                $message = "Terjadi kesalahan saat mengeksekusi Posting Bulanan.<br>" . print_r(sqlsrv_errors(), true);
+                
+                // Tangkap pesan error spesifik dari blok CATCH di SQL Server
+                $errors = sqlsrv_errors();
+                $errorMsg = "";
+                if ($errors != null) {
+                    foreach ($errors as $error) {
+                        $errorMsg .= $error['message'] . "<br>";
+                    }
+                }
+                $message = "Terjadi kesalahan saat mengeksekusi Posting Bulanan.<br>Detail Error: " . $errorMsg;
             }
         } catch (Exception $e) {
             $status = 'error';
@@ -74,7 +88,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['posting_date'])) {
         .btn:hover { background-color: #218838; }
         .btn:disabled { background-color: #cccccc; cursor: not-allowed; color: #666666; }
         
-        .alert { padding: 15px; margin-bottom: 20px; border-radius: 4px; font-size: 13px; text-align: center; line-height: 1.5; }
+        .alert { padding: 15px; margin-bottom: 20px; border-radius: 4px; font-size: 13px; text-align: left; line-height: 1.5; }
         .alert-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
         .alert-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
         .alert-warning { background-color: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
@@ -114,7 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['posting_date'])) {
             </div>
             
             <!-- Tombol dimatikan jika user adalah plan1 -->
-            <button type="submit" class="btn" <?php echo $isPlant1 ? 'disabled' : "onclick=\"return confirm('Anda yakin ingin menjalankan Posting Bulanan untuk periode yang dipilih?');\""; ?>>
+            <button type="submit" class="btn" <?php echo $isPlant1 ? 'disabled' : "onclick=\"return confirm('Anda yakin ingin menjalankan Posting Bulanan untuk periode yang dipilih? Pastikan tidak ada orang lain yang sedang menginput transaksi.');\""; ?>>
                 Jalankan Posting Bulanan
             </button>
             

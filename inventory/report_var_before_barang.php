@@ -170,7 +170,7 @@ $rows = array();
 $queryError = "";
 
 if (count($errors) == 0) {
-    $sql = "{CALL dbo.sp_laporan_mutasi_barang(?, ?)}";
+    $sql = "{CALL dbo.sp_laporan_mutasi_barang_new(?, ?)}";
     $params = array($tglAwal, $tglAkhir);
 
     $stmt = sqlsrv_query($conn, $sql, $params);

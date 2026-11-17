@@ -114,10 +114,6 @@ for ($i = 0; $i < count($rows); $i++) {
     $qty     = isset($r["DIPA_QTY"]) ? (float)$r["DIPA_QTY"] : 0;
     $packQty = isset($r["DIPA_PQTY"]) ? (float)$r["DIPA_PQTY"] : 0;
 
-    /*
-        PART_WEIGHT biasanya berat per pcs dalam gram.
-        PART_WEIGHT_KG kalau SP baru sudah menyediakan total berat part dalam kg.
-    */
     $partWeightGram = (float)get_value($r, array("PART_WEIGHT"), 0);
 
     if (isset($r["PART_WEIGHT_KG"])) {
@@ -126,19 +122,8 @@ for ($i = 0; $i < count($rows); $i++) {
         $partWeightKg = ($qty * $partWeightGram) / 1000;
     }
 
-    /*
-        PACK_WEIGHT_GR / PACK_WEIGHT = berat packing per box dalam gram.
-        Jangan pakai PWEIGHT untuk kolom Packing Weight(gr),
-        karena PWEIGHT adalah total berat packing dalam kg.
-    */
     $packWeightGram = (float)get_value($r, array("PACK_WEIGHT_GR", "PACK_WEIGHT"), 0);
 
-    /*
-        Total weight:
-        Jika SP sudah punya TOTAL_WEIGHT_KG / TWEIGHT, pakai itu.
-        Kalau belum, hitung manual:
-        part total kg + packing total kg.
-    */
     if (isset($r["TOTAL_WEIGHT_KG"])) {
         $totalLineWeightKg = (float)$r["TOTAL_WEIGHT_KG"];
     } elseif (isset($r["TWEIGHT"])) {
@@ -175,6 +160,11 @@ for ($i = 0; $i < count($rows); $i++) {
     $totalPackQty      += $packQty;
     $totalWeightKg     += $totalLineWeightKg;
 }
+
+// --- PENGATURAN PAGINATION ---
+$items_per_page = 35; 
+$chunks = array_chunk($detailRows, $items_per_page);
+$total_pages = count($chunks);
 ?>
 <!DOCTYPE html>
 <html>
@@ -190,9 +180,9 @@ for ($i = 0; $i < count($rows); $i++) {
 
         body {
             margin: 0;
-            background: #9a9a9a;
-            font-family: Arial, sans-serif;
-            font-size: 12px;
+            background: #f9f9f9;
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 13px;
             color: #000000;
         }
 
@@ -213,10 +203,19 @@ for ($i = 0; $i < count($rows); $i++) {
             min-height: 297mm;
             margin: 20px auto;
             background: #ffffff;
-            border: 2px solid #000000;
+            border: 1px solid #ccc;
             padding: 7mm;
             box-sizing: border-box;
-            overflow: hidden;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            page-break-after: always;
+            break-after: page;
+        }
+
+        .paper:last-of-type {
+            page-break-after: auto;
+            break-after: auto;
         }
 
         .top {
@@ -227,135 +226,115 @@ for ($i = 0; $i < count($rows); $i++) {
         }
 
         .company {
-            font-size: 12px;
-            line-height: 15px;
+            font-size: 14px;
+            line-height: 1.4;
         }
 
         .company-name {
             font-weight: bold;
-            font-size: 15px;
-            letter-spacing: 1px;
+            font-size: 16px;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
         }
 
         .title {
             text-align: center;
-            font-size: 25px;
+            font-size: 20px;
             font-weight: bold;
-            letter-spacing: 2px;
-            padding-top: 28px;
+            letter-spacing: 1px;
+            padding-top: 25px;
         }
 
         .right-head {
-            font-size: 11px;
-            line-height: 15px;
+            font-size: 12px;
+            line-height: 1.4;
         }
 
         .right-topline {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 28px;
+            margin-bottom: 20px;
         }
 
         .info-line {
             display: grid;
-            grid-template-columns: 90px 1fr;
+            grid-template-columns: 100px 1fr;
+            font-size: 14px;
+            line-height: 1.4;
+            align-items: baseline;
+            margin-bottom: 2px;
         }
 
         .info-line .label {
             text-align: right;
             padding-right: 5px;
+            font-weight: bold;
         }
 
         .info-line .value {
             text-align: right;
         }
 
-        .separator-dash {
-            border-top: 1px dashed #000000;
-            margin: 10px 0 7px 0;
+        /* DIUBAH: Menjadi garis solid untuk menyamai Invoice */
+        .separator {
+            border-top: 1px solid #000000;
+            margin: 15px 0 10px 0;
         }
 
         .customer-area {
             min-height: 70px;
-            font-size: 12px;
-            line-height: 16px;
+            font-size: 14px;
+            line-height: 1.4;
         }
 
         .messrs {
-            margin-bottom: 4px;
+            margin-bottom: 3px;
         }
 
         .cust-name {
             font-weight: bold;
-            font-size: 13px;
-            letter-spacing: 1px;
+            font-size: 16px;
         }
 
+        /* DIUBAH: Pengaturan border khusus atas bawah tabel */
         .detail {
             width: 100%;
             border-collapse: collapse;
             table-layout: fixed;
-            margin-top: 6px;
-            font-size: 12px;
+            margin-top: 10px;
+            border-top: 1px solid #000000;
+            border-bottom: 1px solid #000000;
         }
 
-        .detail th,
-        .detail td {
-            border: 1px solid #000000;
+        /* DIUBAH: Header hanya memiliki garis bawah, tidak ada garis vertikal */
+        .detail th {
+            text-align: center;
+            font-weight: bold;
+            font-size: 13px;
             padding: 4px 3px;
-            height: 28px;
-            line-height: 14px;
-            font-size: 11px;
+            border-bottom: 1px solid #000000; 
+        }
+
+        /* DIUBAH: Hapus border pada td agar baris data polos */
+        .detail td {
+            padding: 4px 3px;
+            font-size: 13px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: clip;
             box-sizing: border-box;
+            vertical-align: middle;
+            /* border dihilangkan */
         }
 
-        .detail th {
-            text-align: center;
-            font-weight: bold;
-        }
-
-        .no {
-            width: 4%;
-            text-align: center;
-        }
-
-        .partno {
-            width: 20%;
-            text-align: left;
-        }
-
-        .partname {
-            width: 36%;
-            text-align: left;
-        }
-
-        .qtypcs {
-            width: 8%;
-            text-align: right;
-        }
-
-        .partweight {
-            width: 10%;
-            text-align: right;
-        }
-
-        .packqty {
-            width: 8%;
-            text-align: right;
-        }
-
-        .packweight {
-            width: 9%;
-            text-align: right;
-        }
-
-        .totalweight {
-            width: 10%;
-            text-align: right;
-        }
+        .no { width: 4%; text-align: center; }
+        .partno { width: 20%; text-align: left; }
+        .partname { width: 36%; text-align: left; }
+        .qtypcs { width: 8%; text-align: right; }
+        .partweight { width: 10%; text-align: right; }
+        .packqty { width: 8%; text-align: right; }
+        .packweight { width: 9%; text-align: right; }
+        .totalweight { width: 10%; text-align: right; }
 
         .num {
             text-align: right;
@@ -366,19 +345,25 @@ for ($i = 0; $i < count($rows); $i++) {
             text-align: center;
         }
 
+        /* DIUBAH: Baris total dibuat garis solid */
         .total-row td {
             font-weight: bold;
-            border-top: 1px dashed #000000;
-            border-bottom: 1px dashed #000000;
+            border-top: 1px solid #000000;
+            border-bottom: 1px solid #000000;
         }
 
         .separator-bottom {
-            border-top: 1px dashed #000000;
+            border-top: 1px solid #000000;
             margin-top: 7px;
+        }
+        
+        .footer-wrapper {
+            margin-top: auto;
+            padding-top: 20px;
+            page-break-inside: avoid;
         }
 
         .signature {
-            margin-top: 12px;
             text-align: right;
             padding-right: 70px;
             font-size: 12px;
@@ -386,9 +371,12 @@ for ($i = 0; $i < count($rows); $i++) {
             text-decoration: underline;
         }
 
+        /* PENGATURAN PRINT */
         @media print {
             body {
                 background: #ffffff;
+                font-size: 12px;
+                -webkit-print-color-adjust: exact;
             }
 
             .print-bar {
@@ -396,37 +384,41 @@ for ($i = 0; $i < count($rows); $i++) {
             }
 
             .paper {
+                margin: 0;
+                border: none;
+                padding: 0;
+                box-shadow: none;
                 width: 196mm;
                 min-height: 281mm;
-                margin: 0;
-                border: 2px solid #000000;
-                padding: 5mm;
             }
 
-            .detail th,
+            /* DIUBAH: Hapus kotak saat di print juga */
+            .detail th {
+                font-size: 12px;
+                line-height: 1.2;
+                padding: 3px 2px;
+                border-bottom: 1px solid #000000;
+            }
             .detail td {
-                font-size: 11px;
-                line-height: 14px;
-                height: 27px;
-                padding: 3px 3px;
+                font-size: 12px;
+                line-height: 1.2;
+                padding: 3px 2px;
+                /* border dihilangkan */
             }
 
             .company,
             .right-head,
             .customer-area {
-                font-size: 11px;
-            }
-
-            .company-name {
                 font-size: 13px;
             }
 
+            .company-name,
             .cust-name {
-                font-size: 12px;
+                font-size: 15px;
             }
 
             .title {
-                font-size: 24px;
+                font-size: 20px;
             }
         }
     </style>
@@ -440,6 +432,9 @@ for ($i = 0; $i < count($rows); $i++) {
     <button onclick="window.close()">CLOSE</button>
 </div>
 
+<?php foreach ($chunks as $page_index => $page_rows) { 
+    $current_page = $page_index + 1;
+?>
 <div class="paper">
 
     <div class="top">
@@ -458,7 +453,7 @@ for ($i = 0; $i < count($rows); $i++) {
                 <div><?php echo h(fmt_datetime_header()); ?></div>
                 <div>
                     FM.CO.00-59<br>
-                    Page 1 of 1
+                    Page <?php echo $current_page; ?> of <?php echo $total_pages; ?>
                 </div>
             </div>
 
@@ -474,7 +469,8 @@ for ($i = 0; $i < count($rows); $i++) {
         </div>
     </div>
 
-    <div class="separator-dash"></div>
+    <!-- MENGGUNAKAN SEPARATOR SOLID SEPERTI GAMBAR -->
+    <div class="separator"></div>
 
     <div class="customer-area">
         <div class="messrs">[MESSRS]</div>
@@ -512,11 +508,11 @@ for ($i = 0; $i < count($rows); $i++) {
         </thead>
 
         <tbody>
-            <?php for ($i = 0; $i < count($detailRows); $i++) { ?>
-                <?php $r = $detailRows[$i]; ?>
-
+            <?php foreach ($page_rows as $i => $r) { 
+                $global_no = ($page_index * $items_per_page) + $i + 1;
+            ?>
                 <tr>
-                    <td class="no"><?php echo h($i + 1); ?></td>
+                    <td class="no"><?php echo h($global_no); ?></td>
                     <td class="partno"><?php echo h($r["PART_NO"]); ?></td>
                     <td class="partname"><?php echo h($r["PART_NAME"]); ?></td>
                     <td class="qtypcs num"><?php echo h(fmt_qty($r["DIPA_QTY"])); ?></td>
@@ -527,6 +523,7 @@ for ($i = 0; $i < count($rows); $i++) {
                 </tr>
             <?php } ?>
 
+            <?php if ($current_page == $total_pages) { ?>
             <tr class="total-row">
                 <td colspan="3" class="center">TOTAL</td>
                 <td class="qtypcs num"><?php echo h(fmt_qty($totalPartQty)); ?></td>
@@ -535,14 +532,19 @@ for ($i = 0; $i < count($rows); $i++) {
                 <td class="packweight num"></td>
                 <td class="totalweight num"><?php echo h(fmt_kg($totalWeightKg)); ?></td>
             </tr>
+            <?php } ?>
         </tbody>
     </table>
 
-    <div class="separator-bottom"></div>
-
-    <div class="signature">Authorized Signature</div>
+    <?php if ($current_page == $total_pages) { ?>
+    <div class="footer-wrapper">
+        <div class="separator-bottom"></div>
+        <div class="signature">Authorized Signature</div>
+    </div>
+    <?php } ?>
 
 </div>
+<?php } ?>
 
 </body>
 </html>

@@ -3,7 +3,7 @@ if (session_id() == "") {
     session_start();
 }
 
-require_once dirname(__DIR__) . "/config/db_plant2.php";
+require_once dirname(__DIR__) . "/config/global.php";
 
 if ($conn === false) {
     die("Koneksi database gagal.");
@@ -152,7 +152,6 @@ if (getv("action", "") == "quo_history") {
     <head>
         <meta charset="utf-8">
         <title>Quotation History</title>
-        <!-- AdminLTE CSS for Popup -->
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/admin-lte@3.2/dist/css/adminlte.min.css">
     </head>
     <body class="p-3 bg-light">
@@ -223,7 +222,7 @@ $error = "";
 
 $action = postv("action", "");
 $editId = intval(getv("edit", "0"));
-$q = getv("q", ""); // Ditambahkan untuk menangani Notice: Undefined variable q
+$q = getv("q", "");
 
 // ==== PENANDA AJAX UNTUK SAVE BY ENTER ====
 $isAjax = (isset($_GET['ajax']) && $_GET['ajax'] == '1') || (isset($_POST['is_ajax']) && $_POST['is_ajax'] == '1');
@@ -291,95 +290,80 @@ if ($action == "save") {
         $terms      = isset($_POST["quod_term"]) ? $_POST["quod_term"] : array();
         $actives    = isset($_POST["quod_active"]) ? $_POST["quod_active"] : array();
 
-        $hasDetail = false;
+        // BYPASS VALIDASI DETAIL: Langsung proses penyimpanan header
+        sqlsrv_begin_transaction($conn);
+        $ok = true;
 
-        for ($i = 0; $i < count($itemIds); $i++) {
-            $itemId = intval($itemIds[$i]);
-            $itemCode = isset($itemCodes[$i]) ? trim((string)$itemCodes[$i]) : "";
-            if ($itemId <= 0 && $itemCode != "") $itemId = find_item_id_by_code($conn, $itemCode);
-            $price = isset($prices[$i]) ? to_float($prices[$i]) : 0;
-            if ($itemId > 0 && $price > 0) { $hasDetail = true; break; }
+        if ($quoId > 0) {
+            $sqlH = "UPDATE dbo.QUOTATION SET SUP_ID = ?, QUO_NO = ?, QUO_DATE = ?, CURR_CODE = ?, QUO_EFFDATE = ? WHERE QUO_ID = ?";
+            $paramsH = array($supId, $quoNo, $quoDate, $currCode, $quoEffDate, $quoId);
+            $stmtH = sqlsrv_query($conn, $sqlH, $paramsH);
+            if ($stmtH === false) $ok = false;
+        } else {
+            $sqlH = "INSERT INTO dbo.QUOTATION (SUP_ID, QUO_NO, QUO_DATE, CURR_CODE, QUO_EFFDATE) OUTPUT INSERTED.QUO_ID VALUES (?, ?, ?, ?, ?)";
+            $paramsH = array($supId, $quoNo, $quoDate, $currCode, $quoEffDate);
+            $stmtH = sqlsrv_query($conn, $sqlH, $paramsH);
+            if ($stmtH === false) {
+                $ok = false;
+            } else {
+                $newRow = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_NUMERIC);
+                if ($newRow) $quoId = intval($newRow[0]); else $ok = false;
+            }
         }
 
-        if (!$hasDetail && !($allowEmpty == 1 && $quoId > 0)) {
-            $error = "Detail quotation minimal 1 baris dan price harus lebih dari 0.";
-        } else {
-            sqlsrv_begin_transaction($conn);
-            $ok = true;
+        if ($ok) {
+            $stmtDel = sqlsrv_query($conn, "DELETE FROM dbo.QUOT_DETAIL WHERE QUO_ID = ?", array($quoId));
+            if ($stmtDel === false) $ok = false;
+        }
 
-            if ($quoId > 0) {
-                $sqlH = "UPDATE dbo.QUOTATION SET SUP_ID = ?, QUO_NO = ?, QUO_DATE = ?, CURR_CODE = ?, QUO_EFFDATE = ? WHERE QUO_ID = ?";
-                $paramsH = array($supId, $quoNo, $quoDate, $currCode, $quoEffDate, $quoId);
-                $stmtH = sqlsrv_query($conn, $sqlH, $paramsH);
-                if ($stmtH === false) $ok = false;
-            } else {
-                $sqlH = "INSERT INTO dbo.QUOTATION (SUP_ID, QUO_NO, QUO_DATE, CURR_CODE, QUO_EFFDATE) OUTPUT INSERTED.QUO_ID VALUES (?, ?, ?, ?, ?)";
-                $paramsH = array($supId, $quoNo, $quoDate, $currCode, $quoEffDate);
-                $stmtH = sqlsrv_query($conn, $sqlH, $paramsH);
-                if ($stmtH === false) {
-                    $ok = false;
-                } else {
-                    $newRow = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_NUMERIC);
-                    if ($newRow) $quoId = intval($newRow[0]); else $ok = false;
-                }
+        if ($ok) {
+            for ($i = 0; $i < count($itemIds); $i++) {
+                $itemId = intval($itemIds[$i]);
+                $itemCode = isset($itemCodes[$i]) ? trim((string)$itemCodes[$i]) : "";
+                if ($itemId <= 0 && $itemCode != "") $itemId = find_item_id_by_code($conn, $itemCode);
+
+                $price  = isset($prices[$i]) ? to_float($prices[$i]) : 0;
+                $minQty = isset($minQtys[$i]) ? to_float($minQtys[$i]) : 0;
+                $unit   = isset($units[$i]) ? trim((string)$units[$i]) : "";
+                $term   = isset($terms[$i]) ? trim((string)$terms[$i]) : "";
+                $active = isset($actives[$i]) ? 1 : 0;
+
+                if ($itemId <= 0 || $price <= 0) continue;
+
+                $sqlD = "INSERT INTO dbo.QUOT_DETAIL (QUOD_PRICE, QUOD_MINQTY, QUOD_UNIT, QUOD_TERM, ITEM_ID, QUO_ID, QUOD_ACTIVE) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                $paramsD = array($price, $minQty, $unit, $term, $itemId, $quoId, $active);
+                $stmtD = sqlsrv_query($conn, $sqlD, $paramsD);
+
+                if ($stmtD === false) { $ok = false; break; }
             }
+        }
 
-            if ($ok) {
-                $stmtDel = sqlsrv_query($conn, "DELETE FROM dbo.QUOT_DETAIL WHERE QUO_ID = ?", array($quoId));
-                if ($stmtDel === false) $ok = false;
-            }
-
-            if ($ok) {
-                for ($i = 0; $i < count($itemIds); $i++) {
-                    $itemId = intval($itemIds[$i]);
-                    $itemCode = isset($itemCodes[$i]) ? trim((string)$itemCodes[$i]) : "";
-                    if ($itemId <= 0 && $itemCode != "") $itemId = find_item_id_by_code($conn, $itemCode);
-
-                    $price  = isset($prices[$i]) ? to_float($prices[$i]) : 0;
-                    $minQty = isset($minQtys[$i]) ? to_float($minQtys[$i]) : 0;
-                    $unit   = isset($units[$i]) ? trim((string)$units[$i]) : "";
-                    $term   = isset($terms[$i]) ? trim((string)$terms[$i]) : "";
-                    
-                    // Note: Checkbox logic in HTML passes value if checked, otherwise missing
-                    $active = isset($actives[$i]) ? 1 : 0;
-
-                    if ($itemId <= 0 || $price <= 0) continue;
-
-                    $sqlD = "INSERT INTO dbo.QUOT_DETAIL (QUOD_PRICE, QUOD_MINQTY, QUOD_UNIT, QUOD_TERM, ITEM_ID, QUO_ID, QUOD_ACTIVE) VALUES (?, ?, ?, ?, ?, ?, ?)";
-                    $paramsD = array($price, $minQty, $unit, $term, $itemId, $quoId, $active);
-                    $stmtD = sqlsrv_query($conn, $sqlD, $paramsD);
-
-                    if ($stmtD === false) { $ok = false; break; }
-                }
-            }
-
-            if ($ok) {
-                sqlsrv_commit($conn);
-                
-                // ==== JIKA DISIMPAN LEWAT ENTER (AJAX) ====
-                if ($isAjax) {
-                    ob_clean();
-                    header('Content-Type: application/json');
-                    echo json_encode(array("status" => "success", "quo_id" => $quoId));
-                    exit;
-                }
-                // ==========================================
-
-                header("Location: quotation.php?edit=" . $quoId . "&msg=saved");
+        if ($ok) {
+            sqlsrv_commit($conn);
+            
+            // ==== JIKA DISIMPAN LEWAT ENTER (AJAX) ====
+            if ($isAjax) {
+                ob_clean();
+                header('Content-Type: application/json');
+                echo json_encode(array("status" => "success", "quo_id" => $quoId));
                 exit;
-            } else {
-                sqlsrv_rollback($conn);
-                $error = "Simpan gagal:\n" . sql_error_text();
-                
-                // ==== JIKA ERROR LEWAT ENTER (AJAX) ====
-                if ($isAjax) {
-                    ob_clean();
-                    header('Content-Type: application/json');
-                    echo json_encode(array("status" => "error", "message" => $error));
-                    exit;
-                }
-                // =======================================
             }
+            // ==========================================
+
+            header("Location: quotation.php?edit=" . $quoId . "&msg=saved");
+            exit;
+        } else {
+            sqlsrv_rollback($conn);
+            $error = "Simpan gagal:\n" . sql_error_text();
+            
+            // ==== JIKA ERROR LEWAT ENTER (AJAX) ====
+            if ($isAjax) {
+                ob_clean();
+                header('Content-Type: application/json');
+                echo json_encode(array("status" => "error", "message" => $error));
+                exit;
+            }
+            // =======================================
         }
     }
     
@@ -474,6 +458,23 @@ if ($stmtCurr !== false) {
     }
 }
 
+/* ======================================================
+   LIST QUOTATION (Jika diperlukan)
+====================================================== */
+$where = "";
+$paramsList = array();
+
+if ($q != "") {
+    $where = "WHERE Q.QUO_NO LIKE ? OR S.SUP_CODE LIKE ? OR S.SUP_COMP LIKE ?";
+    $paramsList[] = "%" . $q . "%";
+    $paramsList[] = "%" . $q . "%";
+    $paramsList[] = "%" . $q . "%";
+}
+
+$sqlList = "SELECT TOP 300 Q.QUO_ID, Q.QUO_NO, Q.QUO_DATE, Q.QUO_EFFDATE, Q.CURR_CODE, S.SUP_CODE, S.SUP_COMP, COUNT(D.ITEM_ID) AS DETAIL_COUNT FROM dbo.QUOTATION Q LEFT JOIN dbo.SUPPLIER S ON Q.SUP_ID = S.SUP_ID LEFT JOIN dbo.QUOT_DETAIL D ON Q.QUO_ID = D.QUO_ID $where GROUP BY Q.QUO_ID, Q.QUO_NO, Q.QUO_DATE, Q.QUO_EFFDATE, Q.CURR_CODE, S.SUP_CODE, S.SUP_COMP ORDER BY Q.QUO_DATE DESC, Q.QUO_NO DESC";
+$stmtList = sqlsrv_query($conn, $sqlList, $paramsList);
+if ($stmtList === false) die("<pre>Query list quotation error:\n" . sql_error_text() . "</pre>");
+
 if (count($details) == 0) {
     for ($i = 0; $i < 10; $i++) {
         $details[] = array("ITEM_ID" => "", "ITEM_CODE" => "", "ITEM_NAME" => "", "ITEM_UNIT" => "", "QUOD_PRICE" => "", "QUOD_MINQTY" => "", "QUOD_UNIT" => "", "QUOD_TERM" => "", "QUOD_ACTIVE" => 1);
@@ -491,7 +492,7 @@ if (count($details) == 0) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     
     <style>
-        /* CSS KHUSUS TAMPILAN WINDOWS CLASSIC / DELPHI */
+        /* CSS KHUSUS TAMPILAN WINDOWS CLASSIC / DELPHI (Menyesuaikan modul PO) */
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             font-size: 12px;
@@ -509,13 +510,12 @@ if (count($details) == 0) {
         }
 
         .title-bar {
-            background-color: #cce3c6; /* Hijau pucat sesuai gambar */
+            background-color: #ffffff;
             text-align: center;
             font-size: 24px;
             font-family: Arial, sans-serif;
             padding: 5px 0;
             color: #000;
-            border-bottom: 1px solid #a0a0a0;
         }
 
         /* HEADER OLIVE */
@@ -525,14 +525,6 @@ if (count($details) == 0) {
             color: #ffffff;
         }
 
-        .lbl-yellow {
-            color: #ffff00;
-            font-size: 11px;
-            margin-bottom: 2px;
-            display: block;
-            font-weight: bold;
-        }
-        
         .lbl-white {
             color: #ffffff;
             font-size: 11px;
@@ -552,7 +544,7 @@ if (count($details) == 0) {
             transition: background-color 0.3s;
         }
 
-        .input-classic:read-only { background-color: #a9a9a9; color: #000; } /* Abu-abu gelap untuk input readonly sesuai gambar */
+        .input-classic:read-only { background-color: #a9a9a9; color: #000; }
         
         select.input-classic { padding: 0; }
 
@@ -579,7 +571,6 @@ if (count($details) == 0) {
             border: 1px solid #fff;
             padding: 6px;
             margin-top: 5px;
-            position: relative;
             display: inline-block;
         }
 
@@ -618,7 +609,7 @@ if (count($details) == 0) {
             font-size: 11px;
         }
 
-        table.datagrid input[type="text"] {
+        table.datagrid input[type="text"], table.datagrid input[type="date"] {
             width: 100%;
             height: 18px;
             border: none;
@@ -628,7 +619,7 @@ if (count($details) == 0) {
             box-sizing: border-box;
             transition: background-color 0.3s;
         }
-        table.datagrid input[type="text"]:focus {
+        table.datagrid input[type="text"]:focus, table.datagrid input[type="date"]:focus {
             background: #e7f1ff;
             outline: 1px solid #000;
         }
@@ -669,10 +660,7 @@ if (count($details) == 0) {
         .col-2 { flex: 0 0 16.666%; max-width: 16.666%; padding: 0 5px; }
         .col-3 { flex: 0 0 25%; max-width: 25%; padding: 0 5px; }
         .col-4 { flex: 0 0 33.333%; max-width: 33.333%; padding: 0 5px; }
-        .col-5 { flex: 0 0 41.666%; max-width: 41.666%; padding: 0 5px; }
-        .col-6 { flex: 0 0 50%; max-width: 50%; padding: 0 5px; }
         .col-8 { flex: 0 0 66.666%; max-width: 66.666%; padding: 0 5px; }
-        .col-9 { flex: 0 0 75%; max-width: 75%; padding: 0 5px; }
         .col-12 { flex: 0 0 100%; max-width: 100%; padding: 0 5px; }
         .mt-1 { margin-top: 4px; }
         .mt-2 { margin-top: 8px; }
@@ -681,6 +669,7 @@ if (count($details) == 0) {
     </style>
 
     <script>
+        // Gunakan pengaman tambahan ?: '[]' agar jika json_encode gagal di PHP 5.4, JS tidak akan syntax error
         var supplierData = <?php echo json_encode($supplierAuto) ? json_encode($supplierAuto) : '[]'; ?>;
         var itemData = <?php echo json_encode($itemAuto) ? json_encode($itemAuto) : '[]'; ?>;
         var quoData = <?php echo json_encode($quoAuto) ? json_encode($quoAuto) : '[]'; ?>;
@@ -1184,11 +1173,11 @@ if (count($details) == 0) {
                     <div class="row mt-1">
                         <div class="col-2">
                             <label class="lbl-white">No.</label>
-                            <input type="text" class="input-classic" name="quo_no" id="quo_no" value="<?php echo h($header["QUO_NO"]); ?>" onkeydown="headerKey(event)">
+                            <input type="text" class="input-classic" name="quo_no" id="quo_no" value="<?php echo h($header["QUO_NO"]); ?>" onkeydown="headerKey(event, this)">
                         </div>
                         <div class="col-2">
                             <label class="lbl-white">Curr.</label>
-                            <select class="input-classic" name="curr_code" id="curr_code" onkeydown="headerKey(event)">
+                            <select class="input-classic" name="curr_code" id="curr_code" onkeydown="headerKey(event, this)">
                                 <?php foreach ($currList as $c) { ?>
                                     <option value="<?php echo h($c); ?>" <?php echo trim((string)$header["CURR_CODE"]) == $c ? "selected" : ""; ?>><?php echo h($c); ?></option>
                                 <?php } ?>
@@ -1196,18 +1185,18 @@ if (count($details) == 0) {
                         </div>
                         <div class="col-3">
                             <label class="lbl-white">Effective Date</label>
-                            <input type="date" class="input-classic" name="quo_date" value="<?php echo h($header["QUO_DATE"]); ?>" onkeydown="headerKey(event)">
+                            <input type="date" class="input-classic" name="quo_date" value="<?php echo h($header["QUO_DATE"]); ?>" onkeydown="headerKey(event, this)">
                         </div>
                         <div class="col-3">
                             <label class="lbl-white">End Date</label>
-                            <input type="date" class="input-classic" name="quo_effdate" value="<?php echo h($header["QUO_EFFDATE"]); ?>" onkeydown="headerKey(event)">
+                            <input type="date" class="input-classic" name="quo_effdate" value="<?php echo h($header["QUO_EFFDATE"]); ?>" onkeydown="headerKey(event, this)">
                         </div>
                     </div>
 
                     <!-- Action buttons -->
                     <div class="row mt-2">
                         <div class="col-12 text-center">
-                            <fieldset class="fieldset-control">
+                            <fieldset class="fieldset-control" style="border:none; padding: 4px 10px;">
                                 <button type="button" class="btn-classic btn-action-wide" onclick="newData()">Tambah</button>
                                 <button type="button" class="btn-classic btn-action-wide" onclick="goEdit('<?php echo h($editId); ?>')">Rubah</button>
                                 <button type="button" class="btn-classic btn-action-wide" onclick="deleteCurrent()">Hapus</button>
@@ -1223,7 +1212,7 @@ if (count($details) == 0) {
                 <div class="col-4">
                     <div style="display:flex; flex-direction:column; align-items:flex-end;">
                         <div style="margin-bottom: 20px; width: 100%;">
-                            <label class="lbl-white text-right">SEARCH QUOTATION</label>
+                            <label class="lbl-white text-right" style="font-weight:bold;">SEARCH QUOTATION</label>
                             <input type="text" name="q" class="input-classic" style="width:100%;" value="<?php echo h($q); ?>" placeholder="Search Quo No / Supplier" autocomplete="off" oninput="showQuoAC(this)" onkeydown="quoSearchKey(event, this)">
                         </div>
                     </div>
@@ -1295,7 +1284,7 @@ if (count($details) == 0) {
         <!-- FOOTER BAR -->
         <div class="footer-bar">
             <div>
-                <button type="button" class="btn-classic" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+               
             </div>
             <div style="text-align: right;">
                 <button type="button" class="btn-classic" onclick="openSelectedHistory()" style="width: 80px; height:24px;">OS/PO</button>

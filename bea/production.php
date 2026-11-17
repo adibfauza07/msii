@@ -3,6 +3,7 @@
 error_reporting(0);
 require_once __DIR__ . '/config/database.php';
 
+
 $db = isset($conn) ? $conn : (isset($connection) ? $connection : (isset($dbconn) ? $dbconn : null));
 
 $ng_types = array();

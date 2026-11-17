@@ -1,11 +1,104 @@
 <?php
-require_once __DIR__ . '/../config/database_p1.php';
+require_once __DIR__ . '/../config/global.php';
+set_time_limit(120); 
 
 // ==================================================================================
-// FITUR BARU: HAPUS TAG SATUAN VIA AJAX (Menggantikan Hapus Massal)
+// DETEKSI AJAX
+// ==================================================================================
+$isAjax = (isset($_GET['ajax']) && $_GET['ajax'] == '1') || (isset($_POST['is_ajax']) && $_POST['is_ajax'] == '1');
+
+// CEK APAKAH LOGIN SAAT INI ADALAH 'p1' ATAU 'plan1' 
+$currentUser = isset($_SESSION['db_user']) ? strtolower(trim($_SESSION['db_user'])) : '';
+$canEditFinished = ($currentUser === 'p1' || $currentUser === 'plan1');
+
+// ==================================================================================
+// FITUR: INSTAN UPDATE FINISHED STATUS VIA AJAX (HANYA UNTUK P1)
+// ==================================================================================
+if (isset($_POST['ajax_update_finished']) && $canEditFinished) {
+    while (ob_get_level()) ob_end_clean(); 
+    header('Content-Type: application/json');
+    
+    $sop_id = (int)$_POST['sop_id'];
+    $new_status = $_POST['new_status'];
+    
+    $sqlUpd = "UPDATE SOP SET SOP_FINISHED = ? WHERE SOP_ID = ?";
+    $stmtUpd = sqlsrv_query($conn, $sqlUpd, array($new_status, $sop_id));
+    
+    if ($stmtUpd) {
+        echo json_encode(['success' => true]);
+    } else {
+        $err = sqlsrv_errors();
+        echo json_encode(['success' => false, 'message' => $err[0]['message']]);
+    }
+    exit;
+}
+
+// ==================================================================================
+// FITUR: PENCARIAN ITEM AUTOCOMPLETE VIA AJAX (ENTRY ROW)
+// ==================================================================================
+if (isset($_POST['ajax_search_item'])) {
+    while (ob_get_level()) ob_end_clean(); 
+    header('Content-Type: application/json');
+    
+    $q = trim($_POST['q']);
+    $res = [];
+    
+    $sql = "SELECT TOP 40 ITEM_ID, ITEM_CODE, ITEM_NAME, ITEM_UNIT FROM ITEMS WHERE ITEM_CODE LIKE ? OR ITEM_NAME LIKE ? ORDER BY ITEM_CODE ASC";
+    $stmt = sqlsrv_query($conn, $sql, array("%$q%", "%$q%"));
+    
+    if ($stmt !== false) {
+        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+            $res[] = [
+                'ITEM_ID' => $row['ITEM_ID'],
+                'ITEM_CODE' => trim((string)$row['ITEM_CODE']),
+                'ITEM_NAME' => trim((string)$row['ITEM_NAME']),
+                'ITEM_UNIT' => trim((string)$row['ITEM_UNIT'])
+            ];
+        }
+    }
+    echo json_encode($res);
+    exit;
+}
+
+// ==================================================================================
+// FITUR: PENCARIAN TOP SEARCH (TAG/ITEM) AUTOCOMPLETE VIA AJAX
+// ==================================================================================
+if (isset($_POST['ajax_top_search'])) {
+    while (ob_get_level()) ob_end_clean(); 
+    header('Content-Type: application/json');
+    
+    $q = trim($_POST['q']);
+    $sop_id = (int)$_POST['sop_id'];
+    $res = [];
+    
+    $sql = "SELECT TOP 15 T.TAG_NO, ISNULL(I.ITEM_CODE, T.ITEM_CODE) AS ITEM_CODE, I.ITEM_NAME, 
+                    T.TAG_QTY, ISNULL(L.LOC_NAME, T.LOC_CODE) AS LOC_NAME
+            FROM TAGS T 
+            LEFT JOIN ITEMS I ON T.ITEM_ID = I.ITEM_ID
+            LEFT JOIN LOC L ON T.LOC_ID = L.LOC_ID
+            WHERE T.SOP_ID = ? AND (T.TAG_NO LIKE ? OR I.ITEM_CODE LIKE ? OR I.ITEM_NAME LIKE ?)
+            ORDER BY T.TAG_NO ASC";
+    $stmt = sqlsrv_query($conn, $sql, array($sop_id, "%$q%", "%$q%", "%$q%"));
+    
+    if ($stmt !== false) {
+        while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+            $res[] = [
+                'TAG_NO' => trim((string)$row['TAG_NO']),
+                'ITEM_CODE' => trim((string)$row['ITEM_CODE']),
+                'ITEM_NAME' => trim((string)$row['ITEM_NAME']),
+                'TAG_QTY' => (float)$row['TAG_QTY'], 
+                'LOC_NAME' => trim((string)$row['LOC_NAME']) 
+            ];
+        }
+    }
+    echo json_encode($res);
+    exit;
+}
+
+// ==================================================================================
+// FITUR: HAPUS TAG SATUAN VIA AJAX
 // ==================================================================================
 if (isset($_POST['ajax_delete_tag'])) {
-    // 1. Bersihkan semua output HTML dari template dashboard sebelumnya agar murni
     while (ob_get_level()) ob_end_clean(); 
     
     header('Content-Type: application/json');
@@ -28,25 +121,19 @@ if (isset($_POST['ajax_delete_tag'])) {
 // BAGIAN 1: PROSES DATA (POST)
 // ==================================================================================
 
-// A. HAPUS SOP DOKUMEN KESELURUHAN
 if (isset($_POST['btnHapusSOP'])) {
     $idToDelete = $_POST['hapus_id'];
     if ($idToDelete) {
-        
-        // --- SECURITY CHECK: Cek apakah SOP sudah punya Tag / Detail ---
         $sqlCekDetail = "SELECT COUNT(*) as total_tag FROM TAGS WHERE SOP_ID = ?";
         $stmtCek = sqlsrv_query($conn, $sqlCekDetail, array($idToDelete));
         $rowCek = sqlsrv_fetch_array($stmtCek);
         
         if ($rowCek['total_tag'] > 0) {
-            // Jika ada tag/detail, batalkan proses dan tampilkan alert
             echo "<script>alert('GAGAL MENGHAPUS: SOP tidak dapat dihapus karena sudah memiliki data Tag/Detail. Hapus semua Tag terlebih dahulu!'); window.history.back();</script>";
         } else {
-            // Jika kosong (tidak ada tag), lanjutkan proses hapus SOP
             sqlsrv_begin_transaction($conn);
             try {
                 $stmtDel = sqlsrv_query($conn, "DELETE FROM SOP WHERE SOP_ID = ?", array($idToDelete));
-                
                 if ($stmtDel) {
                     sqlsrv_commit($conn);
                     echo "<script>alert('Data SOP Berhasil Dihapus!'); window.location.href='?page=sop';</script>";
@@ -61,9 +148,8 @@ if (isset($_POST['btnHapusSOP'])) {
     }
 }
 
-// B. SIMPAN / UPDATE SOP (MESIN UPSERT AMAN ANTI HILANG)
-if (isset($_POST['btnSimpanSOP']) || isset($_POST['btnUpdateSOP'])) {
-    $isUpdate = isset($_POST['btnUpdateSOP']);
+if (isset($_POST['btnSimpanSOP']) || isset($_POST['btnUpdateSOP']) || (isset($_POST['action']) && $_POST['action'] == 'save')) {
+    $isUpdate = isset($_POST['btnUpdateSOP']) || (isset($_POST['action']) && $_POST['action'] == 'save' && $_POST['hapus_id'] > 0);
     $currentID = $_POST['hapus_id'];
 
     $sopRef     = $_POST['SOP_REF'];
@@ -76,8 +162,15 @@ if (isset($_POST['btnSimpanSOP']) || isset($_POST['btnUpdateSOP'])) {
     $locIds     = isset($_POST['loc_id']) ? $_POST['loc_id'] : [];
     $itemCodes  = isset($_POST['item_code']) ? $_POST['item_code'] : [];
     $tagQtys    = isset($_POST['tag_qty']) ? $_POST['tag_qty'] : [];
+    $oldTagNos  = isset($_POST['old_tag_no']) ? $_POST['old_tag_no'] : [];
 
     if (empty($sopRef)) {
+        if ($isAjax) {
+            while (ob_get_level()) ob_end_clean();
+            header('Content-Type: application/json');
+            echo json_encode(["status" => "error", "message" => "Ref # tidak boleh kosong!"]);
+            exit;
+        }
         echo "<div class='alert alert-warning'>Ref # tidak boleh kosong!</div>";
     } else {
         sqlsrv_begin_transaction($conn);
@@ -85,14 +178,12 @@ if (isset($_POST['btnSimpanSOP']) || isset($_POST['btnUpdateSOP'])) {
             $targetID = 0;
 
             if ($isUpdate) {
-                // HANYA UPDATE HEADER, TIDAK ADA LAGI DELETE TAGS MASSAL DI SINI
                 $sqlHead = "UPDATE SOP SET SOP_REF=?, SOP_SDATE=?, SOP_REM=?, SOP_FINISHED=?, SOP_BY=? WHERE SOP_ID=?";
                 $paramsHead = array($sopRef, $sopDate, $sopRem, $sopFinished, $sopBy, $currentID);
                 if (!sqlsrv_query($conn, $sqlHead, $paramsHead)) throw new Exception("Gagal Update Header SOP");
                 $targetID = $currentID;
             } else {
-                $sqlHead = "INSERT INTO SOP (SOP_REF, SOP_SDATE, SOP_REM, SOP_FINISHED, SOP_BY) 
-                            OUTPUT INSERTED.SOP_ID VALUES (?, ?, ?, ?, ?)";
+                $sqlHead = "INSERT INTO SOP (SOP_REF, SOP_SDATE, SOP_REM, SOP_FINISHED, SOP_BY) OUTPUT INSERTED.SOP_ID VALUES (?, ?, ?, ?, ?)";
                 $paramsHead = array($sopRef, $sopDate, $sopRem, $sopFinished, $sopBy);
                 $stmtHead = sqlsrv_query($conn, $sqlHead, $paramsHead);
                 if ($stmtHead === false) throw new Exception("Gagal Simpan Header");
@@ -100,17 +191,18 @@ if (isset($_POST['btnSimpanSOP']) || isset($_POST['btnUpdateSOP'])) {
                 $targetID = $rowID['SOP_ID'];
             }
 
-            // LOOPING UPSERT (Cek, lalu Update atau Insert)
             foreach ($tagNos as $index => $tagNo) {
-                $locId = $locIds[$index];
-                $code  = $itemCodes[$index];
-                $qty   = $tagQtys[$index];
+                $locId  = $locIds[$index];
+                $code   = $itemCodes[$index];
+                $qty    = $tagQtys[$index];
+                
+                // PERBAIKAN: Menghapus batas pemotongan 7 karakter.
+                // Sekarang menggunakan trim() dan batas 20 karakter sesuai dengan Database baru.
+                $oldTag = isset($oldTagNos[$index]) && $oldTagNos[$index] !== '' ? substr(trim($oldTagNos[$index]), 0, 20) : substr(trim($tagNo), 0, 20);
 
                 $qItem = sqlsrv_query($conn, "SELECT TOP 1 ITEM_ID, ITEM_NAME, ITEM_UNIT FROM ITEMS WHERE ITEM_CODE = ?", array($code));
                 $rItem = sqlsrv_fetch_array($qItem);
-                $itemId   = $rItem ? $rItem['ITEM_ID'] : 0;
-                $itemName = $rItem ? $rItem['ITEM_NAME'] : '-';
-                $itemUnit = $rItem ? $rItem['ITEM_UNIT'] : '-';
+                $itemId = $rItem ? $rItem['ITEM_ID'] : 0;
 
                 $qLoc = sqlsrv_query($conn, "SELECT TOP 1 LOC_CODE FROM LOC WHERE LOC_ID = ?", array($locId));
                 $rLoc = sqlsrv_fetch_array($qLoc);
@@ -118,20 +210,18 @@ if (isset($_POST['btnSimpanSOP']) || isset($_POST['btnUpdateSOP'])) {
 
                 if ($itemId === 0) throw new Exception("Item Code {$code} tidak ada di Master Database.");
 
-                $safeTagNo = substr($tagNo, 0, 7);
-
-                // Cek apakah Tag ini sudah ada di Database
-                $qCek = sqlsrv_query($conn, "SELECT TAG_NO FROM TAGS WHERE SOP_ID=? AND TAG_NO=?", array($targetID, $safeTagNo));
+                // PERBAIKAN: Menghapus pemotongan 7 karakter untuk safeTagNo
+                $safeTagNo = substr(trim($tagNo), 0, 20);
+                
+                $qCek = sqlsrv_query($conn, "SELECT TAG_NO FROM TAGS WHERE SOP_ID=? AND TAG_NO=?", array($targetID, $oldTag));
                 
                 if (sqlsrv_has_rows($qCek)) {
-                    // Jika ada, cukup Update nilainya
-                    $sqlUpd = "UPDATE TAGS SET LOC_ID=?, ITEM_ID=?, ITEM_CODE=?, TAG_QTY=?, TAG_BY=?, LOC_CODE=? WHERE SOP_ID=? AND TAG_NO=?";
-                    $paramsUpd = array($locId, $itemId, substr($code, 0, 8), $qty, substr($sopBy, 0, 15), substr($locCode, 0, 5), $targetID, $safeTagNo);
+                    $sqlUpd = "UPDATE TAGS SET TAG_NO=?, LOC_ID=?, ITEM_ID=?, ITEM_CODE=?, TAG_QTY=?, TAG_BY=?, LOC_CODE=? WHERE SOP_ID=? AND TAG_NO=?";
+                    $paramsUpd = array($safeTagNo, $locId, $itemId, $code, $qty, substr($sopBy, 0, 15), substr($locCode, 0, 5), $targetID, $oldTag);
                     $stmtDet = sqlsrv_query($conn, $sqlUpd, $paramsUpd);
                 } else {
-                    // Jika belum ada, Insert sebagai Tag Baru (tanpa error TAG_SDATE)
                     $sqlIns = "INSERT INTO TAGS (SOP_ID, TAG_NO, LOC_ID, ITEM_ID, ITEM_CODE, TAG_QTY, TAG_BY, LOC_CODE) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-                    $paramsIns = array($targetID, $safeTagNo, $locId, $itemId, substr($code, 0, 8), $qty, substr($sopBy, 0, 15), substr($locCode, 0, 5));
+                    $paramsIns = array($targetID, $safeTagNo, $locId, $itemId, $code, $qty, substr($sopBy, 0, 15), substr($locCode, 0, 5));
                     $stmtDet = sqlsrv_query($conn, $sqlIns, $paramsIns);
                 }
                 
@@ -142,36 +232,49 @@ if (isset($_POST['btnSimpanSOP']) || isset($_POST['btnUpdateSOP'])) {
             }
 
             sqlsrv_commit($conn);
+
+            if ($isAjax) {
+                while (ob_get_level()) ob_end_clean();
+                header('Content-Type: application/json');
+                echo json_encode(["status" => "success", "sop_id" => $targetID]);
+                exit;
+            }
+
             echo "<script>alert('Data Tersimpan Sempurna!'); window.location.href='?page=sop&id=$targetID';</script>";
             exit;
 
         } catch (Exception $e) {
             sqlsrv_rollback($conn);
-            echo "<div class='container mt-3'><div class='alert alert-danger shadow'><h4 class='text-danger fw-bold'>🚨 ERROR DATABASE</h4><hr><textarea class='form-control bg-white text-dark' rows='4' readonly>" . htmlspecialchars($e->getMessage()) . "</textarea></div></div>";
+            
+            if ($isAjax) {
+                while (ob_get_level()) ob_end_clean();
+                header('Content-Type: application/json');
+                echo json_encode(["status" => "error", "message" => $e->getMessage()]);
+                exit;
+            }
+            
+            echo "<div class='container mt-3'><div class='alert alert-danger shadow'><h4>🚨 ERROR</h4><textarea class='form-control' rows='4' readonly>" . htmlspecialchars($e->getMessage()) . "</textarea></div></div>";
         }
     }
 }
 
 // ==================================================================================
-// BAGIAN 2: LOGIKA VIEW & PAGINATION
+// BAGIAN 2: LOGIKA VIEW, SEARCH & PAGINATION
 // ==================================================================================
 
 $mode = isset($_GET['mode']) ? $_GET['mode'] : 'view';
 $currentID = isset($_GET['id']) ? $_GET['id'] : null;
+$searchQ = isset($_GET['q']) ? trim($_GET['q']) : '';
 
-// Pagination Variables
 $pageNo   = isset($_GET['hal']) ? (int)$_GET['hal'] : 1;
+if ($pageNo < 1) $pageNo = 1;
 $limit    = 50; 
 $startRow = ($pageNo - 1) * $limit + 1;
 $endRow   = $pageNo * $limit;
+
 $totalRow = 0;
 $totalPage= 1;
-
-// MESIN ANTI HILANG: Matikan Paginasi khusus di mode EDIT agar semua data termuat
-if ($mode == 'edit') {
-    $startRow = 1;
-    $endRow   = 99999999; 
-}
+$totalRowSop = 0; 
 
 $dataHeader = [
     'SOP_ID'=>'', 'SOP_REF'=>'', 'SOP_SDATE'=>date('Y-m-d'), 'SOP_REM'=>'', 'SOP_FINISHED'=>'F', 'SOP_BY'=>''
@@ -185,7 +288,6 @@ if ($mode != 'new') {
     }
 
     if ($currentID) {
-        // 1. Ambil Header
         $qHead = sqlsrv_query($conn, "SELECT * FROM SOP WHERE SOP_ID = ?", array($currentID));
         if ($rHead = sqlsrv_fetch_array($qHead, SQLSRV_FETCH_ASSOC)) {
             $dataHeader = $rHead;
@@ -193,44 +295,48 @@ if ($mode != 'new') {
                 $dataHeader['SOP_SDATE'] = $dataHeader['SOP_SDATE']->format('Y-m-d');
         }
 
-        // 2. Hitung Total Row
-        $qCount = sqlsrv_query($conn, "SELECT COUNT(*) as total FROM TAGS WHERE SOP_ID = ?", array($currentID));
+        $searchCondition = "";
+        $paramsCount = array($currentID);
+
+        if ($searchQ !== '') {
+            $searchCondition = " AND (T.TAG_NO LIKE ? OR T.ITEM_CODE LIKE ? OR I.ITEM_NAME LIKE ?) ";
+            $paramsCount[] = "%$searchQ%";
+            $paramsCount[] = "%$searchQ%";
+            $paramsCount[] = "%$searchQ%";
+        }
+
+        $qCount = sqlsrv_query($conn, "SELECT COUNT(*) as total FROM TAGS T LEFT JOIN ITEMS I ON T.ITEM_ID = I.ITEM_ID WHERE T.SOP_ID = ?" . $searchCondition, $paramsCount);
         $rCount = sqlsrv_fetch_array($qCount);
         $totalRow = $rCount['total'];
         $totalPage = ceil($totalRow / $limit);
+        $totalRowSop = $totalRow; 
 
-        // 3. Ambil Detail (REVISI: HINDARI KOLOM GANDA)
         $sqlTags = "SELECT * FROM (
-                        SELECT ROW_NUMBER() OVER (ORDER BY T.TAG_NO ASC) AS RowNum,
-                               T.TAG_NO,
-                               T.TAG_QTY,
-                               T.LOC_ID,
-                               
+                        SELECT ROW_NUMBER() OVER (ORDER BY T.TAG_NO DESC) AS RowNum,
+                               T.TAG_NO, T.TAG_QTY, T.LOC_ID,
                                ISNULL(L.LOC_NAME, T.LOC_CODE) as LOC_NAME_DISPLAY,
                                ISNULL(I.ITEM_CODE, T.ITEM_CODE) as ITEM_CODE, 
                                I.ITEM_NAME as ITEM_NAME_DISPLAY,
                                I.ITEM_UNIT as ITEM_UNIT_DISPLAY
                         FROM TAGS T
                         LEFT JOIN LOC L ON T.LOC_ID = L.LOC_ID
-                        LEFT JOIN ITEMS I ON (T.ITEM_ID = I.ITEM_ID OR T.ITEM_CODE = I.ITEM_CODE)
-                        WHERE T.SOP_ID = ?
+                        LEFT JOIN ITEMS I ON T.ITEM_ID = I.ITEM_ID
+                        WHERE T.SOP_ID = ? $searchCondition
                     ) AS RowData
                     WHERE RowNum >= ? AND RowNum <= ?";
         
-        $paramsPaging = array($currentID, $startRow, $endRow);
+        $paramsPaging = $paramsCount; 
+        $paramsPaging[] = $startRow;
+        $paramsPaging[] = $endRow;
+        
         $qDet = sqlsrv_query($conn, $sqlTags, $paramsPaging);
         
-        if ($qDet === false) {
-            die("<div class='alert alert-danger'>Error Query SOP: " . print_r(sqlsrv_errors(), true) . "</div>");
-        }
-
         while ($rDet = sqlsrv_fetch_array($qDet, SQLSRV_FETCH_ASSOC)) {
             $dataDetail[] = $rDet;
         }
     }
 }
 
-// Status & Navigasi
 $isLocked = ($dataHeader['SOP_FINISHED'] == 'T');
 $isEntry = ($mode == 'new' || ($mode == 'edit' && !$isLocked));
 
@@ -243,480 +349,800 @@ if ($mode == 'view' && $currentID) {
 }
 
 $optLoc = "";
-$qL = sqlsrv_query($conn, "SELECT LOC_ID, LOC_CODE, LOC_NAME FROM LOC WHERE LOC_VISIBLE=1 ORDER BY LOC_CODE ASC");
+$qL = sqlsrv_query($conn, "SELECT LOC_ID, LOC_CODE, LOC_NAME FROM LOC ORDER BY LOC_CODE ASC");
 while($r=sqlsrv_fetch_array($qL)) {
     $optLoc .= "<option value='{$r['LOC_ID']}'>{$r['LOC_CODE']} - {$r['LOC_NAME']}</option>";
 }
 ?>
 
-<form method="POST" action="">
-    <input type="hidden" name="hapus_id" value="<?php echo $currentID; ?>">
+<!-- STYLE KHUSUS TAMPILAN CLASSIC DESKTOP APP -->
+<style>
+    .classic-app { background-color: #f0f0f0; font-family: "Segoe UI", Tahoma, sans-serif; font-size: 12px; color: #000; padding-bottom: 20px; }
+    .classic-menu { background-color: #f0f0f0; border-bottom: 1px solid #ccc; padding: 2px 10px; }
+    .classic-menu .dropdown-toggle { color: #000; font-size: 12px; text-decoration: none; padding: 5px 10px; }
+    .classic-menu .dropdown-toggle:hover { background-color: #e0e0e0; }
+    .classic-header { padding: 10px 15px; }
+    .c-label { display: block; font-size: 11px; margin-bottom: 2px; }
+    .c-input { border: 1px solid #7a7a7a; padding: 2px 4px; font-size: 12px; height: 22px; width: 100%; box-sizing: border-box; }
+    .c-input[readonly] { background-color: #e9e9e9; }
+    
+    .nav-arrows { display: inline-flex; border: 1px solid #a0a0a0; background: #fff; margin-bottom: 5px; }
+    .nav-arrows button { background: transparent; border: none; border-right: 1px solid #e0e0e0; padding: 2px 8px; cursor: pointer; color: #000; font-size: 11px; }
+    .nav-arrows button:last-child { border-right: none; }
+    .nav-arrows button:hover { background: #e5f1fb; }
+    
+    .control-group { border: 1px solid #a0a0a0; padding: 8px 10px 6px 10px; position: relative; display: inline-flex; gap: 5px; background-color: #e9ecd5; }
+    .control-legend { font-size: 11px; position: absolute; top: -7px; left: 10px; background: #e9ecd5; padding: 0 5px; color: #333; }
+    .btn-control { border: 1px solid #7a7a7a; background: #f0f0f0; padding: 2px 15px; font-size: 12px; cursor: pointer; color: #000; min-width: 70px; text-align: center; }
+    .btn-control:hover:not(:disabled) { background: #e5f1fb; border-color: #0078d7; }
+    .btn-control:disabled { color: #aaa; cursor: default; border-color: #ccc; }
+    
+    .c-table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #ccc; }
+    .c-table th { background: #e0e0e0; border: 1px solid #ccc; border-right: 1px solid #fff; padding: 4px; text-align: left; font-weight: normal; font-size: 11px; }
+    .c-table td { border: 1px solid #ccc; padding: 4px; font-size: 12px; }
+    .c-table tr:nth-child(even) { background-color: #f9f9f9; }
+    
+    .search-box { display: flex; align-items: center; background: #fff; border: 1px solid #7a7a7a; padding: 1px 5px; height: 22px; }
+    .search-box input { border: none; outline: none; font-size: 11px; width: 250px; }
+    
+    /* ENTRY ROW DI DALAM TABEL */
+    #entryRow { background-color: #e9ecd5; border-bottom: 2px solid #a0a0a0; }
+    #entryRow input, #entryRow select { background-color: #fff; border: 1px solid #0078d7; }
+    #entryRow input:focus, #entryRow select:focus { background-color: #e5f1fb; outline: none; border-color: #005a9e; }
+    
+    /* CUSTOM AUTOCOMPLETE STYLE */
+    .ac-box { position: absolute; z-index: 9999; background: #ffffff; color: #333; border: 1px solid #ccc; border-radius: 2px; max-height: 200px; overflow-y: auto; min-width: 300px; display: none; font-size: 12px; box-shadow: 2px 2px 5px rgba(0,0,0,0.2); }
+    .ac-item { padding: 4px 8px; cursor: pointer; border-bottom: 1px solid #f4f4f4; }
+    .ac-item:hover, .ac-item.active { background: #008080; color: #ffffff; }
 
-    <div class="row">
-        <div class="col-12 mb-3">
-            <div class="card bg-light border">
-                <div class="card-body p-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                    <div class="btn-group btn-group-sm">
-                        <a href="?page=sop&id=<?php echo $firstID; ?>" class="btn btn-outline-secondary <?php echo (!$firstID || $mode!='view')?'disabled':''; ?>"><i class="bi bi-skip-backward-fill"></i></a>
-                        <a href="?page=sop&id=<?php echo $prevID; ?>" class="btn btn-outline-secondary <?php echo (!$prevID || $mode!='view')?'disabled':''; ?>"><i class="bi bi-caret-left-fill"></i></a>
-                        <button type="button" class="btn btn-outline-secondary disabled fw-bold px-3">
-                            <?php echo ($mode=='new') ? 'INPUT SOP BARU' : 'REF: ' . $dataHeader['SOP_REF']; ?>
-                        </button>
-                        <a href="?page=sop&id=<?php echo $nextID; ?>" class="btn btn-outline-secondary <?php echo (!$nextID || $mode!='view')?'disabled':''; ?>"><i class="bi bi-caret-right-fill"></i></a>
-                        <a href="?page=sop&id=<?php echo $lastID; ?>" class="btn btn-outline-secondary <?php echo (!$lastID || $mode!='view')?'disabled':''; ?>"><i class="bi bi-skip-forward-fill"></i></a>
-                    </div>
+    /* EFEK HOVER KHUSUS UNTUK FINISHED INPUT P1 */
+    <?php if ($canEditFinished && $currentID) { ?>
+    .input-finished-clickable { cursor: pointer; transition: background-color 0.2s; }
+    .input-finished-clickable:hover { background-color: #ffffcc !important; }
+    <?php } ?>
+</style>
 
-                    <div class="btn-group btn-group-sm">
-                        <a href="?page=sop&mode=new" class="btn btn-success fw-bold <?php echo ($mode=='new')?'active':''; ?>"><i class="bi bi-plus-lg"></i> BARU</a>
-                        
-                        <?php if ($isLocked): ?>
-                             <button type="button" class="btn btn-secondary" disabled><i class="bi bi-lock-fill"></i> LOCKED</button>
-                        <?php else: ?>
-                             <a href="?page=sop&mode=edit&id=<?php echo $currentID; ?>" class="btn btn-warning fw-bold <?php echo ($mode=='edit')?'active':''; ?> <?php echo (!$currentID)?'disabled':''; ?>"><i class="bi bi-pencil-square"></i> EDIT</a>
-                        <?php endif; ?>
+<div class="classic-app">
+    <form method="POST" action="" id="mainForm">
+        <input type="hidden" name="hapus_id" id="hapus_id" value="<?php echo $currentID; ?>">
+        <input type="hidden" name="action" id="form_action" value="save">
 
-                        <?php if ($mode=='view' && $currentID && !$isLocked): ?>
-                            <button type="submit" name="btnHapusSOP" class="btn btn-danger fw-bold" onclick="return confirm('Hapus Data SOP Ini?');"><i class="bi bi-dash-lg"></i> HAPUS</button>
-                        <?php else: ?>
-                            <button type="button" class="btn btn-secondary disabled"><i class="bi bi-dash-lg"></i> HAPUS</button>
-                        <?php endif; ?>
-                    </div>
+        <!-- 1. MENU Laporan -->
+        <div class="classic-menu d-flex align-items-center">
+            <img src="https://img.icons8.com/color/16/000000/report-card.png" class="me-1"> <b>Stock Opname</b>
+            <div class="dropdown ms-3">
+                <a class="dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    Laporan
+                </a>
+                <ul class="dropdown-menu dropdown-menu-sm" style="font-size: 12px; border-radius: 0;">
+                    <?php $lDis = empty($currentID) ? 'disabled' : ''; ?>
+                    <li><a class="dropdown-item <?php echo $lDis; ?>" href="report_tag_list.php?sop=<?php echo $currentID; ?>" target="_blank">Tag List Detail</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item <?php echo $lDis; ?>" href="report_var_before.php?id=<?php echo $currentID; ?>" target="_blank">Variance Before Adjust Material</a></li>
+                    <li><a class="dropdown-item <?php echo $lDis; ?>" href="report_var_before_barang.php?id=<?php echo $currentID; ?>" target="_blank">Variance Before Adjust Barang Jadi</a></li>
+                    <li><a class="dropdown-item <?php echo $lDis; ?>" href="var_before_all.php?id=<?php echo $currentID; ?>" target="_blank">Variance Before Adjust Barang Jadi ALL</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalTagSummary">Tag Summary By Item</a></li>
+                    <li><a class="dropdown-item" href="print_stock_analysis.php?id=<?php echo $currentID; ?>" target="_blank">Stock Analysis Report</a></li>
+                    <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalTagType">Report Tag By Type</a></li>
+					 <li><hr class="dropdown-divider"></li>
+					 <li><a class="dropdown-item" href="print_sop_conversion.php?id=<?php echo $currentID; ?>" target="_blank">Sop Conversion</a></li>
+					 
+                </ul>
+            </div>
+        </div>
+
+        <!-- 2. HEADER SECTION -->
+        <div class="classic-header pb-1">
+            <div class="row gx-2 mb-1" style="max-width: 600px;">
+                <div class="col-4">
+                    <span class="c-label">Ref #</span>
+                    <input type="text" class="c-input" name="SOP_REF" value="<?php echo $dataHeader['SOP_REF']; ?>" <?php echo !$isEntry?'readonly':''; ?> required>
+                </div>
+                <div class="col-4">
+                    <span class="c-label">Date</span>
+                    <input type="date" class="c-input" name="SOP_SDATE" value="<?php echo $dataHeader['SOP_SDATE']; ?>" <?php echo !$isEntry?'readonly':''; ?>>
+                </div>
+            </div>
+            <div class="row gx-2 mb-1" style="max-width: 600px;">
+                <div class="col-4">
+                    <span class="c-label">PIC</span>
+                    <input type="text" class="c-input" value="<?php echo $dataHeader['SOP_BY'] ? $dataHeader['SOP_BY'] : $_SESSION['db_user']; ?>" readonly>
+                </div>
+                <div class="col-8">
+                    <span class="c-label">Remark</span>
+                    <input type="text" class="c-input" name="SOP_REM" value="<?php echo $dataHeader['SOP_REM']; ?>" <?php echo !$isEntry?'readonly':''; ?>>
+                </div>
+            </div>
+            <div class="row gx-2 mb-2" style="max-width: 600px;">
+                <div class="col-2">
+                    <span class="c-label">Finished</span>
+                    <?php if ($canEditFinished && $currentID) { ?>
+                        <input type="text" id="toggleFinishedP1" class="c-input text-center fw-bold input-finished-clickable" style="width: 30px;" value="<?php echo ($dataHeader['SOP_FINISHED']=='T')?'T':'F'; ?>" readonly title="Klik untuk mengubah (Otoritas P1)">
+                    <?php } else { ?>
+                        <input type="text" class="c-input text-center fw-bold" style="width: 30px;" value="<?php echo ($dataHeader['SOP_FINISHED']=='T')?'T':'F'; ?>" readonly>
+                    <?php } ?>
+                    
+                    <input type="checkbox" name="SOP_FINISHED" style="display:none;" <?php echo ($dataHeader['SOP_FINISHED']=='T')?'checked':''; ?> <?php echo !$isEntry?'disabled':''; ?>>
+                    <?php if ($isEntry && !$canEditFinished) { ?>
+                        <small class="text-muted" style="cursor:pointer;" onclick="$('input[name=SOP_FINISHED]').click(); $(this).prev().prev().val($('input[name=SOP_FINISHED]').is(':checked')?'T':'F');">(Klik T/F)</small>
+                    <?php } ?>
                 </div>
             </div>
         </div>
 
-        <div class="col-12 mb-3">
-            <div class="card" style="background-color: <?php echo $isEntry ? '#fff3cd' : '#e8f5e9'; ?>;">
-                <div class="card-body py-3">
-                    <div class="row g-2 align-items-end">
-                        <div class="col-6 col-md-2">
-                            <label class="small fw-bold">Ref #</label>
-                            <input type="text" class="form-control form-control-sm fw-bold" name="SOP_REF" value="<?php echo $dataHeader['SOP_REF']; ?>" <?php echo !$isEntry?'readonly':''; ?> required>
-                        </div>
-                        <div class="col-6 col-md-2">
-                            <label class="small fw-bold">Date</label>
-                            <input type="date" class="form-control form-control-sm" name="SOP_SDATE" value="<?php echo $dataHeader['SOP_SDATE']; ?>" <?php echo !$isEntry?'readonly':''; ?>>
-                        </div>
-                        <div class="col-6 col-md-2">
-                            <label class="small fw-bold">PIC</label>
-                            <input type="text" class="form-control form-control-sm" value="<?php echo $dataHeader['SOP_BY'] ? $dataHeader['SOP_BY'] : $_SESSION['db_user']; ?>" readonly>
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="small fw-bold">Remark</label>
-                            <input type="text" class="form-control form-control-sm" name="SOP_REM" value="<?php echo $dataHeader['SOP_REM']; ?>" <?php echo !$isEntry?'readonly':''; ?>>
-                        </div>
-                        <div class="col-6 col-md-2">
-                            <div class="form-check bg-white border rounded p-2">
-                                <input class="form-check-input ms-1" type="checkbox" name="SOP_FINISHED" id="chkFin" <?php echo ($dataHeader['SOP_FINISHED']=='T')?'checked':''; ?> <?php echo !$isEntry?'disabled':''; ?>>
-                                <label class="form-check-label fw-bold text-success ms-2" for="chkFin">FINISHED (T)</label>
-                            </div>
-                        </div>
-                    </div>
+        <!-- 3. PANAH NAVIGASI & CONTROL GROUP -->
+        <div style="padding: 0 15px;">
+            <div class="nav-arrows">
+                <button type="button" onclick="window.location.href='?page=sop&id=<?php echo $firstID; ?>'" <?php echo (!$firstID || $mode!='view')?'disabled':''; ?>><i class="bi bi-chevron-bar-left"></i></button>
+                <button type="button" onclick="window.location.href='?page=sop&id=<?php echo $prevID; ?>'" <?php echo (!$prevID || $mode!='view')?'disabled':''; ?>><i class="bi bi-caret-left-fill"></i></button>
+                <button type="button" onclick="window.location.href='?page=sop&id=<?php echo $nextID; ?>'" <?php echo (!$nextID || $mode!='view')?'disabled':''; ?>><i class="bi bi-caret-right-fill"></i></button>
+                <button type="button" onclick="window.location.href='?page=sop&id=<?php echo $lastID; ?>'" <?php echo (!$lastID || $mode!='view')?'disabled':''; ?>><i class="bi bi-chevron-bar-right"></i></button>
+            </div>
+            <br>
+            <div class="d-flex flex-wrap align-items-center mb-2" style="gap: 15px;">
+                <div class="control-group">
+                    <div class="control-legend">Control</div>
+                    
+                    <button type="button" class="btn-control" onclick="window.location.href='?page=sop&mode=new'" <?php echo $mode=='new'?'disabled':''; ?>>Tambah</button>
+                    <button type="button" class="btn-control" onclick="window.location.href='?page=sop&mode=edit&id=<?php echo $currentID; ?>'" <?php echo ($mode=='edit' || $isLocked || !$currentID)?'disabled':''; ?>>Rubah</button>
+                    <button type="submit" name="btnHapusSOP" class="btn-control" onclick="return confirm('Hapus Data SOP Ini?');" <?php echo ($mode=='view' && $currentID && !$isLocked)?'':'disabled'; ?>>Hapus</button>
+                    
+                    <?php if ($mode=='edit') { ?>
+                        <button type="button" class="btn-control" onclick="saveHeaderOnly();">Simpan</button>
+                    <?php } elseif ($mode=='new') { ?>
+                        <button type="submit" name="btnSimpanSOP" class="btn-control" onclick="return confirm('Simpan SOP Baru?');">Simpan</button>
+                    <?php } else { ?>
+                        <button type="button" class="btn-control" disabled>Simpan</button>
+                    <?php } ?>
+                    
+                    <button type="button" class="btn-control" onclick="window.location.href='?page=sop&id=<?php echo $currentID; ?>'" <?php echo ($mode=='view')?'disabled':''; ?>>Batal</button>
+                    <button type="button" class="btn-control" onclick="window.location.reload();">Refresh</button>
                 </div>
+
+                <!-- KOLOM PENCARIAN UTAMA DENGAN AUTOCOMPLETE (AKTIF DI VIEW & EDIT) -->
+                <div class="search-box">
+                    <i class="bi bi-search text-muted me-1" style="font-size: 10px;"></i>
+                    <input type="text" id="topSearchInput" value="<?php echo htmlspecialchars($searchQ); ?>" placeholder="Cari Tag # atau Item (Enter)..." 
+                           autocomplete="off" 
+                           oninput="showTopSearchAC(this)" 
+                           onkeydown="topSearchKey(event, this)">
+                </div>
+                
+                <?php if ($searchQ != '') { ?>
+                    <a href="?page=sop&id=<?php echo $currentID; ?>&mode=<?php echo $mode; ?>" class="text-danger small text-decoration-none fw-bold">✕ Reset Filter</a>
+                <?php } ?>
+
+                <span class="text-muted small ms-auto">
+                    Menampilkan <b><?php echo count($dataDetail); ?></b> baris data dari total <b><?php echo number_format($totalRow); ?></b> <?php echo $searchQ ? 'hasil pencarian' : 'data SOP'; ?> (Hal <?php echo $pageNo; ?>/<?php echo max(1, $totalPage); ?>)
+                </span>
             </div>
         </div>
 
-        <?php if($isEntry): ?>
-        <div class="col-12 mb-3">
-            <div class="card bg-light border-primary border-opacity-25">
-                <div class="card-body py-2">
-                    <div class="row g-2 align-items-end">
-                        <div class="col-12 col-md-2">
-                            <label class="small fw-bold">Lokasi</label>
-                            <select id="inputLoc" class="form-select form-select-sm"><?php echo $optLoc; ?></select>
-                        </div>
-                        <div class="col-6 col-md-2">
-                            <label class="small fw-bold">Tag #</label>
-                            <input type="text" id="inputTagNo" class="form-control form-control-sm" placeholder="No. Tag">
-                        </div>
-                        <div class="col-12 col-md-4">
-                            <label class="small fw-bold">Item</label>
-                            <select id="inputBarang" class="form-select select2-ajax" style="width: 100%;"></select>
-                        </div>
-                        <div class="col-6 col-md-2">
-                            <label class="small fw-bold">Qty</label>
-                            <div class="input-group input-group-sm">
-                                <input type="number" id="inputQty" class="form-control" value="0">
-                                <span class="input-group-text bg-white" id="inputUnit">-</span>
-                            </div>
-                        </div>
-                        <div class="col-12 col-md-2">
-                            <button type="button" id="btnTambah" class="btn btn-primary btn-sm w-100"><i class="bi bi-plus-circle"></i> Tambah</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <?php endif; ?>
+        <!-- 4. TABEL BESERTA ENTRY ROW -->
+        <div style="padding: 0 15px; margin-top: 5px; max-height: 55vh; overflow-y: auto;">
+            <table class="c-table" id="tabelSop">
+                <thead>
+                    <tr>
+                        <th width="30"></th>
+                        <th width="150">LOC</th>
+                        <th width="100">TAG #</th>
+                        <th width="180">ITEM (Search Kode/Nama)</th>
+                        <th>ITEM NAME</th>
+                        <th class="text-end" width="80">QTY</th>
+                        <th width="50">UNIT</th>
+                        <?php if ($isEntry) { ?><th class="text-center" width="60">AKSI</th><?php } ?>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- ENTRY ROW: Tampil paling atas saat mode Entry -->
+                    <?php if ($isEntry) { ?>
+                    <tr id="entryRow">
+                        <td class="text-center fw-bold text-success" title="Baris Input Baru">+</td>
+                        <td><select id="inputLoc" class="c-input"><?php echo $optLoc; ?></select></td>
+                        <td><input type="text" id="inputTagNo" class="c-input" placeholder="Tag # (Enter)" autocomplete="off"></td>
+                        <td>
+                            <input type="hidden" id="inputItemId">
+                            <input type="text" id="inputItemCode" class="c-input" placeholder="Ketik Kode/Nama..." autocomplete="off" oninput="showItemAC(this)" onkeydown="itemKey(event, this)">
+                        </td>
+                        <td><input type="text" id="inputItemName" class="c-input bg-light" readonly tabindex="-1"></td>
+                        <td class="text-end"><input type="number" id="inputQty" class="c-input text-end" value="0" step="0.01"></td>
+                        <td id="inputUnit" class="text-center">-</td>
+                        <td class="text-center"><small class="text-muted" style="font-size:10px;">Enter=Save</small></td>
+                    </tr>
+                    <?php } ?>
 
-        <div class="col-12 col-lg-9">
-            <div class="card">
-                <div class="table-responsive">
-                    <table class="table table-bordered table-hover table-sm mb-0" id="tabelSop" style="font-size:13px; min-width: 600px;">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>LOC</th>
-                                <th>TAG #</th>
-                                <th>ITEM CODE</th>
-                                <th>ITEM NAME</th>
-                                <th class="text-end">QTY</th>
-                                <th>UNIT</th>
-                                <?php if($isEntry): ?><th class="text-center" width="80">AKSI</th><?php endif; ?>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <?php 
-                            if(!empty($dataDetail)) {
-                                foreach($dataDetail as $row) {
-                                    if($isEntry) {
-                                        echo "<tr class='row-item' data-sop-id='{$currentID}' data-tag-no='{$row['TAG_NO']}'>
-                                            <td><input type='hidden' name='loc_id[]' value='{$row['LOC_ID']}'>{$row['LOC_NAME_DISPLAY']}</td>
-                                            <td class='cell-edit'><input type='hidden' name='tag_no[]' class='val-real' value='{$row['TAG_NO']}'><span class='val-txt'>{$row['TAG_NO']}</span><input type='text' class='form-control form-control-sm val-input d-none' value='{$row['TAG_NO']}'></td>
-                                            <td><input type='hidden' name='item_code[]' value='{$row['ITEM_CODE']}'>{$row['ITEM_CODE']}</td>
-                                            <td>{$row['ITEM_NAME_DISPLAY']}</td>
-                                            <td class='text-end cell-edit'><input type='hidden' name='tag_qty[]' class='val-real' value='{$row['TAG_QTY']}'><span class='val-txt'>".number_format($row['TAG_QTY'], 2)."</span><input type='number' class='form-control form-control-sm val-input d-none' value='{$row['TAG_QTY']}' step='0.01'></td>
-                                            <td>{$row['ITEM_UNIT_DISPLAY']}</td>
-                                            <td class='text-center align-middle'>
-                                                <button type='button' class='btn btn-success btn-sm btn-save-row px-2 py-0 d-none me-1'><i class='bi bi-check'></i></button>
-                                                <button type='button' class='btn btn-danger btn-sm btn-hapus px-2 py-0'><i class='bi bi-x'></i></button>
-                                            </td>
-                                        </tr>";
-                                    } else {
-                                        echo "<tr>
-                                            <td>{$row['LOC_NAME_DISPLAY']}</td>
-                                            <td class='font-monospace'>{$row['TAG_NO']}</td>
-                                            <td class='font-monospace text-primary'>{$row['ITEM_CODE']}</td>
-                                            <td>{$row['ITEM_NAME_DISPLAY']}</td>
-                                            <td class='text-end fw-bold'>".number_format($row['TAG_QTY'], 2)."</td>
-                                            <td>{$row['ITEM_UNIT_DISPLAY']}</td>
-                                        </tr>";
-                                    }
-                                }
+                    <?php 
+                    if (!empty($dataDetail)) {
+                        foreach($dataDetail as $row) {
+                            if ($isEntry) {
+                                echo "<tr class='row-item' data-sop-id='{$currentID}' data-old-tag='{$row['TAG_NO']}'>
+                                    <td class='text-center text-muted'>▶</td>
+                                    <td><input type='hidden' name='loc_id[]' value='{$row['LOC_ID']}'>{$row['LOC_NAME_DISPLAY']}</td>
+                                    <td class='cell-edit'><input type='hidden' name='tag_no[]' class='val-real' value='{$row['TAG_NO']}'><span class='val-txt'>{$row['TAG_NO']}</span><input type='text' class='c-input val-input d-none' value='{$row['TAG_NO']}'></td>
+                                    <td width='120'><input type='hidden' name='item_code[]' value='{$row['ITEM_CODE']}'>{$row['ITEM_CODE']}</td>
+                                    <td>{$row['ITEM_NAME_DISPLAY']}</td>
+                                    <td class='text-end cell-edit'><input type='hidden' name='tag_qty[]' class='val-real' value='{$row['TAG_QTY']}'><span class='val-txt'>".number_format($row['TAG_QTY'], 2)."</span><input type='number' class='c-input val-input d-none text-end' value='{$row['TAG_QTY']}' step='0.01'></td>
+                                    <td>{$row['ITEM_UNIT_DISPLAY']}</td>
+                                    <td class='text-center align-middle'>
+                                        <button type='button' class='btn btn-success btn-sm btn-save-row px-1 py-0 d-none me-1'><i class='bi bi-check'></i></button>
+                                        <button type='button' class='btn btn-danger btn-sm btn-hapus px-1 py-0'><i class='bi bi-trash'></i></button>
+                                    </td>
+                                </tr>";
                             } else {
-                                echo "<tr><td colspan='7' class='text-center py-4 text-muted'>Tidak ada data tag.</td></tr>";
+                                echo "<tr>
+                                    <td class='text-center text-muted'>▶</td>
+                                    <td>{$row['LOC_NAME_DISPLAY']}</td>
+                                    <td>{$row['TAG_NO']}</td>
+                                    <td width='120'>{$row['ITEM_CODE']}</td>
+                                    <td>{$row['ITEM_NAME_DISPLAY']}</td>
+                                    <td class='text-end'>".number_format($row['TAG_QTY'], 2)."</td>
+                                    <td>{$row['ITEM_UNIT_DISPLAY']}</td>
+                                </tr>";
                             }
-                            ?>
-                        </tbody>
-                    </table>
-                </div>
-
-                <?php if ($totalPage > 1 && $mode != 'new' && $mode != 'edit'): ?>
-                <div class="card-footer bg-white py-2">
-                    <div class="d-flex justify-content-between align-items-center flex-wrap">
-                        <small class="text-muted mb-2 mb-md-0">
-                            Menampilkan <?php echo count($dataDetail); ?> dari <b><?php echo number_format($totalRow); ?></b> data.
-                            (Hal <?php echo $pageNo; ?>/<?php echo $totalPage; ?>)
-                        </small>
-                        <nav>
-                            <ul class="pagination pagination-sm mb-0">
-                                <li class="page-item <?php echo ($pageNo <= 1) ? 'disabled' : ''; ?>">
-                                    <a class="page-link" href="?page=sop&id=<?php echo $currentID; ?>&mode=<?php echo $mode; ?>&hal=<?php echo $pageNo - 1; ?>">Prev</a>
-                                </li>
-                                
-                                <?php
-                                $start = max(1, $pageNo - 2);
-                                $end = min($totalPage, $pageNo + 2);
-                                if($start > 1) { echo '<li class="page-item disabled"><span class="page-link">...</span></li>'; }
-                                for ($i = $start; $i <= $end; $i++) {
-                                    $active = ($i == $pageNo) ? 'active' : '';
-                                    echo "<li class='page-item $active'><a class='page-link' href='?page=sop&id=$currentID&mode=$mode&hal=$i'>$i</a></li>";
-                                }
-                                if($end < $totalPage) { echo '<li class="page-item disabled"><span class="page-link">...</span></li>'; }
-                                ?>
-
-                                <li class="page-item <?php echo ($pageNo >=$totalPage) ? 'disabled' : ''; ?>">
-                                    <a class="page-link" href="?page=sop&id=<?php echo $currentID; ?>&mode=<?php echo $mode; ?>&hal=<?php echo$pageNo + 1; ?>">Next</a>
-                                </li>
-                            </ul>
-                        </nav>
-                    </div>
-                </div>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <div class="col-12 col-lg-3 mt-3 mt-lg-0">
-            <div class="card shadow-sm mb-3">
-                <div class="card-header bg-dark text-white text-center fw-bold py-2">AKSI</div>
-                <div class="card-body d-grid gap-2">
-                    <?php if ($isEntry): ?>
-                        <?php if ($mode=='edit'): ?>
-                             <button type="submit" name="btnUpdateSOP" class="btn btn-warning w-100 fw-bold" onclick="return confirm('Simpan Perubahan?');"><i class="bi bi-save"></i> UPDATE</button>
-                        <?php else: ?>
-                             <button type="submit" name="btnSimpanSOP" class="btn btn-success w-100 fw-bold" onclick="return confirm('Simpan SOP Baru?');"><i class="bi bi-save"></i> SIMPAN</button>
-                        <?php endif; ?>
-                        <a href="?page=sop&id=<?php echo $currentID; ?>" class="btn btn-outline-secondary w-100">BATAL</a>
-                    <?php else: ?>
-                        <div class="alert alert-<?php echo $isLocked?'danger':'info'; ?> text-center small mb-0">
-                            <?php echo $isLocked ? '<i class="bi bi-lock-fill"></i> SOP FINISHED' : 'READ ONLY MODE'; ?>
-                        </div>
-                    <?php endif; ?>
-                </div>
-            </div>
-            <div class="card shadow-sm">
-                <div class="card-header bg-white fw-bold py-2 border-bottom">MENU LAPORAN (REPORT)</div>
-                <div class="card-body p-2">
-                    <div class="list-group list-group-flush small">
-                        <?php 
-                        // Cegah klik tombol kalau belum ada ID (sedang mode BARU)
-                        $linkDisabled = empty($currentID) ? 'disabled text-muted' : '';
-                        ?>
-
-                       <a href="report_tag_list.php?sop=<?php echo $currentID; ?>" target="_blank" class="list-group-item list-group-item-action py-2">
-                            <i class="bi bi-card-list me-2 text-primary"></i> <b>Tag List Detail</b>
-                        </a>
-                        
-                        
-
-                        <a href="report_var_before.php?id=<?php echo $currentID; ?>" target="_blank" class="list-group-item list-group-item-action py-2">
-    <i class="bi bi-calculator me-2"></i> <b>Variance Before Adjust Material</b> 
-</a>
-
-
-                        <a href="report_var_before_barang.php?id=<?php echo $currentID; ?>" target="_blank" class="list-group-item list-group-item-action py-2">
-    <i class="bi bi-calculator me-2"></i> <b>Variance Before Adjust Barang Jadi</b> 
-</a>
-
-                        <a href="var_before_all.php?id=<?php echo $currentID; ?>" target="_blank" class="list-group-item list-group-item-action py-2">
-    <i class="bi bi-calculator me-2"></i> <b>Variance Before Adjust Barang Jadi ALL</b> 
-</a>
-                        
-                        
-                    </div>
-                    <?php
-            // Ambil daftar SOP untuk dimasukkan ke Dropdown
-            $optSop = ""; 
-            $qSop = sqlsrv_query($conn, "SELECT SOP_ID, SOP_REF, SOP_SDATE FROM SOP ORDER BY SOP_SDATE DESC");
-            if ($qSop) {
-                while($rSop = sqlsrv_fetch_array($qSop)) {$tglSop = ($rSop['SOP_SDATE'] instanceof DateTime) ?$rSop['SOP_SDATE']->format('d-M-Y') : $rSop['SOP_SDATE'];$optSop .= "<option value='{$rSop['SOP_ID']}'>{$rSop['SOP_REF']} ({$tglSop})</option>"; 
-                }
-            }
-            ?>
-            <div class="card mt-3 shadow-sm">
-                <div class="card-header bg-success text-white text-center fw-bold py-1">
-                    <i class="bi bi-tags-fill"></i> TAG SUMMARY BY ITEM REPORT
-                </div>
-                <div class="card-body p-2 bg-light">
-                    <div class="row g-2">
-                        <div class="col-12">
-                            <label class="small fw-bold">Pilih Dokumen SOP:</label>
-                            <select id="ts_sop_id" class="form-select form-select-sm select2" style="width:100%;">
-                                <option value="">-- Pilih Dokumen Stock Opname --</option>
-                                <?php echo $optSop; ?>
-                            </select>
-                        </div>
-                        <div class="col-12 mt-2">
-                            <button type="button" onclick="cetakTagSummary()" class="btn btn-dark btn-sm w-100 fw-bold border">
-                                <i class="bi bi-printer-fill"></i> PRINT TAG SUMMARY
-                            </button>
-                            <button type="button" onclick="cetakSopConversion()" class="btn btn-primary btn-sm w-100 fw-bold border">
-                                <i class="bi bi-diagram-3-fill"></i> PRINT SOP CONVERSION
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <script>
-                function cetakSopConversion() {
-                var sop_id = document.getElementById('ts_sop_id').value;
-
-                if (!sop_id || sop_id == "") {
-                    alert('Silakan pilih Dokumen SOP terlebih dahulu!');
-                    return;
-                }
-
-                // Buka tab baru untuk print SOP Conversion
-                window.open('print_sop_conversion.php?sop_id=' + sop_id, '_blank');
-            }
-            function cetakTagSummary() {
-                var sop_id = document.getElementById('ts_sop_id').value;
-
-                if (!sop_id || sop_id == "") {
-                    alert('Silakan pilih Dokumen SOP terlebih dahulu!');
-                    return;
-                }
-
-                // Buka tab baru untuk print
-                window.open('print_tag_summary_item.php?sop_id=' + sop_id, '_blank');
-            }
-            </script>
-<div class="card mt-3 shadow-sm">
-                <div class="card-header bg-primary text-white text-center fw-bold py-1">
-                    <i class="bi bi-bar-chart-fill"></i> STOCK ANALYSIS REPORT
-                </div>
-                <div class="card-body p-2 bg-light">
-                    <div class="row g-2">
-                        <div class="col-12">
-                            <label class="small fw-bold">Pilih Item:</label>
-                            <select id="sa_item_id" class="form-select form-select-sm select2-ajax" style="width:100%;">
-                                <option value="0" selected>-- SEMUA ITEM (ALL) --</option>
-                            </select>
-                        </div>
-                        <div class="col-12 col-md-6">
-                            <label class="small fw-bold">Start Date:</label>
-                            <input type="date" id="sa_start_date" class="form-control form-control-sm" value="<?php echo date('Y-m-01'); ?>">
-                        </div>
-                        <div class="col-12 col-md-6">
-                            <label class="small fw-bold">Periode (Bulan):</label>
-                            <input type="number" id="sa_period" class="form-control form-control-sm" value="1" min="1">
-                        </div>
-                        <div class="col-12 mt-2">
-                            <button type="button" onclick="cetakStockAnalysis()" class="btn btn-dark btn-sm w-100 fw-bold border">
-                                <i class="bi bi-printer-fill"></i> PRINT ANALYSIS
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <script>
-            function cetakStockAnalysis() {
-                var item_id = document.getElementById('sa_item_id').value;
-                var start_date = document.getElementById('sa_start_date').value;
-                var period = document.getElementById('sa_period').value;
-
-                if (item_id === null || item_id === "") {
-                    alert('Silakan cari dan pilih Item terlebih dahulu!');
-                    return;
-                }
-                if (!start_date || !period) {
-                    alert('Tanggal dan Periode wajib diisi!');
-                    return;
-                }
-
-                window.open('print_stock_analysis.php?item_id=' + item_id + '&start_date=' + start_date + '&period=' + period, '_blank');
-            }
-            </script>
-
-<div class="card mt-3 shadow-sm border-info">
-    <div class="card-header bg-info text-dark text-center fw-bold py-2">
-        <i class="bi bi-tags"></i> REPORT TAG BY TYPE
-    </div>
-    <div class="card-body p-3 bg-light">
-        <div class="mb-2">
-            <label class="small fw-bold text-dark mb-1">Pilih Dokumen SOP:</label>
-            <select id="tag_by_type_sop_id" class="form-select form-select-sm select2" style="width: 100%;">
-                <option value="">-- Pilih Dokumen Stock Opname --</option>
-                <?php 
-                // Mengambil daftar dokumen SOP untuk dropdown
-                $qSopList = sqlsrv_query($conn, "SELECT SOP_ID, SOP_REF, SOP_SDATE FROM SOP ORDER BY CONVERT(date, SOP_SDATE) DESC, SOP_ID DESC");
-                if ($qSopList) {
-                    while($rSop = sqlsrv_fetch_array($qSopList)) { 
-                        $tglSop = ($rSop['SOP_SDATE'] instanceof DateTime) ? $rSop['SOP_SDATE']->format('d-M-Y') :$rSop['SOP_SDATE'];
-                        echo "<option value='{$rSop['SOP_ID']}'>{$rSop['SOP_REF']} ({$tglSop})</option>"; 
+                        }
+                    } else if (!$isEntry) {
+                        echo "<tr><td colspan='8' class='text-center text-muted py-3'>Tidak ada data ditemukan.</td></tr>";
                     }
-                }
-                ?>
-            </select>
+                    ?>
+                </tbody>
+            </table>
+            
+            <!-- NAVIGASI HALAMAN -->
+            <?php if ($totalPage > 1 && $mode != 'new') { ?>
+            <div class="mt-2 d-flex justify-content-end align-items-center" style="font-size: 11px;">
+                <div>
+                    Halaman: 
+                    <?php
+                    $startPage = max(1, $pageNo - 4);
+                    $endPage   = min($totalPage, $pageNo + 5);
+                    if ($startPage > 1) {
+                        echo "<a href='?page=sop&id=$currentID&mode=$mode&q=".urlencode($searchQ)."&hal=1' class='text-primary text-decoration-none mx-1'>[1]</a> ... ";
+                    }
+                    for ($i = $startPage; $i <= $endPage; $i++) {
+                        $fw = ($i == $pageNo) ? 'fw-bold text-dark bg-warning px-1 border' : 'text-primary';
+                        echo "<a href='?page=sop&id=$currentID&mode=$mode&q=".urlencode($searchQ)."&hal=$i' class='$fw text-decoration-none mx-1'>[$i]</a>";
+                    }
+                    if ($endPage < $totalPage) {
+                        echo " ... <a href='?page=sop&id=$currentID&mode=$mode&q=".urlencode($searchQ)."&hal=$totalPage' class='text-primary text-decoration-none mx-1'>[$totalPage]</a>";
+                    }
+                    ?>
+                </div>
+            </div>
+            <?php } ?>
         </div>
-        <button type="button" onclick="cetakTagByType()" class="btn btn-dark btn-sm w-100 fw-bold shadow-sm">
-            <i class="bi bi-printer-fill"></i> PRINT TAG BY TYPE
-        </button>
-    </div>
+    </form>
 </div>
 
-<script>
-function cetakTagByType() {
-    var sop_id = document.getElementById('tag_by_type_sop_id').value;
+<!-- ================= ELEMENT AUTOCOMPLETE MELAYANG (AC BOX) ================= -->
+<div id="acBox" class="ac-box"></div>
 
-    if (!sop_id || sop_id == "") {
-        alert('Silakan pilih Dokumen SOP terlebih dahulu!');
-        return;
+<!-- ================= MODAL REPORT ================= -->
+<?php
+$optSop = ""; 
+$qSop = sqlsrv_query($conn, "SELECT TOP 100 SOP_ID, SOP_REF, SOP_SDATE FROM SOP ORDER BY CONVERT(date, SOP_SDATE) DESC, SOP_ID DESC");
+if ($qSop) {
+    while($rSop = sqlsrv_fetch_array($qSop)) {
+        $tglSop = ($rSop['SOP_SDATE'] instanceof DateTime) ? $rSop['SOP_SDATE']->format('d-M-Y') : $rSop['SOP_SDATE'];
+        $optSop .= "<option value='{$rSop['SOP_ID']}'>{$rSop['SOP_REF']} ({$tglSop})</option>"; 
     }
+}
+?>
+<div class="modal fade" id="modalTagSummary" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content" style="font-size:12px;">
+      <div class="modal-header py-2 bg-light">
+        <h6 class="modal-title mb-0">Tag Summary By Item</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-2">
+        <label>Pilih Dokumen SOP:</label>
+        <select id="ts_sop_id" class="form-select form-select-sm mb-2"><?php echo $optSop; ?></select>
+        <button onclick="cetakTagSummary()" class="btn btn-dark btn-sm w-100 mb-1">Print Tag Summary</button>
+        <button onclick="cetakSopConversion()" class="btn btn-primary btn-sm w-100">Print SOP Conversion</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal fade" id="modalStockAnalysis" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content" style="font-size:12px;">
+      <div class="modal-header py-2 bg-light">
+        <h6 class="modal-title mb-0">Stock Analysis Report</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-2">
+        <label>Pilih Item:</label>
+        
+        <select id="sa_item_id" class="form-select form-select-sm select2-ajax w-100 mb-2">
+            <option value="0" selected>-- SEMUA ITEM (ALL) --</option>
+        </select>
+        
+        <label>Start Date:</label>
+        <input type="date" id="sa_start_date" class="form-control form-control-sm mb-2" value="<?php echo date('Y-m-01'); ?>">
+        <label>Periode (Bulan):</label>
+        <input type="number" id="sa_period" class="form-control form-control-sm mb-3" value="1" min="1">
+        <button onclick="cetakStockAnalysis()" class="btn btn-dark btn-sm w-100">Print Analysis</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal fade" id="modalTagType" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content" style="font-size:12px;">
+      <div class="modal-header py-2 bg-light">
+        <h6 class="modal-title mb-0">Report Tag By Type</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-2">
+        <label>Pilih Dokumen SOP:</label>
+        <select id="tag_by_type_sop_id" class="form-select form-select-sm mb-3"><?php echo $optSop; ?></select>
+        <button onclick="cetakTagByType()" class="btn btn-dark btn-sm w-100">Print Tag By Type</button>
+      </div>
+    </div>
+  </div>
+</div>
 
-    // Membuka laporan Tag By Type di tab baru
-    window.open('print_tag_by_type.php?sop_id=' + sop_id, '_blank');
+<!-- ================= SCRIPTS GLOBAL (BERFUNGSI DI VIEW & EDIT) ================= -->
+<script>
+function cetakSopConversion() { var sop_id = $('#ts_sop_id').val(); if (!sop_id) return alert('Pilih Dokumen!'); window.open('print_sop_conversion.php?sop_id=' + sop_id, '_blank'); }
+function cetakTagSummary() { var sop_id = $('#ts_sop_id').val(); if (!sop_id) return alert('Pilih Dokumen!'); window.open('print_tag_summary_item.php?sop_id=' + sop_id, '_blank'); }
+function cetakStockAnalysis() { var item_id = $('#sa_item_id').val(); var start_date = $('#sa_start_date').val(); var period = $('#sa_period').val(); if (!item_id) return alert('Pilih Item!'); if (!start_date || !period) return alert('Isi Tanggal/Periode!'); window.open('print_stock_analysis.php?item_id=' + item_id + '&start_date=' + start_date + '&period=' + period, '_blank'); }
+function cetakTagByType() { var sop_id = $('#tag_by_type_sop_id').val(); if (!sop_id) return alert('Pilih Dokumen!'); window.open('print_tag_by_type.php?sop_id=' + sop_id, '_blank'); }
+
+// ==========================================
+// KODE TOGGLE STATUS FINISHED KHUSUS P1 
+// ==========================================
+<?php if ($canEditFinished && $currentID) { ?>
+$(document).on('click', '#toggleFinishedP1', function() {
+    var sopId = $('#hapus_id').val();
+    var currentStatus = $(this).val();
+    var newStatus = (currentStatus === 'T') ? 'F' : 'T';
+    var $inputEl = $(this);
+    
+    if(confirm('Ubah status dokumen ini menjadi: ' + (newStatus === 'T' ? 'FINISHED (T)' : 'UNFINISHED (F)') + '?')) {
+        var oldBg = $inputEl.css('background-color');
+        $inputEl.css('background-color', '#fff9c4'); 
+
+        $.ajax({
+            url: window.location.href,
+            type: 'POST',
+            dataType: 'json',
+            data: { ajax_update_finished: 1, sop_id: sopId, new_status: newStatus },
+            success: function(res) {
+                if(res.success) {
+                    $inputEl.val(newStatus);
+                    $inputEl.css('background-color', '#c8e6c9');
+                    setTimeout(function(){ $inputEl.css('background-color', oldBg); }, 1000);
+                    
+                    $('input[name="SOP_FINISHED"]').prop('checked', (newStatus === 'T'));
+                } else {
+                    alert('Gagal merubah status: ' + res.message);
+                    $inputEl.css('background-color', '#ffcdd2');
+                }
+            },
+            error: function() {
+                alert('Kesalahan jaringan saat memproses.');
+                $inputEl.css('background-color', '#ffcdd2');
+            }
+        });
+    }
+});
+<?php } ?>
+
+// ==========================================
+// CUSTOM AUTOCOMPLETE SCRIPT (GLOBAL)
+// ==========================================
+var acBox=null, acItems=[], acIndex=-1, acMode="";
+
+function byId(id){return document.getElementById(id);}
+function initAC(){ acBox=byId("acBox"); }
+function hideAC(){
+    if(acBox){ acBox.style.display="none"; acBox.innerHTML=""; }
+    acItems=[]; acIndex=-1; acMode="";
+}
+function positionAC(input){
+    initAC(); var r=input.getBoundingClientRect();
+    acBox.style.left=(r.left+(window.scrollX||window.pageXOffset))+"px";
+    acBox.style.top=(r.bottom+(window.scrollY||window.pageYOffset))+"px";
+    acBox.style.width=(r.width<300?300:r.width)+"px";
+}
+function renderAC(renderText, pickFunc){
+    initAC(); acBox.innerHTML="";
+    for(var i=0; i<acItems.length; i++){
+        var d = document.createElement("div");
+        d.className = "ac-item" + (i==acIndex ? " active" : "");
+        d.innerHTML = renderText(acItems[i]);
+        d.setAttribute("data-index", i);
+        d.onmousedown = function(){ pickFunc(acItems[parseInt(this.getAttribute("data-index"),10)]); };
+        acBox.appendChild(d);
+    }
+    acBox.style.display = acItems.length>0 ? "block" : "none";
+}
+function acMove(step, renderText, pickFunc){
+    if(acItems.length<=0) return;
+    acIndex += step;
+    if(acIndex<0) acIndex = acItems.length-1;
+    if(acIndex>=acItems.length) acIndex = 0;
+    renderAC(renderText, pickFunc);
+}
+function acEnter(pickFunc){
+    if(acItems.length<=0) return false;
+    if(acIndex<0) acIndex=0;
+    pickFunc(acItems[acIndex]);
+    return true;
+}
+
+$(document).on("click", function(e) {
+    if(acBox && !acBox.contains(e.target) && e.target.id !== 'inputItemCode' && e.target.id !== 'topSearchInput') { hideAC(); }
+});
+
+// ----------------------------------------------------
+// A. AUTOCOMPLETE UNTUK TOP SEARCH BAR
+// ----------------------------------------------------
+function renderTopSearchFormat(o) {
+    return "<b>" + o.TAG_NO + "</b> | " + o.ITEM_CODE + " - " + o.ITEM_NAME + 
+           "<br><span style='font-size:10.5px; color:#555;'>Loc: <b>" + o.LOC_NAME + "</b> &nbsp;|&nbsp; Qty: <b>" + o.TAG_QTY + "</b></span>";
+}
+
+function showTopSearchAC(input) {
+    initAC();
+    var key = (input.value || "").trim().toUpperCase();
+    var sopId = $('#hapus_id').val();
+    acMode = "topsearch"; acItems = []; acIndex = -1;
+    if(key.length < 1 || !sopId){ hideAC(); return; }
+
+    $.ajax({
+        url: window.location.href,
+        type: 'POST',
+        dataType: 'json',
+        data: { ajax_top_search: 1, q: key, sop_id: sopId },
+        success: function(res) {
+            if(res && res.length > 0) {
+                acItems = res;
+                positionAC(input);
+                renderAC(function(o){ return renderTopSearchFormat(o); }, pickTopSearch);
+            } else {
+                hideAC();
+            }
+        }
+    });
+}
+
+function topSearchKey(e, input) {
+    if(e.key === "ArrowDown") {
+        e.preventDefault(); 
+        if(acMode !== "topsearch" || acItems.length == 0) showTopSearchAC(input);
+        acMove(1, function(o){ return renderTopSearchFormat(o); }, pickTopSearch); 
+        return false;
+    }
+    if(e.key === "ArrowUp") {
+        e.preventDefault(); 
+        if(acMode !== "topsearch" || acItems.length == 0) showTopSearchAC(input);
+        acMove(-1, function(o){ return renderTopSearchFormat(o); }, pickTopSearch); 
+        return false;
+    }
+    if(e.key === "Enter") {
+        if(acMode === "topsearch" && acItems.length > 0 && acIndex >= 0) { 
+            e.preventDefault(); acEnter(pickTopSearch); return false; 
+        }
+        e.preventDefault();
+        window.location.href = '?page=sop&id=<?php echo $currentID; ?>&mode=<?php echo $mode; ?>&q=' + encodeURIComponent(input.value);
+        return false;
+    }
+    if(e.key === "Escape") hideAC();
+}
+
+function pickTopSearch(o) {
+    hideAC();
+    window.location.href = '?page=sop&id=<?php echo $currentID; ?>&mode=<?php echo $mode; ?>&q=' + encodeURIComponent(o.TAG_NO);
 }
 </script>
 
-
-                </div>
-            </div>
-            </div>
-
-</form>
-
-<?php if ($isEntry): ?>
+<?php if ($isEntry) { ?>
 <script>
-$(document).ready(function() {$('#inputBarang').on('select2:select', function (e) { 
-        $('#inputUnit').text('Kg'); 
-        $('#inputQty').focus(); 
+// ----------------------------------------------------
+// B. AUTOCOMPLETE UNTUK INPUT ITEM (Entry Row)
+// ----------------------------------------------------
+function showItemAC(input) {
+    initAC();
+    var key = (input.value || "").trim().toUpperCase();
+    acMode = "item"; acItems = []; acIndex = -1;
+    if(key.length < 1){ hideAC(); return; }
+
+    $.ajax({
+        url: window.location.href,
+        type: 'POST',
+        dataType: 'json',
+        data: { ajax_search_item: 1, q: key },
+        success: function(res) {
+            if(res && res.length > 0) {
+                acItems = res;
+                positionAC(input);
+                renderAC(function(o){ return "<b>" + o.ITEM_CODE + "</b> - " + o.ITEM_NAME; }, pickItem);
+            } else {
+                hideAC();
+            }
+        }
+    });
+}
+
+function itemKey(e, input) {
+    if(e.key === "ArrowDown") {
+        e.preventDefault(); 
+        if(acMode !== "item" || acItems.length == 0) showItemAC(input);
+        acMove(1, function(o){ return "<b>" + o.ITEM_CODE + "</b> - " + o.ITEM_NAME; }, pickItem); 
+        return false;
+    }
+    if(e.key === "ArrowUp") {
+        e.preventDefault(); 
+        if(acMode !== "item" || acItems.length == 0) showItemAC(input);
+        acMove(-1, function(o){ return "<b>" + o.ITEM_CODE + "</b> - " + o.ITEM_NAME; }, pickItem); 
+        return false;
+    }
+    if(e.key === "Enter") {
+        if(acMode === "item" && acItems.length > 0) { 
+            e.preventDefault(); 
+            acEnter(pickItem); 
+            return false; 
+        }
+        e.preventDefault(); 
+        return false;
+    }
+    if(e.key === "Escape") hideAC();
+}
+
+function pickItem(o) {
+    $('#inputItemId').val(o.ITEM_ID);
+    $('#inputItemCode').val(o.ITEM_CODE);
+    $('#inputItemName').val(o.ITEM_NAME);
+    $('#inputUnit').text(o.ITEM_UNIT || '-');
+    hideAC();
+    $('#inputQty').focus().select();
+}
+
+// =========================================================
+// FUNGSI SIMPAN AJAX (OPTIMASI)
+// =========================================================
+function saveSopAjax(rowEl, callback) {
+    var sopRef = $('input[name="SOP_REF"]').val();
+    if (!sopRef) {
+        alert("Ref # tidak boleh kosong!");
+        $('input[name="SOP_REF"]').focus();
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append("is_ajax", "1");
+    formData.append("action", "save");
+    formData.append("hapus_id", $('#hapus_id').val());
+    formData.append("SOP_REF", sopRef);
+    formData.append("SOP_SDATE", $('input[name="SOP_SDATE"]').val());
+    formData.append("SOP_REM", $('input[name="SOP_REM"]').val());
+    if ($('input[name="SOP_FINISHED"]').is(':checked')) {
+        formData.append("SOP_FINISHED", "T");
+    }
+
+    var oldBg = "";
+    if (rowEl) {
+        oldBg = rowEl.css('background-color');
+        rowEl.css('background-color', '#fff9c4'); 
+        formData.append("loc_id[]", rowEl.find('input[name="loc_id[]"]').val());
+        formData.append("tag_no[]", rowEl.find('input[name="tag_no[]"]').val());
+        formData.append("old_tag_no[]", rowEl.attr('data-old-tag') || rowEl.find('input[name="tag_no[]"]').val());
+        formData.append("item_code[]", rowEl.find('input[name="item_code[]"]').val());
+        formData.append("tag_qty[]", rowEl.find('input[name="tag_qty[]"]').val());
+    }
+
+    $.ajax({
+        url: window.location.href,
+        type: 'POST',
+        data: formData,
+        processData: false,
+        contentType: false,
+        success: function(res) {
+            if (res.status === 'success') {
+                if (rowEl) {
+                    var currentTag = rowEl.find('input[name="tag_no[]"]').val();
+                    rowEl.attr('data-old-tag', currentTag);
+                    rowEl.css('background-color', '#c8e6c9'); 
+                    setTimeout(function(){ rowEl.css('background-color', oldBg); }, 800);
+                }
+                
+                var currId = $('#hapus_id').val();
+                if (!currId || currId == "0") {
+                    $('#hapus_id').val(res.sop_id);
+                    if (window.history && window.history.replaceState) {
+                        window.history.replaceState(null, null, "?page=sop&mode=edit&id=" + res.sop_id);
+                    }
+                }
+                if (callback) callback();
+            } else {
+                alert("Gagal Simpan:\n" + res.message);
+                if (rowEl) rowEl.css('background-color', '#ffcdd2');
+            }
+        },
+        error: function() {
+            alert("Kesalahan Jaringan saat menyimpan data.");
+            if (rowEl) rowEl.css('background-color', '#ffcdd2');
+        }
+    });
+}
+
+function saveHeaderOnly() {
+    if (!confirm('Simpan perubahan Header SOP?')) return;
+    saveSopAjax(null, function() {
+        alert('Data Header SOP berhasil disimpan!');
+        window.location.href = '?page=sop&id=' + $('#hapus_id').val();
+    });
+}
+
+// ==========================================
+// EVENT HANDLER ENTRY DATA
+// ==========================================
+$(document).ready(function() {
+    
+    // Fitur Tambahan: Saat fokus di dropdown LOC lalu tekan Enter, pindah ke Tag #
+    $('#inputLoc').on('keydown', function(e) {
+        if(e.key === "Enter" || e.keyCode === 13) {
+            e.preventDefault();
+            $('#inputTagNo').focus().select();
+        }
     });
 
-    $('#btnTambah').click(function() {
-        var locId   = $('#inputLoc').val();
-        var locName = $('#inputLoc option:selected').text().split(' - ')[1];
-        var tagNo   = $('#inputTagNo').val();
-        var code    = $('#inputBarang').val();
-        var name    = $('#inputBarang option:selected').text();
-        var qty     = $('#inputQty').val();
-        var unit    = $('#inputUnit').text();
-
-        if(!code || !tagNo) { alert('Mohon isi Tag No dan Barang!'); return; }
-
-        var html = `<tr class='row-item' data-sop-id='' data-tag-no=''>
-            <td><input type='hidden' name='loc_id[]' value='${locId}'>${locName}</td>
-            <td class='cell-edit'><input type='hidden' name='tag_no[]' class='val-real' value='${tagNo}'><span class='val-txt'>${tagNo}</span><input type='text' class='form-control form-control-sm val-input d-none' value='${tagNo}'></td>
-            <td><input type='hidden' name='item_code[]' value='${code}'>${code}</td>
-            <td>${name}</td>
-            <td class='text-end cell-edit'><input type='hidden' name='tag_qty[]' class='val-real' value='${qty}'><span class='val-txt'>${parseFloat(qty).toFixed(2)}</span><input type='number' class='form-control form-control-sm val-input d-none' value='${qty}' step='0.01'></td>
-            <td>${unit}</td>
-            <td class='text-center align-middle'>
-                <button type='button' class='btn btn-success btn-sm btn-save-row px-2 py-0 d-none me-1'><i class='bi bi-check'></i></button>
-                <button type='button' class='btn btn-danger btn-sm btn-hapus px-2 py-0'><i class='bi bi-x'></i></button>
-            </td>
-        </tr>`;
-        $('#tabelSop tbody').append(html);
-        $('#emptyRowMsg').hide();
-        $('#inputTagNo').val(''); $('#inputBarang').val(null).trigger('change'); $('#inputQty').val(0); $('#inputTagNo').focus();
+    $('#inputTagNo').on('keydown', function(e){
+        if(e.key === "Enter" || e.keyCode === 13) {
+            e.preventDefault();
+            if ($(this).val().trim() !== '') {
+                $('#inputItemCode').focus().select();
+            }
+        }
     });
 
-    // PERBAIKAN: HAPUS SATUAN VIA AJAX (Membaca Text agar tidak crash oleh HTML template)
+    $('#inputQty').on('keydown', function(e) {
+        if (e.key === "Enter" || e.keyCode === 13) {
+            e.preventDefault();
+            
+            var locId   = $('#inputLoc').val();
+            var locName = $('#inputLoc option:selected').text().split(' - ')[1] || $('#inputLoc option:selected').text();
+            var tagNo   = $('#inputTagNo').val().trim();
+            var code    = $('#inputItemCode').val().trim();
+            var name    = $('#inputItemName').val();
+            var qty     = $(this).val();
+            var unit    = $('#inputUnit').text();
+
+            if(!code || !tagNo) { 
+                alert('Mohon isi Tag No dan Pilih Item!'); 
+                if(!tagNo) $('#inputTagNo').focus(); else $('#inputItemCode').focus();
+                return; 
+            }
+
+            if ($('#tabelSop tbody tr td[colspan="8"]').length > 0) {
+                $('#tabelSop tbody').find('tr').not('#entryRow').remove();
+            }
+
+            var html = `<tr class='row-item' data-sop-id='${$('#hapus_id').val()}' data-old-tag='${tagNo}'>
+                <td class='text-center text-muted'>▶</td>
+                <td><input type='hidden' name='loc_id[]' value='${locId}'>${locName}</td>
+                <td class='cell-edit'><input type='hidden' name='tag_no[]' class='val-real' value='${tagNo}'><span class='val-txt'>${tagNo}</span><input type='text' class='c-input val-input d-none' value='${tagNo}'></td>
+                <td width='120'><input type='hidden' name='item_code[]' value='${code}'>${code}</td>
+                <td>${name}</td>
+                <td class='text-end cell-edit'><input type='hidden' name='tag_qty[]' class='val-real' value='${qty}'><span class='val-txt'>${parseFloat(qty).toFixed(2)}</span><input type='number' class='c-input text-end val-input d-none' value='${qty}' step='0.01'></td>
+                <td>${unit}</td>
+                <td class='text-center align-middle'>
+                    <button type='button' class='btn btn-success btn-sm btn-save-row px-1 py-0 d-none me-1'><i class='bi bi-check'></i></button>
+                    <button type='button' class='btn btn-danger btn-sm btn-hapus px-1 py-0'><i class='bi bi-trash'></i></button>
+                </td>
+            </tr>`;
+            
+            $('#entryRow').after(html);
+            var $newRow = $('#entryRow').next('tr.row-item');
+
+            $('#inputTagNo').val(''); 
+            $('#inputItemCode').val('');
+            $('#inputItemName').val('');
+            $('#inputItemId').val('');
+            $('#inputQty').val(0);
+            $('#inputUnit').text('-');
+
+            saveSopAjax($newRow, function() {
+                $('#inputTagNo').focus(); 
+            });
+        }
+    });
+
+    // ==========================================
+    // INLINE EDIT & HAPUS
+    // ==========================================
     $(document).on('click', '.btn-hapus', function() { 
-        var $row =$(this).closest('tr');
-        var sopId = $row.attr('data-sop-id');
-        var tagNo = $row.attr('data-tag-no');
+        var $row = $(this).closest('tr');
+        var sopId = $('#hapus_id').val();
+        var tagNo = $row.find('input[name="tag_no[]"]').val();
 
-        if (confirm('Yakin ingin menghapus Tag ini secara permanen?')) {
-            if (sopId && tagNo) {
+        if (confirm('Yakin ingin menghapus Tag ' + tagNo + ' secara permanen?')) {
+            if (sopId && sopId != "0" && tagNo) {
                 $.ajax({
-                    url: window.location.href, // Target spesifik ke URL halaman ini
+                    url: window.location.href, 
                     type: 'POST',
-                    dataType: 'text', // <-- UBAH KE TEXT
+                    dataType: 'text',
                     data: { ajax_delete_tag: 1, sop_id: sopId, tag_no: tagNo },
                     success: function(res) {
-                        // Cek apakah ada output string json success
                         if (res.includes('"success":true') || res.includes('"success": true')) {
                             $row.remove();
                         } else {
-                            console.log("Respon Server (Gagal Hapus):", res);
-                            alert('Gagal menghapus Tag. Lihat Console (F12) untuk detail.');
+                            alert('Gagal menghapus Tag dari database.');
                         }
                     },
-                    error: function(xhr, status, error) { 
-                        console.log("Error Jaringan:", xhr.responseText);
-                        alert('Terjadi kesalahan jaringan. Cek Console (F12).'); 
-                    }
+                    error: function() { alert('Kesalahan Jaringan.'); }
                 });
             } else {
-                $row.remove();
+                $row.remove(); 
             }
         }
     });
 
     $(document).on('dblclick', '.cell-edit', function() {
-        var $td = $(this);$td.find('.val-txt').addClass('d-none'); $td.find('.val-input').removeClass('d-none').focus().select();$td.closest('tr').find('.btn-save-row').removeClass('d-none');
+        var $td = $(this);
+        $td.find('.val-txt').addClass('d-none'); 
+        $td.find('.val-input').removeClass('d-none').focus().select();
+        $td.closest('tr').find('.btn-save-row').removeClass('d-none');
     });
+
     $(document).on('click', '.btn-save-row', function() {
-        var $row = $(this).closest('tr');$row.find('.cell-edit').each(function() {
-            var $td =$(this); var newVal = $td.find('.val-input').val();$td.find('.val-real').val(newVal);
+        var $row = $(this).closest('tr');
+        $row.find('.cell-edit').each(function() {
+            var $td = $(this); 
+            var newVal = $td.find('.val-input').val();
+            $td.find('.val-real').val(newVal);
             if($td.hasClass('text-end')) newVal = parseFloat(newVal).toFixed(2);
-            $td.find('.val-txt').text(newVal).removeClass('d-none');$td.find('.val-input').addClass('d-none');
+            $td.find('.val-txt').text(newVal).removeClass('d-none');
+            $td.find('.val-input').addClass('d-none');
         });
         $(this).addClass('d-none');
+        saveSopAjax($row);
     });
-    $(document).on('keypress', '.val-input', function(e) { if(e.which == 13) { e.preventDefault();$(this).closest('tr').find('.btn-save-row').click(); } });
+
+    $(document).on('keypress', '.val-input', function(e) { 
+        if(e.which == 13 || e.keyCode == 13) { 
+            e.preventDefault(); 
+            $(this).closest('tr').find('.btn-save-row').click(); 
+        } 
+    });
 });
 </script>
-<?php endif; ?>
+<script>
+$(document).ready(function() {
+    if($('#sa_item_id').length) {
+        $('#sa_item_id').select2({
+            theme: 'bootstrap-5',
+            dropdownParent: $('#modalStockAnalysis'), 
+            placeholder: 'Ketik Kode / Nama...',
+            allowClear: true,
+            minimumInputLength: 1,
+            ajax: {
+                url: window.location.href, 
+                type: 'POST', 
+                dataType: 'json',
+                delay: 250,
+                data: function (params) { 
+                    return { 
+                        ajax_search_item: 1, 
+                        q: params.term 
+                    }; 
+                },
+                processResults: function (data) { 
+                    var mappedData = $.map(data, function(obj) {
+                        return {
+                            id: obj.ITEM_CODE, 
+                            text: obj.ITEM_CODE + ' - ' + obj.ITEM_NAME 
+                        };
+                    });
+                    return { results: mappedData }; 
+                },
+                cache: true
+            }
+        });
+    }
+});
+</script>
+<?php } ?>

@@ -220,6 +220,8 @@ function decorateMaterialMetrics($materials, $woQty, $pdQty, $actualVirginGudang
 if (strtotime($startDate) > strtotime($endDate)) { $tmp = $startDate; $startDate = $endDate; $endDate = $tmp; }
  $code     = isset($_GET['code']) && trim($_GET['code']) !== '' ? trim($_GET['code']) : '%';
  $custCode = isset($_GET['cust_code']) && trim($_GET['cust_code']) !== '' ? trim($_GET['cust_code']) : '%';
+ $mcType   = isset($_GET['mc_type']) && in_array($_GET['mc_type'], array('all','inj','ass')) ? $_GET['mc_type'] : 'all'; // Filter Mesin
+ 
  $startSql = $startDate . ' 00:00:00.000';
  $endSql   = $endDate . ' 23:59:59.997';
 
@@ -379,6 +381,16 @@ foreach($rawRows as $ri=>$r){
 
  $rows=array();$missingRateMachines=array();
 foreach($sumRows as $r){
+    $r['MC_DISPLAY']=machineDisplay($r,$machineRateUsdMap);
+
+    // --- LOGIKA FILTER JENIS MESIN (INJECTION / ASSEMBLING) ---
+    $mcTrim = trim($r['MC_DISPLAY']);
+    $isAngka = preg_match('/^[0-9]+$/', $mcTrim); // Jika murni angka, dianggap Injection (e.g. 201, 202)
+    
+    // Filter out data jika tidak sesuai pilihan form
+    if ($mcType === 'inj' && !$isAngka) continue; // Hanya masukkan yg angka
+    if ($mcType === 'ass' && $isAngka) continue;  // Masukkan yg BUKAN murni angka (contoh: mengandung A / ASS)
+
     foreach($r['_WO_PLAN'] as $qp)$r['WO_QTY']+=num($qp);
     $r['CAV_ACT']=num($r['_CW'])>0?num($r['_CWS'])/num($r['_CW']):0;
     $r['CT_ACT']=num($r['_TW'])>0?num($r['_TWS'])/num($r['_TW']):0;
@@ -392,7 +404,6 @@ foreach($sumRows as $r){
     $r['RATE_MC_USD']=machineRateUsd($r,$machineRateUsdMap);$r['KURS_USD']=$usdRate;
     $r['RATE_MC_IDR']=num($r['RATE_MC_USD'])*num($r['KURS_USD']);
     $r['REDUCE_IDR']=num($r['TOTAL_REDUCE_HOUR'])*num($r['RATE_MC_IDR']);
-    $r['MC_DISPLAY']=machineDisplay($r,$machineRateUsdMap);
     $r['PD_REM']=implode(' | ',array_keys($r['_REMARKS']));
     $ic=isset($r['ITEM_CODE'])?trim($r['ITEM_CODE']):'';$ccr=isset($r['CUST_CODE'])?trim($r['CUST_CODE']):'';
     $r['CUST_ABBR']=isset($custMap[$ccr])?$custMap[$ccr]:$ccr;
@@ -440,13 +451,21 @@ usort($rows,function($a,$b){
 });
 
  $machineGroups=array();
- $grand=array('WO_QTY'=>0,'CAV_STD'=>0,'CAV_ACT'=>0,'CT_STD'=>0,'CT_ACT'=>0,'CT_DIFF'=>0,'PD_OK'=>0,'PD_HO'=>0,'NG'=>0,'OUTPUT_TOTAL'=>0,'TOTAL_SHOOT'=>0,'RUNNING_STD_HOUR'=>0,'RUNNING_ACT_HOUR'=>0,'RUNNING_DIFF_HOUR'=>0,'TOTAL_REDUCE_HOUR'=>0,'RATE_MC_USD'=>0,'REDUCE_IDR'=>0,'RATE_MC_IDR'=>0,'STD_MATERIAL_VIRGIN'=>0,'STD_MATERIAL_PEWARNA'=>0,'STD_MATERIAL_TOTAL'=>0,'ACTUAL_MATERIAL_PL'=>0,'SELISIH_MATERIAL_PL'=>0,'MATERIAL_PL_IDR'=>0,'ACTUAL_VIRGIN'=>0,'ACTUAL_CRUSHER'=>0,'ACTUAL_PEWARNA'=>0, 'SISA_HOPER'=>0);
- $smk=array_keys($grand);
+ $baseTotal=array('WO_QTY'=>0,'CAV_STD'=>0,'CAV_ACT'=>0,'CT_STD'=>0,'CT_ACT'=>0,'CT_DIFF'=>0,'PD_OK'=>0,'PD_HO'=>0,'NG'=>0,'OUTPUT_TOTAL'=>0,'TOTAL_SHOOT'=>0,'RUNNING_STD_HOUR'=>0,'RUNNING_ACT_HOUR'=>0,'RUNNING_DIFF_HOUR'=>0,'TOTAL_REDUCE_HOUR'=>0,'RATE_MC_USD'=>0,'REDUCE_IDR'=>0,'RATE_MC_IDR'=>0,'STD_MATERIAL_VIRGIN'=>0,'STD_MATERIAL_PEWARNA'=>0,'STD_MATERIAL_TOTAL'=>0,'ACTUAL_MATERIAL_PL'=>0,'SELISIH_MATERIAL_PL'=>0,'MATERIAL_PL_IDR'=>0,'ACTUAL_VIRGIN'=>0,'ACTUAL_CRUSHER'=>0,'ACTUAL_PEWARNA'=>0, 'SISA_HOPER'=>0);
+ 
+ $grand=$baseTotal; // $grand dimulai dari 0
+ $smk=array_keys($baseTotal);
+ 
 foreach($rows as $r){
     $mk=isset($r['MC_DISPLAY'])?$r['MC_DISPLAY']:'';
-    if(!isset($machineGroups[$mk]))$machineGroups[$mk]=array('machine'=>$mk,'rows'=>array(),'total'=>$grand);
+    if(!isset($machineGroups[$mk])) {
+        $machineGroups[$mk]=array('machine'=>$mk,'rows'=>array(),'total'=>$baseTotal);
+    }
     $machineGroups[$mk]['rows'][]=$r;
-    foreach($smk as $k){$machineGroups[$mk]['total'][$k]+=num(isset($r[$k])?$r[$k]:0);$grand[$k]+=num(isset($r[$k])?$r[$k]:0);}
+    foreach($smk as $k){
+        $machineGroups[$mk]['total'][$k]+=num(isset($r[$k])?$r[$k]:0);
+        $grand[$k]+=num(isset($r[$k])?$r[$k]:0);
+    }
 }
 
 /* ===== PREPARE SUMMARY + CHART DATA (TOP 10) ===== */
@@ -763,11 +782,23 @@ if (isset($_GET['export']) && $_GET['export'] === 'xls') {
                 <div class="form-group filter-group"><label>Ke Tanggal</label><input type="date" class="form-control" name="end_date" value="<?php echo h($endDate); ?>"></div>
                 <div class="form-group filter-group"><label>Item Code</label><input type="text" class="form-control" name="code" value="<?php echo h($code === '%' ? '' : $code); ?>" placeholder="Ketik item..."></div>
                 <div class="form-group filter-group ac-wrap" id="acCustWrap"><label>Customer</label><input type="text" class="form-control" id="fCust" name="cust_code" value="<?php echo h($custCode === '%' ? '' : $custCode); ?>" placeholder="Ketik customer..." autocomplete="off" spellcheck="false"><span class="ac-clear-btn" id="acCustClear">&times;</span><div class="ac-dropdown" id="acCustDrop"></div></div>
+                
+                <!-- ====== FILTER BARU: JENIS MESIN ====== -->
+                <div class="form-group filter-group">
+                    <label>Jenis Mesin</label>
+                    <select name="mc_type" class="form-control">
+                        <option value="all" <?php echo $mcType === 'all' ? 'selected' : ''; ?>>Semua Mesin</option>
+                        <option value="inj" <?php echo $mcType === 'inj' ? 'selected' : ''; ?>>Injection (Angka)</option>
+                        <option value="ass" <?php echo $mcType === 'ass' ? 'selected' : ''; ?>>Assembling (A)</option>
+                    </select>
+                </div>
+                <!-- ====================================== -->
+                
                 <div class="form-group filter-group" style="width:95px"><label>Kurs USD</label><input type="text" class="form-control" name="usd_rate" value="<?php echo h($usdRate > 0 ? number_format($usdRate, 0, '.', '') : ''); ?>"></div>
                 <div class="form-group filter-group"><label>&nbsp;</label><div>
                     <button type="submit" class="btn btn-primary btn-action"><span class="glyphicon glyphicon-search"></span> Tampilkan</button>
                     <button type="button" class="btn btn-default btn-action" onclick="window.print();"><span class="glyphicon glyphicon-print"></span> Print</button>
-                    <a class="btn btn-success btn-action" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&code=<?php echo urlencode($code); ?>&cust_code=<?php echo urlencode($custCode); ?>&usd_rate=<?php echo $usdRate; ?>&export=xls"><span class="glyphicon glyphicon-download"></span> XLS</a>
+                    <a class="btn btn-success btn-action" href="?start_date=<?php echo urlencode($startDate); ?>&end_date=<?php echo urlencode($endDate); ?>&code=<?php echo urlencode($code); ?>&cust_code=<?php echo urlencode($custCode); ?>&usd_rate=<?php echo $usdRate; ?>&mc_type=<?php echo $mcType; ?>&export=xls"><span class="glyphicon glyphicon-download"></span> XLS</a>
                 </div></div>
             </form>
         </div>

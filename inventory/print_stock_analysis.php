@@ -1,82 +1,95 @@
 <?php
 require_once __DIR__ . '/../config/database_p1.php';
 
-// 1. Tangkap Parameter (Berupa ITEM_CODE atau ITEM_ID dari form)
-$passedItem = isset($_GET['item_id']) ? trim($_GET['item_id']) : '0';
-$startDate = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01');
-$period    = isset($_GET['period']) ? (int)$_GET['period'] : 1;
+// 1. Tangkap Parameter Filter
+$passedItem = isset($_GET['item_id']) ? trim($_GET['item_id']) : '';
+$startDate  = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-01');
+$period     = isset($_GET['period']) ? (int)$_GET['period'] : 1;
 
 $itemId = 0;
 $itemCodeDisplay = "ALL ITEMS";
-
-// TRANSLATOR: Ubah ITEM_CODE menjadi ITEM_ID dengan aman
-if ($passedItem !== '0' && $passedItem !== '') {
-    $qFind = sqlsrv_query($conn, "SELECT TOP 1 ITEM_ID, ITEM_CODE FROM ITEMS WHERE ITEM_CODE = ?", array($passedItem));
-    if ($qFind && $rFind = sqlsrv_fetch_array($qFind, SQLSRV_FETCH_ASSOC)) {
-        $itemId = $rFind['ITEM_ID'];
-        $itemCodeDisplay = $rFind['ITEM_CODE'];
-    } else {
-        if (is_numeric($passedItem)) {
-            $itemId = (int)$passedItem;
-            $qName = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_ID = ?", array($itemId));
-            if ($qName && $rName = sqlsrv_fetch_array($qName, SQLSRV_FETCH_ASSOC)) {
-                $itemCodeDisplay = $rName['ITEM_CODE'];
-            }
-        } else {
-            $itemId = -999; 
-            $itemCodeDisplay = "ITEM NOT FOUND";
-        }
-    }
-}
-
-// Format StartDate untuk SP
-$startDateFormatted = date('Ymd', strtotime($startDate));
-
-// 2. Eksekusi Stored Procedure
-sqlsrv_query($conn, "SET NOCOUNT ON");
-
-$sql = "EXEC sp_StockAnalysis2 @STARTDATE = ?, @PERIOD = ?, @ITEM_ID = ?";
-$params = array($startDateFormatted, $period, $itemId);
-
-set_time_limit(0); 
-$options = array("QueryTimeout" => 300);
-$stmt = sqlsrv_query($conn, $sql, $params, $options);
-
-if ($stmt === false) {
-    die("<div style='text-align:center; padding:50px; color:red; font-family:Arial;'>
-            <h2>🚨 Gagal Mengeksekusi Stored Procedure 🚨</h2>
-            <pre style='background:#fde8e8; padding:20px; text-align:left; border:1px solid red; display:inline-block;'>". print_r(sqlsrv_errors(), true) ."</pre>
-         </div>");
-}
-
-// 3. Proses Data & Grouping
 $groupedData = [];
-$companyName = (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') ? "P.T. IMC TEKNO INDONESIA" : "P.T. IMC TEKNO INDONESIA";
 
-do {
-    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-        if (isset($row['ITEM_CODE'])) {
-            $itemKey = $row['ITEM_CODE'] . "||" . (isset($row['ITEM_NAME']) ? $row['ITEM_NAME'] : '');
-            
-            // PERBAIKAN: Tarik LOC_GROUP lalu gabungkan dengan LOC_NAME
-            $locGroup = isset($row['LOC_GROUP']) ? trim($row['LOC_GROUP']) : "";
-            $locName = isset($row['LOC_NAME']) ? trim($row['LOC_NAME']) : "UNASSIGNED";
-            $locKey = trim($locGroup . " " . $locName); 
-            
-            if (!isset($groupedData[$itemKey])) {
-                $groupedData[$itemKey] = [];
-            }
-            if (!isset($groupedData[$itemKey][$locKey])) {
-                $groupedData[$itemKey][$locKey] = [];
-            }
-            
-            $groupedData[$itemKey][$locKey][] = $row;
+// CEK APAKAH ADA AJAX REQUEST UNTUK PENCARIAN ITEM (SUPAYA BISA DI-SEARCH DI HALAMAN INI)
+if (isset($_POST['ajax_search_item'])) {
+    while (ob_get_level()) ob_end_clean(); 
+    header('Content-Type: application/json');
+    
+    $q = trim($_POST['q']);
+    $res = [];
+    
+    $sqlAc = "SELECT TOP 40 ITEM_ID, ITEM_CODE, ITEM_NAME, ITEM_UNIT FROM ITEMS WHERE ITEM_CODE LIKE ? OR ITEM_NAME LIKE ? ORDER BY ITEM_CODE ASC";
+    $stmtAc = sqlsrv_query($conn, $sqlAc, array("%$q%", "%$q%"));
+    
+    if ($stmtAc !== false) {
+        while ($rowAc = sqlsrv_fetch_array($stmtAc, SQLSRV_FETCH_ASSOC)) {
+            $res[] = [
+                'ITEM_ID' => $rowAc['ITEM_ID'],
+                'ITEM_CODE' => trim((string)$rowAc['ITEM_CODE']),
+                'ITEM_NAME' => trim((string)$rowAc['ITEM_NAME']),
+                'ITEM_UNIT' => trim((string)$rowAc['ITEM_UNIT'])
+            ];
         }
     }
-} while (sqlsrv_next_result($stmt));
+    echo json_encode($res);
+    exit;
+}
 
+// 2. JIKA ITEM TELAH DIPILIH DAN DISUBMIT, JALANKAN STORED PROCEDURE
+if ($passedItem !== '' && $passedItem !== '0') {
+    if ($passedItem !== '0') {
+        $qFind = sqlsrv_query($conn, "SELECT TOP 1 ITEM_ID, ITEM_CODE FROM ITEMS WHERE ITEM_CODE = ?", array($passedItem));
+        if ($qFind && $rFind = sqlsrv_fetch_array($qFind, SQLSRV_FETCH_ASSOC)) {
+            $itemId = $rFind['ITEM_ID'];
+            $itemCodeDisplay = $rFind['ITEM_CODE'];
+        } else {
+            if (is_numeric($passedItem)) {
+                $itemId = (int)$passedItem;
+                $qName = sqlsrv_query($conn, "SELECT TOP 1 ITEM_CODE FROM ITEMS WHERE ITEM_ID = ?", array($itemId));
+                if ($qName && $rName = sqlsrv_fetch_array($qName, SQLSRV_FETCH_ASSOC)) {
+                    $itemCodeDisplay = $rName['ITEM_CODE'];
+                }
+            } else {
+                $itemId = -999; 
+                $itemCodeDisplay = "ITEM NOT FOUND";
+            }
+        }
+    }
 
-// Bulan String untuk Header
+    $startDateFormatted = date('Ymd', strtotime($startDate));
+    sqlsrv_query($conn, "SET NOCOUNT ON");
+
+    $sql = "EXEC sp_StockAnalysis2 @STARTDATE = ?, @PERIOD = ?, @ITEM_ID = ?";
+    $params = array($startDateFormatted, $period, $itemId);
+
+    set_time_limit(0); 
+    $options = array("QueryTimeout" => 300);
+    $stmt = sqlsrv_query($conn, $sql, $params, $options);
+
+    if ($stmt !== false) {
+        do {
+            while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+                if (isset($row['ITEM_CODE'])) {
+                    $itemKey = $row['ITEM_CODE'] . "||" . (isset($row['ITEM_NAME']) ? $row['ITEM_NAME'] : '');
+                    
+                    $locGroup = isset($row['LOC_GROUP']) ? trim($row['LOC_GROUP']) : "";
+                    $locName = isset($row['LOC_NAME']) ? trim($row['LOC_NAME']) : "UNASSIGNED";
+                    $locKey = trim($locGroup . " " . $locName); 
+                    
+                    if (!isset($groupedData[$itemKey])) {
+                        $groupedData[$itemKey] = [];
+                    }
+                    if (!isset($groupedData[$itemKey][$locKey])) {
+                        $groupedData[$itemKey][$locKey] = [];
+                    }
+                    
+                    $groupedData[$itemKey][$locKey][] = $row;
+                }
+            }
+        } while (sqlsrv_next_result($stmt));
+    }
+}
+
 $startMonthStr = date('F - Y', strtotime($startDate));
 $bulanEn = array('January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December');
 $bulanId = array('Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember');
@@ -93,6 +106,14 @@ function formatCR($val) {
 <head>
     <meta charset="UTF-8">
     <title>Stock Analysis Report</title>
+    <!-- CSS & Select2 Assets untuk Filter Bar -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
     <style>
         body { font-family: "Arial", Helvetica, sans-serif; font-size: 12px; margin: 0; background: #e0e0e0; }
         .page-container { background: #fff; width: 210mm; min-height: 297mm; margin: 20px auto; padding: 25px 40px; box-sizing: border-box; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
@@ -119,7 +140,6 @@ function formatCR($val) {
         
         .loc-header td { font-weight: bold; font-style: italic; font-size: 15px; padding-top: 15px; padding-bottom: 5px; text-transform: uppercase; }
         
-        /* PERBAIKAN: Posisi Kolom Dibuat Rata Kiri */
         .beg-balance td { padding-top: 3px; padding-bottom: 3px; font-size: 12px; }
         .beg-balance .lbl-col { text-align: left; padding-left: 10px; white-space: nowrap; }
         .beg-balance .lbl-text { color: blue; font-style: italic; margin-right: 20px; }
@@ -151,9 +171,42 @@ function formatCR($val) {
 </head>
 <body>
     <div class="no-print">
-        <button class="btn" onclick="window.close()">Tutup</button>
-        <button class="btn" onclick="window.print()">Print Report</button>
-        <a href="export_stock_analysis.php?item_id=<?php echo htmlspecialchars($passedItem); ?>&start_date=<?php echo htmlspecialchars($startDate); ?>&period=<?php echo $period; ?>" class="btn" style="text-decoration:none; color:black;">Export to Excel</a>
+        <!-- FORM FILTER INTERAKTIF DI DALAM HALAMAN PRINT -->
+        <form method="GET" action="" class="row g-2 align-items-center justify-content-center mb-3">
+            <div class="col-auto">
+                <label class="fw-bold">Pilih Item:</label>
+            </div>
+            <div class="col-auto" style="width: 300px;">
+                <select id="filter_item_id" name="item_id" class="form-select form-select-sm" required>
+                    <?php if (!empty($passedItem)): ?>
+                        <option value="<?php echo htmlspecialchars($passedItem); ?>" selected><?php echo htmlspecialchars($itemCodeDisplay); ?></option>
+                    <?php else: ?>
+                        <option value="" selected disabled>-- Pilih / Cari Item --</option>
+                    <?php endif; ?>
+                </select>
+            </div>
+            <div class="col-auto">
+                <label class="fw-bold">Start Date:</label>
+            </div>
+            <div class="col-auto">
+                <input type="date" name="start_date" class="form-control form-control-sm" value="<?php echo htmlspecialchars($startDate); ?>">
+            </div>
+            <div class="col-auto">
+                <label class="fw-bold">Periode:</label>
+            </div>
+            <div class="col-auto" style="width: 80px;">
+                <input type="number" name="period" class="form-control form-control-sm" value="<?php echo $period; ?>" min="1">
+            </div>
+            <div class="col-auto">
+                <button type="submit" class="btn btn-primary btn-sm">Tampilkan Analisis</button>
+            </div>
+        </form>
+
+        <div>
+            <button class="btn" onclick="window.close()">Tutup</button>
+            <button class="btn" onclick="window.print()">Print Report</button>
+            <a href="export_stock_analysis.php?item_id=<?php echo htmlspecialchars($passedItem); ?>&start_date=<?php echo htmlspecialchars($startDate); ?>&period=<?php echo $period; ?>" class="btn" style="text-decoration:none; color:black;">Export to Excel</a>
+        </div>
     </div>
 
     <div class="page-container">
@@ -161,7 +214,7 @@ function formatCR($val) {
         <table class="header-table">
             <tr>
                 <td style="width: 33%;" class="company-name">
-                    <?php echo htmlspecialchars($companyName); ?>
+                    P.T. IMC TEKNO INDONESIA
                 </td>
                 <td style="width: 34%;" class="title-center">
                     <h2>STOCK ANALYSIS</h2>
@@ -177,19 +230,22 @@ function formatCR($val) {
         </table>
 
         <!-- KONTEN TABEL -->
-        <?php if (empty($groupedData)): ?>
-            <div style="text-align: center; padding: 40px; font-weight: bold; font-size: 13px;">
-                Tidak ada riwayat transaksi pada periode yang dipilih.
+        <?php if ($passedItem === '' || $passedItem === '0'): ?>
+            <div style="text-align: center; padding: 60px; font-weight: bold; font-size: 14px; color: #666;">
+                Silakan pilih item terlebih dahulu melalui menu filter di atas, lalu klik <b>Tampilkan Analisis</b>.
+            </div>
+        <?php elseif (empty($groupedData)): ?>
+            <div style="text-align: center; padding: 40px; font-weight: bold; font-size: 13px; color: red;">
+                Tidak ada riwayat transaksi ditemukan untuk item tersebut pada periode yang dipilih.
             </div>
         <?php else: ?>
             <table class="data-table">
-                <!-- COLGROUP: Penyesuaian Lebar Kolom -->
                 <colgroup>
-                    <col style="width: 25%;"> <!-- Doc No -->
-                    <col style="width: 42%;"> <!-- Deskripsi -->
-                    <col style="width: 11%;">  <!-- IN -->
-                    <col style="width: 11%;">  <!-- OUT -->
-                    <col style="width: 11%;">  <!-- BAL -->
+                    <col style="width: 25%;"> 
+                    <col style="width: 42%;"> 
+                    <col style="width: 11%;">  
+                    <col style="width: 11%;">  
+                    <col style="width: 11%;">  
                 </colgroup>
                 
                 <?php foreach ($groupedData as $itemKey => $locations): 
@@ -210,7 +266,6 @@ function formatCR($val) {
                         $runningBalance = isset($rows[0]['BAL_QTY']) ? (float)$rows[0]['BAL_QTY'] : 0;
                         $sumIn = 0;
                         $sumOut = 0;
-                        $currentDate = '';
                         
                         echo "<tr class='loc-header'><td colspan='5'>".htmlspecialchars($locKey)."</td></tr>";
                         
@@ -218,15 +273,8 @@ function formatCR($val) {
                             $tDateObj = $r['TRAN_DATE'];
                             $tDateStr = ($tDateObj instanceof DateTime) ? $tDateObj->format('Y-m-d') : $tDateObj;
                             
-                            // PRINT BEGINNING BALANCE
-                            if ($tDateStr != $currentDate) {
-                                if ($index == 0) {
-                                    $lblDate = date('j-M-y', strtotime($startDate));
-                                } else {
-                                    $lblDate = date('j-M-y', strtotime($tDateStr . ' -1 day'));
-                                }
-                                
-                                // FORMAT HTML BEGINNING BALANCE
+                            if ($index == 0) {
+                                $lblDate = date('j-M-y', strtotime($startDate));
                                 echo "<tr class='beg-balance'>
                                         <td></td>
                                         <td class='lbl-col'>
@@ -238,8 +286,6 @@ function formatCR($val) {
                                         <td></td>
                                         <td></td>
                                       </tr>";
-                                      
-                                $currentDate = $tDateStr;
                             }
                             
                             $inQty  = isset($r['TIN']) ? (float)$r['TIN'] : 0;
@@ -277,5 +323,39 @@ function formatCR($val) {
             </table>
         <?php endif; ?>
     </div>
+
+    <!-- SCRIPT SELECT2 PENCARIAN ITEM DI HALAMAN PRINT -->
+    <script>
+    $(document).ready(function() {
+        $('#filter_item_id').select2({
+            theme: 'bootstrap-5',
+            placeholder: 'Ketik Kode / Nama Item...',
+            allowClear: true,
+            minimumInputLength: 1,
+            ajax: {
+                url: window.location.href,
+                type: 'POST',
+                dataType: 'json',
+                delay: 250,
+                data: function (params) {
+                    return {
+                        ajax_search_item: 1,
+                        q: params.term
+                    };
+                },
+                processResults: function (data) {
+                    var mapped = $.map(data, function(obj) {
+                        return {
+                            id: obj.ITEM_CODE,
+                            text: obj.ITEM_CODE + ' - ' + obj.ITEM_NAME
+                        };
+                    });
+                    return { results: mapped };
+                },
+                cache: true
+            }
+        });
+    });
+    </script>
 </body>
 </html>

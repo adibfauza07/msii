@@ -188,6 +188,12 @@ function h($value) {
 		<a class="menu-link" href="outgoing_form.php" target="mainFrame"> OUTGOING PRODUCTION / OTHER </a> 
 
 
+		<div class="menu-section"> SPB & MATERIAL SLIP </div>
+		<a class="menu-link" href="material_slip/index.php" target="mainFrame"> MATERIAL SLIP </a> 
+		<a class="menu-link" href="spb/index.php" target="mainFrame"> SPB </a> 
+		<a class="menu-link" href="spb_internal/index.php" target="mainFrame"> SPB INTERNAL </a> 
+
+
 		
 
        

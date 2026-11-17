@@ -1,7 +1,7 @@
 <?php
 if (session_id() == "") session_start();
 
-require_once dirname(__DIR__) . "/config/db_plant1.php";
+require_once dirname(__DIR__) . "/config/global.php";
 if ($conn === false) die("Koneksi database gagal.");
 
 function h($v) { return htmlspecialchars((string)$v, ENT_QUOTES, "UTF-8"); }
@@ -94,8 +94,41 @@ if ($action == "update_price") {
     else $message = "UPDATE PRICE SELESAI";
 }
 
+if ($action == "search_po_target") {
+    $q = postv("q", "");
+    $itemId = intval(postv("item_id", "0"));
+    $supId = intval(postv("sup_id", "0"));
+    $res = array();
+    
+    // INNER JOIN PO_DETAIL agar hanya PO yang memiliki ITEM_ID tersebut yang tampil
+    // Filter SUP_ID agar hanya membaca PO dari supplier di header
+    $sql = "
+        SELECT TOP 40 P.PO_ID, P.PO_NUM, ISNULL(PD.POD_PRICE, 0) AS POD_PRICE
+        FROM dbo.PO P
+        INNER JOIN dbo.PO_DETAIL PD ON P.PO_ID = PD.PO_ID
+        WHERE P.SUP_ID = ? AND PD.ITEM_ID = ? AND P.PO_NUM LIKE ?
+        ORDER BY P.PO_DATE DESC, P.PO_NUM DESC
+    ";
+    
+    // Eksekusi query dengan 3 parameter: supId, itemId, dan kata kunci (q)
+    $stmt = sqlsrv_query($conn, $sql, array($supId, $itemId, "%".$q."%"));
+    if ($stmt !== false) {
+        while ($r = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+            $res[] = array(
+                "PO_ID" => intval($r["PO_ID"]),
+                "PO_NUM" => trim($r["PO_NUM"]),
+                "POD_PRICE" => floatval($r["POD_PRICE"])
+            );
+        }
+    }
+    ob_clean();
+    header('Content-Type: application/json');
+    echo json_encode($res);
+    exit;
+}
+
 /* ======================================================
-   --- FITUR PINDAH ICL ---
+   --- FITUR PINDAH ICL & PO ---
 ====================================================== */
 // 1. PINDAH KE ICL EXISTING (YANG SUDAH ADA)
 if ($action == "move_detail") {
@@ -117,7 +150,7 @@ if ($action == "move_detail") {
             if (count($arr) == 2) {
                 $mItemId = intval($arr[0]);
                 $mPoId = intval($arr[1]);
-                $sqlMv = "UPDATE dbo.RECEIVE_DETAIL SET RCV_ID = ? WHERE RCV_ID = ? AND ITEM_ID = ? AND PO_ID = ?";
+                $sqlMv = "UPDATE TOP (1) dbo.RECEIVE_DETAIL SET RCV_ID = ? WHERE RCV_ID = ? AND ITEM_ID = ? AND PO_ID = ?";
                 $stmtMv = sqlsrv_query($conn, $sqlMv, array($targetRcvId, $sourceRcvId, $mItemId, $mPoId));
                 if ($stmtMv === false) { $ok = false; $error = "Gagal pindah detail:\n".sql_error_text(); break; }
             }
@@ -192,7 +225,7 @@ if ($action == "move_to_new") {
                     if (count($arr) == 2) {
                         $mItemId = intval($arr[0]);
                         $mPoId = intval($arr[1]);
-                        $sqlMv = "UPDATE dbo.RECEIVE_DETAIL SET RCV_ID = ? WHERE RCV_ID = ? AND ITEM_ID = ? AND PO_ID = ?";
+                        $sqlMv = "UPDATE TOP (1) dbo.RECEIVE_DETAIL SET RCV_ID = ? WHERE RCV_ID = ? AND ITEM_ID = ? AND PO_ID = ?";
                         $stmtMv = sqlsrv_query($conn, $sqlMv, array($newRcvId, $sourceRcvId, $mItemId, $mPoId));
                         if ($stmtMv === false) { $ok = false; $error = "Gagal pindah detail ke ICL baru:\n".sql_error_text(); break; }
                     }
@@ -207,6 +240,56 @@ if ($action == "move_to_new") {
         if ($ok) {
             sqlsrv_commit($conn);
             header("Location: receive.php?edit=".$newRcvId."&msg=moved_new");
+            exit;
+        } else {
+            sqlsrv_rollback($conn);
+        }
+    }
+}
+
+// 3. PINDAH PO PADA DETAIL ICL
+if ($action == "move_po") {
+    $sourceRcvId = intval(postv("rcv_id", "0"));
+    $targetPoId = intval(postv("target_po_id", "0"));
+    $moveItems = isset($_POST["move_check"]) ? $_POST["move_check"] : array();
+
+    if ($sourceRcvId <= 0 || $targetPoId <= 0) {
+        $error = "Pilih ICL Sumber dan pastikan PO Tujuan valid.";
+    } elseif (count($moveItems) == 0) {
+        $error = "Centang minimal 1 detail yang akan dipindah PO nya.";
+    } else {
+        sqlsrv_begin_transaction($conn);
+        $ok = true;
+        foreach ($moveItems as $val) {
+            $arr = explode("|", $val);
+            if (count($arr) == 2) {
+                $mItemId = intval($arr[0]);
+                $oldPoId = intval($arr[1]);
+                
+                // TAMBAHKAN TOP (1) DISINI agar hanya ganti 1 baris per 1 centang
+                $sqlMv = "UPDATE TOP (1) dbo.RECEIVE_DETAIL SET PO_ID = ? WHERE RCV_ID = ? AND ITEM_ID = ? AND PO_ID = ?";
+                $stmtMv = sqlsrv_query($conn, $sqlMv, array($targetPoId, $sourceRcvId, $mItemId, $oldPoId));
+                
+                if ($stmtMv === false) { 
+                    $ok = false; 
+                    $error = "Gagal pindah PO pada detail:\n".sql_error_text(); 
+                    break; 
+                }
+                
+                // Otomatis Update Harga (POD_PRICE) berdasarkan PO yang baru
+                $stmtPrice = sqlsrv_query($conn, "EXEC sp_update_price_rec ?, ?, ?", array($sourceRcvId, $mItemId, $targetPoId));
+                
+                if ($stmtPrice === false) { 
+                    $ok = false; 
+                    $error = "Gagal update harga PO baru:\n".sql_error_text(); 
+                    break; 
+                }
+            }
+        }
+        
+        if ($ok) {
+            sqlsrv_commit($conn);
+            header("Location: receive.php?edit=".$sourceRcvId."&msg=moved_po");
             exit;
         } else {
             sqlsrv_rollback($conn);
@@ -292,6 +375,11 @@ if ($action == "save") {
             if ($itemId > 0 && $qty > 0) { $hasDetail = true; break; }
         }
 
+        // ============================================================
+        // BYPASS SIMPAN HEADER (Meskipun baris kosong/belum diisi)
+        // ============================================================
+        $hasDetail = true; 
+        
         if (!$hasDetail && !($allowEmpty == 1 && $rcvId > 0)) {
             $error = "Detail Receive minimal 1 baris dan qty harus lebih dari 0.";
         } else {
@@ -393,6 +481,15 @@ if ($action == "save") {
             }
         }
     }
+    
+    // ==== TANGKAP ERROR VALIDASI FORM JIKA VIA AJAX ====
+    if ($error != "" && $isAjax) {
+        ob_clean();
+        header('Content-Type: application/json');
+        echo json_encode(array("status" => "error", "message" => $error));
+        exit;
+    }
+    // ===================================================
 }
 
 /* ======================================================
@@ -440,9 +537,10 @@ if (getv("msg") == "saved") $message = "Receive berhasil disimpan.";
 if (getv("msg") == "deleted") $message = "Receive berhasil dihapus.";
 if (getv("msg") == "moved") $message = "Detail berhasil dipindahkan ke ICL tujuan.";
 if (getv("msg") == "moved_new") $message = "Berhasil membuat ICL Baru dan memindahkan detail terpilih!";
+if (getv("msg") == "moved_po") $message = "Nomor PO pada detail terpilih berhasil dipindahkan.";
 
 /* ======================================================
-   SUPPLIER, DEPT & DATA AUTOCOMPLETE ICL
+   SUPPLIER, DEPT & DATA AUTOCOMPLETE ICL & PO
 ====================================================== */
 $supplierAuto = array();
 $sqlSup = "SELECT TOP 1000 SUP_ID, SUP_CODE, SUP_COMP FROM dbo.SUPPLIER WHERE ISNULL(SUP_CODE,'') <> '' ORDER BY SUP_CODE";
@@ -477,6 +575,22 @@ if ($stmtRcvAuto !== false) {
             "RCV_DONO" => trim((string)$ra["RCV_DONO"]),
             "SUP_CODE" => trim((string)$ra["SUP_CODE"]),
             "SUP_COMP" => trim((string)$ra["SUP_COMP"])
+        );
+    }
+}
+
+$poAuto = array();
+$sqlPoAuto = "
+    SELECT TOP 1000 PO_ID, PO_NUM 
+    FROM dbo.PO 
+    ORDER BY PO_DATE DESC, PO_NUM DESC
+";
+$stmtPoAuto = sqlsrv_query($conn, $sqlPoAuto);
+if ($stmtPoAuto !== false) {
+    while ($pa = sqlsrv_fetch_array($stmtPoAuto, SQLSRV_FETCH_ASSOC)) {
+        $poAuto[] = array(
+            "PO_ID" => intval($pa["PO_ID"]),
+            "PO_NUM" => trim((string)$pa["PO_NUM"])
         );
     }
 }
@@ -719,6 +833,7 @@ if (count($details) == 0) {
         var supplierData = <?php echo json_encode($supplierAuto) ? json_encode($supplierAuto) : '[]'; ?>;
         var deptData = <?php echo json_encode($deptAuto) ? json_encode($deptAuto) : '[]'; ?>;
         var rcvData = <?php echo json_encode($rcvAuto) ? json_encode($rcvAuto) : '[]'; ?>;
+        var poData = <?php echo json_encode($poAuto) ? json_encode($poAuto) : '[]'; ?>;
         
         var acBox=null, acItems=[], acIndex=-1, acMode="", acRow=-1;
         var rowSeq=<?php echo count($details); ?>;
@@ -969,6 +1084,79 @@ if (count($details) == 0) {
             hideAC();
         }
 
+       // 3. PO Search AutoComplete Khusus Untuk "Pindah PO" (Bawah)
+        function showTargetPoAC(input){
+            initAC();
+            var key=(input.value||"").toUpperCase();
+            acMode="target_po"; acItems=[]; acIndex=-1;
+            if(key.length<1){hideAC();return;}
+            
+            // Ambil SUP_ID dari header (Sup.Code)
+            var supId = byId("sup_id").value;
+            if(!supId || supId == "0") { 
+                alert("Harap pilih/isi Supplier di header terlebih dahulu."); 
+                hideAC(); return; 
+            }
+            
+            // Ambil ITEM_ID dari baris yang dicentang
+            var checkedBox = document.querySelector('input[name="move_check[]"]:checked');
+            var refItemId = 0;
+            if (checkedBox) {
+                var arr = checkedBox.value.split('|'); // Format value: ITEM_ID|PO_ID
+                if(arr.length > 0) refItemId = arr[0];
+            } else {
+                alert("Harap centang (Pindah) minimal 1 item di tabel detail dulu.");
+                hideAC(); return;
+            }
+            
+            // Gunakan AJAX untuk mencari PO yang difilter by sup_id & item_id
+            var xhr = new XMLHttpRequest();
+            xhr.open("POST", "receive.php", true);
+            xhr.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+            xhr.onreadystatechange = function() {
+                if (xhr.readyState == 4 && xhr.status == 200) {
+                    try {
+                        acItems = JSON.parse(xhr.responseText);
+                        positionAC(input);
+                        renderAC(function(p){
+                            var price = p.POD_PRICE > 0 ? p.POD_PRICE : "0";
+                            return "<b>" + p.PO_NUM + "</b><br><small style='color:#008080;'>Harga Item: " + price + "</small>";
+                        }, pickTargetPo);
+                    } catch (e) {}
+                }
+            };
+            // Kirim sup_id dan item_id ke backend
+            xhr.send("action=search_po_target&q=" + encodeURIComponent(key) + "&item_id=" + encodeURIComponent(refItemId) + "&sup_id=" + encodeURIComponent(supId));
+        }
+        
+        function targetPoKey(e,input){
+            if(e.key==="ArrowDown"){
+                e.preventDefault(); if(acMode!=="target_po"||acItems.length==0) showTargetPoAC(input);
+                acMove(1, function(p){ 
+                    var price = p.POD_PRICE > 0 ? p.POD_PRICE : "0 (Item tidak ada di PO ini)";
+                    return "<b>" + p.PO_NUM + "</b><br><small style='color:#008080;'>Harga Item: " + price + "</small>"; 
+                }, pickTargetPo); return false;
+            }
+            if(e.key==="ArrowUp"){
+                e.preventDefault(); if(acMode!=="target_po"||acItems.length==0) showTargetPoAC(input);
+                acMove(-1, function(p){ 
+                    var price = p.POD_PRICE > 0 ? p.POD_PRICE : "0 (Item tidak ada di PO ini)";
+                    return "<b>" + p.PO_NUM + "</b><br><small style='color:#008080;'>Harga Item: " + price + "</small>"; 
+                }, pickTargetPo); return false;
+            }
+            if(e.key==="Enter"){
+                if(acMode==="target_po"&&acItems.length>0){e.preventDefault(); acEnter(pickTargetPo); return false;}
+                return true; 
+            }
+            if(e.key==="Escape") hideAC();
+        }
+        
+        function pickTargetPo(p){
+            setValue("target_po_id", p.PO_ID);
+            setValue("target_po_num", p.PO_NUM);
+            hideAC();
+        }
+
         // Supplier Autocomplete
         function showSupplierAC(input){
             initAC();
@@ -1033,7 +1221,8 @@ if (count($details) == 0) {
         }
         function pickPic(d){setValue("rcv_pic",d.DEP_NAME);hideAC();}
 
-        // PO Item Autocomplete
+       
+	   // PO Item Autocomplete
         function showPOItemAC(input, row) {
             initAC();
             var supId = byId("sup_id").value;
@@ -1051,7 +1240,13 @@ if (count($details) == 0) {
                     try {
                         acItems = JSON.parse(xhr.responseText);
                         positionAC(input);
-                        renderAC(function(o){ return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY; }, pickPOItem);
+                        
+                        // --- PERUBAHAN DI SINI: Menambahkan tampilan Harga (POD_PRICE) di dalam list autocomplete ---
+                        renderAC(function(o){ 
+                            var price = o.POD_PRICE !== undefined && o.POD_PRICE !== null ? o.POD_PRICE : 0;
+                            return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY+" <br><small style='color:#008080;'>Harga: " + price + "</small>"; 
+                        }, pickPOItem);
+                        
                     } catch (e) {}
                 }
             };
@@ -1061,11 +1256,17 @@ if (count($details) == 0) {
         function poItemKey(e,input,row){
             if(e.key==="ArrowDown"){
                 e.preventDefault();if(acMode!=="poitem"||acItems.length==0)showPOItemAC(input,row);
-                acMove(1,function(o){return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY;},pickPOItem);return false;
+                acMove(1,function(o){
+                    var price = o.POD_PRICE !== undefined && o.POD_PRICE !== null ? o.POD_PRICE : 0;
+                    return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY+" <br><small style='color:#008080;'>Harga: " + price + "</small>";
+                },pickPOItem);return false;
             }
             if(e.key==="ArrowUp"){
                 e.preventDefault();if(acMode!=="poitem"||acItems.length==0)showPOItemAC(input,row);
-                acMove(-1,function(o){return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY;},pickPOItem);return false;
+                acMove(-1,function(o){
+                    var price = o.POD_PRICE !== undefined && o.POD_PRICE !== null ? o.POD_PRICE : 0;
+                    return "<b>"+o.ITEM_CODE+"</b> - "+o.ITEM_NAME+" | PO: "+o.PO_NUM+" | O/S: "+o.OS_QTY+" <br><small style='color:#008080;'>Harga: " + price + "</small>";
+                },pickPOItem);return false;
             }
             if(e.key==="Enter"){
                 if(acMode==="poitem"&&acItems.length>0){e.preventDefault();acEnter(pickPOItem);return false;}
@@ -1073,6 +1274,8 @@ if (count($details) == 0) {
             }
             if(e.key==="Escape")hideAC();
         }
+	   
+	   
         function pickPOItem(o){
             var row=acRow;
             setValue("item_id_"+row,o.ITEM_ID);setValue("po_id_"+row,o.PO_ID);
@@ -1173,6 +1376,23 @@ if (count($details) == 0) {
             }
         }
 
+        function triggerMovePO() {
+            var srcId = byId("rcv_id").value;
+            if (!srcId || srcId == "0") { alert("Harap simpan/pilih Receive (ICL) saat ini terlebih dahulu."); return; }
+            
+            var tgtId = byId("target_po_id").value;
+            if (!tgtId || tgtId == "0") { alert("Pilih PO Tujuan yang valid."); return; }
+            
+            var checkboxes = document.querySelectorAll('input[name="move_check[]"]:checked');
+            if (checkboxes.length == 0) { alert("Centang minimal 1 detail yang akan dipindah PO nya."); return; }
+            
+            if (confirm("Yakin ubah PO dari " + checkboxes.length + " item terpilih menjadi PO: " + byId("target_po_num").value + "?")) {
+                var form = byId("rcvForm");
+                form.querySelector('input[name="action"]').value = "move_po";
+                form.submit();
+            }
+        }
+
         function triggerMoveToNew() {
             var srcId = byId("rcv_id").value;
             if (!srcId || srcId == "0") { alert("Harap simpan/pilih Receive (ICL) saat ini terlebih dahulu."); return; }
@@ -1210,6 +1430,26 @@ if (count($details) == 0) {
                 byId("exec_action").value = "set_next_icl";
                 byId("upd_rcv_id").value = nextNum; 
                 byId("execForm").submit();
+            }
+        }
+		
+		
+		// Fungsi untuk filter item di tabel detail
+        function filterDetailTable() {
+            var filter = document.getElementById("filter_item_code").value.toUpperCase();
+            var trs = document.getElementById("detailBody").getElementsByTagName("tr");
+
+            for (var i = 0; i < trs.length; i++) {
+                var itemCodeInput = trs[i].querySelector('input[name="item_code[]"]');
+                if (itemCodeInput) {
+                    var itemCode = itemCodeInput.value || "";
+                    // Tampilkan baris jika cocok dengan filter, sembunyikan jika tidak
+                    if (itemCode.toUpperCase().indexOf(filter) > -1) {
+                        trs[i].style.display = "";
+                    } else {
+                        trs[i].style.display = "none";
+                    }
+                }
             }
         }
 
@@ -1345,19 +1585,18 @@ if (count($details) == 0) {
                 </div>
 
                 <!-- Kanan: Tombol Cetak & Search Data -->
+                <!-- Kanan: Tombol Cetak & Search Data -->
                 <div class="col-4">
                     <div style="display:flex; flex-direction:column; align-items:flex-end;">
-                        <div style="margin-bottom: 20px; width: 100%;">
-                            <label class="lbl-white text-right">SEARCH DATA</label>
+                        <div style="margin-bottom: 10px; width: 100%;">
+                            <label class="lbl-white text-right" style="display:block; text-align:right;">SEARCH DATA</label>
                             <input type="text" name="q" class="input-classic" style="width:100%;" value="<?php echo h($q); ?>" placeholder="Search RCV No / DO / Sup" autocomplete="off" oninput="showRcvAC(this)" onkeydown="rcvKey(event, this)">
                         </div>
                         
-                        <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">
-                            <button type="button" class="btn-classic btn-action-side mr-1" onclick="cetakICLOto()">ICL OTO</button>
-                         
-                        </div>
-                        <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">
-                            
+                        <!-- Penambahan kotak Filter Item Code di samping kiri tombol ICL OTO -->
+                        <div style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                            <input type="text" id="filter_item_code" class="input-classic" style="width: 250px;" placeholder="Filter Item Code di detail..." autocomplete="off" onkeyup="filterDetailTable()">
+                            <button type="button" class="btn-classic btn-action-side" onclick="cetakICLOto()">ICL OTO</button>
                         </div>
                     </div>
                 </div>
@@ -1394,7 +1633,6 @@ if (count($details) == 0) {
                             </td>
                             <td><input type="text" name="item_name[]" id="item_name_<?php echo h($i); ?>" value="<?php echo h(isset($d["ITEM_NAME"])?$d["ITEM_NAME"]:""); ?>" readonly></td>
                             
-                            <!-- PERHATIKAN: fieldEnterSave mengirim argumen `this` untuk menangkap elemen kursor -->
                             <td style="width:70px;"><input type="text" class="text-right" name="rcvd_qty[]" id="rcvd_qty_<?php echo h($i); ?>" value="<?php echo h($qty==0?"":$qty); ?>" onkeydown="fieldEnterSave(event, this)"></td>
                             
                             <td style="width:80px;"><input type="text" class="text-right" name="pod_price[]" id="pod_price_<?php echo h($i); ?>" value="<?php echo h($price==0?"":$price); ?>" readonly></td>
@@ -1411,31 +1649,35 @@ if (count($details) == 0) {
             </table>
         </div>
 
-        <!-- FITUR PANEL PINDAH ICL -->
+        <!-- FITUR PANEL PINDAH ICL & PO -->
         <?php if ($editId > 0) { ?>
         <div style="background: #e0f7fa; padding: 6px 10px; border-top: 1px solid #b2ebf2; display: flex; align-items: center; gap: 8px;">
-            <strong style="font-size:11px; color:#006064;">Pindah Item Diconteng:</strong>
-            <button type="button" class="btn-classic" style="background:#b2dfdb;" onclick="triggerMoveToNew()">Pindah ke ICL Baru</button>
-            <span>atau</span>
+            
+            <!-- Bagian Pindah ICL -->
+            <span>MASUKAN NO ICL TUJUAN</span>
             <input type="hidden" name="target_rcv_id" id="target_rcv_id" value="">
             <input type="text" class="input-classic" style="width: 180px;" name="target_rcv_no" id="target_rcv_no" placeholder="Ketik No ICL Tujuan..." autocomplete="off" oninput="showTargetRcvAC(this)" onkeydown="targetRcvKey(event, this)">
             <button type="button" class="btn-classic" onclick="triggerMoveDetail()">Pindah ke ICL Ini</button>
+            
+            <!-- Garis Pemisah (Divider) -->
+            <div style="border-left: 1px solid #008080; height: 20px; margin: 0 10px;"></div>
+
+            <!-- Bagian Pindah PO -->
+            <span>MASUKAN NO PO TUJUAN</span>
+            <input type="hidden" name="target_po_id" id="target_po_id" value="">
+            <input type="text" class="input-classic" style="width: 180px;" name="target_po_num" id="target_po_num" placeholder="Ketik No PO Tujuan..." autocomplete="off" oninput="showTargetPoAC(this)" onkeydown="targetPoKey(event, this)">
+            <button type="button" class="btn-classic" onclick="triggerMovePO()">Pindah PO</button>
+            
         </div>
         <?php } ?>
 
         <!-- FOOTER BAR -->
         <div class="footer-bar">
             <div>
-                <button type="button" class="btn-classic" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+                
             </div>
             <div style="text-align: right;">
-                <button type="button" class="btn-classic" onclick="triggerAction('trigger_off')">OFF</button>
-                <button type="button" class="btn-classic" onclick="triggerUpdatePrice()">UPDATE</button>
-                <button type="button" class="btn-classic" onclick="triggerAction('trigger_on')">ON</button>
-                <br>
-                <span style="font-weight: bold; font-size: 11px; color: #000; margin-top:2px; display:inline-block;">
-                    JANGAN LUPA KLIK TOMBOL ON LAGI SETELAH KLIK TOMBOL OFF
-                </span>
+                
             </div>
         </div>
     </form>

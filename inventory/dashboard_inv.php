@@ -1,4 +1,5 @@
 <?php
+ob_start();
 // 1. CEK SESI & KONEKSI
 if (session_status() == PHP_SESSION_NONE) { session_start(); }
 if (!isset($_SESSION['db_user'])) { header("Location: login.php"); exit(); }
@@ -132,11 +133,14 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
                     </li>
                     
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle <?php echo ($page=='master')?'active':''; ?>" href="#" data-bs-toggle="dropdown">
+                        <!-- Perbarui class active untuk mencakup 'master_all' -->
+                        <a class="nav-link dropdown-toggle <?php echo in_array($page, ['master', 'master_all']) ? 'active' : ''; ?>" href="#" data-bs-toggle="dropdown">
                             <i class="bi bi-database me-1"></i> Master Data
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item <?php echo ($page=='master')?'active':''; ?>" href="?page=master">Master Items</a></li>
+                            <!-- Tambahkan menu Master ALL di sini -->
+                            <li><a class="dropdown-item <?php echo ($page=='master_all')?'active':''; ?>" href="?page=master_all">Master ALL</a></li>
                         </ul>
                     </li>
 
@@ -151,11 +155,13 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
                     </li>
 
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle <?php echo in_array($page, ['kumpulan_report', 'reposting', 'posting']) ? 'active' : ''; ?>" href="#" data-bs-toggle="dropdown">
+                        <a class="nav-link dropdown-toggle <?php echo in_array($page, ['kumpulan_report', 'adjustment_stok', 'auto_generate_tag', 'reposting', 'posting']) ? 'active' : ''; ?>" href="#" data-bs-toggle="dropdown">
                             <i class="bi bi-folder2-open me-1"></i> Report & System
                         </a>
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item <?php echo ($page=='kumpulan_report')?'active':''; ?>" href="?page=kumpulan_report"><i class="bi bi-file-earmark-bar-graph me-2"></i> Kumpulan Report</a></li>
+                            <li><a class="dropdown-item <?php echo ($page=='adjustment_stok')?'active':''; ?>" href="?page=adjustment_stok"><i class="bi bi-sliders me-2"></i> Adjustment Stok</a></li>
+                            <li><a class="dropdown-item <?php echo ($page=='auto_generate_tag')?'active':''; ?>" href="?page=auto_generate_tag"><i class="bi bi-tags me-2"></i> Auto Generate Tag</a></li>
                             <li><a class="dropdown-item <?php echo ($page=='reposting')?'active':''; ?>" href="?page=reposting"><i class="bi bi-arrow-clockwise me-2"></i> Reposting</a></li>
                             <li><a class="dropdown-item <?php echo ($page=='posting')?'active':''; ?>" href="?page=posting"><i class="bi bi-cloud-arrow-up me-2"></i> Posting</a></li>
                         </ul>
@@ -197,9 +203,13 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
         <?php
         switch ($page) {
             case 'master': include "page_master.php"; break;
+            // Tambahkan case untuk master_all
+            case 'master_all': include "master_all.php"; break;
             case 'sop': include "page_sop.php"; break;
             case 'transaksi': include "page_transaksi.php"; break;
             case 'kumpulan_report': include 'page_kumpulan_report.php'; break;
+            case 'adjustment_stok': include 'adjustment_stok.php'; break;
+            case 'auto_generate_tag': include 'auto_generate_tag.php'; break;
             case 'reposting': include 'reposting.php'; break;
             case 'posting': include 'posting.php'; break;
             
@@ -302,23 +312,47 @@ $page = isset($_GET['page']) ? $_GET['page'] : 'home';
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 
-    <script>
+<script>
     $(document).ready(function() {
-        // Setup Select2 secara Global untuk input pencarian
+        // Setup Select2 untuk Ajax (Pencarian Barang)
         if($('.select2-ajax').length) {
-            $('.select2-ajax').select2({
-                theme: 'bootstrap-5',
-                placeholder: 'Ketik Kode / Nama...',
-                allowClear: true,
-                minimumInputLength: 1,
-                ajax: {
-                    url: 'api_cari_barang.php',
-                    dataType: 'json',
-                    delay: 250,
-                    data: function (params) { return { q: params.term }; },
-                    processResults: function (data) { return { results: data }; },
-                    cache: true
-                }
+            $('.select2-ajax').each(function() {
+                var $this = $(this);
+                $this.select2({
+                    theme: 'bootstrap-5',
+                    
+                    // KUNCI UTAMA: dropdownParent mengarahkan Select2 ke parent-nya sendiri.
+                    // Ini yang akan memperbaiki masalah kursor (focus trap) di dalam Modal Bootstrap.
+                    dropdownParent: $this.parent(), 
+                    
+                    placeholder: 'Ketik Kode / Nama...',
+                    allowClear: true,
+                    minimumInputLength: 1,
+                    ajax: {
+                        url: 'api_cari_barang.php', // Mengambil data dari file API buatanmu
+                        dataType: 'json',
+                        delay: 250,
+                        data: function (params) { 
+                            return { q: params.term }; 
+                        },
+                        processResults: function (data) { 
+                            // api_cari_barang.php milikmu sudah menghasilkan format [{id: '...', text: '...'}]
+                            // Jadi kita cukup mengopernya langsung ke results
+                            return { results: data }; 
+                        },
+                        cache: true
+                    }
+                });
+            });
+        }
+        
+        // Setup juga untuk Select2 biasa (non-AJAX) jika dipakai di form lain
+        if($('.select2').length) {
+            $('.select2').each(function() {
+                $(this).select2({
+                    theme: 'bootstrap-5',
+                    dropdownParent: $(this).parent()
+                });
             });
         }
     });

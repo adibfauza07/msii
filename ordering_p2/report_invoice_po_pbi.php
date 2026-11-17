@@ -133,7 +133,8 @@ for ($i = 0; $i < count($rows); $i++) {
         body {
             margin: 0;
             background: #9a9a9a;
-            font-family: "Courier New", monospace;
+            /* DIUBAH: Menyesuaikan font ke Arial, Helvetica, sans-serif */
+            font-family: Arial, Helvetica, sans-serif;
             font-size: 12px;
             color: #000000;
         }
@@ -170,7 +171,7 @@ for ($i = 0; $i < count($rows); $i++) {
         }
 
         .company {
-            font-family: Arial, sans-serif;
+            /* Menghapus deklarasi font-family agar inherit */
             font-size: 11px;
             line-height: 14px;
         }
@@ -184,7 +185,7 @@ for ($i = 0; $i < count($rows); $i++) {
 
         .title {
             text-align: center;
-            font-family: "Times New Roman", serif;
+            /* Menghapus Times New Roman agar inherit */
             font-size: 30px;
             font-weight: normal;
             padding-top: 34px;
@@ -240,7 +241,7 @@ for ($i = 0; $i < count($rows); $i++) {
         .cust-name {
             font-weight: bold;
             font-size: 15px;
-            font-family: Arial, sans-serif;
+            /* Menghapus deklarasi font-family khusus agar inherit */
         }
 
         .payment {
@@ -267,7 +268,7 @@ for ($i = 0; $i < count($rows); $i++) {
         }
 
         .detail th {
-            font-size: 11px;
+            font-size: 13px;
             font-weight: bold;
             text-align: center;
             padding: 3px 1px;
@@ -278,7 +279,7 @@ for ($i = 0; $i < count($rows); $i++) {
         }
 
         .detail td {
-            font-size: 11px;
+            font-size: 13px;
             padding: 2px 1px;
             vertical-align: top;
             line-height: 13px;

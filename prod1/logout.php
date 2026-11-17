@@ -6,5 +6,5 @@ session_unset();
 session_destroy();
 
 // Kembali ke login page
-header("Location: ../prod1/login.php");
+header("Location: ../prod2/login.php");
 exit;

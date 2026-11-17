@@ -293,6 +293,11 @@ if ($action == "save") {
                 break;
             }
         }
+        
+        // ============================================================
+        // BYPASS SIMPAN HEADER (Meskipun baris kosong/belum diisi)
+        // ============================================================
+        $hasDetail = true; 
 
         if (!$hasDetail && !($allowEmptyDetail == 1 && $reqId > 0)) {
             $error = "Detail item minimal 1 baris dan qty harus lebih dari 0.";
@@ -1405,7 +1410,7 @@ if (count($details) == 0) {
         <!-- FOOTER BAR -->
         <div class="footer-bar">
             <div>
-                <button type="button" class="btn-classic" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+                
             </div>
             <div style="text-align: right;">
                 <button type="button" class="btn-classic" onclick="openSelectedPO()" style="width: 80px; height:24px;">PO'S</button>

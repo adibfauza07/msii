@@ -1,7 +1,7 @@
 <?php
 if (session_id() == "") session_start();
 
-require_once dirname(__DIR__) . "/config/db_plant2.php";
+require_once dirname(__DIR__) . "/config/global.php";
 if ($conn === false) die("Koneksi database gagal.");
 
 function h($v) { return htmlspecialchars((string)$v, ENT_QUOTES, "UTF-8"); }
@@ -277,122 +277,121 @@ if ($action == "save") {
 
     $isNewRecord = ($rcvId == 0); 
 
-    if ($supId <= 0) $error = "Supplier wajib dipilih.";
-
-    if ($error == "") {
+    if ($supId <= 0) {
+        $error = "Supplier wajib dipilih.";
+    } else {
         $itemIds = isset($_POST["item_id"]) ? $_POST["item_id"] : array();
         $poIds = isset($_POST["po_id"]) ? $_POST["po_id"] : array();
         $qtys = isset($_POST["rcvd_qty"]) ? $_POST["rcvd_qty"] : array();
         $prices = isset($_POST["pod_price"]) ? $_POST["pod_price"] : array();
 
-        $hasDetail = false;
-        for ($i=0; $i<count($itemIds); $i++) {
-            $itemId = intval($itemIds[$i]);
-            $qty = isset($qtys[$i]) ? to_float($qtys[$i]) : 0;
-            if ($itemId > 0 && $qty > 0) { $hasDetail = true; break; }
-        }
+        // BYPASS VALIDASI DETAIL: Langsung proses penyimpanan header
+        sqlsrv_begin_transaction($conn);
+        $ok = true;
 
-        if (!$hasDetail && !($allowEmpty == 1 && $rcvId > 0)) {
-            $error = "Detail Receive minimal 1 baris dan qty harus lebih dari 0.";
+        if (!$isNewRecord) {
+            $sqlH = "UPDATE dbo.RECEIVE SET RCV_NO=?, RCV_DONO=?, RCV_DATE=?, RCV_PIC=?, SUP_ID=?, RCV_TYPE=? WHERE RCV_ID=?";
+            $stmtH = sqlsrv_query($conn, $sqlH, array($rcvNo, $rcvDono, $rcvDate, $rcvPic, $supId, $rcvType, $rcvId));
+            if ($stmtH === false) { $ok=false; $error="Simpan header gagal:\n".sql_error_text(); }
         } else {
-            sqlsrv_begin_transaction($conn);
-            $ok = true;
-
-            if (!$isNewRecord) {
-                $sqlH = "UPDATE dbo.RECEIVE SET RCV_NO=?, RCV_DONO=?, RCV_DATE=?, RCV_PIC=?, SUP_ID=?, RCV_TYPE=? WHERE RCV_ID=?";
-                $stmtH = sqlsrv_query($conn, $sqlH, array($rcvNo, $rcvDono, $rcvDate, $rcvPic, $supId, $rcvType, $rcvId));
-                if ($stmtH === false) { $ok=false; $error="Simpan header gagal:\n".sql_error_text(); }
+            $sqlH = "
+                SET NOCOUNT ON;
+                DECLARE @OutputTbl TABLE (NEW_ID INT);
+                INSERT INTO dbo.RECEIVE (RCV_NO, RCV_DONO, RCV_DATE, RCV_PIC, SUP_ID, RCV_TYPE) 
+                OUTPUT INSERTED.RCV_ID INTO @OutputTbl
+                VALUES (?, ?, ?, ?, ?, ?);
+                SELECT NEW_ID FROM @OutputTbl;
+            ";
+            $stmtH = sqlsrv_query($conn, $sqlH, array($rcvNo, $rcvDono, $rcvDate, $rcvPic, $supId, $rcvType));
+            
+            if ($stmtH === false) {
+                $ok=false; $error="Simpan header gagal:\n".sql_error_text();
             } else {
-                $sqlH = "
-                    SET NOCOUNT ON;
-                    DECLARE @OutputTbl TABLE (NEW_ID INT);
-                    INSERT INTO dbo.RECEIVE (RCV_NO, RCV_DONO, RCV_DATE, RCV_PIC, SUP_ID, RCV_TYPE) 
-                    OUTPUT INSERTED.RCV_ID INTO @OutputTbl
-                    VALUES (?, ?, ?, ?, ?, ?);
-                    SELECT NEW_ID FROM @OutputTbl;
-                ";
-                $stmtH = sqlsrv_query($conn, $sqlH, array($rcvNo, $rcvDono, $rcvDate, $rcvPic, $supId, $rcvType));
-                
-                if ($stmtH === false) {
-                    $ok=false; $error="Simpan header gagal:\n".sql_error_text();
-                } else {
-                    $new = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_ASSOC);
-                    if ($new && isset($new['NEW_ID'])) {
-                        $rcvId = intval($new['NEW_ID']);
-                    } else { 
-                        if (sqlsrv_next_result($stmtH)) {
-                            $new = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_ASSOC);
-                            if ($new && isset($new['NEW_ID'])) {
-                                $rcvId = intval($new['NEW_ID']);
-                            } else {
-                                $ok=false; $error="RCV_ID baru tidak terbaca (Next Result).";
-                            }
+                $new = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_ASSOC);
+                if ($new && isset($new['NEW_ID'])) {
+                    $rcvId = intval($new['NEW_ID']);
+                } else { 
+                    if (sqlsrv_next_result($stmtH)) {
+                        $new = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_ASSOC);
+                        if ($new && isset($new['NEW_ID'])) {
+                            $rcvId = intval($new['NEW_ID']);
                         } else {
-                            $ok=false; $error="RCV_ID baru tidak terbaca."; 
+                            $ok=false; $error="RCV_ID baru tidak terbaca (Next Result).";
                         }
+                    } else {
+                        $ok=false; $error="RCV_ID baru tidak terbaca."; 
                     }
                 }
             }
+        }
 
-            if ($ok) {
-                sqlsrv_query($conn, "DELETE FROM dbo.BC_TRANS WHERE NO_TRANS=?", array($rcvNo));
-                if ($jenisBc != "" || $nomorBc != "") {
-                    $sqlBC = "INSERT INTO dbo.BC_TRANS (NO_TRANS, JENIS_BC, NOMOR_BC, BC_DATE) VALUES (?, ?, ?, ?)";
-                    $stmtBc = sqlsrv_query($conn, $sqlBC, array($rcvNo, $jenisBc, $nomorBc, $bcDate));
-                    if ($stmtBc === false) { $ok=false; $error="Simpan BC gagal:\n".sql_error_text(); }
-                }
-            }
-
-            if ($ok) {
-                $stmtDel = sqlsrv_query($conn, "DELETE FROM dbo.sch_receive_detail WHERE RCV_ID = ?", array($rcvId));
-                if ($stmtDel === false) { $ok=false; $error="Hapus detail lama gagal:\n".sql_error_text(); }
-            }
-
-            if ($ok) {
-                for ($i=0; $i<count($itemIds); $i++) {
-                    $itemId = intval($itemIds[$i]);
-                    $poId = intval($poIds[$i]);
-                    $qty = isset($qtys[$i]) ? to_float($qtys[$i]) : 0;
-                    $price = isset($prices[$i]) ? to_float($prices[$i]) : 0;
-
-                    if ($itemId <= 0 || $poId <= 0 || $qty <= 0) continue;
-
-                    $sqlD = "INSERT INTO dbo.sch_receive_detail (RCV_ID, ITEM_ID, PO_ID, RCVD_QTY, POD_PRICE) VALUES (?, ?, ?, ?, ?)";
-                    $stmtD = sqlsrv_query($conn, $sqlD, array($rcvId, $itemId, $poId, $qty, $price));
-                    if ($stmtD === false) { $ok=false; $error="Simpan detail gagal:\n".sql_error_text(); break; }
-                }
-            }
-
-            if ($ok) {
-                sqlsrv_commit($conn);
-                if ($isNewRecord) inc_next_rcv_no($conn); 
-                
-                // ==== PENANGANAN SAVE VIA AJAX / ENTER ====
-                if ($isAjax) {
-                    ob_clean();
-                    header('Content-Type: application/json');
-                    echo json_encode(array("status" => "success", "rcv_id" => $rcvId));
-                    exit;
-                }
-                // ==========================================
-
-                header("Location: schedule_receive.php?edit=".$rcvId."&msg=saved");
-                exit;
-            } else {
-                sqlsrv_rollback($conn);
-                if ($error == "") $error = "Simpan Receive gagal:\n".sql_error_text();
-                
-                // ==== PENANGANAN ERROR VIA AJAX ====
-                if ($isAjax) {
-                    ob_clean();
-                    header('Content-Type: application/json');
-                    echo json_encode(array("status" => "error", "message" => $error));
-                    exit;
-                }
-                // ===================================
+        if ($ok) {
+            sqlsrv_query($conn, "DELETE FROM dbo.BC_TRANS WHERE NO_TRANS=?", array($rcvNo));
+            if ($jenisBc != "" || $nomorBc != "") {
+                $sqlBC = "INSERT INTO dbo.BC_TRANS (NO_TRANS, JENIS_BC, NOMOR_BC, BC_DATE) VALUES (?, ?, ?, ?)";
+                $stmtBc = sqlsrv_query($conn, $sqlBC, array($rcvNo, $jenisBc, $nomorBc, $bcDate));
+                if ($stmtBc === false) { $ok=false; $error="Simpan BC gagal:\n".sql_error_text(); }
             }
         }
+
+        if ($ok) {
+            $stmtDel = sqlsrv_query($conn, "DELETE FROM dbo.sch_receive_detail WHERE RCV_ID = ?", array($rcvId));
+            if ($stmtDel === false) { $ok=false; $error="Hapus detail lama gagal:\n".sql_error_text(); }
+        }
+
+        if ($ok) {
+            for ($i=0; $i<count($itemIds); $i++) {
+                $itemId = intval($itemIds[$i]);
+                $poId = intval($poIds[$i]);
+                $qty = isset($qtys[$i]) ? to_float($qtys[$i]) : 0;
+                $price = isset($prices[$i]) ? to_float($prices[$i]) : 0;
+
+                if ($itemId <= 0 || $poId <= 0 || $qty <= 0) continue;
+
+                $sqlD = "INSERT INTO dbo.sch_receive_detail (RCV_ID, ITEM_ID, PO_ID, RCVD_QTY, POD_PRICE) VALUES (?, ?, ?, ?, ?)";
+                $stmtD = sqlsrv_query($conn, $sqlD, array($rcvId, $itemId, $poId, $qty, $price));
+                if ($stmtD === false) { $ok=false; $error="Simpan detail gagal:\n".sql_error_text(); break; }
+            }
+        }
+
+        if ($ok) {
+            sqlsrv_commit($conn);
+            if ($isNewRecord) inc_next_rcv_no($conn); 
+            
+            // ==== PENANGANAN SAVE VIA AJAX / ENTER ====
+            if ($isAjax) {
+                ob_clean();
+                header('Content-Type: application/json');
+                echo json_encode(array("status" => "success", "rcv_id" => $rcvId));
+                exit;
+            }
+            // ==========================================
+
+            header("Location: schedule_receive.php?edit=".$rcvId."&msg=saved");
+            exit;
+        } else {
+            sqlsrv_rollback($conn);
+            if ($error == "") $error = "Simpan Receive gagal:\n".sql_error_text();
+            
+            // ==== PENANGANAN ERROR VIA AJAX ====
+            if ($isAjax) {
+                ob_clean();
+                header('Content-Type: application/json');
+                echo json_encode(array("status" => "error", "message" => $error));
+                exit;
+            }
+            // ===================================
+        }
     }
+    
+    // ==== TANGKAP ERROR VALIDASI FORM JIKA VIA AJAX ====
+    if ($error != "" && $isAjax) {
+        ob_clean();
+        header('Content-Type: application/json');
+        echo json_encode(array("status" => "error", "message" => $error));
+        exit;
+    }
+    // ===================================================
 }
 
 /* ======================================================
@@ -1197,18 +1196,29 @@ if (count($details) == 0) {
             if (!rcvId || rcvId == "0") { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
             window.open("print_icl_oto.php?id=" + encodeURIComponent(rcvId), "CETAK_OTO", "width=900,height=700,scrollbars=yes");
         }
-       
-	   function cetakSchedule() {
-            var rcvNo = document.querySelector('.rcv-no').value;
-            if (!rcvNo) { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
+
+        function cetakSchedule() {
+    var rcvNo = document.querySelector('.rcv-no').value;
+    if (!rcvNo) { alert("Simpan atau pilih data Receive terlebih dahulu!"); return; }
+    
+    // Kirim nomor ICL UTUH (full), jangan di-substring
+    window.open("print_schedule.php?no=" + encodeURIComponent(rcvNo), "CETAK_SCH", "width=900,height=700,scrollbars=yes");
+}
+
+        function cetakReportSchedule() {
+            var rcvDate = document.querySelector('input[name="rcv_date"]').value;
+            var url = "report_schedule.php";
             
-            // HAPUS ATAU KOMENTARI BARIS INI
-            // var shortNo = rcvNo.substring(0, 6); 
-            
-            // GANTI DENGAN rcvNo LANGSUNG
-            window.open("print_schedule.php?no=" + encodeURIComponent(rcvNo), "CETAK_SCH", "width=900,height=700,scrollbars=yes");
+            if (rcvDate) {
+                var d = new Date(rcvDate);
+                var y = d.getFullYear();
+                var m = ("0" + (d.getMonth() + 1)).slice(-2);
+                var startDate = y + "-" + m + "-01"; 
+                url += "?start_date=" + startDate + "&end_date=" + rcvDate;
+            }
+            window.open(url, "REPORT_SCH", "width=1000,height=700,scrollbars=yes");
         }
-	   
+        
         function setNextICL() {
             var nextNum = prompt("Masukkan nilai antrian untuk ICL selanjutnya:", "");
             if (nextNum !== null && nextNum.trim() !== "") {
@@ -1358,12 +1368,16 @@ if (count($details) == 0) {
                             <input type="text" name="q" class="input-classic" style="width:100%;" value="<?php echo h($q); ?>" placeholder="Search RCV No / DO / Sup" autocomplete="off" oninput="showRcvAC(this)" onkeydown="rcvKey(event, this)">
                         </div>
                         
-                        <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">
-                       
-                            <button type="button" class="btn-classic btn-action-side mr-1" onclick="cetakSchedule()">Sch Material</button>
-                        </div>
-                        <div style="display:flex; flex-wrap:wrap; justify-content:flex-end;">
+                        <div style="display:flex; flex-direction:column; align-items:flex-end; gap: 5px; margin-top: 5px;">
+                            <!-- Tombol 1 mengarah ke print_schedule.php (1 dokumen spesifik berdasarkan rcv_no) -->
+                            <button type="button" class="btn-classic btn-action-side" style="width: 130px;" onclick="cetakSchedule()">
+                                Sch Material
+                            </button>
                             
+                            <!-- Tombol 2 mengarah ke report_schedule.php (laporan rentang tanggal) -->
+                            <button type="button" class="btn-classic btn-action-side" style="width: 130px;" onclick="cetakReportSchedule()">
+                                <i class="fas fa-print"></i> Report Sch Material
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1420,28 +1434,22 @@ if (count($details) == 0) {
         <!-- FITUR PANEL PINDAH ICL -->
         <?php if ($editId > 0) { ?>
         <div style="background: #e0f7fa; padding: 6px 10px; border-top: 1px solid #b2ebf2; display: flex; align-items: center; gap: 8px;">
-            <strong style="font-size:11px; color:#006064;">Pindah Item Diconteng:</strong>
-            <button type="button" class="btn-classic" style="background:#b2dfdb;" onclick="triggerMoveToNew()">Pindah ke ICL Baru</button>
-            <span>atau</span>
-            <input type="hidden" name="target_rcv_id" id="target_rcv_id" value="">
-            <input type="text" class="input-classic" style="width: 180px;" name="target_rcv_no" id="target_rcv_no" placeholder="Ketik No ICL Tujuan..." autocomplete="off" oninput="showTargetRcvAC(this)" onkeydown="targetRcvKey(event, this)">
-            <button type="button" class="btn-classic" onclick="triggerMoveDetail()">Pindah ke ICL Ini</button>
+            
+            <span></span>
+            
+            
         </div>
         <?php } ?>
 
         <!-- FOOTER BAR -->
         <div class="footer-bar">
             <div>
-                <button type="button" class="btn-classic" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+                
             </div>
             <div style="text-align: right;">
-                <button type="button" class="btn-classic" onclick="triggerAction('trigger_off')">OFF</button>
-                <button type="button" class="btn-classic" onclick="triggerUpdatePrice()">UPDATE</button>
-                <button type="button" class="btn-classic" onclick="triggerAction('trigger_on')">ON</button>
+                
                 <br>
-                <span style="font-weight: bold; font-size: 11px; color: #000; margin-top:2px; display:inline-block;">
-                    JANGAN LUPA KLIK TOMBOL ON LAGI SETELAH KLIK TOMBOL OFF
-                </span>
+                
             </div>
         </div>
     </form>

@@ -290,95 +290,80 @@ if ($action == "save") {
         $terms      = isset($_POST["quod_term"]) ? $_POST["quod_term"] : array();
         $actives    = isset($_POST["quod_active"]) ? $_POST["quod_active"] : array();
 
-        $hasDetail = false;
+        // BYPASS VALIDASI DETAIL: Langsung proses penyimpanan header
+        sqlsrv_begin_transaction($conn);
+        $ok = true;
 
-        for ($i = 0; $i < count($itemIds); $i++) {
-            $itemId = intval($itemIds[$i]);
-            $itemCode = isset($itemCodes[$i]) ? trim((string)$itemCodes[$i]) : "";
-            if ($itemId <= 0 && $itemCode != "") $itemId = find_item_id_by_code($conn, $itemCode);
-            $price = isset($prices[$i]) ? to_float($prices[$i]) : 0;
-            if ($itemId > 0 && $price > 0) { $hasDetail = true; break; }
+        if ($quoId > 0) {
+            $sqlH = "UPDATE dbo.QUOTATION SET SUP_ID = ?, QUO_NO = ?, QUO_DATE = ?, CURR_CODE = ?, QUO_EFFDATE = ? WHERE QUO_ID = ?";
+            $paramsH = array($supId, $quoNo, $quoDate, $currCode, $quoEffDate, $quoId);
+            $stmtH = sqlsrv_query($conn, $sqlH, $paramsH);
+            if ($stmtH === false) $ok = false;
+        } else {
+            $sqlH = "INSERT INTO dbo.QUOTATION (SUP_ID, QUO_NO, QUO_DATE, CURR_CODE, QUO_EFFDATE) OUTPUT INSERTED.QUO_ID VALUES (?, ?, ?, ?, ?)";
+            $paramsH = array($supId, $quoNo, $quoDate, $currCode, $quoEffDate);
+            $stmtH = sqlsrv_query($conn, $sqlH, $paramsH);
+            if ($stmtH === false) {
+                $ok = false;
+            } else {
+                $newRow = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_NUMERIC);
+                if ($newRow) $quoId = intval($newRow[0]); else $ok = false;
+            }
         }
 
-        if (!$hasDetail && !($allowEmpty == 1 && $quoId > 0)) {
-            $error = "Detail quotation minimal 1 baris dan price harus lebih dari 0.";
-        } else {
-            sqlsrv_begin_transaction($conn);
-            $ok = true;
+        if ($ok) {
+            $stmtDel = sqlsrv_query($conn, "DELETE FROM dbo.QUOT_DETAIL WHERE QUO_ID = ?", array($quoId));
+            if ($stmtDel === false) $ok = false;
+        }
 
-            if ($quoId > 0) {
-                $sqlH = "UPDATE dbo.QUOTATION SET SUP_ID = ?, QUO_NO = ?, QUO_DATE = ?, CURR_CODE = ?, QUO_EFFDATE = ? WHERE QUO_ID = ?";
-                $paramsH = array($supId, $quoNo, $quoDate, $currCode, $quoEffDate, $quoId);
-                $stmtH = sqlsrv_query($conn, $sqlH, $paramsH);
-                if ($stmtH === false) $ok = false;
-            } else {
-                $sqlH = "INSERT INTO dbo.QUOTATION (SUP_ID, QUO_NO, QUO_DATE, CURR_CODE, QUO_EFFDATE) OUTPUT INSERTED.QUO_ID VALUES (?, ?, ?, ?, ?)";
-                $paramsH = array($supId, $quoNo, $quoDate, $currCode, $quoEffDate);
-                $stmtH = sqlsrv_query($conn, $sqlH, $paramsH);
-                if ($stmtH === false) {
-                    $ok = false;
-                } else {
-                    $newRow = sqlsrv_fetch_array($stmtH, SQLSRV_FETCH_NUMERIC);
-                    if ($newRow) $quoId = intval($newRow[0]); else $ok = false;
-                }
+        if ($ok) {
+            for ($i = 0; $i < count($itemIds); $i++) {
+                $itemId = intval($itemIds[$i]);
+                $itemCode = isset($itemCodes[$i]) ? trim((string)$itemCodes[$i]) : "";
+                if ($itemId <= 0 && $itemCode != "") $itemId = find_item_id_by_code($conn, $itemCode);
+
+                $price  = isset($prices[$i]) ? to_float($prices[$i]) : 0;
+                $minQty = isset($minQtys[$i]) ? to_float($minQtys[$i]) : 0;
+                $unit   = isset($units[$i]) ? trim((string)$units[$i]) : "";
+                $term   = isset($terms[$i]) ? trim((string)$terms[$i]) : "";
+                $active = isset($actives[$i]) ? 1 : 0;
+
+                if ($itemId <= 0 || $price <= 0) continue;
+
+                $sqlD = "INSERT INTO dbo.QUOT_DETAIL (QUOD_PRICE, QUOD_MINQTY, QUOD_UNIT, QUOD_TERM, ITEM_ID, QUO_ID, QUOD_ACTIVE) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                $paramsD = array($price, $minQty, $unit, $term, $itemId, $quoId, $active);
+                $stmtD = sqlsrv_query($conn, $sqlD, $paramsD);
+
+                if ($stmtD === false) { $ok = false; break; }
             }
+        }
 
-            if ($ok) {
-                $stmtDel = sqlsrv_query($conn, "DELETE FROM dbo.QUOT_DETAIL WHERE QUO_ID = ?", array($quoId));
-                if ($stmtDel === false) $ok = false;
-            }
-
-            if ($ok) {
-                for ($i = 0; $i < count($itemIds); $i++) {
-                    $itemId = intval($itemIds[$i]);
-                    $itemCode = isset($itemCodes[$i]) ? trim((string)$itemCodes[$i]) : "";
-                    if ($itemId <= 0 && $itemCode != "") $itemId = find_item_id_by_code($conn, $itemCode);
-
-                    $price  = isset($prices[$i]) ? to_float($prices[$i]) : 0;
-                    $minQty = isset($minQtys[$i]) ? to_float($minQtys[$i]) : 0;
-                    $unit   = isset($units[$i]) ? trim((string)$units[$i]) : "";
-                    $term   = isset($terms[$i]) ? trim((string)$terms[$i]) : "";
-                    
-                    // Note: Checkbox logic in HTML passes value if checked, otherwise missing
-                    $active = isset($actives[$i]) ? 1 : 0;
-
-                    if ($itemId <= 0 || $price <= 0) continue;
-
-                    $sqlD = "INSERT INTO dbo.QUOT_DETAIL (QUOD_PRICE, QUOD_MINQTY, QUOD_UNIT, QUOD_TERM, ITEM_ID, QUO_ID, QUOD_ACTIVE) VALUES (?, ?, ?, ?, ?, ?, ?)";
-                    $paramsD = array($price, $minQty, $unit, $term, $itemId, $quoId, $active);
-                    $stmtD = sqlsrv_query($conn, $sqlD, $paramsD);
-
-                    if ($stmtD === false) { $ok = false; break; }
-                }
-            }
-
-            if ($ok) {
-                sqlsrv_commit($conn);
-                
-                // ==== JIKA DISIMPAN LEWAT ENTER (AJAX) ====
-                if ($isAjax) {
-                    ob_clean();
-                    header('Content-Type: application/json');
-                    echo json_encode(array("status" => "success", "quo_id" => $quoId));
-                    exit;
-                }
-                // ==========================================
-
-                header("Location: quotation.php?edit=" . $quoId . "&msg=saved");
+        if ($ok) {
+            sqlsrv_commit($conn);
+            
+            // ==== JIKA DISIMPAN LEWAT ENTER (AJAX) ====
+            if ($isAjax) {
+                ob_clean();
+                header('Content-Type: application/json');
+                echo json_encode(array("status" => "success", "quo_id" => $quoId));
                 exit;
-            } else {
-                sqlsrv_rollback($conn);
-                $error = "Simpan gagal:\n" . sql_error_text();
-                
-                // ==== JIKA ERROR LEWAT ENTER (AJAX) ====
-                if ($isAjax) {
-                    ob_clean();
-                    header('Content-Type: application/json');
-                    echo json_encode(array("status" => "error", "message" => $error));
-                    exit;
-                }
-                // =======================================
             }
+            // ==========================================
+
+            header("Location: quotation.php?edit=" . $quoId . "&msg=saved");
+            exit;
+        } else {
+            sqlsrv_rollback($conn);
+            $error = "Simpan gagal:\n" . sql_error_text();
+            
+            // ==== JIKA ERROR LEWAT ENTER (AJAX) ====
+            if ($isAjax) {
+                ob_clean();
+                header('Content-Type: application/json');
+                echo json_encode(array("status" => "error", "message" => $error));
+                exit;
+            }
+            // =======================================
         }
     }
     
@@ -1299,7 +1284,7 @@ if (count($details) == 0) {
         <!-- FOOTER BAR -->
         <div class="footer-bar">
             <div>
-                <button type="button" class="btn-classic" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+               
             </div>
             <div style="text-align: right;">
                 <button type="button" class="btn-classic" onclick="openSelectedHistory()" style="width: 80px; height:24px;">OS/PO</button>

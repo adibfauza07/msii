@@ -3,7 +3,7 @@ if (session_id() == "") {
     session_start();
 }
 
-require_once __DIR__ . "/../config/database_prod.php";
+require_once __DIR__ . "/../config/global.php";
 
 if ($conn === false) {
     echo "Koneksi database gagal.";
@@ -149,7 +149,7 @@ function h($value) {
         <br>
 
         Server:
-        <b>192.168.0.4</b>
+        <b>192.168.0.9</b>
         &nbsp; | &nbsp;
 
         Database:
@@ -174,27 +174,39 @@ function h($value) {
                 <a class="button" href="daily_production.php" target="_blank">OPEN</a>
             </div>
 			
+			 <div class="report-item">
+                <div class="report-name">DAILY PRODUCTION VENDOR</div>
+                <a class="button" href="daily_production_vendor.php" target="_blank">OPEN</a>
+            </div>
+			
+			<div class="report-item">
+                <div class="report-name">SUMMARY PRODUCTION VENDOR</div>
+                <a class="button" href="sum_vendor.php" target="_blank">OPEN</a>
+            </div>
+			
 			<div class="report-item">
                 <div class="report-name">DAILY PRODUCTION SUM </div>
                 <a class="button" href="daily_production_sum.php" target="_blank">OPEN</a>
             </div>
 			
 			
-			 <div class="report-item">
-                <div class="report-name">GRAFIK PRODUCTION</div>
-                <a class="button" href="prod_report.php" target="_blank">OPEN</a>			
-            </div>
+			
 			
 			 <div class="report-item">
-                <div class="report-name">EPSON REPORT </div>
-                <a class="button" href="prod_report_epson.php" target="_blank">OPEN</a>
+                <div class="report-name">GRAFIK PRODUCTION</div>
+                <a class="button" href="prod_report.php" target="_blank">OPEN</a>
             </div>
-			<div class="report-item">
+			 <div class="report-item">
                 <div class="report-name">MONTHLY PRODUCTION INJECTION</div>
                 <a class="button" href="monthly_injection.php" target="_blank">OPEN</a>
             </div>
+            <div class="report-item">
+                <div class="report-name">CETAK LABEL MATERIAL</div>
+                <a class="button" href="label_material_input.php" target="_blank">OPEN</a>
+            </div>
 			
-
+           
+            
 
         </div>
     </div>
@@ -204,7 +216,7 @@ function h($value) {
     </div>
 
     <div class="footer">
-        P.T. IMC TEKNO INDONESIA - Production System Plant 1
+        P.T. IMC TEKNO INDONESIA - PRODUCTION Plant 2
     </div>
 
 </div>

@@ -187,7 +187,7 @@ foreach ($serverKeys as $serverKey) {
 
     $serverStatus[$serverKey] = true;
 
-    $sql = "
+   $sql = "
         WITH PO_AGG AS
         (
             SELECT
@@ -207,7 +207,7 @@ foreach ($serverKeys as $serverKey) {
             FROM dbo.RECEIVE_DETAIL AS RD
             INNER JOIN dbo.RECEIVE AS R
                 ON RD.RCV_ID = R.RCV_ID
-               AND R.RCV_TYPE = '01'
+            
             GROUP BY RD.PO_ID, RD.ITEM_ID
         )
         SELECT

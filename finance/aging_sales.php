@@ -180,8 +180,31 @@ $(document).ready(function() {
     var table = $('#tabelAgingSales').DataTable({
         "pageLength": 10,
         "dom": 'lrtip', 
-        "order": [[10, "asc"]] 
+        "order": [[10, "asc"]],
+        "stateSave": true // TAMBAHKAN BARIS INI
     });
+
+    // ... inisialisasi DataTable tabelAgingSales ...
+
+    // Kembalikan status filter dari DataTables state
+    var state = table.state.loaded();
+    if (state) {
+        // Kolom 1: Filter Customer
+        if (state.columns[1].search.search) {
+             // Bersihkan format regex sebelum dipasang ke dropdown
+            var searchVal = state.columns[1].search.search.replace(/^\^|\$$/g, '').replace(/\\/g, '');
+            $('#filterCustomer').val(searchVal).trigger('change');
+        }
+        // Kolom 3: Filter Invoice
+        if (state.columns[3].search.search) {
+            $('#filterInvoice').val(state.columns[3].search.search);
+        }
+        // Kolom 9: Filter Kategori
+        if (state.columns[9].search.search) {
+             var searchValKat = state.columns[9].search.search.replace(/^\^|\$$/g, '').replace(/\\/g, '');
+            $('#filterKategori').val(searchValKat).trigger('change');
+        }
+    }
 
     // Inisialisasi Select2
     $('.select2-filter').select2({ theme: 'bootstrap-5', width: '100%' });
@@ -226,10 +249,12 @@ $(document).ready(function() {
     // LOGIC TOMBOL RESET
     // ==========================================
     $('#btnResetFilter').click(function() {
-        $('#filterCustomer').val(null).trigger('change');
+        $('#filterCustomer').val(null).trigger('change'); // Ganti menjadi #filterSupplier untuk AP
         $('#filterInvoice').val('');
         $('#filterKategori').val(null).trigger('change');
-        table.search('').columns().search('').draw();
+        
+        table.search('').columns().search('').draw(); // Hapus pencarian aktif
+        table.state.clear(); // TAMBAHKAN BARIS INI: Hapus memori DataTables
     });
 });
 

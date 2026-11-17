@@ -115,7 +115,7 @@ if (isset($_POST['btnMasuk'])) {
 
 <div class="login-box">
     <div class="brand-logo">
-        PRODUCTION  <span>SYSTEM</span>
+        PRODUCTION <span>SYSTEM</span>
         <div style="font-size:12px; font-weight:400; color:#158806;">
             PT IMC TEKNO INDONESIA
         </div>
@@ -169,7 +169,7 @@ if (isset($_POST['btnMasuk'])) {
     </form>
 
     <div class="text-center mt-4 small text-muted">
-        &copy; <?php echo date('Y'); ?> ORDERING Department
+        &copy; <?php echo date('Y'); ?> PRODUCTION Department
     </div>
 </div>
 

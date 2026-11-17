@@ -88,8 +88,9 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
         body {
             margin: 0;
             background: #9a9a9a;
-            font-family: "Courier New", monospace;
-            font-size: 12px;
+            /* DIUBAH: Menyeragamkan jenis dan ukuran font */
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 13px;
             color: #000000;
         }
 
@@ -125,30 +126,28 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
         }
 
         .company {
-            font-family: Arial, sans-serif;
-            font-size: 11px;
-            line-height: 14px;
+            font-size: 14px;
+            line-height: 1.4;
         }
 
         .company-name {
             font-weight: bold;
-            font-size: 15px;
-            letter-spacing: 1px;
-            margin-bottom: 3px;
+            font-size: 16px;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
         }
 
         .title {
             text-align: center;
-            font-family: Arial, sans-serif;
-            font-size: 22px;
-            font-weight: normal;
+            font-size: 20px;
+            font-weight: bold;
             letter-spacing: 1px;
-            padding-top: 34px;
+            padding-top: 25px;
         }
 
         .right-head {
-            font-size: 11px;
-            line-height: 16px;
+            font-size: 12px;
+            line-height: 1.4;
         }
 
         .right-topline {
@@ -160,11 +159,14 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
         .info-line {
             display: grid;
             grid-template-columns: 90px 1fr;
+            font-size: 14px;
+            line-height: 1.4;
         }
 
         .info-line .label {
             text-align: right;
             padding-right: 5px;
+            font-weight: bold;
         }
 
         .info-line .value {
@@ -173,7 +175,7 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
 
         .separator {
             border-top: 1px solid #000000;
-            margin: 15px 0 7px 0;
+            margin: 15px 0 10px 0;
         }
 
         .customer-area {
@@ -183,18 +185,17 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
         }
 
         .messrs {
-            font-size: 12px;
-            line-height: 16px;
+            font-size: 14px;
+            line-height: 1.4;
         }
 
         .messrs-title {
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
 
         .cust-name {
             font-weight: bold;
-            font-size: 15px;
-            font-family: Arial, sans-serif;
+            font-size: 16px;
         }
 
         .detail {
@@ -203,27 +204,26 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
             border-collapse: collapse;
             border-top: 1px solid #000000;
             border-bottom: 1px solid #000000;
-            margin-top: 6px;
+            margin-top: 10px;
             table-layout: fixed;
             box-sizing: border-box;
         }
 
         .detail th {
-            font-size: 11px;
+            font-size: 14px;
             font-weight: bold;
             text-align: center;
-            padding: 3px 1px;
+            padding: 5px 2px;
             border-bottom: 1px solid #000000;
-            vertical-align: bottom;
-            line-height: 13px;
+            vertical-align: middle;
             box-sizing: border-box;
         }
 
         .detail td {
-            font-size: 11px;
-            padding: 2px 1px;
+            font-size: 14px;
+            padding: 4px 2px;
             vertical-align: top;
-            line-height: 13px;
+            line-height: 1.3;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: clip;
@@ -283,8 +283,8 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
         .sign-area {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
-            margin-top: 12px;
-            font-size: 11px;
+            margin-top: 15px;
+            font-size: 12px;
             text-align: center;
         }
 
@@ -305,6 +305,8 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
         @media print {
             body {
                 background: #ffffff;
+                font-size: 12px;
+                -webkit-print-color-adjust: exact;
             }
 
             .print-bar {
@@ -322,23 +324,25 @@ $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
 
             .detail th,
             .detail td {
-                font-size: 10.5px;
-                line-height: 12px;
+                font-size: 13px;
+                line-height: 1.2;
+                padding: 3px 2px;
             }
 
             .company,
             .messrs,
-            .right-head {
-                font-size: 10.5px;
+            .right-head,
+            .info-line {
+                font-size: 13px;
             }
 
             .company-name,
             .cust-name {
-                font-size: 13px;
+                font-size: 15px;
             }
 
             .title {
-                font-size: 21px;
+                font-size: 20px;
             }
 
             .signature-line {

@@ -3,7 +3,7 @@ if (session_id() == "") {
     session_start();
 }
 
-require_once dirname(__DIR__) . "/config/db_plant2.php";
+require_once dirname(__DIR__) . "/config/global.php";
 
 if ($conn === false) {
     die("Koneksi database gagal.");
@@ -166,7 +166,7 @@ if (getv("action", "") == "po_view") {
                             <th style="width:120px;">PO #</th>
                             <th class="text-right" style="width:90px;">Qty</th>
                             <th style="width:90px;">Sup.Code</th>
-                            <th class="text-left">Supplier</th>
+                            <th>Supplier</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -293,6 +293,11 @@ if ($action == "save") {
                 break;
             }
         }
+        
+        // ============================================================
+        // BYPASS SIMPAN HEADER (Meskipun baris kosong/belum diisi)
+        // ============================================================
+        $hasDetail = true; 
 
         if (!$hasDetail && !($allowEmptyDetail == 1 && $reqId > 0)) {
             $error = "Detail item minimal 1 baris dan qty harus lebih dari 0.";
@@ -745,6 +750,7 @@ if (count($details) == 0) {
     </style>
 
     <script>
+        // Gunakan pengaman tambahan ?: '[]' agar jika json_encode gagal di PHP 5.4, JS tidak akan syntax error
         var itemData = <?php echo json_encode($itemAuto) ? json_encode($itemAuto) : '[]'; ?>;
         var reqData = <?php echo json_encode($reqAuto) ? json_encode($reqAuto) : '[]'; ?>;
         var jsDeptList = <?php echo json_encode($deptList) ? json_encode($deptList) : '[]'; ?>;
@@ -840,16 +846,17 @@ if (count($details) == 0) {
         function triggerAjaxSave(inputEl) {
             var form = byId("reqForm");
             
+            // Cek kompabilitas browser lama
             if(typeof FormData === "undefined" || typeof XMLHttpRequest === "undefined") {
-                submitSave(false); 
+                submitSave(false); // Fallback ke save reguler jika browser super tua
                 return;
             }
 
             var formData = new FormData(form);
-            formData.append("is_ajax", "1"); 
+            formData.append("is_ajax", "1"); // Penanda AJAX
             
             var oldBg = inputEl.style.backgroundColor;
-            inputEl.style.backgroundColor = "#fff9c4"; 
+            inputEl.style.backgroundColor = "#fff9c4"; // Warna kuning indikator proses
             
             var xhr = new XMLHttpRequest();
             xhr.open("POST", "requisition.php?ajax=1", true);
@@ -860,7 +867,7 @@ if (count($details) == 0) {
                         try {
                             var data = JSON.parse(xhr.responseText);
                             if (data.status === "success") {
-                                inputEl.style.backgroundColor = "#c8e6c9"; 
+                                inputEl.style.backgroundColor = "#c8e6c9"; // Warna hijau sukses
                                 setTimeout(function(){ inputEl.style.backgroundColor = oldBg; }, 1000);
                                 
                                 var currId = byId("req_id").value;
@@ -872,7 +879,7 @@ if (count($details) == 0) {
                                 }
                             } else {
                                 alert("Gagal Simpan:\n" + data.message);
-                                inputEl.style.backgroundColor = "#ffcdd2"; 
+                                inputEl.style.backgroundColor = "#ffcdd2"; // Warna merah error
                             }
                         } catch (e) {
                             alert("Gagal membaca respon server.");
@@ -888,23 +895,8 @@ if (count($details) == 0) {
         }
         // =============================================
 
-        function headerKey(e, inputEl) {
-            if (e.key === "Enter") {
-                if (acMode !== "" && acItems.length > 0) return true;
-                e.preventDefault(); 
-                
-                if(inputEl) {
-                    triggerAjaxSave(inputEl);
-                } else {
-                    submitSave(false); 
-                }
-                return false;
-            }
-        }
-
         // ==========================================================
         // FUNGSI BANTUAN UNTUK MENCARI BARIS BARU / PINDAH FOKUS
-        // (Menghindari error querySelector is not a function)
         // ==========================================================
         function focusNextRow(input) {
             var tbody = byId("detailBody");
@@ -928,7 +920,7 @@ if (count($details) == 0) {
                 }
             }
 
-            if (currentRowIndex === -1) return; // Baris tidak ditemukan
+            if (currentRowIndex === -1) return;
 
             // Jika ini baris terakhir, buat baris baru
             if (currentRowIndex === rows.length - 1) {
@@ -947,14 +939,33 @@ if (count($details) == 0) {
             }
         }
 
-        // ==== ENTER DI QTY & REMARK ====
+        function headerKey(e, inputEl) {
+            if (e.key === "Enter") {
+                if (acMode !== "" && acItems.length > 0) return true;
+                e.preventDefault(); 
+                
+                // Gunakan element 'this' jika ada untuk efek warna, jika tidak arahkan ke submit biasa
+                if(inputEl) {
+                    triggerAjaxSave(inputEl);
+                } else {
+                    submitSave(false); 
+                }
+                return false;
+            }
+        }
+
+        // ==== ENTER DI QTY & REMARK = OTOMATIS NEW ROW ====
         function qtyKey(e, input) {
             if (e.key === "Enter") {
                 e.preventDefault();
+                // 1. Simpan Data Current Row ke Server via Ajax
                 if (input && input.value != "") {
                     triggerAjaxSave(input);
                 }
-                focusNextRow(input); // Pindah fokus / tambah baris
+                
+                // 2. Cek baris, pindah fokus atau tambah baris
+                focusNextRow(input);
+                
                 return false;
             }
             if (e.key === "ArrowDown") {
@@ -980,8 +991,12 @@ if (count($details) == 0) {
         function remarkKey(e, input) {
             if (e.key === "Enter") {
                 e.preventDefault();
+                // 1. Simpan Data Current Row ke Server
                 triggerAjaxSave(input);
-                focusNextRow(input); // Pindah fokus / tambah baris
+                
+                // 2. Pindah fokus atau tambah baris
+                focusNextRow(input);
+                
                 return false;
             }
         }
@@ -1111,14 +1126,6 @@ if (count($details) == 0) {
             }, pickReq);
         }
 
-        // ===============================================
-        // FUNGSI pickReq UNTUK MENCEGAH ERROR UNDEFINED
-        // ===============================================
-        function pickReq(r) {
-            hideAC();
-            window.location.href = "requisition.php?edit=" + encodeURIComponent(r.REQ_ID);
-        }
-
         function reqSearchKey(e, input) {
             if (e.key === "ArrowDown") {
                 e.preventDefault();
@@ -1139,6 +1146,11 @@ if (count($details) == 0) {
                 return true;
             }
             if (e.key === "Escape") hideAC();
+        }
+
+        function pickReq(r) {
+            hideAC();
+            window.location.href = "requisition.php?edit=" + encodeURIComponent(r.REQ_ID);
         }
 
         function addRow() {
@@ -1398,7 +1410,7 @@ if (count($details) == 0) {
         <!-- FOOTER BAR -->
         <div class="footer-bar">
             <div>
-                <button type="button" class="btn-classic" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+                
             </div>
             <div style="text-align: right;">
                 <button type="button" class="btn-classic" onclick="openSelectedPO()" style="width: 80px; height:24px;">PO'S</button>

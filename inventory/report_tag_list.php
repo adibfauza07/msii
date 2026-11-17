@@ -7,7 +7,6 @@ if (empty($sopID)) {
     die("Error: Parameter SOP ID tidak ditemukan.");
 }
 
-
 $sopRef = "";
 $sopDate = "";
 $qHead = sqlsrv_query($conn, "SELECT SOP_REF, SOP_SDATE FROM SOP WHERE SOP_ID = ?", array($sopID));
@@ -16,38 +15,29 @@ if ($qHead && $rHead = sqlsrv_fetch_array($qHead, SQLSRV_FETCH_ASSOC)) {
     $sopDate = ($rHead['SOP_SDATE'] instanceof DateTime) ? $rHead['SOP_SDATE']->format('d-M-Y') : $rHead['SOP_SDATE'];
 }
 
-
-$sqlSP = "EXEC TAGLIST @SOP_ID = ?";
-$stmt = sqlsrv_query($conn, $sqlSP, array($sopID));
-
 $dataReport = [];
-if ($stmt !== false) {
-    while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
+
+// PERBAIKAN UTAMA: Kita BYPASS Stored Procedure "TAGLIST" dan langsung mengeksekusi Query Manual dengan LEFT JOIN yang jauh lebih handal dan anti-hilang data.
+$sqlManual = "SELECT 
+                ISNULL(L.LOC_CODE, T.LOC_CODE) AS LOC_CODE, 
+                T.TAG_NO, 
+                T.ITEM_CODE, 
+                ISNULL(I.ITEM_NAME, '(Item Tidak Valid)') AS ITEM_NAME, 
+                T.TAG_QTY, 
+                T.TAG_REM 
+              FROM TAGS T 
+              LEFT JOIN ITEMS I ON (T.ITEM_CODE = I.ITEM_CODE OR LTRIM(RTRIM(T.ITEM_CODE)) = LTRIM(RTRIM(I.ITEM_CODE)))
+              LEFT JOIN LOC L ON T.LOC_ID = L.LOC_ID
+              WHERE T.SOP_ID = ?
+              ORDER BY ISNULL(L.LOC_CODE, T.LOC_CODE) ASC, T.TAG_NO ASC";
+              
+$stmtMan = sqlsrv_query($conn, $sqlManual, array($sopID));
+if ($stmtMan) {
+    while ($row = sqlsrv_fetch_array($stmtMan, SQLSRV_FETCH_ASSOC)) {
         $dataReport[] = $row;
     }
 } else {
-    // JIKA SP GAGAL ATAU TIDAK ADA, GUNAKAN MANUAL QUERY (FALLBACK AMAN)
-    $sqlManual = "SELECT 
-                    ISNULL(L.LOC_CODE, T.LOC_CODE) AS LOC_CODE, 
-                    T.TAG_NO, 
-                    T.ITEM_CODE, 
-                    I.ITEM_NAME, 
-                    T.TAG_QTY, 
-                    T.TAG_REM 
-                  FROM TAGS T 
-                  LEFT JOIN ITEMS I ON (T.ITEM_CODE = I.ITEM_CODE OR LTRIM(RTRIM(T.ITEM_CODE)) = LTRIM(RTRIM(I.ITEM_CODE)))
-                  LEFT JOIN LOC L ON T.LOC_ID = L.LOC_ID
-                  WHERE T.SOP_ID = ?
-                  ORDER BY ISNULL(L.LOC_CODE, T.LOC_CODE) ASC, T.TAG_NO ASC";
-                  
-    $stmtMan = sqlsrv_query($conn, $sqlManual, array($sopID));
-    if ($stmtMan) {
-        while ($row = sqlsrv_fetch_array($stmtMan, SQLSRV_FETCH_ASSOC)) {
-            $dataReport[] = $row;
-        }
-    } else {
-        die("<div style='color:red; font-family:sans-serif;'><b>Error Query Database:</b><br>" . print_r(sqlsrv_errors(), true) . "</div>");
-    }
+    die("<div style='color:red; font-family:sans-serif;'><b>Error Query Database:</b><br>" . print_r(sqlsrv_errors(), true) . "</div>");
 }
 
 // Dinamis Nama Perusahaan (Plant 1 / Plant 2)
@@ -61,7 +51,7 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>Tag List - <?php echo $sopID; ?></title>
+    <title>Tag List - <?php echo htmlspecialchars($sopID); ?></title>
     <style>
         /* RESET & DASAR */
         body { 
@@ -191,7 +181,7 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
                     <td colspan="6">
                         <div class="header-top">
                             <div class="kop-kiri">
-                                <div class="company"><?php echo $companyName; ?></div>
+                                <div class="company"><?php echo htmlspecialchars($companyName); ?></div>
                                 <div class="dept">Commercial Business</div>
                                 <div class="print-date">Print Date: <?php echo date('d-M-Y H:i:s'); ?></div>
                             </div>
@@ -201,8 +191,8 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
                             </div>
                             
                             <div class="kop-kanan">
-                                SOP Date: <?php echo $sopDate; ?><br>
-                                Ref#: <?php echo $sopRef; ?>
+                                SOP Date: <?php echo htmlspecialchars($sopDate); ?><br>
+                                Ref#: <?php echo htmlspecialchars($sopRef); ?>
                             </div>
                         </div>
                         <div class="double-line"></div>
@@ -226,20 +216,20 @@ if (isset($_SESSION['active_plant']) && $_SESSION['active_plant'] == 'p2') {
 
                     foreach ($dataReport as $row) {
                         
-                        $loc = isset($row['LOC_CODE']) ? trim($row['LOC_CODE']) : '';
+                        $loc = isset($row['LOC_CODE']) ? trim($row['LOC_CODE']) : 'UNKNOWN';
                         
                         // Cetak Header Group (Contoh: M O L)
                         if ($loc !== $currentLoc && $loc !== '') {
                             // Mencetak lokasi dengan huruf kapital dan jarak
-                            echo "<tr><td colspan='6' class='group-header'>{$loc}</td></tr>";
+                            echo "<tr><td colspan='6' class='group-header'>" . htmlspecialchars(strtoupper($loc)) . "</td></tr>";
                             $currentLoc = $loc;
                         }
 
                         // Siapkan Data Baris
-                        $tagNo = isset($row['TAG_NO']) ? $row['TAG_NO'] : '';
-                        $code  = isset($row['ITEM_CODE']) ? $row['ITEM_CODE'] : '';
-                        $name  = isset($row['ITEM_NAME']) ? $row['ITEM_NAME'] : '';
-                        $rem   = isset($row['TAG_REM']) ? $row['TAG_REM'] : '';
+                        $tagNo = isset($row['TAG_NO']) ? htmlspecialchars($row['TAG_NO']) : '';
+                        $code  = isset($row['ITEM_CODE']) ? htmlspecialchars($row['ITEM_CODE']) : '';
+                        $name  = isset($row['ITEM_NAME']) ? htmlspecialchars($row['ITEM_NAME']) : '';
+                        $rem   = isset($row['TAG_REM']) ? htmlspecialchars($row['TAG_REM']) : '';
                         
                         // Qty (2 angka di belakang koma)
                         $qtyRaw = isset($row['TAG_QTY']) ? (float)$row['TAG_QTY'] : 0;

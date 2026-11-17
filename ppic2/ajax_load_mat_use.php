@@ -217,8 +217,10 @@ try {
        $multiplier = 1; 
 
 // MODIFIKASI: Menghapus referensi ITTY_CODE == '01', 03 dan 05 dikali langsung (tidak dibagi 1000)
-if ($ittyCodeMat === '02') {
-    $multiplier = $nw / 1000;
+$multiplier = 1; 
+
+if ($ittyCodeMat === '02' || $ittyCodeMat === '13') {
+    $multiplier = $nw / 1000; // <-- 13 ditambahkan ke sini
 } elseif ($ittyCodeMat === '03' || $ittyCodeMat === '05') {
     $multiplier = $nw;
 }

@@ -156,7 +156,8 @@ if ($stmtPlan !== false) {
         $ittyCodeMat = trim($rowPlan['ITTY_CODE']);
        $multiplier = 1;
 // MODIFIKASI: Hapus ITTY_CODE === '01', 03 dan 05 dikali langsung (tidak dibagi 1000)
-if ($ittyCodeMat === '02') { 
+$multiplier = 1;
+if ($ittyCodeMat === '02' || $ittyCodeMat === '14') { 
     $multiplier = $nw / 1000; 
 } elseif ($ittyCodeMat === '03' || $ittyCodeMat === '05') { 
     $multiplier = $nw; 
@@ -210,9 +211,8 @@ if ($stmtAct !== false) {
         $ittyCodeMat = trim($rowAct['ITTY_CODE']);
         $day = (int)$rowAct['ACT_DAY'];
         
-        $multiplier = 1;
-// MODIFIKASI: Hapus ITTY_CODE === '01', 03 dan 05 dikali langsung (tidak dibagi 1000)
-if ($ittyCodeMat === '02') { 
+       $multiplier = 1;
+if ($ittyCodeMat === '02' || $ittyCodeMat === '14') { 
     $multiplier = $nw / 1000; 
 } elseif ($ittyCodeMat === '03' || $ittyCodeMat === '05') { 
     $multiplier = $nw; 

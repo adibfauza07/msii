@@ -290,6 +290,8 @@ if ($supId <= 0) $error = "Supplier wajib dipilih.";
             $qty = isset($podQtys[$i]) ? to_float($podQtys[$i]) : 0;
             if ($itemId > 0 && $qty > 0) { $hasDetail = true; break; }
         }
+		// TAMBAHKAN BARIS INI UNTUK BYPASS CEK DETAIL
+        $hasDetail = true;
 
         if (!$hasDetail && !($allowEmpty == 1 && $poId > 0)) {
             $error = "Detail PO minimal 1 baris dan qty harus lebih dari 0.";
@@ -874,21 +876,20 @@ if (count($details) == 0) {
             setValue("pod_amount_"+row,(qty*price).toFixed(2));
         }
         
-        function fieldEnterSave(e, row) {
-    if (row !== undefined) {
-        setTimeout(function(){ calcAmount(row); }, 10);
-    }
-    
-    // Jika tombol Enter ditekan
-    if (e.key === "Enter") {
-        e.preventDefault(); // Cegah reload/submit form default
-        
-        // Panggil fungsi tambah baris bawaan dari sistem Anda
-        addRow(); 
-        return false;
-    }
-}
-
+     function fieldEnterSave(e, row) {
+            if (row !== undefined) {
+                setTimeout(function(){ calcAmount(row); }, 10);
+            }
+            
+            // Jika tombol Enter ditekan
+            if (e.key === "Enter") {
+                e.preventDefault();
+                
+                // Langsung eksekusi simpan form (header dan detail) ke database
+                submitSave(false); 
+                return false;
+            }
+        }
         function headerKey(e) {
             if (e.key === "Enter") {
                 if (acMode !== "" && acItems.length > 0) return true;
@@ -967,12 +968,30 @@ if (count($details) == 0) {
             window.location.href='next_po.php';
         }
 
-        document.addEventListener("DOMContentLoaded",function(){
+       document.addEventListener("DOMContentLoaded",function(){
             var rows = document.querySelectorAll("#detailBody tr");
             for(var i=0; i<rows.length; i++){
                 rows[i].onclick = function(){ selectDetailRow(this); };
             }
             renumberRows();
+
+            // --- TAMBAHAN UNTUK AUTO-FOCUS BARIS BARU ---
+            // Ambil baris terakhir yang ada di tabel saat ini
+            rows = document.querySelectorAll("#detailBody tr"); // update query
+            var lastRow = rows[rows.length - 1];
+            var lastItemCode = lastRow ? lastRow.querySelector('input[name="item_code[]"]') : null;
+            
+            if (lastItemCode) {
+                // Jika kode barang di baris terakhir sudah terisi, berarti data baru saja disave.
+                // Otomatis tambah baris baru di bawahnya (addRow sudah otomatis memfokuskan kursor).
+                if (lastItemCode.value.trim() !== "") {
+                    addRow(); 
+                } else {
+                    // Jika baris terakhir masih kosong (misal saat form PO baru dibuat), fokus ke baris tersebut.
+                    lastItemCode.focus();
+                }
+            }
+            // --------------------------------------------
         });
         
         document.addEventListener("click",function(e){
@@ -1168,7 +1187,7 @@ if (count($details) == 0) {
         <!-- FOOTER BAR -->
         <div class="footer-bar">
             <div>
-                <button type="button" class="btn-classic" onclick="addRow()"><i class="fas fa-plus"></i> Tambah Baris</button>
+               
             </div>
             <div style="text-align: right;">
                 <button type="button" class="btn-classic" onclick="showReceive()" style="width: 80px; height:24px;">Show Recv.</button>

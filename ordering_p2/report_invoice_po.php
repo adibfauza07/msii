@@ -35,14 +35,12 @@ function fmt_qty($value) {
     return number_format((float)$value, 0, ",", ".");
 }
 
-// Disesuaikan: angka di belakang koma dihilangkan
 function fmt_price($value) {
-    return number_format((float)$value, 0, ",", ".");
+    return number_format((float)$value, 5, ",", ".");
 }
 
-// Disesuaikan: angka di belakang koma dihilangkan
 function fmt_amount($value) {
-    return number_format((float)$value, 0, ",", ".");
+    return number_format((float)$value, 2, ",", ".");
 }
 
 $di_id = isset($_GET["DI_ID"]) ? intval($_GET["DI_ID"]) : 0;
@@ -63,21 +61,9 @@ if ($stmt === false) {
 }
 
 $rows = array();
-$seen = array(); // Array untuk melacak data yang sudah dimasukkan
 
 while ($row = sqlsrv_fetch_array($stmt, SQLSRV_FETCH_ASSOC)) {
-    // Membuat kunci unik (hash) dari Part No, Part Code, dan Qty 
-    // agar baris duplikat bisa disaring dan dibuang
-    $partNo = isset($row["PART_NO"]) ? trim((string)$row["PART_NO"]) : "";
-    $partCode = isset($row["PART_CODE"]) ? trim((string)$row["PART_CODE"]) : "";
-    $qty = isset($row["QTY"]) ? (string)$row["QTY"] : "";
-    
-    $hash = md5($partNo . "-" . $partCode . "-" . $qty);
-
-    if (!isset($seen[$hash])) {
-        $rows[] = $row;
-        $seen[$hash] = true;
-    }
+    $rows[] = $row;
 }
 
 if (count($rows) == 0) {
@@ -86,14 +72,10 @@ if (count($rows) == 0) {
 
 $head = $rows[0];
 
-// =========================================================================
-// ALAMAT KHUSUS JIKA PERLU GANTI DI SINI
-// =========================================================================
 $custComp  = isset($head["CUST_COMP"]) ? $head["CUST_COMP"] : "";
 $custAddr1 = isset($head["CUST_ADDR1"]) ? $head["CUST_ADDR1"] : "";
 $custAddr2 = isset($head["CUST_ADDR2"]) ? $head["CUST_ADDR2"] : "";
 $custCity  = isset($head["CUST_CITY"]) ? $head["CUST_CITY"] : "";
-// =========================================================================
 
 $diDate = isset($head["DI_DATE"]) ? $head["DI_DATE"] : "";
 $invNo  = isset($head["DI_INVNO"]) ? $head["DI_INVNO"] : "";
@@ -118,9 +100,9 @@ for ($i = 0; $i < count($rows); $i++) {
 
     $price = 0;
 
-    if (isset($rows[$i]["PART_PRICE"]) && $rows[$i]["PART_PRICE"] !== null) {
+    if (isset($rows[$i]["PART_PRICE"]) && (float)$rows[$i]["PART_PRICE"] != 0) {
         $price = (float)$rows[$i]["PART_PRICE"];
-    } elseif (isset($rows[$i]["ORDP_PRICE"]) && $rows[$i]["ORDP_PRICE"] !== null) {
+    } elseif (isset($rows[$i]["ORDP_PRICE"])) {
         $price = (float)$rows[$i]["ORDP_PRICE"];
     }
 
@@ -142,8 +124,9 @@ for ($i = 0; $i < count($rows); $i++) {
         body {
             margin: 0;
             background: #9a9a9a;
-            font-family: "Courier New", monospace;
-            font-size: 12px;
+            /* DIUBAH: Menyesuaikan dengan font Delivery Sheet */
+            font-family: Arial, Helvetica, sans-serif;
+            font-size: 13px;
             color: #000000;
         }
 
@@ -179,45 +162,50 @@ for ($i = 0; $i < count($rows); $i++) {
         }
 
         .company {
-            font-family: Arial, sans-serif;
-            font-size: 11px;
-            line-height: 14px;
+            /* DIUBAH: Menghapus deklarasi font-family agar inherit, font-size disesuaikan */
+            font-size: 14px;
+            line-height: 1.4;
         }
 
         .company-name {
             font-weight: bold;
-            font-size: 15px;
-            letter-spacing: 1px;
-            margin-bottom: 3px;
+            font-size: 16px;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
         }
 
         .title {
             text-align: center;
-            font-family: "Times New Roman", serif;
-            font-size: 30px;
-            font-weight: normal;
-            padding-top: 34px;
+            /* DIUBAH: Menghapus Times New Roman, menyesuaikan ukuran dan ketebalan seperti Delivery Sheet */
+            font-size: 20px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            padding-top: 25px;
         }
 
         .right-head {
-            font-size: 11px;
-            line-height: 16px;
+            font-size: 12px;
+            line-height: 1.4;
         }
 
         .right-topline {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 28px;
+            margin-bottom: 20px;
         }
 
         .info-line {
             display: grid;
             grid-template-columns: 90px 1fr;
+            /* DIUBAH: font-size disamakan */
+            font-size: 14px;
+            line-height: 1.4;
         }
 
         .info-line .label {
             text-align: right;
             padding-right: 5px;
+            font-weight: bold;
         }
 
         .info-line .value {
@@ -226,7 +214,7 @@ for ($i = 0; $i < count($rows); $i++) {
 
         .separator {
             border-top: 1px solid #000000;
-            margin: 15px 0 7px 0;
+            margin: 15px 0 10px 0;
         }
 
         .customer-area {
@@ -238,24 +226,26 @@ for ($i = 0; $i < count($rows); $i++) {
         }
 
         .messrs {
-            font-size: 12px;
-            line-height: 16px;
+            /* DIUBAH: font-size disamakan */
+            font-size: 14px;
+            line-height: 1.4;
         }
 
         .messrs-title {
-            margin-bottom: 5px;
+            margin-bottom: 3px;
         }
 
         .cust-name {
             font-weight: bold;
-            font-size: 15px;
-            font-family: Arial, sans-serif;
+            /* DIUBAH: Menghapus deklarasi font-family agar inherit, font-size disesuaikan */
+            font-size: 16px;
         }
 
         .payment {
             text-align: left;
             padding-left: 18px;
-            font-size: 12px;
+            /* DIUBAH: font-size disamakan */
+            font-size: 14px;
         }
 
         .currency {
@@ -270,83 +260,49 @@ for ($i = 0; $i < count($rows); $i++) {
             border-collapse: collapse;
             border-top: 1px solid #000000;
             border-bottom: 1px solid #000000;
-            margin-top: 6px;
+            margin-top: 10px;
             table-layout: fixed;
             box-sizing: border-box;
         }
 
         .detail th {
-            font-size: 11px;
+            /* DIUBAH: font-size disamakan */
+            font-size: 14px;
             font-weight: bold;
             text-align: center;
-            padding: 3px 1px;
+            padding: 5px 2px;
             border-bottom: 1px solid #000000;
-            vertical-align: bottom;
-            line-height: 13px;
+            vertical-align: middle;
             box-sizing: border-box;
         }
 
         .detail td {
-            font-size: 11px;
-            padding: 2px 1px;
+            /* DIUBAH: font-size disamakan */
+            font-size: 14px;
+            padding: 4px 2px;
             vertical-align: top;
-            line-height: 13px;
+            line-height: 1.3;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: clip;
             box-sizing: border-box;
         }
 
-        .detail .no {
-            width: 4%;
-            text-align: left;
-        }
+        /* --- PERBAIKAN LEBAR KOLOM --- */
+        .detail .no { width: 4%; text-align: left; }
+        .detail .partno { width: 14%; text-align: left; }
+        .detail .partname { width: 31%; text-align: left; }
+        .detail .qty { width: 6%; text-align: right; }
+        .detail .unit { width: 4%; text-align: center; }
+        .detail .price { width: 9%; text-align: right; }
+        .detail .amount { width: 12%; text-align: right; padding-right: 12px; }
+        .detail .po { width: 20%; text-align: center; }
+        /* --- BATAS PERBAIKAN --- */
 
-        /* Disesuaikan: Lebar disamakan dengan file sebelumnya */
-        .detail .partno {
-            width: 14%;
-            text-align: left;
-        }
-
-        /* Disesuaikan: Lebar disamakan dengan file sebelumnya (geser kiri) */
-        .detail .partname {
-            width: 34%;
-            text-align: left;
-        }
-
-        .detail .qty {
-            width: 6%;
-            text-align: right;
-        }
-
-        .detail .unit {
-            width: 5%;
-            text-align: center;
-        }
-
-        .detail .price {
-            width: 10%;
-            text-align: right;
-        }
-
-        .detail .amount {
-            width: 12%;
-            text-align: right;
-        }
-
-        .detail .po {
-            width: 10%;
-            text-align: center;
-        }
-
-        .detail .remark {
-            width: 5%;
-            text-align: left;
-        }
-
+        /* --- PERBAIKAN BARIS TOTAL --- */
         .total-row {
             display: grid;
-            grid-template-columns: 1fr 180px;
+            grid-template-columns: 68% 12% 20%;
             border-bottom: 1px solid #000000;
             padding: 10px 0 8px 0;
             font-weight: bold;
@@ -363,14 +319,15 @@ for ($i = 0; $i < count($rows); $i++) {
 
         .total-value {
             text-align: right;
-            padding-right: 8px;
+            padding-right: 12px; 
         }
+        /* --- BATAS PERBAIKAN --- */
 
         .note-row {
             display: grid;
             grid-template-columns: 62% 38%;
             margin-top: 8px;
-            font-size: 11px;
+            font-size: 12px;
             width: 100%;
             box-sizing: border-box;
         }
@@ -389,7 +346,7 @@ for ($i = 0; $i < count($rows); $i++) {
 
         .received {
             margin-top: 58px;
-            font-size: 11px;
+            font-size: 12px;
             font-style: italic;
             text-decoration: underline;
         }
@@ -397,6 +354,9 @@ for ($i = 0; $i < count($rows); $i++) {
         @media print {
             body {
                 background: #ffffff;
+                /* DIUBAH: Menyesuaikan font print-out */
+                font-size: 12px;
+                -webkit-print-color-adjust: exact;
             }
 
             .print-bar {
@@ -414,8 +374,10 @@ for ($i = 0; $i < count($rows); $i++) {
 
             .detail th,
             .detail td {
-                font-size: 10.5px;
-                line-height: 12px;
+                /* DIUBAH: Menyesuaikan dengan Delivery Sheet */
+                font-size: 13px;
+                line-height: 1.2;
+                padding: 3px 2px;
             }
 
             .company,
@@ -424,19 +386,23 @@ for ($i = 0; $i < count($rows); $i++) {
             .right-head,
             .note-row,
             .received {
-                font-size: 10.5px;
+                /* DIUBAH: Menyesuaikan dengan Delivery Sheet */
+                font-size: 13px;
             }
 
             .company-name {
-                font-size: 13px;
+                /* DIUBAH: Menyesuaikan dengan Delivery Sheet */
+                font-size: 15px;
             }
 
             .cust-name {
-                font-size: 13px;
+                /* DIUBAH: Menyesuaikan dengan Delivery Sheet */
+                font-size: 15px;
             }
 
             .title {
-                font-size: 28px;
+                /* DIUBAH: Menyesuaikan dengan Delivery Sheet */
+                font-size: 20px;
             }
         }
     </style>
@@ -511,7 +477,7 @@ for ($i = 0; $i < count($rows); $i++) {
 
         <div class="payment">
             Payment Term : 1 month
-            <div class="currency">Currency : <?php echo h($currency); ?></div>
+            <div class="currency">Currency :<?php echo h($currency); ?></div>
         </div>
     </div>
 
@@ -526,7 +492,6 @@ for ($i = 0; $i < count($rows); $i++) {
                 <th class="price">Unit<br>Price</th>
                 <th class="amount">Amount</th>
                 <th class="po">P.O.#</th>
-                <th class="remark">Remark</th>
             </tr>
         </thead>
 
@@ -539,9 +504,9 @@ for ($i = 0; $i < count($rows); $i++) {
 
                 $price = 0;
 
-                if (isset($r["PART_PRICE"]) && $r["PART_PRICE"] !== null) {
+                if (isset($r["PART_PRICE"]) && (float)$r["PART_PRICE"] != 0) {
                     $price = (float)$r["PART_PRICE"];
-                } elseif (isset($r["ORDP_PRICE"]) && $r["ORDP_PRICE"] !== null) {
+                } elseif (isset($r["ORDP_PRICE"])) {
                     $price = (float)$r["ORDP_PRICE"];
                 }
 
@@ -550,6 +515,7 @@ for ($i = 0; $i < count($rows); $i++) {
                 $partCode = isset($r["PART_CODE"]) ? trim($r["PART_CODE"]) : "";
                 $partNo   = isset($r["PART_NO"]) ? trim($r["PART_NO"]) : "";
                 $partName = isset($r["PART_NAME"]) ? trim($r["PART_NAME"]) : "";
+                $partNum  = isset($r["PART_NUM"]) ? trim($r["PART_NUM"]) : "";
                 $unit     = isset($r["PART_UNIT"]) ? trim($r["PART_UNIT"]) : "";
 
                 $poNo = "";
@@ -560,16 +526,19 @@ for ($i = 0; $i < count($rows); $i++) {
                     $poNo = trim($r["ORDR_PO"]);
                 }
 
-                $remark = isset($r["ORDP_REM"]) ? trim($r["ORDP_REM"]) : "";
-
                 $partNoDisplay = $partNo;
 
                 if ($partNoDisplay == "") {
                     $partNoDisplay = $partCode;
                 }
 
-                // Disesuaikan: Hanya menampilkan nama aslinya saja
                 $partNameDisplay = $partName;
+
+                /* 
+                if ($partNum != "" && strpos($partNameDisplay, $partNum) === false) {
+                    $partNameDisplay = trim($partNameDisplay . " " . $partNum);
+                } 
+                */
                 ?>
                 <tr>
                     <td class="no"><?php echo h($i + 1); ?>.</td>
@@ -580,7 +549,6 @@ for ($i = 0; $i < count($rows); $i++) {
                     <td class="price"><?php echo h(fmt_price($price)); ?></td>
                     <td class="amount"><?php echo h(fmt_amount($amount)); ?></td>
                     <td class="po"><?php echo h($poNo); ?></td>
-                    <td class="remark"><?php echo h($remark); ?></td>
                 </tr>
             <?php } ?>
         </tbody>
@@ -589,6 +557,7 @@ for ($i = 0; $i < count($rows); $i++) {
     <div class="total-row">
         <div class="total-label">TOTAL AMOUNT</div>
         <div class="total-value"><?php echo h(fmt_amount($totalAmount)); ?></div>
+        <div></div> <!-- Spasi kosong khusus untuk menyamai kolom P.O.# -->
     </div>
 
     <div class="note-row">

@@ -1,6 +1,3 @@
-
-
-
 <?php
 if (session_id() === '') {
     session_start();
@@ -22,6 +19,11 @@ if (!isset($_SESSION['db_user']) || trim((string)$_SESSION['db_user']) === '') {
     <script src="https://code.jquery.com/jquery-1.12.4.min.js"></script>
     <link rel="stylesheet" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
     <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+    
+    <!-- LIBRARY CHART.JS -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- PLUGIN DATALABELS UNTUK ANGKA DI ATAS BAR -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
 
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -38,7 +40,7 @@ if (!isset($_SESSION['db_user']) || trim((string)$_SESSION['db_user']) === '') {
             border-bottom: 2px solid #1a3c5e;
             padding: 14px 20px;
             position: relative;
-            z-index: 1;          /* <-- tetap rendah */
+            z-index: 1; 
         }
         .filter-table { border-collapse: collapse; }
         .filter-table td {
@@ -70,44 +72,21 @@ if (!isset($_SESSION['db_user']) || trim((string)$_SESSION['db_user']) === '') {
         #start_date, #end_date { width: 120px; }
 
         /* ── Datepicker trigger button ── */
-        .dp-wrap {
-            display: inline-block;
-            position: relative;
-        }
+        .dp-wrap { display: inline-block; position: relative; }
         .dp-btn {
-            display: inline-block;
-            width: 28px;
-            height: 28px;
-            background: #1a3c5e;
-            border: 1px solid #14304d;
-            border-radius: 3px;
-            margin-left: 2px;
-            vertical-align: middle;
-            cursor: pointer;
-            text-align: center;
-            line-height: 26px;
-            color: #fff;
-            font-size: 14px;
+            display: inline-block; width: 28px; height: 28px; background: #1a3c5e;
+            border: 1px solid #14304d; border-radius: 3px; margin-left: 2px;
+            vertical-align: middle; cursor: pointer; text-align: center;
+            line-height: 26px; color: #fff; font-size: 14px;
         }
         .dp-btn:hover { background: #245a8a; }
-
-        /* ══════════════════════════════════════════════════
-           FIX UTAMA: datepicker z-index harus di atas semua
-           ══════════════════════════════════════════════════ */
-        .ui-datepicker {
-            z-index: 99999 !important;
-        }
+        .ui-datepicker { z-index: 99999 !important; }
 
         /* ── Buttons ── */
         .btn {
-            display: inline-block;
-            padding: 6px 18px;
-            font-size: 12px;
-            font-weight: 700;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-right: 6px;
+            display: inline-block; padding: 6px 18px; font-size: 12px;
+            font-weight: 700; border: none; border-radius: 4px;
+            cursor: pointer; margin-right: 6px;
         }
         .btn-search { background: #1a3c5e; color: #fff; }
         .btn-search:hover { background: #245a8a; }
@@ -115,201 +94,68 @@ if (!isset($_SESSION['db_user']) || trim((string)$_SESSION['db_user']) === '') {
         .btn-print:hover { background: #333; }
         .btn-clear { background: #ccc; color: #333; }
         .btn-clear:hover { background: #aaa; }
+        .btn-chart { background: #059669; color: #fff; } /* Warna Hijau Emerald */
+        .btn-chart:hover { background: #047857; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* ── Loading ── */
         #loading {
-            display: none;
-            position: fixed;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(255,255,255,0.7);
-            z-index: 99999;
-            text-align: center;
-            padding-top: 120px;
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(255,255,255,0.7); z-index: 99999;
+            text-align: center; padding-top: 120px;
         }
-        #loading span {
-            font-size: 16px;
-            font-weight: 700;
-            color: #1a3c5e;
-        }
+        #loading span { font-size: 16px; font-weight: 700; color: #1a3c5e; }
 
-        #status-box {
-            display: none;
-            max-width: 1200px;
-            margin: 12px auto 0;
-            padding: 8px 12px;
-            border: 1px solid #d59b36;
-            background: #fff8df;
-            color: #7a4d00;
-            line-height: 1.5;
+        /* ── Modal Chart ── */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); z-index: 100000; align-items: center; justify-content: center;
         }
-        #status-box.show { display: block; }
+        .modal-content {
+            background: #fff; width: 90%; max-width: 900px; border-radius: 8px;
+            padding: 20px 25px; box-shadow: 0 5px 20px rgba(0,0,0,0.3); position: relative;
+        }
+        .close-btn {
+            position: absolute; top: 12px; right: 18px; font-size: 26px;
+            cursor: pointer; color: #666; font-weight: bold; line-height: 1;
+        }
+        .close-btn:hover { color: #d32f2f; }
+        .chart-container { height: 450px; width: 100%; margin-top: 15px; }
 
-        /* ── Report Container ── */
+        /* ── Report Container & Table ── */
         #report-container {
-            max-width: 1200px;
-            margin: 16px auto;
-            background: #fff;
-            padding: 20px 24px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
-            min-height: 400px;
+            max-width: 1200px; margin: 16px auto; background: #fff; padding: 20px 24px;
+            border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); min-height: 400px;
         }
+        .report-header { text-align: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #1a3c5e; }
+        .report-header h1 { font-size: 18px; font-weight: 700; color: #1a3c5e; letter-spacing: 1px; }
+        .report-header h2 { font-size: 14px; font-weight: 700; color: #333; margin-top: 2px; }
+        .report-header .period { font-size: 11px; color: #555; margin-top: 4px; }
+        .report-header .supplier-info { font-size: 11px; color: #555; margin-top: 2px; }
+        .record-count { text-align: right; font-size: 11px; color: #888; margin-bottom: 8px; }
 
-        /* ── Report Header ── */
-        .report-header {
-            text-align: center;
-            margin-bottom: 16px;
-            padding-bottom: 12px;
-            border-bottom: 2px solid #1a3c5e;
-        }
-        .report-header h1 {
-            font-size: 18px;
-            font-weight: 700;
-            color: #1a3c5e;
-            letter-spacing: 1px;
-        }
-        .report-header h2 {
-            font-size: 14px;
-            font-weight: 700;
-            color: #333;
-            margin-top: 2px;
-        }
-        .report-header .period {
-            font-size: 11px;
-            color: #555;
-            margin-top: 4px;
-        }
-        .report-header .supplier-info {
-            font-size: 11px;
-            color: #555;
-            margin-top: 2px;
-        }
-        .record-count {
-            text-align: right;
-            font-size: 11px;
-            color: #888;
-            margin-bottom: 8px;
-        }
-
-        /* ── Table ── */
-        #report-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 11px;
-        }
-        #report-table thead th {
-            background: #1a3c5e;
-            color: #fff;
-            font-weight: 700;
-            padding: 7px 6px;
-            text-align: center;
-            border: 1px solid #14304d;
-            white-space: nowrap;
-        }
-        #report-table tbody td {
-            padding: 5px 6px;
-            border: 1px solid #ddd;
-            vertical-align: top;
-        }
+        #report-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        #report-table thead th { background: #1a3c5e; color: #fff; font-weight: 700; padding: 7px 6px; text-align: center; border: 1px solid #14304d; white-space: nowrap; }
+        #report-table tbody td { padding: 5px 6px; border: 1px solid #ddd; vertical-align: top; }
         #report-table tbody tr:nth-child(even) { background: #f8f9fb; }
         #report-table tbody tr:hover { background: #eef3f8; }
-        #report-table .num {
-            text-align: right;
-            font-family: 'Courier New', Courier, monospace;
-            white-space: nowrap;
-        }
+        #report-table .num { text-align: right; font-family: 'Courier New', Courier, monospace; white-space: nowrap; }
         #report-table .center { text-align: center; }
-        #report-table .col-no   { width: 35px; text-align: center; }
-        #report-table .col-po   { width: 90px; }
-        #report-table .col-date { width: 75px; text-align: center; }
-        #report-table .col-code { width: 100px; }
-        #report-table .col-name { min-width: 180px; }
-        #report-table .col-unit { width: 40px; text-align: center; }
-        #report-table .col-cur  { width: 40px; text-align: center; }
-        #report-table .col-qty  { width: 85px; }
+        #report-table tfoot td { background: #e8edf3; font-weight: 700; padding: 7px 6px; border: 1px solid #bbb; }
+        #report-table tfoot .num { font-family: 'Courier New', Courier, monospace; text-align: right; }
 
-        /* ── Total Row ── */
-        #report-table tfoot td {
-            background: #e8edf3;
-            font-weight: 700;
-            padding: 7px 6px;
-            border: 1px solid #bbb;
-        }
-        #report-table tfoot .num {
-            font-family: 'Courier New', Courier, monospace;
-            text-align: right;
-        }
-
-        /* ── No Data ── */
-        #no-data {
-            display: none;
-            text-align: center;
-            padding: 60px 20px;
-            color: #999;
-            font-size: 14px;
-        }
-        #no-data .icon {
-            font-size: 48px;
-            margin-bottom: 12px;
-            display: block;
-        }
+        #no-data { display: none; text-align: center; padding: 60px 20px; color: #999; font-size: 14px; }
+        #no-data .icon { font-size: 48px; margin-bottom: 12px; display: block; }
 
         /* ── Autocomplete ── */
-        .ui-autocomplete {
-            font-size: 12px !important;
-            max-height: 250px;
-            overflow-y: auto;
-            overflow-x: hidden;
-            border-radius: 0 0 4px 4px;
-            border: 1px solid #bbb;
-            border-top: none;
-            background: #fff;
-            z-index: 99999 !important;
-        }
-        .ui-autocomplete .ui-menu-item {
-            padding: 5px 10px;
-            cursor: pointer;
-        }
-        .ui-autocomplete .ui-menu-item.ui-state-focus,
-        .ui-autocomplete .ui-menu-item:hover {
-            background: #1a3c5e;
-            color: #fff;
-            margin: 0;
-            border: none;
-        }
+        .ui-autocomplete { font-size: 12px !important; max-height: 250px; overflow-y: auto; overflow-x: hidden; border-radius: 0 0 4px 4px; border: 1px solid #bbb; border-top: none; background: #fff; z-index: 99999 !important; }
+        .ui-autocomplete .ui-menu-item { padding: 5px 10px; cursor: pointer; }
+        .ui-autocomplete .ui-menu-item:hover { background: #1a3c5e; color: #fff; }
 
-        /* ── Print ── */
         @media print {
             body { background: #fff !important; }
-            #filter-section, #loading, #status-box { display: none !important; }
-            #report-container {
-                margin: 0 !important;
-                padding: 10px 15px !important;
-                border: none !important;
-                box-shadow: none !important;
-                max-width: 100% !important;
-            }
-            .report-header { border-bottom: 2px solid #000 !important; }
-            .report-header h1, .report-header h2 { color: #000 !important; }
-            #report-table thead th {
-                background: #ddd !important;
-                color: #000 !important;
-                border-color: #000 !important;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-            #report-table tbody td { border-color: #000 !important; }
-            #report-table tbody tr:nth-child(even),
-            #report-table tbody tr:hover { background: #fff !important; }
-            #report-table tfoot td {
-                background: #eee !important;
-                border-color: #000 !important;
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-            .record-count { display: none !important; }
+            #filter-section, #loading, .modal-overlay { display: none !important; }
+            #report-container { margin: 0 !important; padding: 10px 15px !important; border: none !important; box-shadow: none !important; max-width: 100% !important; }
             @page { size: landscape; margin: 1cm; }
         }
     </style>
@@ -357,6 +203,9 @@ if (!isset($_SESSION['db_user']) || trim((string)$_SESSION['db_user']) === '') {
                 <button type="button" class="btn btn-search" id="btn-search" onclick="doSearch()">&#9654; Search</button>
                 <button type="button" class="btn btn-print" id="btn-print" onclick="doPrint()" disabled>&#9113; Print</button>
                 <button type="button" class="btn btn-clear" onclick="doClear()">&#10005; Clear</button>
+                
+                <!-- TOMBOL CHART BARU -->
+                <button type="button" class="btn btn-chart" onclick="openChartModal()">&#128202; Grafik Tahunan</button>
             </td>
         </tr>
     </table>
@@ -364,8 +213,6 @@ if (!isset($_SESSION['db_user']) || trim((string)$_SESSION['db_user']) === '') {
 
 <!-- ═══════════ LOADING ═══════════ -->
 <div id="loading"><span>Memuat data...</span></div>
-
-<div id="status-box"></div>
 
 <!-- ═══════════ REPORT ═══════════ -->
 <div id="report-container">
@@ -394,6 +241,7 @@ if (!isset($_SESSION['db_user']) || trim((string)$_SESSION['db_user']) === '') {
                 <th class="col-cur">CUR</th>
                 <th class="col-qty">PO QTY</th>
                 <th class="col-qty">RECV QTY</th>
+                <th class="col-qty" style="width:65px;">% RECV</th>
                 <th class="col-qty">SISA QTY</th>
             </tr>
         </thead>
@@ -403,57 +251,54 @@ if (!isset($_SESSION['db_user']) || trim((string)$_SESSION['db_user']) === '') {
                 <td colspan="8" style="text-align:right;padding-right:10px;">TOTAL</td>
                 <td class="num" id="total-po-qty">0.00</td>
                 <td class="num" id="total-recv-qty">0.00</td>
+                <td class="num" id="total-pct-recv">0.00 %</td>
                 <td class="num" id="total-sisa-qty">0.00</td>
             </tr>
         </tfoot>
     </table>
 </div>
 
+<!-- ═══════════ MODAL CHART ═══════════ -->
+<div id="modal-chart" class="modal-overlay">
+    <div class="modal-content">
+        <span class="close-btn" onclick="closeChartModal()">&times;</span>
+        <h2 style="color:#1a3c5e; font-size:16px; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+            &#128202; Performance % Filter By Supplier (Tahunan)
+        </h2>
+        
+        <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 15px;">
+            <label style="font-weight: bold; color: #333;">Pilih Tahun:</label>
+            <select id="chart_year" style="padding: 6px; border-radius: 4px; border: 1px solid #bbb; font-size:12px;"></select>
+            <button type="button" class="btn btn-search" onclick="loadChartData()">Tampilkan</button>
+            <span id="chart-sup-label" style="margin-left: 15px; font-weight: bold; color: #059669;"></span>
+            
+            <!-- LABEL RATA-RATA TAHUNAN -->
+            <span id="chart-avg-label" style="margin-left: 15px; font-weight: bold; color: #d32f2f; font-size: 14px;"></span>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="performanceChart"></canvas>
+        </div>
+    </div>
+</div>
+
 <!-- ═══════════ SCRIPT ═══════════ -->
 <script>
 (function($) {
 
-    var MONTHS = [
-        "JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE",
-        "JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"
-    ];
-
-    /* ── Default: bulan berjalan ── */
+    var MONTHS = ["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"];
     var now = new Date();
     var firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     var lastDay  = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-    /* ══════════════════════════════════════════
-       FIX: showOn:"button" + tombol kalender manual
-       ══════════════════════════════════════════ */
-    var dpOptions = {
-        dateFormat: "yy-mm-dd",
-        changeMonth: true,
-        changeYear: true,
-        showButtonPanel: false,
-        showOn: "button",
-        buttonText: "",
-        buttonImage: ""
-    };
+    var dpOptions = { dateFormat: "yy-mm-dd", changeMonth: true, changeYear: true, showButtonPanel: false, showOn: "button", buttonText: "", buttonImage: "" };
 
-    /* Inisialisasi datepicker START */
-    $("#start_date").datepicker(dpOptions);
-    /* Sembunyikan button default jQuery UI, gunakan tombol custom */
-    $("#start_date").next(".ui-datepicker-trigger").hide();
+    $("#start_date").datepicker(dpOptions).next(".ui-datepicker-trigger").hide();
+    $("#end_date").datepicker(dpOptions).next(".ui-datepicker-trigger").hide();
 
-    /* Inisialisasi datepicker END */
-    $("#end_date").datepicker(dpOptions);
-    $("#end_date").next(".ui-datepicker-trigger").hide();
+    $("#btn_dp_start").on("click", function() { $("#start_date").datepicker("show"); });
+    $("#btn_dp_end").on("click", function() { $("#end_date").datepicker("show"); });
 
-    /* Tombol kalender custom membuka datepicker */
-    $("#btn_dp_start").on("click", function() {
-        $("#start_date").datepicker("show");
-    });
-    $("#btn_dp_end").on("click", function() {
-        $("#end_date").datepicker("show");
-    });
-
-    /* Set nilai default */
     $("#start_date").datepicker("setDate", firstDay);
     $("#end_date").datepicker("setDate", lastDay);
 
@@ -485,38 +330,21 @@ if (!isset($_SESSION['db_user']) || trim((string)$_SESSION['db_user']) === '') {
             $("#sup_comp").val(ui.item.value);
             return false;
         },
-        minLength: 1,
-        delay: 300
+        minLength: 1, delay: 300
     });
 
-    $("#sup_comp").on("blur", function() {
-        if ($(this).val() === "") { $("#sup_code").val(""); }
-    });
+    $("#sup_comp").on("blur", function() { if ($(this).val() === "") { $("#sup_code").val(""); } });
 
     $("#plant").on("change", function() {
-        /*
-         * Jangan mengubah kembali nilai plant ke "all".
-         * Cukup bersihkan supplier karena daftar supplier mengikuti plant.
-         */
-        $("#sup_comp").val("");
-        $("#sup_code").val("");
-
-        $("#report-table").hide();
-        $("#no-data").hide();
-        $("#record-count").hide();
+        $("#sup_comp").val(""); $("#sup_code").val("");
+        $("#report-table, #no-data, #record-count").hide();
         $("#btn-print").prop("disabled", true);
-
         $("#plant-text").text("Plant: " + plantLabel($(this).val()));
         $("#supplier-text").text("").hide();
-
-        showStatus([]);
     });
 
-    $("#sup_comp").on("input", function() {
-        $("#sup_code").val("");
-    });
+    $("#sup_comp").on("input", function() { $("#sup_code").val(""); });
 
-    /* ── Format Number ── */
     function fmtNum(n) {
         var num = parseFloat(n);
         if (isNaN(num)) return "0.00";
@@ -524,28 +352,18 @@ if (!isset($_SESSION['db_user']) || trim((string)$_SESSION['db_user']) === '') {
         parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
         return parts.join(".");
     }
-
+    function padZ(n) { return n < 10 ? "0" + n : "" + n; }
+    function esc(s) {
+        if (s === null || typeof s === "undefined") return "";
+        return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
     function plantLabel(value) {
         if (value === "p1") return "Plant 1";
         if (value === "p2") return "Plant 2";
         return "Gabungan P1 & P2";
     }
 
-    function showStatus(messages) {
-        var box = $("#status-box");
-        if (!messages || !messages.length) {
-            box.removeClass("show").html("");
-            return;
-        }
-
-        var html = "";
-        for (var i = 0; i < messages.length; i++) {
-            html += "<div>" + esc(messages[i]) + "</div>";
-        }
-        box.addClass("show").html(html);
-    }
-
-    /* ── Search ── */
+    /* ── Search Laporan Utama (Table) ── */
     window.doSearch = function() {
         var startDate = $.trim($("#start_date").val());
         var endDate   = $.trim($("#end_date").val());
@@ -558,144 +376,255 @@ if (!isset($_SESSION['db_user']) || trim((string)$_SESSION['db_user']) === '') {
             return;
         }
 
-        $("#loading").show();
-        $("#btn-search").prop("disabled", true);
+        $("#loading").show(); $("#btn-search").prop("disabled", true);
 
         $.ajax({
             url: "get_po_outstanding_multi.php",
             type: "POST",
-            data: {
-                plant:      selectedPlant,
-                start_date: startDate,
-                end_date:   endDate,
-                sup_code:   supCode
-            },
+            data: { plant: selectedPlant, start_date: startDate, end_date: endDate, sup_code: supCode },
             dataType: "json",
             success: function(resp) {
-                $("#loading").hide();
-                $("#btn-search").prop("disabled", false);
-                if (!resp || resp.status !== "success") {
-                    alert(resp && resp.message ? resp.message : "Respons server tidak valid.");
-                    return;
-                }
-                showStatus(resp.errors || []);
+                $("#loading").hide(); $("#btn-search").prop("disabled", false);
+                if (!resp || resp.status !== "success") { alert(resp && resp.message ? resp.message : "Respons server tidak valid."); return; }
                 renderReport(resp.data || [], startDate, endDate, supComp, selectedPlant);
             },
             error: function(xhr, status, err) {
-                $("#loading").hide();
-                $("#btn-search").prop("disabled", false);
+                $("#loading").hide(); $("#btn-search").prop("disabled", false);
                 alert("Error: " + (err || status));
             }
         });
     };
 
-    /* ── Render ── */
     function renderReport(data, startDate, endDate, supComp, plant) {
-        if (data.length === 0) {
-            showNoData(startDate, endDate, supComp, plant);
-            return;
-        }
+        if (data.length === 0) { showNoData(startDate, endDate, supComp, plant); return; }
 
-        var sd = new Date(startDate);
-        var ed = new Date(endDate);
-        var monthName = MONTHS[sd.getMonth()];
-
+        var sd = new Date(startDate), ed = new Date(endDate);
         if (sd.getMonth() === ed.getMonth() && sd.getFullYear() === ed.getFullYear()) {
-            $("#report-title").text("OUTSTANDING PO MONTHLY " + monthName + " " + sd.getFullYear());
+            $("#report-title").text("OUTSTANDING PO MONTHLY " + MONTHS[sd.getMonth()] + " " + sd.getFullYear());
         } else {
             $("#report-title").text("OUTSTANDING PO");
         }
 
-        var sdStr = padZ(sd.getDate()) + "/" + padZ(sd.getMonth()+1) + "/" + sd.getFullYear();
-        var edStr = padZ(ed.getDate()) + "/" + padZ(ed.getMonth()+1) + "/" + ed.getFullYear();
         $("#plant-text").text("Plant: " + plantLabel(plant));
-        $("#period-text").text("Period: " + sdStr + " - " + edStr);
+        $("#period-text").text("Period: " + padZ(sd.getDate()) + "/" + padZ(sd.getMonth()+1) + "/" + sd.getFullYear() + " - " + padZ(ed.getDate()) + "/" + padZ(ed.getMonth()+1) + "/" + ed.getFullYear());
         $("#supplier-text").text(supComp !== "" ? "Supplier: " + supComp : "Supplier: SEMUA").show();
 
-        var html = "";
-        var totalPO = 0, totalRecv = 0, totalSisa = 0;
+        var html = "", totalPO = 0, totalRecv = 0, totalSisa = 0;
 
         for (var i = 0; i < data.length; i++) {
             var r = data[i];
-            var poQty   = parseFloat(r.PO_QTY)      || 0;
-            var rcvQty  = parseFloat(r.RECEIVE_QTY)  || 0;
-            var sisaQty = parseFloat(r.SISA_QTY)     || 0;
-            totalPO   += poQty;
-            totalRecv += rcvQty;
-            totalSisa += sisaQty;
+            var poQty   = parseFloat(r.PO_QTY) || 0;
+            var rcvQty  = parseFloat(r.RECEIVE_QTY !== undefined ? r.RECEIVE_QTY : (r.RECV_QTY !== undefined ? r.RECV_QTY : (r.RCV_QTY !== undefined ? r.RCV_QTY : 0))) || 0;
+            var sisaQty = parseFloat(r.SISA_QTY) || 0;
+            var pctRecv = (poQty > 0) ? ((rcvQty / poQty) * 100) : 0;
 
-            html += "<tr>"
-                + "<td class='center'>" + (i + 1) + "</td>"
-                + "<td class='center' style='font-weight:bold;color:#6d28d9;'>" + esc(r.PLANT_SHORT) + "</td>"
-                + "<td>" + esc(r.PO_NUM) + "</td>"
-                + "<td class='center'>" + esc(r.PO_DATE) + "</td>"
-                + "<td>" + esc(r.ITEM_CODE) + "</td>"
-                + "<td>" + esc(r.ITEM_NAME) + "</td>"
-                + "<td class='center'>" + esc(r.ITEM_UNIT) + "</td>"
-                + "<td class='center'>" + esc(r.PO_CUR) + "</td>"
-                + "<td class='num'>" + fmtNum(poQty) + "</td>"
-                + "<td class='num'>" + fmtNum(rcvQty) + "</td>"
-                + "<td class='num'>" + fmtNum(sisaQty) + "</td>"
-                + "</tr>";
+            totalPO += poQty; totalRecv += rcvQty; totalSisa += sisaQty;
+
+            html += "<tr><td class='center'>" + (i + 1) + "</td><td class='center' style='font-weight:bold;color:#6d28d9;'>" + esc(r.PLANT_SHORT) + "</td><td>" + esc(r.PO_NUM) + "</td><td class='center'>" + esc(r.PO_DATE) + "</td><td>" + esc(r.ITEM_CODE) + "</td><td>" + esc(r.ITEM_NAME) + "</td><td class='center'>" + esc(r.ITEM_UNIT) + "</td><td class='center'>" + esc(r.PO_CUR) + "</td><td class='num'>" + fmtNum(poQty) + "</td><td class='num' style='color:green;'>" + fmtNum(rcvQty) + "</td><td class='num'>" + fmtNum(pctRecv) + " %</td><td class='num' style='color:red;'>" + fmtNum(sisaQty) + "</td></tr>";
         }
 
+        var totalPct = (totalPO > 0) ? ((totalRecv / totalPO) * 100) : 0;
         $("#report-body").html(html);
-        $("#total-po-qty").text(fmtNum(totalPO));
-        $("#total-recv-qty").text(fmtNum(totalRecv));
-        $("#total-sisa-qty").text(fmtNum(totalSisa));
+        $("#total-po-qty").text(fmtNum(totalPO)); $("#total-recv-qty").text(fmtNum(totalRecv)); $("#total-pct-recv").text(fmtNum(totalPct) + " %"); $("#total-sisa-qty").text(fmtNum(totalSisa));
 
-        $("#report-table").show();
-        $("#no-data").hide();
-        $("#record-count").text("Showing " + data.length + " record(s)").show();
+        $("#report-table, #record-count").show(); $("#no-data").hide();
+        $("#record-count").text("Showing " + data.length + " record(s)");
         $("#btn-print").prop("disabled", false);
     }
 
     function showNoData(startDate, endDate, supComp, plant) {
-        var sd = new Date(startDate);
-        var ed = new Date(endDate);
-        var sdStr = padZ(sd.getDate()) + "/" + padZ(sd.getMonth()+1) + "/" + sd.getFullYear();
-        var edStr = padZ(ed.getDate()) + "/" + padZ(ed.getMonth()+1) + "/" + ed.getFullYear();
+        var sd = new Date(startDate), ed = new Date(endDate);
         $("#report-title").text("OUTSTANDING PO MONTHLY");
         $("#plant-text").text("Plant: " + plantLabel(plant));
-        $("#period-text").text("Period: " + sdStr + " - " + edStr);
+        $("#period-text").text("Period: " + padZ(sd.getDate()) + "/" + padZ(sd.getMonth()+1) + "/" + sd.getFullYear() + " - " + padZ(ed.getDate()) + "/" + padZ(ed.getMonth()+1) + "/" + ed.getFullYear());
         $("#supplier-text").text(supComp !== "" ? "Supplier: " + supComp : "Supplier: SEMUA").show();
-        $("#report-table").hide();
-        $("#no-data").show();
-        $("#record-count").hide();
-        $("#btn-print").prop("disabled", true);
+        $("#report-table, #record-count").hide(); $("#no-data").show(); $("#btn-print").prop("disabled", true);
     }
 
     window.doPrint = function() { window.print(); };
 
     window.doClear = function() {
-        $("#plant").val("all");
-        $("#sup_comp").val("");
-        $("#sup_code").val("");
-        var n = new Date();
-        $("#start_date").datepicker("setDate", new Date(n.getFullYear(), n.getMonth(), 1));
-        $("#end_date").datepicker("setDate", new Date(n.getFullYear(), n.getMonth() + 1, 0));
-        $("#report-table").hide();
-        $("#no-data").hide();
-        $("#record-count").hide();
+        $("#plant").val("all"); $("#sup_comp").val(""); $("#sup_code").val("");
+        $("#start_date").datepicker("setDate", new Date(now.getFullYear(), now.getMonth(), 1));
+        $("#end_date").datepicker("setDate", new Date(now.getFullYear(), now.getMonth() + 1, 0));
+        $("#report-table, #no-data, #record-count").hide();
         $("#report-title").text("OUTSTANDING PO MONTHLY");
-        $("#plant-text").text("");
-        $("#period-text").text("");
-        $("#supplier-text").text("").hide();
+        $("#plant-text, #period-text").text(""); $("#supplier-text").text("").hide();
         $("#btn-print").prop("disabled", true);
-        showStatus([]);
     };
 
-    function padZ(n) { return n < 10 ? "0" + n : "" + n; }
+    /* =======================================================
+       LOGIK & FUNGSI MODAL CHART PERFORMANCE TAHUNAN
+       ======================================================= */
+    var myChart = null;
 
-    function esc(s) {
-        if (s === null || typeof s === "undefined") return "";
-        s = String(s);
-        return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    window.openChartModal = function() {
+        var supCode = $.trim($("#sup_code").val());
+        var supComp = $.trim($("#sup_comp").val());
+
+        if (supCode === "") {
+            alert("Silakan pilih / ketik Supplier terlebih dahulu untuk melihat grafik performance tahunannya.");
+            return;
+        }
+
+        // Isi Option Dropdown Tahun jika kosong
+        if ($('#chart_year option').length === 0) {
+            var currYear = new Date().getFullYear();
+            for (var y = currYear + 1; y >= currYear - 5; y--) {
+                $('#chart_year').append($("<option />").val(y).text(y));
+            }
+            $('#chart_year').val(currYear);
+        }
+
+        $("#chart-sup-label").text(supComp);
+        $("#modal-chart").css("display", "flex");
+        
+        // Langsung load data begitu modal terbuka
+        loadChartData();
+    };
+
+    window.closeChartModal = function() {
+        $("#modal-chart").hide();
+    };
+
+    window.loadChartData = function() {
+        var year    = $("#chart_year").val();
+        var supCode = $.trim($("#sup_code").val());
+        var plant   = $("#plant").val();
+
+        $("#loading").show();
+
+        $.ajax({
+            url: "get_po_performance_yearly.php", 
+            type: "POST",
+            data: { plant: plant, year: year, sup_code: supCode },
+            dataType: "json",
+            success: function(resp) {
+                $("#loading").hide();
+                if (!resp || resp.status !== "success") {
+                    alert(resp && resp.message ? resp.message : "Gagal memuat data grafik.");
+                    return;
+                }
+                renderChart(resp.data || [], year);
+            },
+            error: function(xhr, status, err) {
+                $("#loading").hide();
+                alert("Error: " + (err || status));
+            }
+        });
+    };
+
+    function renderChart(data, year) {
+        if (myChart != null) { myChart.destroy(); }
+
+        var labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        var percentData = [null, null, null, null, null, null, null, null, null, null, null, null];
+        var tooltipDetails = Array(12).fill({po: 0, recv: 0});
+        
+        var yearlyPO = 0;
+        var yearlyRecv = 0;
+
+        for (var i = 0; i < data.length; i++) {
+            var row = data[i];
+            var monthIndex = parseInt(row.month) - 1; 
+            
+            var poQty = parseFloat(row.po_qty) || 0;
+            var recvQty = parseFloat(row.recv_qty) || 0;
+            var pct = null;
+            
+            if (poQty > 0) {
+                pct = ((recvQty / poQty) * 100).toFixed(2);
+                yearlyPO += poQty;
+                yearlyRecv += recvQty;
+            }
+
+            if (monthIndex >= 0 && monthIndex <= 11) {
+                percentData[monthIndex] = pct !== null ? parseFloat(pct) : null;
+                tooltipDetails[monthIndex] = { po: poQty, recv: recvQty };
+            }
+        }
+
+        var yearlyAvg = 0;
+        if (yearlyPO > 0) {
+            yearlyAvg = ((yearlyRecv / yearlyPO) * 100).toFixed(2);
+        }
+        $("#chart-avg-label").text(" | Rata-rata Tahunan: " + yearlyAvg + "%");
+
+        // Daftarkan plugin ChartDataLabels secara global sebelum init
+        Chart.register(ChartDataLabels);
+
+        var ctx = document.getElementById('performanceChart').getContext('2d');
+        myChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        type: 'line',
+                        label: 'Trend %',
+                        data: percentData,
+                        borderColor: 'red',
+                        borderWidth: 2,
+                        fill: false,
+                        tension: 0,
+                        pointBackgroundColor: 'red',
+                        spanGaps: true,
+                        datalabels: { display: false } // Jangan tampilkan angka dobel di garis
+                    },
+                    {
+                        type: 'bar',
+                        label: '% Receive vs PO (' + year + ')',
+                        data: percentData,
+                        backgroundColor: 'rgba(5, 150, 105, 0.8)',
+                        borderColor: '#047857',
+                        borderWidth: 1,
+                        borderRadius: 4,
+                        datalabels: {
+                            display: true,
+                            color: '#222',
+                            anchor: 'end',
+                            align: 'top',
+                            font: { weight: 'bold', size: 11 },
+                            formatter: function(value) {
+                                return value !== null ? value + '%' : '';
+                            }
+                        }
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: {
+                    padding: { top: 25 } // Jarak agar angka tidak terpotong
+                },
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                var idx = context.dataIndex;
+                                var val = context.parsed.y;
+                                var detail = tooltipDetails[idx];
+                                return [
+                                    'Performance: ' + (val !== null ? val : 0) + '%',
+                                    'Total PO Qty: ' + detail.po.toLocaleString(),
+                                    'Total Rcv Qty: ' + detail.recv.toLocaleString()
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: { 
+                        beginAtZero: true, 
+                        max: 110, // Max scale dilebihkan untuk ruang teks angka
+                        title: { display: true, text: 'Persentase (%)' } 
+                    }
+                }
+            }
+        });
     }
-
-    $("#sup_comp").on("keydown", function(e) {
-        if (e.keyCode === 13) { e.preventDefault(); doSearch(); }
-    });
 
 })(jQuery);
 </script>

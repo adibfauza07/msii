@@ -140,7 +140,8 @@ $grandTotal = $totalAmount + $vatAmount;
         body {
             margin: 0;
             background: #9a9a9a;
-            font-family: "Courier New", monospace;
+            /* DIUBAH: Menyesuaikan font ke Arial, Helvetica, sans-serif */
+            font-family: Arial, Helvetica, sans-serif;
             font-size: 12px;
             color: #000000;
         }
@@ -177,7 +178,7 @@ $grandTotal = $totalAmount + $vatAmount;
         }
 
         .company {
-            font-family: Arial, sans-serif;
+            /* Menghapus deklarasi font-family agar inherit */
             font-size: 11px;
             line-height: 14px;
         }
@@ -191,7 +192,7 @@ $grandTotal = $totalAmount + $vatAmount;
 
         .title {
             text-align: center;
-            font-family: "Times New Roman", serif;
+            /* Menghapus Times New Roman agar inherit */
             font-size: 30px;
             font-weight: normal;
             padding-top: 34px;
@@ -247,7 +248,7 @@ $grandTotal = $totalAmount + $vatAmount;
         .cust-name {
             font-weight: bold;
             font-size: 15px;
-            font-family: Arial, sans-serif;
+            /* Menghapus deklarasi font-family khusus agar inherit */
         }
 
         .payment {
@@ -274,7 +275,7 @@ $grandTotal = $totalAmount + $vatAmount;
         }
 
         .detail th {
-            font-size: 11px;
+            font-size: 13px;
             font-weight: bold;
             text-align: center;
             padding: 3px 1px;
@@ -285,7 +286,7 @@ $grandTotal = $totalAmount + $vatAmount;
         }
 
         .detail td {
-            font-size: 11px;
+            font-size: 13px;
             padding: 2px 1px;
             vertical-align: top;
             line-height: 13px;
